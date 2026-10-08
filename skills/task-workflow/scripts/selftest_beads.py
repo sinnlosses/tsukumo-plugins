@@ -41,6 +41,7 @@ import layout  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
+from selftest_support import check, finish, git, local, run_parallel, say, select, write  # noqa: E402
 
 # 利用者の値のままだと、一時リポジトリの台帳がその置き場に積もる。
 os.environ.pop(ledger.STATE_DIR_ENV, None)
@@ -54,42 +55,14 @@ BODY = task_body(acceptance="- 通る", caution="z")
 # 登録の既定の本文。`make_repo` が主ブランチに置く `shared.txt` を名指す。
 PLANNED_BODY = task_body([("書く", "x")], ["shared.txt"], acceptance="- 通る", caution="z")
 
-failures: list[str] = []
 BASE_ENV = os.environ.copy()
 # テストは CPU 数の半分まで並行に走らせる。出力と環境変数はテストごとに持つ。
-_local = threading.local()
 # prefix ごとに `bd init --stealth` した `.beads` と、そのとき書かれた `.git/info/exclude`。`main()` が作る。
 _beads_templates: dict[str, tuple[str, str]] = {}
 
 
 def env() -> dict[str, str]:
-    return getattr(_local, "env", BASE_ENV)
-
-
-def say(line: str) -> None:
-    _local.lines.append(line)
-
-
-def check(label: str, cond: bool, detail: str = "") -> None:
-    if cond:
-        say(f"  ok   {label}")
-    else:
-        say(f"  FAIL {label}{(': ' + detail) if detail else ''}")
-        failures.append(label)
-
-
-def write(path: str, content: str) -> str:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(content)
-    return path
-
-
-def git(cwd: str, *args: str) -> subprocess.CompletedProcess:
-    r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
-    if r.returncode != 0:
-        raise RuntimeError(f"git {' '.join(args)} 失敗: {r.stderr}")
-    return r
+    return getattr(local, "env", BASE_ENV)
 
 
 def run_task(cwd: str, *args: str, stdin: str | None = None) -> subprocess.CompletedProcess:
@@ -681,14 +654,14 @@ def _github(prefix: str | None = beads.PREFIX_GITHUB) -> Iterator[tuple["FakeGit
     `prefix` が `None` なら `.beads` は `init.py` がトラッカーの行から prefix を選んで作る。"""
     fake = FakeGitHub()
     with tempfile.TemporaryDirectory() as tmp:
-        _local.env = _with_fakes(tmp, fake)
+        local.env = _with_fakes(tmp, fake)
         try:
             main_path, wt1, _ = make_repo(tmp, extra='tracker = "github"\ngithub_project = "sinnlosses/1"\n', prefix=prefix)
             bd(main_path, "config", "set", "github.repository", "o/r")
             yield fake, tmp, main_path, wt1
         finally:
             fake.close()
-            del _local.env
+            del local.env
 
 
 def _num(task_id: str) -> int:
@@ -769,15 +742,6 @@ def _stat(path: str) -> tuple[float, int] | None:
     return st.st_mtime, st.st_size
 
 
-def _run_one(test) -> list[str]:
-    _local.lines = []
-    try:
-        test()
-    except Exception as e:  # noqa: BLE001  1件の故障で残りのテストを止めない
-        check(f"{test.__name__} が落ちずに終わる", False, repr(e))
-    return _local.lines
-
-
 def test_id_forms() -> None:
     """ID の形: `T-<n>`・`GH-<n>`・Jira のキー（`PROJ-123`）を読み、前の2つを Jira のキーと取り違えない。"""
     forms = {"T-123": "t-123", "GH-5": "gh-5", "PROJ-123": "proj-123", "AB2_C-7": "ab2_c-7"}
@@ -846,21 +810,13 @@ def main() -> None:
             test_id_forms,
             test_bd_time_forms,
         )
-        tests = tuple(t for t in tests if not only or t.__name__ in only)
+        tests = select(tests, only)
         with ThreadPoolExecutor(max_workers=2) as pool:
             list(pool.map(lambda prefix: _make_beads_template(home, prefix), (beads.PREFIX_LOCAL, beads.PREFIX_GITHUB)))
-        with ThreadPoolExecutor(max_workers=min(len(tests), max(1, (os.cpu_count() or 2) // 2))) as pool:
-            outputs = list(pool.map(_run_one, tests))
-    for lines in outputs:
-        print("\n".join(lines))
-    _local.lines = []
+        outputs = run_parallel(tests)
+    local.lines = []
     check("利用者の ~/.config/bd/config.yaml に触れていない", _stat(real_config) == before, real_config)
-    print("\n".join(_local.lines))
-    print()
-    if failures:
-        print(f"FAILED {len(failures)}件: " + ", ".join(failures))
-        raise SystemExit(1)
-    print("すべて通った")
+    finish([*outputs, local.lines])
 
 
 if __name__ == "__main__":
