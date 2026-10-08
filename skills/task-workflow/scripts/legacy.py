@@ -1,8 +1,8 @@
 """旧形式（`develop/tasks.json` + `develop/progress.md`）の読み取りと `task migrate`。
 
-正典は `docs/task-workflow-redesign.md` の5.9・10.1・10.2。`task.py` の `cmd_migrate` から
-`migrate()` を呼ぶ（`ship.py` が `attempt()` を返し `task.py` が印字するのと同じ形。ここで
-ファイル・git の実際の書き換えまで行い、`task.py` 側は結果を印字するだけにする）。
+正典は `docs/task-workflow-redesign.md` の5.9・10.1・10.2。`tw_maint.py` の `cmd_migrate` から
+`migrate()` を呼ぶ（`ship.py` が `attempt()` を返し `tw_ship.py` が印字するのと同じ形。ここで
+ファイル・git の実際の書き換えまで行い、`tw_maint.py` 側は結果を印字するだけにする）。
 
 タスクの変換（10.1）は機械的な写しで、**登録時の本文の節の検査（`taskfile.validate_new_body`）
 は受けない**（移行したファイルの本文はそのまま。正典3.3「移行したファイルは本文の節の検査を
