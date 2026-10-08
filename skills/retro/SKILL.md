@@ -30,7 +30,7 @@ disable-model-invocation: true
 2. **材料を決める。** ユーザーがセッションを指定しなければ、いまのセッション（自分の文脈にある
    やり取り）を材料にする。過去のセッションを指定されたら、残っている記録から数で拾う:
    そのセッションのコミット（`git log`）、タスクの `## 結果`（task-workflow の運用なら `tw show`）、
-   プロジェクトに集計の道具があればそれ（CLAUDE.md の「## タスク運用」節にある規則の発火の集計など）、
+   プロジェクトに集計の道具があればそれ（`tw config` の `hook_tally` の行など）、
    サブエージェントの手数（タスクに紐付くセッションなら
    `python3 ${CLAUDE_SKILL_DIR}/../retrospect/scripts/material.py . <タスクID> --signals`）。
    セッションのログ（jsonl）の本文は材料にしない（守ること1）。
@@ -38,7 +38,7 @@ disable-model-invocation: true
 
 3. **プロジェクトの今の環境を読む。** 既にあるのに効いていないものが、見つけるべきものの筆頭:
    - 常に読み込まれる設定ファイル（`CLAUDE.md`・`AGENTS.md`。リポジトリとユーザー単位の両方）
-   - 検査のコマンド（CLAUDE.md の「## タスク運用」節の検証コマンド、`package.json` などの
+   - 検査のコマンド（`tw config` の `verify` の行、`package.json` などの
      `lint`・`check` スクリプト、CI のワークフロー）と、pre-commit などの hook
      （`.claude/settings.json` の `hooks` を含む）
    - コーディング規約の正典（CLAUDE.md が指す文書）と、レビューの観点（`code-review` スキルがあれば、その
@@ -58,10 +58,10 @@ disable-model-invocation: true
 
 6. **選ばれたものをドラフトに積む。** ユーザーが採ると言った候補だけを、`retrospect` の節
    「1件だけ振り返る」の「ドラフトに積む」と同じ形で
-   `develop/draft/` に1件1ファイルで足す。見出しの `（振り返り: ...）` には、セッションで扱った
+   `draft` の行のディレクトリ（例 `.tw/draft/`）に1件1ファイルで足す。見出しの `（振り返り: ...）` には、セッションで扱った
    タスクID を並べる（無ければ `（振り返り: セッション <YYYY-MM-DD>）`）。
    ドラフトのコミットと送り方は `retrospect` の節「他のプロジェクトで使うとき」に従う。
-   `develop/draft/` が無いプロジェクト（task-workflow の運用でない）では、手順5の一覧で終える。
+   `draft` の行が無いプロジェクト（task-workflow の運用でない）では、手順5の一覧で終える。
    _済んだ印_: 採った候補の数と同じ数のドラフトが送られている
 
 ## 参照

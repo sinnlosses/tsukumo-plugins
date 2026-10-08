@@ -3,7 +3,7 @@
 タスクを段に分けて委譲し、受け入れて送り出すワークフローの Claude Code プラグイン `tsukumo-workflow` と、
 それを配るマーケットプレイス `tsukumo-plugins`。
 
-タスクは `develop/task/` の1件1ファイルか Beads に置き、`/plan-tasks` で指示をタスクにし、`/next-task` で
+タスクは `.tw/task/` の1件1ファイルか Beads に置き、`/plan-tasks` で指示をタスクにし、`/next-task` で
 1件ずつ difficulty のモデルのサブエージェントへ委譲して、受け入れてから主ブランチへ送る。手順はコマンド `tw`
 が持ち、スキルは「どのサブコマンドをいつ打つか」だけを書く（正典は `skills/task-workflow/WORKFLOW.md`）。
 
@@ -40,12 +40,11 @@ tsukumo のワークフローの契約に型の合う1つの例だが、tsukumo 
 ## 要るもの
 
 - `python3`（`tw` とスキルのスクリプト。標準ライブラリだけ）と `git`
-- Beads 方式（「## タスク運用」節に `- タスクの置き場: beads`）で使うなら `bd`（Beads）と Dolt。
+- Beads 方式（`.tw/config.toml` に `store = "beads"`）で使うなら `bd`（Beads）と Dolt。
   トラッカーが `github` なら `gh` も要る（`skills/task-workflow/WORKFLOW.md`「Beads 方式」）。
   既定のファイル方式では要らない
 
-使うプロジェクトの側は、`develop/direction.md` と、設定ファイル（AGENTS.md → CLAUDE.md）の
-「## タスク運用」節（検証コマンド・整形コマンド・ブランチの3行）を置く。用意するのは `/setup-tasks`。
+使うプロジェクトの側は、`.tw/direction.md` と、検証コマンドを書いた `.tw/config.toml` を置く。用意するのは `/setup-tasks`。
 
 ## あれば使う外のスキル
 
@@ -71,7 +70,7 @@ tsukumo のワークフローの契約に型の合う1つの例だが、tsukumo 
 - 自作（6件）: `task-workflow`（運用の正典・参照専用）、`setup-tasks` `plan-tasks` `next-task` `list-tasks`、
   `retrospect`（`/next-task` の中で1件ごと・7日おきに振り返り、改善候補をドラフトに積む。正典・参照専用）
 - [mattpocock/skills](https://github.com/mattpocock/skills) を日本語化したもの（1件）: `retro`
-  （改善の7観点の一覧を `retrospect` へ移してそこを指し、選ばれた改善案を `develop/draft/` に積む）
+  （改善の7観点の一覧を `retrospect` へ移してそこを指し、選ばれた改善案をドラフトの置き場に積む）
 
 どれも `sinnlosses/claude-skills` で育ったもので、そこから切り出した（下の「決めたこと」の2）。
 
@@ -123,7 +122,8 @@ tsukumo のワークフローの契約に型の合う1つの例だが、tsukumo 
 
 ## 制約
 
-- ユーザー単位スキルはプロジェクト単位の同名スキルより優先される。プロジェクト差分は設定ファイル
-  （AGENTS.md → CLAUDE.md）の「## タスク運用」節で表す
+- ユーザー単位スキルはプロジェクト単位の同名スキルより優先される。プロジェクト差分は
+  `.tw/config.toml` で表す
 - SKILL.md 内の `` !`コマンド` `` はスキル読み込み時に実行され、非0で終わるとスキル全体が失敗する。
-  `/next-task` と `/plan-tasks` が「## タスク運用」節を読む箇所は、非0で終わらないようガードしてある
+  `/next-task` と `/plan-tasks` は設定を `` !`tw config 2>&1 || true` `` で読む。
+  設定が無い（`MISSING`、終了コード6）・git の外（終了コード1）でも非0で終わらないようにしてある

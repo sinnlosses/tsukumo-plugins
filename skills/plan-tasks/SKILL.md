@@ -1,9 +1,9 @@
 ---
 name: plan-tasks
-description: "develop/direction.md に書かれたユーザーからの指示（と、develop/draft/ のエージェントのドラフトのうち承認を得たもの）を tw new で develop/task/ のタスクに分解して登録し、main へ送る。ユーザーが「指示をタスクにして」「direction.md を処理して」と言ったとき、またはセッション開始時に develop/direction.md に未対応の指示があったときに使う。旧形式（develop/tasks.json）のプロジェクトでは移行の案内を出して止まる。"
+description: "direction の行のファイル（既定 .tw/direction.md）に書かれたユーザーからの指示（と、draft の行のディレクトリのエージェントのドラフトのうち承認を得たもの）を tw new でタスクに分解して登録し、main へ送る。引数にファイルのパスを渡すと、そのファイルを指示として読む。ユーザーが「指示をタスクにして」「direction.md を処理して」と言ったとき、またはセッション開始時に direction の行のファイルに未対応の指示があったときに使う。旧形式（develop/tasks.json）のプロジェクトでは移行の案内を出して止まる。"
 ---
 
-`develop/direction.md` と `develop/draft/` に溜まった指示をタスクにする。ルールは `task-workflow` スキルの
+`direction` の行のファイル（例 `.tw/direction.md`）と `draft` の行のディレクトリ（例 `.tw/draft/`）に溜まった指示と、引数 `<パス>` のファイルをタスクにする。ルールは `task-workflow` スキルの
 `WORKFLOW.md`（以下「正典」）。`tw` は
 `task-workflow` のタスク運用のコマンド（正典「`tw` コマンドの参照」）。
 
@@ -12,13 +12,16 @@ description: "develop/direction.md に書かれたユーザーからの指示（
 ときに無人でこの手順を読む場合で、そのとき扱ってよいのは `## ユーザーから`（ファイル入口）
 だけ（以下「無人のとき」）。
 
-## このプロジェクトの設定（設定ファイル AGENTS.md → CLAUDE.md の「## タスク運用」節）
+## このプロジェクトの設定（`tw config`）
 
-!`r=$(git rev-parse --show-toplevel 2>/dev/null); n=; for f in AGENTS.md CLAUDE.md; do [ -n "$r" ] && [ -f "$r/$f" ] && s=$(sed -n '/^## タスク運用/,/^## /p' "$r/$f" | grep .) && [ -n "$s" ] && { n=$f; break; }; done; if [ -n "$n" ]; then echo "（$n から読んだ）"; echo "$s"; else echo '（「## タスク運用」節が無い。AGENTS.md・CLAUDE.md の他の節に書かれた検証コマンドを探す。無ければ /setup-tasks で節を用意する）'; fi`
+!`tw config 2>&1 || true`
 
-節に `- タスクの置き場: beads` があれば **Beads 方式**（正典「Beads 方式」）で、下の「Beads 方式では」の
-注記に読み替える（トラッカーが `github` なら、タスクID は `tw new` が返す Issue 番号の `GH-<n>` で、
-`T-xxx` をそう読み替える。`--deps` にもその形で渡す）。`## 完了条件` に書く**検証コマンド**はこの節の値。`なし` なら完了条件は検証可能な言葉だけで書く。
+`store` の行が `beads` なら **Beads 方式**（正典「Beads 方式」）で、下の「Beads 方式では」の
+注記に読み替える（`files` ならファイル方式で、注記は飛ばす）。トラッカーが `github` なら、タスクID は
+`tw new` が返す Issue 番号の `GH-<n>` で、`T-xxx` をそう読み替える。`--deps` にもその形で渡す。
+`## 完了条件` に書く**検証コマンド**は `verify` の行の値。`なし` なら完了条件は検証可能な言葉だけで書く。
+置き場は `direction`・`draft`・task（ファイル方式のときだけ出る）の行のパスで、下の `.tw/…` はその例。
+出力が `MISSING` の行か、`tw config` を打てない旨（git の外など）なら、`/setup-tasks` を案内して終了する。
 
 ## 手順
 
@@ -27,18 +30,19 @@ description: "develop/direction.md に書かれたユーザーからの指示（
    リンクで入れるなら `task-workflow` を含めて `./install.sh` を打ち直すよう案内する）。
 
 1. **読む**: `tw status` で既存の一覧を見る（本文は読まない。重なりそうな1件があるときだけ
-   `develop/task/T-xxx.md` を開く。Beads 方式では `tw show T-xxx`）。終了コード5（`LEGACY`）なら「旧形式。正典「旧形式からの移行」の
+   task の行のディレクトリの `T-xxx.md` を開く。Beads 方式では `tw show T-xxx`）。終了コード5（`LEGACY`）なら「旧形式。正典「旧形式からの移行」の
    手順で `tw migrate --dry-run` から移す（スキルは移さない）」と案内して終了、6（`MISSING`）なら
    タスク運用を始めてよいかユーザーに確かめてから `/setup-tasks`、1・3 は理由を報告して終了する。
 
-   `develop/direction.md` と `develop/draft/` を見て、扱うものを決める（判定は保守的に。迷ったら拾わない）:
+   `direction` の行のファイルと `draft` の行のディレクトリ、引数を見て、扱うものを決める（判定は保守的に。迷ったら拾わない）:
 
    | 置き場・入口 | 扱い |
    | --- | --- |
-   | `develop/direction.md` の `## ユーザーから`（節見出しの無い古いファイルは全体） | そのまま手順2へ |
-   | `develop/draft/` のファイル（1件1ファイル） | 項目をユーザーに見せ、**承認を得たものだけ**手順2へ。無人のときは見ない |
-   | `develop/direction.md` に残った旧い `## エージェントのドラフト` の節 | 1件ずつ正典「指示メモ」の形で `develop/draft/` のファイルへ移して節を消し、上の行と同じに扱う。無人のときは触らない |
-   | 会話の明示の指示（「これタスクにして」「それでいいよ」） | `develop/direction.md` を経由せず手順2へ。無人のときは使わない |
+   | 引数 `<パス>` のファイル（`/plan-tasks <パス>`） | そのファイルを全体読んで手順2へ。手順6でそのファイルは消さず書き換えない。無人のときは使わない |
+   | `direction` の行のファイルの `## ユーザーから`（節見出しの無い古いファイルは全体） | そのまま手順2へ |
+   | `draft` の行のディレクトリのファイル（1件1ファイル） | 項目をユーザーに見せ、**承認を得たものだけ**手順2へ。無人のときは見ない |
+   | `direction` の行のファイルに残った旧い `## エージェントのドラフト` の節 | 1件ずつ正典「指示メモ」の形で `draft` の行のディレクトリのファイルへ移して節を消し、上の行と同じに扱う。無人のときは触らない |
+   | 会話の明示の指示（「これタスクにして」「それでいいよ」） | `direction` の行のファイルを経由せず手順2へ。無人のときは使わない |
    | Beads 方式の `triage` 行（トラッカーから取り込んだ振り分け前の課題） | `tw show <ID>` で読み、`## 完了条件`・`## やること`・`difficulty`・`loopable` を書き起こしてユーザーに見せ、承認を得たものだけ `tw adopt` する（手順5）。無人のときは見ない |
    | どれも無い | 未対応の指示は無いと報告して終了する |
 
@@ -57,7 +61,7 @@ description: "develop/direction.md に書かれたユーザーからの指示（
    先取りして書かず、前段の `## 完了条件` に「後段（対象のタスクIDの範囲）の本文を設計の結論に
    合わせて直す」を足す。揃えるときは実装の広がり（消す口・プロトコルの変更・触る機能の数）を見て
    後段の `difficulty` も見直す、も同じ完了条件に入れる。** 1タスクは1コミットで説明が付く大きさに。既存タスクと重なるなら
-   新しく作らず、その本文の `## 目的・背景` か `## 注意` に足す（`develop/task/T-xxx.md` を直して手順7で
+   新しく作らず、その本文の `## 目的・背景` か `## 注意` に足す（task の行のディレクトリの `T-xxx.md` を直して手順7で
    一緒にコミットする。Beads 方式では `tw show` の本文に足して `tw edit T-xxx --change-frame --body-file -`）。
    既存のタスクどうしで後段を前段に待たせたいときは、本文の `## 注意` に書くだけにせず
    `tw edit T-後段 --add-deps T-前段` で台帳に入れる（`tw status` の BLOCKED に出て、別のセッションの
@@ -112,7 +116,7 @@ description: "develop/direction.md に書かれたユーザーからの指示（
    `--summary` は単一引用符で囲む（`` ` `` を含むことが多い）:
 
    ```bash
-   tw new --summary '`readTaskSummaries` を develop/task/ から読む' --difficulty sonnet --loopable Y \
+   tw new --summary '`readTaskSummaries` をタスクの置き場から読む' --difficulty sonnet --loopable Y \
      --deps T-521 --body-file - <<'EOF'
    ## 目的・背景
    …
@@ -121,7 +125,7 @@ description: "develop/direction.md に書かれたユーザーからの指示（
    ## 解くべき論点
    なし
    ## やること
-   ### 1. 要約を develop/task/ から読む
+   ### 1. 要約をタスクの置き場から読む
    `src/task-summary.ts` の `readTaskSummaries` を …（完了条件の1行目）
    ### 2. テストを足す
    …（完了条件の2行目）
@@ -152,12 +156,12 @@ description: "develop/direction.md に書かれたユーザーからの指示（
    `tw adopt <ID> --difficulty … --loopable … --body-file -`（`ADOPTED` の3列目が振られた ID）。
    本文は `tw new` と同じく手順4のとおり書く（`## やること` も要る。終了コード2の理由も同じ）。
 
-6. **置き場から取り除く**: `## ユーザーから` はタスクにした行を消して節を見出しだけに戻し、
+6. **置き場から取り除く**: 引数のファイルは取り除かない。`## ユーザーから` はタスクにした行を消して節を見出しだけに戻し、
    承認を得たドラフトはそのファイルを `git rm` する（未承認のファイルは残す）。
 
-7. **コミットして送る**: `git add` する前に整形コマンドを打つ（`タスク運用`節が `なし` なら不要。
-   手順6で書き換えた `develop/direction.md` はそのままだと整形コマンドの検査に引っかかりうる）。
-   打ったら、登録したタスクファイル・`develop/direction.md`（と直した既存タスク）を**個別に** `git add`
+7. **コミットして送る**: `git add` する前に整形コマンドを打つ（`tw config` の `format` の行があれば。
+   手順6で書き換えた `direction` の行のファイルはそのままだと整形コマンドの検査に引っかかりうる）。
+   打ったら、登録したタスクファイル・`direction` の行のファイル（と直した既存タスク）を**個別に** `git add`
    し、手順6の `git rm` と合わせて1コミット（Beads 方式ではタスクファイルが無いので、それ以外だけ）（件名に
    タスクIDを付けない。例「指示をタスクにする（T-531〜T-533）」）→ `tw ship`。`SHIPPED` 以外の
    扱いは `next-task` スキルの `ship-stopped.md` の表と同じ（止まって預ける）。push はしない。
@@ -176,5 +180,5 @@ description: "develop/direction.md に書かれたユーザーからの指示（
    決めてもらったこと、`loopable: N` と `hold` の理由（`/loop` では進まないため）
 
 書かないもの: `SHIPPED` の範囲・コミットのハッシュ、`tw status` の件数、
-`develop/direction.md` のどの節を空にしたか・どのドラフトを消したか（どれも決まった手順の
+`direction` の行のファイルのどの節を空にしたか・どのドラフトを消したか（どれも決まった手順の
 とおりで、見たければ `git log` と `tw status` で見られる）。
