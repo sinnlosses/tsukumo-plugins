@@ -1,15 +1,15 @@
 {
-  "name": "sinnlos-skills",
+  "name": "tsukumo-plugins",
   "owner": {
     "name": "sinnlosses",
     "url": "https://github.com/sinnlosses"
   },
-  "description": "sinnlosses のスキルとエージェント定義",
+  "description": "タスクを段に分けて委譲し、受け入れて送り出すワークフローのプラグイン",
   "plugins": [
     {
-      "name": "sinnlos-skills",
+      "name": "tsukumo-workflow",
       "source": "./",
-      "description": "タスク運用（tw）・レビュー・調査などのスキルと、委譲先のエージェント定義"
+      "description": "タスク運用（tw）のスキル・hook と、委譲先のエージェント定義"
     }
   ]
 }

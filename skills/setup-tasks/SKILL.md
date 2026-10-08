@@ -11,7 +11,7 @@ description: "タスク運用に要る develop/direction.md（## ユーザーか
 
 0. **依存を確かめる**: `${CLAUDE_SKILL_DIR}/../task-workflow/scripts/task.py` が無ければ、
    `task-workflow` スキルが張られていないとして `MISSING` を報告して終了する（plugin で入れるなら
-   `/plugin install sinnlos-skills@sinnlos-skills`、リンクで入れるなら `install.sh` で
+   `/plugin install tsukumo-workflow@tsukumo-plugins`、リンクで入れるなら `install.sh` で
    `task-workflow` も一緒に張るよう案内する。以下の手順で打つ `task-workflow` の各スクリプトは
    これが前提）。`command -v tw` が何も返さないときも同じく `MISSING` として、同じ2つの入れ方を案内する。
 
@@ -92,4 +92,4 @@ description: "タスク運用に要る develop/direction.md（## ユーザーか
 - タスクの登録・実行（`/plan-tasks`・`/next-task`）。旧形式の移行（`tw migrate` は人が打つ）
 - `develop/` を `.gitignore` に足す（タスクの正典はコミットして共有する）
 - CLAUDE.md の「## タスク運用」節より外の書き換え
-- `~/.claude/skills/` へのリンク（スキル自体の導入は claude-skills の `install.sh`）
+- `~/.claude/skills/` へのリンク（スキル自体の導入は tsukumo-plugins の `install.sh`）

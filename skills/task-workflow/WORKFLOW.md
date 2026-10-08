@@ -9,7 +9,7 @@ git の外の台帳（以下の節の大半）。
 `/next-task`・`/plan-tasks`・`/list-tasks`・`/retrospect`・`/setup-tasks` が従うルール。
 **手順は `tw` コマンドが持ち、自己テスト（`scripts/selftest_task.py`）で守る。** スキルの本文は
 「どのサブコマンドをいつ打つか」と「人が判断する点」だけで、プロジェクト側で手順を上書きする
-仕組みは無い。設計の経緯と採らなかった案は claude-skills の `docs/task-workflow-redesign.md`。
+仕組みは無い。設計の経緯と採らなかった案は、切り出す前の置き場 `sinnlosses/claude-skills` の `docs/task-workflow-redesign.md`。
 
 ## 目次
 
@@ -116,7 +116,7 @@ push は含まない）。
 3. `main`・`master`・`trunk` のうち実在するもの（この順）
 4. どれも無ければ `INVALID`（終了コード3）。**黙って `main` を作らない**
 
-以下この文書で「主ブランチ」と書くのはこの枝で、claude-skills 自身では `main`。
+以下この文書で「主ブランチ」と書くのはこの枝で、tsukumo-plugins 自身では `main`。
 
 ## タスクファイル
 
@@ -230,7 +230,7 @@ TEXT         = 1文字以上、改行を含まない。前後の空白は落と�
   で閉じる
 - **依存の解決**: `done`・`dropped` と、タスクファイルに無い ID（`tw prune` で消したもの・旧アーカイブ由来）は解決済み。
   `todo`・`hold` は未解決。後から変えるのは `tw edit T-xxx --add-deps T-yyy` と `--remove-deps`（本文の `## 注意` に書くだけでは台帳に入らず、BLOCKED に出ない）
-- **委譲先のコミットを拒む**: 印を立ててから `done` を打つまで、その作業ツリーで `no-delegate`（plugin で入れたときは `sinnlos-skills:no-delegate`）の委譲先が
+- **委譲先のコミットを拒む**: 印を立ててから `done` を打つまで、その作業ツリーで `no-delegate`（plugin で入れたときは `tsukumo-workflow:no-delegate`）の委譲先が
   `git commit` などコミットを作る git のサブコマンドを打つと、hook（`tw commit-guard`）が拒む。
   メインのセッションと、別の作業ツリー・別のリポジトリへのコミットには掛からない。`general-purpose` への
   委譲と、Bash のコマンド文字列に `git` が出ないコミット（`sh -c`・スクリプト越し）には効かず、

@@ -19,7 +19,7 @@ Beads 方式でトラッカーが `github` なら Issue 番号の `GH-<n>` も�
 ## 表示のしかた
 
 0. **依存を確かめる**: `command -v tw` が何も返さなければ、`tw` が PATH に張られていないとして
-   `MISSING` を報告して終了する（plugin で入れるなら `/plugin install sinnlos-skills@sinnlos-skills`、
+   `MISSING` を報告して終了する（plugin で入れるなら `/plugin install tsukumo-workflow@tsukumo-plugins`、
    リンクで入れるなら `task-workflow` を含めて `./install.sh` を打ち直すよう案内する）。
 
 1. 終了コードが0でなければ表を出さずに終わる: 5（`LEGACY`）は「旧形式（`develop/tasks.json`）。
@@ -34,7 +34,7 @@ Beads 方式でトラッカーが `github` なら Issue 番号の `GH-<n>` も�
    | --- | --- | --- | --- | --- |
    | T-130 | 着手可 | haiku | 可 | speak のログに expression を残す |
    | T-125 | T-124 待ち | sonnet | 要判断 | 新しいキャラクターパックを画面から作れるようにする |
-   | T-124 | 作業中（tsukumo-3 12m） | sonnet | 可 | キャラクターパックのスキーマを決める |
+   | T-124 | 作業中（app-3 12m） | sonnet | 可 | キャラクターパックのスキーマを決める |
    | T-600 | 判断待ち | sonnet | 可 | 雑談の要約の上限を決める |
 
    | 出力 | 書き方 |

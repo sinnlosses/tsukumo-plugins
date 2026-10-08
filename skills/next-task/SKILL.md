@@ -23,7 +23,7 @@ description: "develop/task/（Beads 方式なら Beads）の未着手タスク�
 ## 手順
 
 0. **依存を確かめる**: `command -v tw` が何も返さなければ、`tw` が PATH に張られていないとして
-   `MISSING` を報告して終了する（plugin で入れるなら `/plugin install sinnlos-skills@sinnlos-skills`、
+   `MISSING` を報告して終了する（plugin で入れるなら `/plugin install tsukumo-workflow@tsukumo-plugins`、
    リンクで入れるなら `task-workflow` を含めて `./install.sh` を打ち直すよう案内する）。
 
 1. **見渡す**: `tw status`（Beads 方式でトラッカーが `jira`・`github` なら、先に `tw sync` で取り込む。
@@ -108,8 +108,8 @@ description: "develop/task/（Beads 方式なら Beads）の未着手タスク�
    **共通の依頼文**: Agent ツールで `difficulty` と同じモデルのサブエージェントへ（メインのモデルは
    判断材料にしない。一致していても委譲する。正典「difficulty とモデルの切り替え」）。
    `subagent_type` は、Agent ツールの説明に並ぶエージェント末尾が `no-delegate` の行
-   （`no-delegate`（リンクで入れたとき）か `sinnlos-skills:no-delegate`（plugin で入れたとき）。`Agent` を
-   外したエージェント定義で、claude-skills の `agents/no-delegate.md`）があれば、一覧に出ている名前のまま使う。
+   （`no-delegate`（リンクで入れたとき）か `tsukumo-workflow:no-delegate`（plugin で入れたとき）。`Agent` を
+   外したエージェント定義で、tsukumo-plugins の `agents/no-delegate.md`）があれば、一覧に出ている名前のまま使う。
    一覧に無ければ、まだ入れていない（人がやること）とみなして、これまでどおり `general-purpose` を使う。`no-delegate` は、着手の印が
    立った作業ツリーでのコミットを hook（`tw commit-guard`）で拒み、作業があるのに計画か検証が欠けた
    返却を hook（`tw handback-guard`）で拒む定義でもある。`general-purpose` に
@@ -237,19 +237,20 @@ description: "develop/task/（Beads 方式なら Beads）の未着手タスク�
    `python3 ${CLAUDE_SKILL_DIR}/scripts/review_snapshot.py` の出力（木の SHA）で控える。
    レビュアーは Agent ツールで、`difficulty` と同じモデル（`haiku` のときだけ `sonnet`）の新しいサブエージェント（`subagent_type` は、
    Agent ツールの説明に並ぶエージェント末尾が `reviewer` の行（`reviewer` か
-   `sinnlos-skills:reviewer`。読むだけの定義で claude-skills の `agents/reviewer.md`。返却を拒む hook を持たない）が
+   `tsukumo-workflow:reviewer`。読むだけの定義で tsukumo-plugins の `agents/reviewer.md`。返却を拒む hook を持たない）が
    あれば、一覧に出ている名前のままそれ、無ければ手順5の共通の依頼文と同じ選び方）。渡すのは、作業ツリーのパス・差分を出すコマンド（`git diff HEAD` と、
-   未追跡の新しいファイルを並べる `git ls-files --others --exclude-standard`）・差分で足されたコメント行を
+   未追跡の新しいファイルを並べる `git ls-files --others --exclude-standard`）・`tw show T-xxx` の `## 完了条件` の本文・
+   プロジェクトの規約のファイル（AGENTS.md・CLAUDE.md と、そこから引かれるコーディング規約）のパスだけ。
+   `${CLAUDE_SKILL_DIR}/../comment-audit/SKILL.md` が在るときだけ、差分で足されたコメント行を
    拾うコマンド（`python3 <絶対パス>/diff_added_comment_lines.py HEAD`。`<絶対パス>` は
-   `${CLAUDE_SKILL_DIR}/../comment-audit/scripts` を解決したもの）・`comment-audit` の `SKILL.md` の
-   絶対パス・`tw show T-xxx` の `## 完了条件` の本文・プロジェクトの規約のファイル（AGENTS.md・CLAUDE.md と、
-   そこから引かれるコーディング規約）のパスだけ。委譲の依頼文・委譲先の報告・`## やること`・`## 目的・背景` は渡さない。
+   `${CLAUDE_SKILL_DIR}/../comment-audit/scripts` を解決したもの）と `comment-audit` の `SKILL.md` の
+   絶対パスも渡す。委譲の依頼文・委譲先の報告・`## やること`・`## 目的・背景` は渡さない。
    依頼文には次を書く:
    - 「ファイルを書き換えない。検証コマンド・自己テストを打たない（検証はメインが持つ）。差分・完了条件・規約のファイルを見て、指摘を次の4種類に絞る。
      - 正しさ: 差分の挙動が壊れている・規約が決めた前提に反して動かない
      - 完了条件: 満たしていない・満たし方が誤っている行
      - 規約: 渡した規約のファイルに書かれた規則に差分が反している（根拠の規則の場所を添える）。
-       コメント行を拾うコマンドを打ち、拾った行1つずつに `comment-audit` の `SKILL.md` の「判定の1問」を当て、
+       コメント行を拾うコマンドを渡されたときは、それを打ち、拾った行1つずつに `comment-audit` の `SKILL.md` の「判定の1問」を当て、
        消す・正典へ移す対象に当たる行もここに入れる。並べた未追跡の新しいファイルはコメント行を拾うコマンドに
        出ないので、そのファイルのコメント行も読んで同じ判定の1問を当てる
      - 簡素化: 次の4観点のどれかに当たる
@@ -271,18 +272,19 @@ description: "develop/task/（Beads 方式なら Beads）の未着手タスク�
    **差し戻しのあとのレビュー（2・3回目）は、直しの差分だけを見させる**。
    2・3回目のレビュアーには、全差分ではなく `git diff <前の回に控えた木> <いまの木>` と、前の回の指摘の
    原文だけを渡し、「前の指摘が直ったか」「直しが新しく壊したものがあるか」の2つだけを見させる。
-   コメント行を拾うコマンドも同じ2つの木で打つ（`python3 <絶対パス>/diff_added_comment_lines.py <前の回に控えた木> <いまの木>`）。
-   完了条件の本文・規約のパス・
-   `comment-audit` の `SKILL.md` のパスは今までどおり渡す。全差分への掛け直しはしない。
+   コメント行を拾うコマンドを渡す回は、同じ2つの木で打たせる（`python3 <絶対パス>/diff_added_comment_lines.py <前の回に控えた木> <いまの木>`）。
+   完了条件の本文・規約のパス（と、渡していれば `comment-audit` の `SKILL.md` のパス）は今までどおり渡す。
+   全差分への掛け直しはしない。
 
    **3回目のレビューにも当たる指摘が残ったとき**は、人に預けて止まらない。メインが差分で1つずつ
    裏取りし、当たるもののうち直し方が1つに決まるものだけを自分で直す。直したあとはレビューを掛け直さず、
-   下の `verifying-before-completion` からの順に進む。
+   下の完了の関門からの順に進む。
    完了条件の読み替えなど、直し方を選ぶ必要がある指摘は直さず、手順7の `## 結果` と完了報告の
    「人に知らせること」に、指摘と差分の場所を添えて残し、`tw done` へ進む。
    メインが直したものは一言メモしておく（手順6aの材料「受け入れでの直し」）。
 
-   `verifying-before-completion` スキルを読んで従う（委譲先の「できた」は差分と出力で確かめる関門）。
+   完了の関門: スキルの一覧に `verifying-before-completion` があれば、それを読んで従う。無ければ、委譲先の
+   「できた」を主張ごとに差分と、その場で打ったコマンドの出力で確かめてから受け入れる。
 
    方針からズレた実装を見つけたら、レビューの指摘と同じく委譲先へ差し戻す
    （メインが直すのは、上の3回目のレビューに残った指摘だけ）。

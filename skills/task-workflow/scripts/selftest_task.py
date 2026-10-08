@@ -1127,7 +1127,7 @@ def test_agent_scoped_guard() -> None:
                 (("--agent-scoped",), None, False),
                 (("--agent-scoped",), "general-purpose", False),
                 (("--agent-scoped",), "no-delegate", True),
-                (("--agent-scoped",), "sinnlos-skills:no-delegate", True),
+                (("--agent-scoped",), "tsukumo-workflow:no-delegate", True),
             ):
                 payload = {**fields, **({} if agent_type is None else {"agent_type": agent_type})}
                 r = run_task(tmp, subcommand, *flags, stdin=json.dumps(payload))
@@ -1145,7 +1145,7 @@ def test_agent_scoped_guard() -> None:
         }
         for hook in hooks:
             fields = commit if "commit-guard" in hook else stop
-            for agent_type, refused in (("sinnlos-skills:no-delegate", True), (None, False)):
+            for agent_type, refused in (("tsukumo-workflow:no-delegate", True), (None, False)):
                 payload = {**fields, **({} if agent_type is None else {"agent_type": agent_type})}
                 r = subprocess.run(["sh", "-c", hook], input=json.dumps(payload), capture_output=True, text=True, env=env)
                 check(f"hooks.json の {hook} は agent_type={agent_type} で{'拒む' if refused else '通す'}",
