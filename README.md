@@ -50,12 +50,15 @@ tsukumo のワークフローの契約に型の合う1つの例だが、tsukumo 
 ## あれば使う外のスキル
 
 次のスキルはこのリポジトリに無い。スキルの一覧にあれば使い、無ければ本文の代わりの手順で進む
-（`scripts/check_repo.py` の `OPTIONAL_SKILLS`）。
+（`scripts/check_repo.py` の `OPTIONAL_SKILLS`）。`comment-audit` だけは同梱のスクリプトのパスが要るので、
+一覧ではなく、リンクで入れて兄弟（`${CLAUDE_SKILL_DIR}/../comment-audit/`）に在るときだけ使う。
+マーケットプレイスから入れるとプラグインごとに別のキャッシュへ写されるので、別のプラグインで入れた
+`comment-audit` は使われない。
 
 | 外のスキル | 使う場所 | 無いとき |
 | --- | --- | --- |
 | verifying-before-completion | next-task の受け入れの関門 | 主張ごとに差分とコマンドの出力で確かめる |
-| comment-audit | next-task のレビュアーに渡すコメントの判定 | コメント行の判定を依頼文から外す |
+| comment-audit（兄弟に在るときだけ） | next-task のレビュアーに渡すコメントの判定 | コメント行の判定を依頼文から外す |
 | writing-for-agents | retro の物差し、retrospect の「空振り」の試金石 | retro の「ファイルの使い分け」を物差しにする |
 | code-review | retro が読むレビューの観点 | 読まない |
 | resolving-merge-conflicts | next-task の `CONFLICT` の案内 | 人に預ける |

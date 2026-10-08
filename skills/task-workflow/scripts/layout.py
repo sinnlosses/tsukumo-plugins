@@ -2,9 +2,8 @@
 
 正典は WORKFLOW.md「ファイル配置と設定ファイル」。
 
-`retrospect`・`maintenance-docs` は別スキルなので、それぞれの `scripts/*.py` は `sys.path` に
-このファイルのディレクトリを足してから `import layout` する（`selftest.py`・`selftest_task.py` が
-兄弟モジュールを素の `import` 名で読むのと同じ形）。`task-workflow` が入っていない環境では
+別のスキルのスクリプトは、`sys.path` にこのファイルのディレクトリを足してから `import layout` する。
+`task-workflow` が入っていない環境では
 `ImportError` で止まる（データの不備ではなく環境の不備として扱う。他のスクリプトの docstring の
 「環境の故障」の扱いと同じ）。
 """
