@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """1件1ファイル＋台帳の形のタスク運用を操作する入口コマンド。
 
-使い方: tw <status|new|claim|release|done|ship|prune|migrate|migrate-layout|config-doctor|show|edit|plan-check|verify|verify-check|pause|step|commit-guard|handback-guard> ...
+使い方: tw <status|new|claim|release|done|ship|land|prune|migrate|migrate-layout|config-doctor|show|edit|plan-check|verify|verify-check|pause|step|commit-guard|handback-guard> ...
 
 正典は `docs/task-workflow-redesign.md`（5章が `task` コマンド、4章が状態と台帳、
 3章がタスクファイル、6章が送り出し、5.9・10章が `migrate`）。`install.sh` が PATH 上に張る
@@ -68,6 +68,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_done.add_argument("--result-file", required=True)
 
     sub.add_parser("ship")
+    sub.add_parser("land").add_argument("branch")
 
     p_prune = sub.add_parser("prune")
     p_prune.add_argument("--dry-run", dest="dry_run", action="store_true")
@@ -157,7 +158,7 @@ def main(argv: list[str] | None = None) -> None:
         print(str(e), file=sys.stderr)
         raise SystemExit(1)
 
-    if args.command not in ("migrate", "config-doctor"):
+    if args.command not in ("migrate", "config-doctor", "land"):
         refusal = tw_base.format_refusal(toplevel)
         if refusal is not None:
             print(refusal[0])
@@ -165,6 +166,9 @@ def main(argv: list[str] | None = None) -> None:
 
     # 主ブランチは要る道でだけ問い合わせる（`ledger.base_branch`。決まらなければ INVALID）。
     try:
+        if args.command == "land":
+            tw_ship.cmd_land(toplevel, args.branch)
+            return
         store = layout.read_config(toplevel).store if args.command not in ("migrate", "config-doctor") else None
         if args.command == "config":
             tw_status.cmd_config(toplevel)

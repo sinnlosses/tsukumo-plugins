@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import tempfile
 
 from selftest_support import check, git, say, weight, write  # noqa: E402
@@ -196,6 +197,97 @@ def test_ship_main_dirty_stops() -> None:
         r = run_task(wt1, "ship")
         check("MAIN_DIRTYで終了コード4", r.returncode == 4 and r.stdout.startswith("MAIN_DIRTY\t"), r.stdout + r.stderr)
         check("main にmerge commitが無い", _no_merge_commits(main_path).strip() == "")
+
+
+def test_land() -> None:
+    say("task.py land: 主ブランチへ ff-only で合流して入ったことを確かめてから、作業ツリーと枝を消す")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(tmp)
+
+        def head(path: str) -> str:
+            return git(path, "rev-parse", "HEAD").stdout.strip()
+
+        def branches() -> list[str]:
+            return git(main_path, "branch", "--format=%(refname:short)").stdout.split()
+
+        write(os.path.join(wt1, "a.txt"), "a\n")
+        git(wt1, "add", "a.txt")
+        git(wt1, "commit", "-q", "-m", "wt1")
+        write(os.path.join(main_path, "b.txt"), "b\n")
+        git(main_path, "add", "b.txt")
+        git(main_path, "commit", "-q", "-m", "main を進める")
+        main_before = head(main_path)
+        r = run_task(main_path, "land", "wt1-branch")
+        check(
+            "ff できない（main に入っていない）枝は NOT_LANDED(4)",
+            r.returncode == 4 and r.stdout.startswith("NOT_LANDED\twt1-branch\t"),
+            r.stdout + r.stderr,
+        )
+        check(
+            "NOT_LANDED では main も作業ツリーも枝も変えない",
+            head(main_path) == main_before and os.path.isdir(wt1) and "wt1-branch" in branches(),
+        )
+
+        git(wt2, "merge", "-q", "--ff-only", "main")
+        write(os.path.join(wt2, "c.txt"), "c\n")
+        git(wt2, "add", "c.txt")
+        git(wt2, "commit", "-q", "-m", "wt2")
+        write(os.path.join(wt2, "scratch.txt"), "x\n")
+        r = run_task(main_path, "land", "wt2-branch")
+        check(
+            "作業ツリーが汚れていれば NOT_LANDED(4)",
+            r.returncode == 4 and r.stdout.startswith("NOT_LANDED\twt2-branch\t"),
+            r.stdout + r.stderr,
+        )
+        check("汚れていれば合流もしない", head(main_path) == main_before and os.path.isdir(wt2))
+        os.remove(os.path.join(wt2, "scratch.txt"))
+
+        write(os.path.join(main_path, "shared.txt"), "line1\nlocal\n")
+        r = run_task(main_path, "land", "wt2-branch")
+        check(
+            "主ブランチを出している作業ツリーが汚れていれば、合流で重ならなくても NOT_LANDED(4)",
+            r.returncode == 4 and r.stdout.startswith("NOT_LANDED\twt2-branch\t"),
+            r.stdout + r.stderr,
+        )
+        check(
+            "本体が汚れていれば合流も片付けもしない",
+            head(main_path) == main_before and os.path.isdir(wt2) and "wt2-branch" in branches(),
+        )
+        git(main_path, "checkout", "-q", "--", "shared.txt")
+
+        wt3 = os.path.join(tmp, "wt3")
+        git(main_path, "worktree", "add", "-q", "-b", "wt3-branch", wt3, "main")
+        shutil.rmtree(wt3)
+        r = run_task(main_path, "land", "wt3-branch")
+        check(
+            "枝の作業ツリーのディレクトリが無ければ NOT_LANDED(4)",
+            r.returncode == 4 and r.stdout.startswith("NOT_LANDED\twt3-branch\t"),
+            r.stdout + r.stderr,
+        )
+        check("ディレクトリが無ければ枝を消さない", "wt3-branch" in branches())
+
+        r = run_task(main_path, "land", "main")
+        check("主ブランチを渡すと終了コード2", r.returncode == 2, r.stdout + r.stderr)
+        r = run_task(main_path, "land", "no-such-branch")
+        check("無い枝を渡すと終了コード2", r.returncode == 2, r.stdout + r.stderr)
+
+        write(os.path.join(wt2, ".tw", "local", ".gitignore"), "*\n")
+        write(os.path.join(wt2, ".tw", "local", "task-verify-stamp"), "x\n")
+        wt2_head = head(wt2)
+        r = run_task(wt2, "land", "wt2-branch")
+        lines = r.stdout.splitlines()
+        check(
+            "入った枝は LANDED・REMOVED・DELETED（消す作業ツリーの中から打っても、無視されたファイルがあっても）",
+            r.returncode == 0
+            and lines[:1] == [f"LANDED\twt2-branch\tmain\t{wt2_head}"]
+            and lines[1:] == [f"REMOVED\t{os.path.realpath(wt2)}", "DELETED\twt2-branch"],
+            r.stdout + r.stderr,
+        )
+        check(
+            "main が枝の先端まで進み、作業ツリーと枝が消える",
+            head(main_path) == wt2_head and not os.path.exists(wt2) and "wt2-branch" not in branches(),
+        )
+        check("ほかの枝の作業ツリーは残る", os.path.isdir(wt1) and "wt1-branch" in branches())
 
 
 def test_ship_skips_send_on_main_worktree() -> None:
@@ -505,5 +597,6 @@ TESTS = (
     test_ship_verify_failed_keeps_full_log_in_order,
     test_ship_skips_send_on_main_worktree,
     test_ship_main_dirty_stops,
+    test_land,
     test_base_branch_resolution,
 )

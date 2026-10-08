@@ -1,9 +1,12 @@
-"""`tw ship`（作業ブランチの変更を主ブランチへ送り、送り終えたタスクの印を消す）。"""
+"""`tw ship`（作業ブランチの変更を主ブランチへ送り、送り終えたタスクの印を消す）と
+`tw land`（作業先が別のリポジトリのタスクの枝を主ブランチへ合流し、その作業ツリーと枝を消す）。"""
 
 from __future__ import annotations
 
+import os
+import sys
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, NoReturn
 
 import beads
 import layout
@@ -160,6 +163,66 @@ def cmd_ship(toplevel: str, hooks: "ShipHooks | None" = None) -> None:
 def _record_shipped(toplevel: str, released: list[str]) -> None:
     for task_id in released:
         tw_base.record(toplevel, "ship", task_id, result="SHIPPED")
+
+
+def cmd_land(toplevel: str, branch: str) -> None:
+    """`branch` を主ブランチへ ff-only で合流し、主ブランチに入ったことを確かめてから、その枝の作業ツリーと枝を消す。
+
+    合流は主ブランチを出している作業ツリーで打つ。合流できない・入っていない・どちらかの作業ツリーが汚れているか無いときは
+    何も消さずに `NOT_LANDED`。合流のあとに消せなかったものは `NOT_REMOVED` の行で残りを知らせる。
+    """
+    base = ledger.base_branch(toplevel)
+    known = tw_base.run_git(toplevel, ["rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"]).returncode == 0
+    if branch == base or not known:
+        print(f"usage: land <枝>（主ブランチ {base} 以外の、在る枝を渡す）: {branch}", file=sys.stderr)
+        raise SystemExit(2)
+    worktrees = ledger.list_worktrees(toplevel)
+    base_tree = next((w.path for w in worktrees if w.branch == base), None)
+    if base_tree is None:
+        _refuse_land(branch, f"{base} を出している作業ツリーが無い")
+    branch_trees = [w.path for w in worktrees if w.branch == branch]
+    missing = [path for path in [base_tree, *branch_trees] if not os.path.isdir(path)]
+    if missing:
+        _refuse_land(branch, f"作業ツリーのディレクトリが無い: {','.join(missing)}")
+    if not ledger.is_clean(base_tree):
+        _refuse_land(branch, f"{base} を出している作業ツリーに未コミットの変更がある: {base_tree}")
+    dirty = [path for path in branch_trees if not ledger.is_clean(path)]
+    if dirty:
+        _refuse_land(branch, f"作業ツリーに未コミットの変更がある: {','.join(dirty)}")
+
+    ledger.require_git_writable(base_tree)
+    merged = tw_base.run_git(base_tree, ["merge", "--ff-only", "--quiet", branch])
+    if merged.returncode != 0:
+        _refuse_land(branch, f"{base} へ ff-only で合流できない: {_first_line(merged.stderr)}")
+    if tw_base.run_git(base_tree, ["merge-base", "--is-ancestor", branch, base]).returncode != 0:
+        _refuse_land(branch, f"{base} に入っていない")
+    print(f"LANDED\t{branch}\t{base}\t{tw_base.run_git(base_tree, ['rev-parse', base]).stdout.strip()}")
+
+    leftovers: list[tuple[str, str]] = []
+    for path in branch_trees:
+        removed = tw_base.run_git(base_tree, ["worktree", "remove", path])
+        if removed.returncode == 0:
+            print(f"REMOVED\t{path}")
+        else:
+            leftovers.append((path, _first_line(removed.stderr)))
+    deleted = tw_base.run_git(base_tree, ["branch", "-d", branch])
+    if deleted.returncode == 0:
+        print(f"DELETED\t{branch}")
+    else:
+        leftovers.append((branch, _first_line(deleted.stderr)))
+    for name, reason in leftovers:
+        print(f"NOT_REMOVED\t{name}\t{reason}")
+    if leftovers:
+        raise SystemExit(4)
+
+
+def _refuse_land(branch: str, reason: str) -> NoReturn:
+    print(f"NOT_LANDED\t{branch}\t{reason}")
+    raise SystemExit(4)
+
+
+def _first_line(text: str) -> str:
+    return next((line.strip() for line in text.splitlines() if line.strip()), "")
 
 
 FEATURE_BRANCH = layout.FEATURE_BRANCH_PATTERN
