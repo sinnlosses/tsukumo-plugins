@@ -1,0 +1,15 @@
+{
+  "name": "sinnlos-skills",
+  "owner": {
+    "name": "sinnlosses",
+    "url": "https://github.com/sinnlosses"
+  },
+  "description": "sinnlosses のスキルとエージェント定義",
+  "plugins": [
+    {
+      "name": "sinnlos-skills",
+      "source": "./",
+      "description": "タスク運用（tw）・レビュー・調査などのスキルと、委譲先のエージェント定義"
+    }
+  ]
+}
