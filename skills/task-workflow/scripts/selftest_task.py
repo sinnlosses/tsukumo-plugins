@@ -206,6 +206,9 @@ def test_taskfile_parse() -> None:
     _, err = taskfile.parse(ok_text.replace("dependencies: []", "dependencies: [T-001,T-002]"))
     check("区切りが','だけだとINVALID", err is not None, str(err))
 
+    check("全角括弧を省いた「決まっていること」が枠の見出しに当たる",
+          taskfile.section_heading("決まっていること") in taskfile.SECTION_HEADINGS)
+
     _, err = taskfile.parse(ok_text.replace("loopable: Y", "loopable: y"))
     check("loopableの小文字はINVALID", err is not None, str(err))
 

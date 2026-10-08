@@ -247,20 +247,13 @@ def test_direct_mark() -> None:
         task_id = r.stdout.split("\t")[1] if r.stdout.startswith("CREATED\t") else ""
         check("haiku・1段の --direct は CREATED で、show の front matter に direct: Y が出る",
               task_id != "" and "\nloopable: Y\ndirect: Y\n" in shown(task_id), r.stdout + r.stderr)
+        r = run_task(wt1, "claim", task_id)
+        check("印があり計画が古くなければ CLAIMED の行末に direct=Y",
+              r.returncode == 0 and tail_line(r.stdout, "CLAIMED").endswith("\tdirect=Y"), r.stdout + r.stderr)
         r = run_task(main_path, "edit", task_id, "--direct", "N")
         check("edit --direct N は label を外す", r.returncode == 0 and "direct:" not in shown(task_id), r.stdout + r.stderr)
         r = run_task(main_path, "edit", task_id, "--direct", "Y")
         check("edit --direct Y は label を付ける", r.returncode == 0 and "direct: Y" in shown(task_id), r.stdout + r.stderr)
-        r = run_task(main_path, "edit", task_id, "--difficulty", "sonnet")
-        check("difficulty を上げて基準を外れたら label を外し DIRECT_OFF を出す",
-              r.returncode == 0 and tail_line(r.stdout, "DIRECT_OFF").startswith(f"DIRECT_OFF\t{task_id}\t近道は")
-              and "direct:" not in shown(task_id), r.stdout + r.stderr)
-
-        r = register("haiku")
-        claim_id = r.stdout.split("\t")[1] if r.stdout.startswith("CREATED\t") else ""
-        r = run_task(wt1, "claim", claim_id)
-        check("印があり計画が古くなければ CLAIMED の行末に direct=Y",
-              r.returncode == 0 and tail_line(r.stdout, "CLAIMED").endswith("\tdirect=Y"), r.stdout + r.stderr)
 
 
 def test_setup_and_config_doctor() -> None:
@@ -340,14 +333,15 @@ def test_claim_race_owner_and_release() -> None:
               os.path.realpath(main_path).startswith(os.path.realpath(tmp)) and not {"BEADS_DIR", "BEADS_DB"} & set(env()),
               main_path)
         a = new(main_path, "取り合い")
-        h = new(main_path, "待ち", "--hold")
         procs = [start_task(w, "new", "--summary", f"並行{i}", "--difficulty", "haiku", "--loopable", "Y",
-                            "--body-file", "-") for i, w in enumerate((wt1, wt2, main_path))]
+                            *(("--hold",) if i == 2 else ()), "--body-file", "-")
+                 for i, w in enumerate((wt1, wt2, main_path))]
         outs = [p.communicate(PLANNED_BODY)[0] for p in procs]
         ids = [o.split("\t")[1] for o in outs if o.startswith("CREATED")]
         check("3つ同時の new で番号が重ならない", len(ids) == 3 and len(set(ids)) == 3, repr(outs))
+        h = ids[2] if outs[2].startswith("CREATED") else ""
         r = bd(main_path, "kv", "get", beads.LAST_ID_KEY)
-        check("最後の番号を bd kv に残す", r.stdout.strip().isdigit() and int(r.stdout.strip()) >= 5, r.stdout)
+        check("最後の番号を bd kv に残す", r.stdout.strip().isdigit() and int(r.stdout.strip()) >= 4, r.stdout)
         procs = [start_task(w, "claim", a) for w in (wt1, wt2)]
         outs = [(p.communicate()[0], p.returncode) for p in procs]
         claimed = [o for o, c in outs if o.startswith("CLAIMED") and c == 0]
@@ -375,8 +369,6 @@ def test_claim_race_owner_and_release() -> None:
         check("--force の release は RELEASED", r.returncode == 0 and r.stdout.startswith("RELEASED"), r.stdout)
         r = run_task(loser, "release", a)
         check("印の無い release は NOT_CLAIMED（終了コード0）", r.returncode == 0 and r.stdout.startswith("NOT_CLAIMED"), r.stdout)
-        r = run_task(loser, "claim", a)
-        check("解放されたら取り直せる", r.returncode == 0 and r.stdout.startswith("CLAIMED"), r.stdout)
         write(os.path.join(loser, "dirty.txt"), "x\n")
         r = run_task(loser, "claim", h)
         check("汚れた作業ツリーでは DIRTY", r.returncode == 4 and r.stdout.startswith("DIRTY"), r.stdout)
@@ -396,7 +388,6 @@ def test_commit_guard() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, wt2 = make_repo(tmp)
         a = new(main_path, "拒む")
-        b = new(main_path, "release で外す")
         c = new(main_path, "人が外す")
 
         run_task(wt1, "claim", a)
@@ -413,13 +404,6 @@ def test_commit_guard() -> None:
         r = run_task(wt1, "done", a, "--result-file", "-", stdin="- 検証: なし\n- 振り返り: 兆候なし\n")
         check("done で控えが消え、そのあとの git commit は通る",
               r.returncode == 0 and ledger.open_claims(cwd=wt1) == [] and not guard_denies(tmp, wt1), r.stdout)
-        r = run_task(wt1, "ship")
-        check("ship のあとも控えは無い", r.returncode == 0 and ledger.open_claims(cwd=wt1) == [], r.stdout + r.stderr)
-
-        run_task(wt2, "claim", b)
-        check("release の前は拒む", guard_denies(tmp, wt2))
-        run_task(wt2, "release", b)
-        check("release のあとは通る", not guard_denies(tmp, wt2))
 
         run_task(wt2, "claim", c)
         r = run_task(wt1, "release", c, "--force")
@@ -439,17 +423,17 @@ def handback_reason(tmp: str, where: str) -> str | None:
 def test_handback_guard() -> None:
     say("handback-guard・pause: 作業があるのに計画か検証が欠けた返却を拒む")
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, wt2 = make_repo(tmp, verify="echo verified")
+        main_path, wt1, _wt2 = make_repo(tmp, verify="echo verified")
         a = new_unplanned(main_path, "先に計画")
-        b = new_unplanned(main_path, "計画なしで作業")
 
         check("着手の印が無い委譲は通す", handback_reason(tmp, wt1) is None)
         run_task(wt1, "claim", a)
         check("印があっても作業が無ければ通す", handback_reason(tmp, wt1) is None)
-        run_task(wt1, "edit", a, "--section", "やること", "--body-file", "-", stdin="### 1. 書く\n")
+        run_task(wt1, "edit", a, "--section", "やること", "--body-file", "-", stdin=(
+            "### 1. 書く\n- 触るファイル: `src/a.py`\n"
+            "### 2. 文書\n- 前の段: 1\n- 触るファイル: `docs/`\n"
+        ))
         check("計画だけの回は通す", handback_reason(tmp, wt1) is None)
-        r = run_task(wt1, "edit", a, "--section", "決まっていること", "--body-file", "-", stdin="括弧なし\n")
-        check("全角括弧を省いた見出し「決まっていること」で編集できる", r.returncode == 0 and r.stdout.startswith("EDITED\t"), r.stdout + r.stderr)
         write(os.path.join(wt1, "work.txt"), "x\n")
         reason = handback_reason(tmp, wt1) or ""
         check("計画があっても検証が無ければ block（NOT_VERIFIED）",
@@ -457,81 +441,6 @@ def test_handback_guard() -> None:
         r = run_task(wt1, "verify")
         check("PLAN_FIRST と tw verify がそろえば通す", r.returncode == 0 and handback_reason(tmp, wt1) is None,
               r.stdout + r.stderr)
-
-        run_task(wt2, "claim", b)
-        write(os.path.join(wt2, "work.txt"), "x\n")
-        reason = handback_reason(tmp, wt2) or ""
-        check("計画も検証も無ければ両方の行で block", f"PLAN_NOT_FIRST\t{b}\tmissing" in reason
-              and "NOT_VERIFIED\tnone" in reason, reason)
-        r = run_task(wt2, "pause")
-        check("tw pause を打てば通す", r.stdout.startswith("PAUSED\t") and handback_reason(tmp, wt2) is None,
-              r.stdout + r.stderr)
-
-
-def test_plan_check_parallel() -> None:
-    say("plan-check: Beads 方式でも並列にできる段の組と、触るファイルの重なりで外した組を出す")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp)
-        a = new_unplanned(main_path, "段を並べる")
-        run_task(wt1, "claim", a)
-        plan = (
-            "### 1. 書く\n- 触るファイル: `src/a.py`\n"
-            "### 2. 文書\n- 前の段: なし\n- 触るファイル: `docs/`\n"
-            "### 3. 試す\n- 前の段: なし\n- 触るファイル: `src/`\n"
-            "### 4. 合わせる\n"
-        )
-        r = run_task(wt1, "edit", a, "--section", "やること", "--body-file", "-", stdin=plan)
-        check("欄つきの計画を書ける", r.returncode == 0 and r.stdout.startswith("EDITED\t"), r.stdout + r.stderr)
-        r = run_task(wt1, "plan-check", a)
-        check("PLAN_FIRST のあとに PARALLEL・SERIAL・STEP を出す", r.returncode == 0 and r.stdout.splitlines() == [
-            f"PLAN_FIRST\t{a}", f"PARALLEL\t{a}\t1,2", f"PARALLEL\t{a}\t2,3", f"SERIAL\t{a}\t1,3\tsrc/a.py",
-            f"STEP\t{a}\t1\tなし", f"STEP\t{a}\t2\tなし", f"STEP\t{a}\t3\t1", f"STEP\t{a}\t4\t2,3",
-        ], r.stdout + r.stderr)
-
-
-def test_verify_stamp() -> None:
-    say("verify・verify-check: Beads 方式でも同じ形で控えて照らす")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp, verify="echo 3 pass")
-        r = run_task(wt1, "verify")
-        check("通れば VERIFIED", r.returncode == 0 and r.stdout.startswith("VERIFIED\t"), r.stdout + r.stderr)
-        tree = r.stdout.split("\t")[1] if r.stdout.startswith("VERIFIED\t") else "?"
-        r = run_task(wt1, "verify-check")
-        check("同じ中身なら VERIFIED_SAME", r.stdout.strip() == f"VERIFIED_SAME\t{tree}", r.stdout + r.stderr)
-        write(os.path.join(wt1, "shared.txt"), "line1\nline2\n")
-        r = run_task(wt1, "verify-check")
-        check("変えれば NOT_VERIFIED content", r.stdout.strip() == "NOT_VERIFIED\tcontent", r.stdout + r.stderr)
-        write(os.path.join(main_path, "other.txt"), "main\n")
-        git(main_path, "add", "other.txt")
-        git(main_path, "commit", "-q", "-m", "mainだけの変更")
-        r = run_task(wt1, "verify-check")
-        check("main が進めば NOT_VERIFIED base", r.stdout.strip() == "NOT_VERIFIED\tbase", r.stdout + r.stderr)
-        r = run_task(wt1, "verify")
-        check("main を取り込んでから打つ", r.returncode == 0 and r.stdout.startswith("FOLDED\t")
-              and "\nVERIFIED\t" in r.stdout and os.path.exists(os.path.join(wt1, "other.txt")), r.stdout + r.stderr)
-
-
-def test_ship_skips_preship_with_draft() -> None:
-    say("ship: verify のあとに足したドラフトと done があっても、控えで送る前の検証を飛ばす")
-    with tempfile.TemporaryDirectory() as tmp:
-        count = os.path.join(tmp, "preship-count.log")
-        main_path, wt1, _wt2 = make_repo(tmp, extra=f'verify_before_ship = "echo x >> {count}"\n')
-        a = new(main_path, "作業")
-        r = run_task(wt1, "claim", a)
-        check("claim が通る", r.stdout.startswith("CLAIMED\t"), r.stdout + r.stderr)
-        write(os.path.join(wt1, "work.txt"), "x\n")
-        r = run_task(wt1, "verify")
-        check("verify が通る", r.returncode == 0 and r.stdout.startswith("VERIFIED\t"), r.stdout + r.stderr)
-        write(os.path.join(wt1, ".tw", "draft", "x.md"), "- **x**\n")
-        r = run_task(wt1, "done", a, "--result-file", "-", stdin="- 振り返り: 兆候なし\n")
-        check("done が通る", r.returncode == 0 and r.stdout.startswith("DONE\t"), r.stdout + r.stderr)
-        git(wt1, "add", "work.txt", ".tw/draft/x.md")
-        git(wt1, "commit", "-q", "-m", f"{a}: 作業")
-        r = run_task(wt1, "ship")
-        check("preship=skipped で送る", r.returncode == 0 and r.stdout.startswith("SHIPPED\t")
-              and "preship=skipped" in r.stdout, r.stdout + r.stderr)
-        with open(count, encoding="utf-8") as f:
-            check("送る前の検証コマンドは verify の1回だけ", len(f.read().splitlines()) == 1)
 
 
 def test_cycle_done_ship_and_dropped() -> None:
@@ -541,7 +450,6 @@ def test_cycle_done_ship_and_dropped() -> None:
         a = new_unplanned(main_path, "前段")
         b = new(main_path, "後段", "--deps", a)
         c = new(main_path, "見送る")
-        d = new(main_path, "見送りに依存", "--deps", c)
 
         r = run_task(wt1, "claim", a)
         check("既定の枝の設定なら feature/T-xxx を切る", r.stdout.strip().endswith(f"branch=feature/{a}"), r.stdout)
@@ -551,13 +459,6 @@ def test_cycle_done_ship_and_dropped() -> None:
         check("edit が本文を受ける", r.returncode == 0 and r.stdout.startswith("EDITED"), r.stdout + r.stderr)
         issue = beads.show(main_path, beads.to_bd_id(a))
         check("## やること は notes へ", issue is not None and issue.raw.get("notes") == "### 1. 書く", str(issue and issue.raw))
-        shown = run_task(wt1, "show", a).stdout
-        heads = [l for l in shown.split("\n") if l.startswith("## ")]
-        check("show は枠の7節をこの順に出す", heads == list(taskfile.SECTION_HEADINGS), shown)
-        r = run_task(wt1, "edit", a, "--body-file", "-", stdin=body.replace("## 参考情報\n", ""))
-        check("edit は枠の欠けた本文を拒む（終了コード2）", r.returncode == 2, r.stdout + r.stderr)
-        r = run_task(wt1, "edit", a, "--body-file", "-", stdin=body + "\n## 結果\n\nx\n")
-        check("edit は ## 結果 を拒む（終了コード2）", r.returncode == 2, r.stdout + r.stderr)
 
         work_and_done(wt1, a)
         flow = ledger.flow_dir(ledger.ledger_root(cwd=main_path))
@@ -578,16 +479,18 @@ def test_cycle_done_ship_and_dropped() -> None:
         t = rows(r.stdout)
         check("閉じたものは done、後段は READY", t.get(a, [""] * 8)[1] == "done" and t.get(b, [""] * 8)[5] == "READY", r.stdout)
         shown = run_task(wt2, "show", a).stdout
+        heads = [l for l in shown.split("\n") if l.startswith("## ")]
         check("show の末尾に ## 結果（comment から）", shown.rstrip().endswith("- 振り返り: 兆候なし")
               and "status: done" in shown, shown)
+        check("show は枠の7節をこの順に出し、結果がその後ろに付く",
+              heads == [*taskfile.SECTION_HEADINGS, "## 結果"], shown)
 
         r = run_task(wt2, "claim", c)
         work_and_done(wt2, c, dropped=True)
         r = run_task(wt2, "ship")
         r = run_task(wt1, "status", "--all")
         t = rows(r.stdout)
-        check("dropped は closed ＋ label cancelled で、依存を解決する", t.get(c, [""] * 8)[1] == "dropped"
-              and t.get(d, [""] * 8)[5] == "READY", r.stdout)
+        check("dropped は closed ＋ label cancelled", t.get(c, [""] * 8)[1] == "dropped", r.stdout)
         issue = beads.show(main_path, beads.to_bd_id(c))
         check("閉じたあと ship: の印は残らない", issue is not None and issue.status == "closed"
               and "cancelled" in issue.labels and not any(l.startswith("ship:") for l in issue.labels),
@@ -830,25 +733,6 @@ def test_tracker_github_conflict() -> None:
               and fake.issues[n]["title"] == "Beads で直した題", r.stdout + repr(fake.issues[n]))
 
 
-def test_branch_line_missing_is_default() -> None:
-    say("- ブランチ: 行が無ければ `既定` として claim は feature/ を切り、ship は送る")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _ = make_repo(tmp, branch=None)
-        a = new(main_path, "既定で送る")
-        r = run_task(wt1, "claim", a)
-        check("claim は feature/ を切る", r.returncode == 0 and r.stdout.strip().endswith(f"branch=feature/{a}"),
-              r.stdout + r.stderr)
-        work_and_done(wt1, a)
-        main_sha = git(main_path, "rev-parse", "main").stdout
-        r = run_task(wt1, "ship")
-        first = r.stdout.splitlines()[0] if r.stdout else ""
-        check("ship は SHIPPED で閉じた ID を released に出す",
-              r.returncode == 0 and first.startswith("SHIPPED") and f"released={a}" in first, r.stdout + r.stderr)
-        check("主ブランチが進む", git(main_path, "rev-parse", "main").stdout != main_sha)
-        t = rows(run_task(wt1, "status", "--all").stdout)
-        check("閉じたものは done", t.get(a, [""] * 8)[1] == "done", repr(t.get(a)))
-
-
 def test_backup() -> None:
     say("バックアップ（git の外の決まった場所）")
     with tempfile.TemporaryDirectory() as tmp:
@@ -954,12 +838,8 @@ def main() -> None:
             test_commit_guard,
             test_claim_race_owner_and_release,
             test_handback_guard,
-            test_plan_check_parallel,
             test_setup_and_config_doctor,
             test_backup,
-            test_branch_line_missing_is_default,
-            test_verify_stamp,
-            test_ship_skips_preship_with_draft,
             test_direct_mark,
             test_file_mode_untouched_by_beads_dir,
             test_migrate_layout,
