@@ -33,6 +33,7 @@ import json
 import os
 import re
 import subprocess
+import time
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -139,15 +140,51 @@ def read_prefix(toplevel: str) -> str:
 # --- bd の呼び出し ----------------------------------------------------------------
 
 
+# 1つのプロセスの中で、同じ読みの結果を使い回す。`kv` は読んで重ねて書く（別の作業ツリーの値を消さない）ので
+# 使い回さない。
+_READS = ("list", "show", "comments", "history", "config get")
+_KV_READS = ("kv get", "kv list")
+READ_REUSE_SECONDS = 10.0
+_read_cache: dict[tuple[str, tuple[str, ...]], tuple[float, subprocess.CompletedProcess]] = {}
+
+
+def forget_reads() -> None:
+    """`run` を通さずに `bd` で書くときに呼ぶ。"""
+    _read_cache.clear()
+
+
+def _forget_after(args: list[str]) -> None:
+    head = " ".join(args[:2])
+    if head in _KV_READS:
+        return
+    if head == "kv set":
+        for key in [k for k in _read_cache if k[1][:2] == ("config", "get")]:
+            del _read_cache[key]
+        return
+    _read_cache.clear()
+
+
 def run(toplevel: str, args: list[str], actor: str | None = None, stdin: str | None = None) -> subprocess.CompletedProcess:
     """`bd` を打つ。非0は呼ぶ側が意味を決める（取り合いの負けなど）。`bd` が無ければ `BeadsError`。"""
     cmd = [BD]
     if actor is not None:
         cmd += ["--actor", actor]
+    reusable = actor is None and stdin is None and bool(args) and (args[0] in _READS or " ".join(args[:2]) in _READS)
+    key = (toplevel, tuple(args))
+    if reusable:
+        hit = _read_cache.get(key)
+        if hit is not None and time.monotonic() - hit[0] < READ_REUSE_SECONDS:
+            return hit[1]
+    else:
+        _forget_after(args)
     try:
-        return subprocess.run(cmd + args, cwd=toplevel, capture_output=True, text=True, input=stdin)
+        started = time.monotonic()
+        r = subprocess.run(cmd + args, cwd=toplevel, capture_output=True, text=True, input=stdin)
     except FileNotFoundError as e:
         raise BeadsError(f"bd が見つからない（{e}）") from e
+    if reusable:
+        _read_cache[key] = (started, r)
+    return r
 
 
 def run_ok(toplevel: str, args: list[str], actor: str | None = None, stdin: str | None = None) -> str:

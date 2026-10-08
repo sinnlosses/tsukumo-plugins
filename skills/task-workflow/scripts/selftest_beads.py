@@ -44,6 +44,8 @@ from selftest_body import task_body  # noqa: E402
 
 # 利用者の値のままだと、一時リポジトリの台帳がその置き場に積もる。
 os.environ.pop(ledger.STATE_DIR_ENV, None)
+# このプロセスは `task.py` の子プロセスが書いたあとに読み直すので、読みを使い回さない。
+beads.READ_REUSE_SECONDS = 0
 
 TASK_PY = os.path.join(HERE, "task.py")
 INIT_PY = os.path.join(HERE, "init.py")
@@ -558,6 +560,10 @@ def test_cycle_done_ship_and_dropped() -> None:
         check("edit は ## 結果 を拒む（終了コード2）", r.returncode == 2, r.stdout + r.stderr)
 
         work_and_done(wt1, a)
+        flow = ledger.flow_dir(ledger.ledger_root(cwd=main_path))
+        events = [json.loads(l) for f in sorted(os.listdir(flow)) for l in open(os.path.join(flow, f), encoding="utf-8")]
+        check("claim・done の記録に difficulty が入る", {(e["event"], e["difficulty"]) for e in events if e["task"] == a}
+              >= {("claim", "sonnet"), ("done", "sonnet")}, repr(events))
         r = run_task(wt2, "status")
         check("done のあとも ship までは印が残り、後段は BLOCKED", rows(r.stdout).get(b, [""] * 8)[5] == f"BLOCKED:{a}"
               and rows(r.stdout).get(a, [""] * 8)[5] == "CLAIMED", r.stdout)
@@ -767,14 +773,14 @@ def _with_fakes(tmp: str, fake: FakeGitHub) -> dict[str, str]:
 
 
 @contextlib.contextmanager
-def _github() -> Iterator[tuple["FakeGitHub", str, str, str]]:
+def _github(prefix: str | None = beads.PREFIX_GITHUB) -> Iterator[tuple["FakeGitHub", str, str, str]]:
     """偽の GitHub へ向けた `(偽の GitHub, 一時ディレクトリ, 本体, 作業ツリー1)`。
-    `.beads` は `init.py` がトラッカーの行から prefix を選んで作る。"""
+    `prefix` が `None` なら `.beads` は `init.py` がトラッカーの行から prefix を選んで作る。"""
     fake = FakeGitHub()
     with tempfile.TemporaryDirectory() as tmp:
         _local.env = _with_fakes(tmp, fake)
         try:
-            main_path, wt1, _ = make_repo(tmp, extra='tracker = "github"\ngithub_project = "sinnlosses/1"\n', prefix=None)
+            main_path, wt1, _ = make_repo(tmp, extra='tracker = "github"\ngithub_project = "sinnlosses/1"\n', prefix=prefix)
             bd(main_path, "config", "set", "github.repository", "o/r")
             yield fake, tmp, main_path, wt1
         finally:
@@ -787,10 +793,8 @@ def _num(task_id: str) -> int:
 
 
 def test_tracker_github_bidirectional() -> None:
-    say("トラッカー github・issue_prefix gh（Issue 番号の ID・送りと取り込みの往復・両側で変えたら Beads が勝つ）")
+    say("トラッカー github・issue_prefix gh（Issue 番号の ID・送りと取り込みの往復）")
     with _github() as (fake, _tmp, main_path, wt1):
-        check("トラッカーが github なら init.py は issue_prefix gh で .beads を作る",
-              beads.read_prefix(main_path) == beads.PREFIX_GITHUB)
         fake.open_issue("先にある PR 以外の Issue", [])
         a = new(main_path, "Issue を先に立てる")
         check("new は Issue を立てて GH-<番号> を返す", a == "GH-2" and beads.show(main_path, "gh-2") is not None, a)
@@ -809,6 +813,14 @@ def test_tracker_github_bidirectional() -> None:
               and "GitHub で直した本文" in str(issue.raw.get("description"))
               and issue.assignee == "wt1" and issue.status == "in_progress", r.stdout + str(issue and issue.raw))
 
+
+def test_tracker_github_conflict() -> None:
+    say("トラッカー github・issue_prefix gh（init.py が gh で作る・両側で変えたら Beads が勝つ）")
+    with _github(prefix=None) as (fake, _tmp, main_path, _wt1):
+        check("トラッカーが github なら init.py は issue_prefix gh で .beads を作る",
+              beads.read_prefix(main_path) == beads.PREFIX_GITHUB)
+        a = new(main_path, "両側で直す")
+        n, bd_id = _num(a), beads.to_bd_id(a)
         time.sleep(1.1)
         bd(main_path, "update", bd_id, "--title", "Beads で直した題")
         fake.clock_offset = 60
@@ -937,6 +949,7 @@ def main() -> None:
         # 長いものから並列に乗せる（後ろに残ると全体がその分延びる）。
         tests = (
             test_tracker_github_bidirectional,
+            test_tracker_github_conflict,
             test_cycle_done_ship_and_dropped,
             test_commit_guard,
             test_claim_race_owner_and_release,
@@ -954,7 +967,8 @@ def main() -> None:
             test_bd_time_forms,
         )
         tests = tuple(t for t in tests if not only or t.__name__ in only)
-        _make_beads_template(home, beads.PREFIX_LOCAL)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            list(pool.map(lambda prefix: _make_beads_template(home, prefix), (beads.PREFIX_LOCAL, beads.PREFIX_GITHUB)))
         with ThreadPoolExecutor(max_workers=min(len(tests), max(1, (os.cpu_count() or 2) // 2))) as pool:
             outputs = list(pool.map(_run_one, tests))
     for lines in outputs:

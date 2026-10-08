@@ -542,10 +542,12 @@ def _base_tip(toplevel: str) -> str | None:
 # --- claim（5.5） -----------------------------------------------------------
 
 
-def _task_difficulty(toplevel: str, task_id: str) -> str:
+def _task_difficulty(toplevel: str, task_id: str, issue: beads.Issue | None = None) -> str:
     """記録に入れる `difficulty`。引けなければ `?`（記録のために元のサブコマンドを落とさない）。"""
     try:
-        if layout.read_config(toplevel).store == layout.STORE_BEADS:
+        if issue is not None:
+            task = beads.to_task(issue)[0]
+        elif layout.read_config(toplevel).store == layout.STORE_BEADS:
             issue = beads.show(toplevel, beads.to_bd_id(task_id))
             task = beads.to_task(issue)[0] if issue is not None else None
         else:
@@ -555,8 +557,10 @@ def _task_difficulty(toplevel: str, task_id: str) -> str:
     return task.difficulty if task is not None else "?"
 
 
-def _record(toplevel: str, event: str, task_id: str, **fields: str | int | bool) -> None:
-    ledger.record_event(toplevel, event, task_id, _task_difficulty(toplevel, task_id), **fields)
+def _record(
+    toplevel: str, event: str, task_id: str, issue: beads.Issue | None = None, **fields: str | int | bool
+) -> None:
+    ledger.record_event(toplevel, event, task_id, _task_difficulty(toplevel, task_id, issue), **fields)
 
 
 def _claimed_here(toplevel: str) -> list[str]:
@@ -2094,7 +2098,7 @@ def cmd_beads_claim(toplevel: str, task_id: str) -> None:
             _print_taken(shown, again)
         raise beads.BeadsError(f"bd update --claim が失敗: {(r.stderr or r.stdout).strip()}")
     ledger.mark_open_claim(shown, cwd=toplevel)
-    _record(toplevel, "claim", shown)
+    _record(toplevel, "claim", shown, issue)
     _claim_branch_out(
         toplevel, shown, branch_setting, base, branch_after_sync, f"beads:{bd_id}",
         _direct_column(task.direct, task.difficulty, plan_body, registered),
@@ -2135,7 +2139,7 @@ def cmd_beads_release(toplevel: str, task_id: str, force: bool) -> None:
     for path in owner_paths:
         _clear_open_claim_in(path, shown)
     print(f"RELEASED\t{shown}")
-    _record(toplevel, "release", shown)
+    _record(toplevel, "release", shown, issue)
     _print_lines(pulled + trk.after([bd_id]))
 
 
@@ -2161,7 +2165,7 @@ def cmd_beads_done(toplevel: str, task_id: str, dropped: bool, result_path: str)
         toplevel, ["update", bd_id, "--add-label", beads.SHIP_LABELS[kind], "--remove-label", other], actor
     )
     print(f"DONE\t{shown}\tbeads:{bd_id}\tship で閉じる")
-    _record(toplevel, "done", shown, dropped=dropped, reflection=_reflection_of(result))
+    _record(toplevel, "done", shown, issue, dropped=dropped, reflection=_reflection_of(result))
     ledger.clear_open_claim(shown, cwd=toplevel)
     metadata = issue.raw.get("metadata")
     head = metadata.get(beads.CLAIM_HEAD_KEY) if isinstance(metadata, dict) else None
