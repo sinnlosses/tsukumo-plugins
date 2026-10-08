@@ -25,7 +25,7 @@ uninst() { "$here/uninstall.sh" --dest "$dest" --bin-dir "$bin" "$@"; }
 
 # 張る先にあらかじめ置く実ディレクトリと他所を指すリンク
 mkdir "$dest/retrospect"
-ln -s "$tmp" "$dest/tdd"
+ln -s "$tmp" "$dest/setup-tasks"
 mkdir "$tmp/elsewhere"
 ln -s "$tmp/elsewhere" "$dest/list-tasks"
 
@@ -36,16 +36,16 @@ left=$(find "$dest" "$bin" "$CLAUDE_CONFIG_DIR/agents" -type l -exec readlink {}
 check "全件で外す: このリポジトリを指すリンクが残らない" "$left"
 [ -d "$dest/retrospect" ] && [ ! -L "$dest/retrospect" ]
 check "実ディレクトリが残る" $?
-[ "$(readlink "$dest/tdd")" = "$tmp" ] && [ "$(readlink "$dest/list-tasks")" = "$tmp/elsewhere" ]
+[ "$(readlink "$dest/setup-tasks")" = "$tmp" ] && [ "$(readlink "$dest/list-tasks")" = "$tmp/elsewhere" ]
 check "他所を指すリンクが残る" $?
-grep -q "skipped retrospect" "$tmp/err" && grep -q "skipped tdd" "$tmp/err"
+grep -q "skipped retrospect" "$tmp/err" && grep -q "skipped setup-tasks" "$tmp/err"
 check "残したものは警告される" $?
 
 rm -rf "$dest" "$bin"
 mkdir "$dest"
 inst >/dev/null 2>&1
 uninst list-tasks >"$tmp/out" 2>"$tmp/err"
-[ ! -e "$dest/list-tasks" ] && [ -L "$dest/tdd" ] && [ -L "$dest/task-workflow" ] && [ -L "$bin/tw" ]
+[ ! -e "$dest/list-tasks" ] && [ -L "$dest/setup-tasks" ] && [ -L "$dest/task-workflow" ] && [ -L "$bin/tw" ]
 check "名前を渡すとそのスキルだけ消える（tw は残る）" $?
 ls "$CLAUDE_CONFIG_DIR/agents"/*.md >/dev/null 2>&1
 check "名前を渡してもエージェント定義は残る" $?

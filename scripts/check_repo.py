@@ -10,11 +10,11 @@
   コミットを拒む hook（`tw commit-guard`）と返却を拒む hook（`tw handback-guard`）を持つこと。
   `reviewer` が `Agent`・`Edit`・`Write`・`NotebookEdit` を持たず hooks も持たないこと
 - README の「由来」一覧が `skills/` と過不足なく一致すること（README が索引なので）
-- スキル同士の相互参照が実在するスキルを指していること
-- `docs/` に書くスキルが、索引 `docs/README.md` に1行足す指示を持っていること
+- スキル同士の相互参照が、実在するスキルか `OPTIONAL_SKILLS`（あれば使う外のスキル）を指していること
 - スクリプトのパスが `${CLAUDE_SKILL_DIR}` 形で書かれ、実在するファイルを指していること
+  （`OPTIONAL_SKILLS` の中を指すものは除く）
 - 同梱スクリプトが構文として読めること
-- `.claude-plugin/plugin.json` の `name` が `sinnlos-skills` であること、`bin/tw` が実行でき `task.py` を
+- `.claude-plugin/plugin.json` の `name` が `tsukumo-workflow` であること、`bin/tw` が実行でき `task.py` を
   呼ぶこと、`hooks/hooks.json` が `--agent-scoped` 付きで `${CLAUDE_PLUGIN_ROOT}/bin/tw` を呼ぶ hook 3つを持つこと
 - `tw` の指す `task.py` が実行でき、スキルの Markdown が `task.py` を `python3` で呼ぶ形や `` `task …` `` の略記で書いていないこと
 - 兄弟スキルの `scripts/` を `sys.path` に足して `import` しているなら、`REQUIRES` にその
@@ -31,13 +31,19 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PLUGIN_NAME = "sinnlos-skills"
+PLUGIN_NAME = "tsukumo-workflow"
 SKILLS = os.path.join(ROOT, "skills")
 AGENTS = os.path.join(ROOT, "agents")
 
-# 使う側のプロジェクトの `docs/` に成果物を書くスキル。ここに載っているスキルは
-# 「索引 `docs/README.md` に1行足す」指示を持っていなければならない。
-DOCS_WRITING_SKILLS = ("architecture-proposal", "domain-modeling", "research")
+# このリポジトリに無く、スキルの本文が「一覧にあれば使う」とだけ書いてよい外のスキル。
+OPTIONAL_SKILLS = (
+    "code-review",
+    "comment-audit",
+    "resolving-merge-conflicts",
+    "token-usage-diet",
+    "verifying-before-completion",
+    "writing-for-agents",
+)
 
 # `agents/no-delegate.md` の frontmatter の hooks に要る行。
 NO_DELEGATE_HOOK_LINES = (
@@ -169,6 +175,8 @@ def check_script_paths(names: list[str]) -> None:
         for md in markdown_files(n):
             for rel in pat.findall(read(md)):
                 target = os.path.normpath(os.path.join(SKILLS, n, rel.lstrip("/")))
+                if os.path.relpath(target, SKILLS).split(os.sep)[0] in OPTIONAL_SKILLS:
+                    continue
                 if not os.path.exists(target):
                     fail(f"{os.path.relpath(md, ROOT)}: ${{CLAUDE_SKILL_DIR}}{rel} が実在しない")
     # 絶対パス・曖昧なプレースホルダは書かない（リポジトリを移すと壊れる）。
@@ -239,7 +247,7 @@ def check_plugin() -> None:
 def check_cross_references(names: list[str]) -> None:
     """`` `skill-name` スキル`` の形の参照が実在するか。"""
     pat = re.compile(r"`([a-z][a-z0-9-]{2,})`\s*スキル")
-    known = set(names)
+    known = set(names) | set(OPTIONAL_SKILLS)
     for n in names:
         for md in markdown_files(n):
             for ref in set(pat.findall(read(md))):
@@ -259,31 +267,6 @@ def check_requires(names: list[str]) -> None:
                 continue
             if dep not in names:
                 fail(f"{n}/REQUIRES: 依存先 `{dep}` は実在しない")
-
-
-def check_docs_index(names: list[str]) -> None:
-    """`docs/` に書くスキルが、索引 `docs/README.md` に1行足す指示を持っているか。
-
-    対象は `DOCS_WRITING_SKILLS` にハードコードする。「`docs/` に書く」と読める文面から
-    自動で拾う手もあるが、書き方の揺れで誤検知しやすく、検査を通すために文面を歪める圧が
-    かかる。対象は数件で、増えるのは新しいスキルを足すときだけなので、そのとき一緒に
-    ここへ書く運用にした（代わりに、載せた名前が実在するかはこの関数が見る）。
-    """
-    for n in DOCS_WRITING_SKILLS:
-        if n not in names:
-            fail(f"check_repo.py の DOCS_WRITING_SKILLS にある `{n}` は実在しない")
-            continue
-        path = os.path.join(SKILLS, n, "SKILL.md")
-        if not os.path.exists(path):
-            continue  # SKILL.md の不在は check_frontmatter が報告する
-        body = read(path)
-        # 「`docs/README.md` に…1行足す」が近くに書かれているか（改行を挟んでもよい）。
-        near = any(
-            "1行" in body[max(0, m.start() - 120) : m.end() + 120]
-            for m in re.finditer(r"docs/README\.md", body)
-        )
-        if not near:
-            fail(f"{n}: `docs/README.md` に1行足す指示が SKILL.md に無い")
 
 
 def check_python_syntax(names: list[str]) -> None:
@@ -534,7 +517,6 @@ def main() -> None:
     check_cross_references(names)
     check_requires(names)
     check_sibling_imports(names)
-    check_docs_index(names)
     check_python_syntax(names)
     check_task_workflow_layout()
     check_selftest_body_literal()
