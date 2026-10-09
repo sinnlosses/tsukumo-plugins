@@ -15,7 +15,7 @@ git の外の台帳（以下の節の大半）。
 
 | 節 | 中身 |
 | --- | --- |
-| ## ファイル配置と設定ファイル | 置き場（`<根>/task/`・`<根>/direction.md`・`<根>/draft/`・`.tw/local/`・`docs/history/`・台帳）と、`.tw/config.toml` のキーと語彙・旧い節の互換・形式の判定、主ブランチの決め方 |
+| ## ファイル配置と設定ファイル | 置き場（`<根>/task/`・`<根>/direction.md`・`<根>/draft/`・`.tw/local/`・`docs/history/`・台帳）と、`.tw/config.toml` のキーと語彙・形式の判定、主ブランチの決め方 |
 | ## タスクファイル | front matter の文法、本文の節、読み取りの見本（両方の読み手のテストに写す表） |
 | ## status と着手の印 | 遷移、依存の解決、取り残しの判定 |
 | ## summary（一行要約） | 一行に収める理由 |
@@ -32,8 +32,7 @@ git の外の台帳（以下の節の大半）。
 
 ## ファイル配置と設定ファイル
 
-タスク・指示・ドラフトは**根**の下に置く。根は設定の `root`（下の表）で、既定は `.tw`（`.tw/config.toml` が無い
-旧配置の互換では `develop`）。`.tw/config.toml` と `.tw/local/` は `root` によらず `.tw/` に固定。以下 `<根>` と書く。
+タスク・指示・ドラフトは**根**の下に置く。根は設定の `root`（下の表）で、既定は `.tw`。`.tw/config.toml` と `.tw/local/` は `root` によらず `.tw/` に固定。以下 `<根>` と書く。
 
 | 場所 | 役割 |
 | --- | --- |
@@ -88,18 +87,15 @@ verify = "pnpm check"        # 受け入れ判定に使う。打つものが無�
 | `既定` ／ `作業ブランチを切る` | `claim` が主ブランチから `feature/T-xxx` を切って移り、`ship` が送ったあと枝から降りて消す（下の「送り出し」） |
 | `切らない` | いまの枝のまま。主ブランチの上ならそのまま積み、作業ツリーの枝なら `ship` で送る |
 
-**形式の判定**（`tw` のどのサブコマンドも打つ前に見る）は、`develop/tasks.json` があれば `LEGACY`（下の「旧形式からの移行」。
-`develop/task/` にもファイルがあれば `INVALID`）、`.tw/config.toml` があれば新形式、`develop/direction.md` があれば新形式（互換）、
-どれも無ければ `MISSING` の順。
+**形式の判定**（`tw` のどのサブコマンドも打つ前に見る。`migrate`・`migrate-layout`・`config-doctor`・`land` は除く）は、
+`develop/tasks.json` があれば `LEGACY`（下の「旧形式からの移行」。`develop/task/` にもファイルがあれば `INVALID`）、
+`.tw/config.toml` があれば新形式、`develop/direction.md` があれば `OLD_LAYOUT`、どれも無ければ `MISSING` の順。
+設定は `.tw/config.toml` だけから読み、`AGENTS.md`・`CLAUDE.md` の「## タスク運用」節は読まない（読むのは `tw migrate-layout` だけ）。
 
-**互換（移し終えるまで）**: `.tw/config.toml` が無く `develop/direction.md` があれば、根は `develop` で、`AGENTS.md` → `CLAUDE.md` の順で
-旧い「## タスク運用」節を探して同じ値に写して読む（両方に節があれば `INVALID`）。`develop/direction.md` も無ければ
-旧い節は読まず、設定は無い（全キーが既定）。写し方は `- 検証コマンド:` → `verify`、`- 送る前の検証コマンド:` →
-`verify_before_ship`、`- 整形コマンド:` → `format`（`なし` なら無し）、`- ブランチ:` → `branch`（先頭語）、`- 主ブランチ:` →
-`base_branch`、`- タスクの置き場:` → `store`（`develop/task` は `files`）、`- トラッカー:` → `tracker`、`- GitHub Project:` →
-`github_project`、`- バックアップ:` → `backup`、`- 規則の発火の集計:` → `hook_tally`。コマンドは最初の `` `…` ``、ほかの値は
-囲みの中か最初の語を読む。行が無いキーは上の表の既定（`verify` も無ければ打たない）。旧い節で読んでいるあいだは、
-`tw status` が `old_layout` の行、`tw config-doctor` が `old_section` の行で知らせる。移すのは `tw migrate-layout`（下の「旧形式からの移行」）。
+**旧配置で止まるとき**: `.tw/config.toml` が無く `develop/direction.md` があれば、`tw` は何もせず
+`OLD_LAYOUT\ttw migrate-layout --dry-run`（終了コード5）で止まり、`init.py` も何も作らずに同じ行を返す。
+**スキルはここで止まって `tw migrate-layout --dry-run` を案内する**（移すのは下の「旧形式からの移行」）。
+旧い節だけで `develop/direction.md` が無いときは止めず、設定が無いものとして `MISSING`（`tw migrate-layout` は節も読む）。
 
 merge commit を作る運用は選べない。**主ブランチへの ff マージ（`ship` に限らず、タスクの成果として
 よそのリポジトリの主ブランチを進める場合も含む）は、人に確認を挟まず自動でやってよい**
@@ -518,7 +514,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 
 | サブコマンド | すること | 主な出力 |
 | --- | --- | --- |
-| `status [--all] [--check]` | 一覧（読むだけ。done/dropped は件数だけ。`--all` で行も）。`--check` は検証コマンド向けの厳しい判定（`todo`・`hold` は本文の7節の枠も検査する） | 行 `id/status/difficulty/loopable/dependencies/着手可否/印/summary`、`---` の後に `counts`・`ready`・`todo_loopable`・`stale`・`invalid`・（ファイル方式で、`TW_STATE_DIR` を使っていて古い台帳にだけ印があれば）`split_claims\t<件数>\t<T-xxx:<作業ツリーの名前>,…>`（古い台帳の `claim/` にあって新しい台帳に無く、写したときの `carried-claims` にも無い印。`TW_STATE_DIR` をそろえていないセッションが立てた印）・（横断の振り返りの時期なら）`retrospect_due`・（残っていれば）`legacy_progress`・（旧い「## タスク運用」節で読んでいれば）`old_layout\t<AGENTS.md|CLAUDE.md>\ttw migrate-layout --dry-run`、`.tw/config.toml` があるのに置き場が `develop/` に残っていれば `old_layout\tdevelop/\ttw migrate-layout --dry-run`。`retrospect_due\t<最後の記録の日付>\t<経過日数>d` は `docs/history/retrospect.md` の見出しの日付（主ブランチの版と作業ツリーの版の遅いほう）から7日以上経ったときに出る。記録が無いあいだは台帳の `flow/` の最も古い出来事から7日以上で `retrospect_due\t-\t<経過日数>d`（`flow/` が無ければ出ない） |
+| `status [--all] [--check]` | 一覧（読むだけ。done/dropped は件数だけ。`--all` で行も）。`--check` は検証コマンド向けの厳しい判定（`todo`・`hold` は本文の7節の枠も検査する） | 行 `id/status/difficulty/loopable/dependencies/着手可否/印/summary`、`---` の後に `counts`・`ready`・`todo_loopable`・`stale`・`invalid`・（ファイル方式で、`TW_STATE_DIR` を使っていて古い台帳にだけ印があれば）`split_claims\t<件数>\t<T-xxx:<作業ツリーの名前>,…>`（古い台帳の `claim/` にあって新しい台帳に無く、写したときの `carried-claims` にも無い印。`TW_STATE_DIR` をそろえていないセッションが立てた印）・（横断の振り返りの時期なら）`retrospect_due`・（残っていれば）`legacy_progress`。`retrospect_due\t<最後の記録の日付>\t<経過日数>d` は `docs/history/retrospect.md` の見出しの日付（主ブランチの版と作業ツリーの版の遅いほう）から7日以上経ったときに出る。記録が無いあいだは台帳の `flow/` の最も古い出来事から7日以上で `retrospect_due\t-\t<経過日数>d`（`flow/` が無ければ出ない） |
 | `new --summary … --difficulty … --loopable Y\|N [--deps T-001,…] [--hold] [--direct] --body-file <path\|->` | 錠の中で採番してファイルを作る（コミットしない）。`--direct` は委譲しない近道の印（front matter の `direct: Y`）を付け、「difficulty とモデルの切り替え」の基準の表で `tw` が見る条件を外れれば何も作らずに終了コード2。`## やること` の中身が要る（空にできるのは `--hold` だけ。段の形に沿わない・`### 名指すファイル` が無い・形が違う・パスが木に無い・`### 作業先` が絶対パス1行でないか git のリポジトリの根でなければ、何も作らずに終了コード2）。中身があれば、計画のリポジトリ（`### 作業先` があればそこ）の `HEAD` と主ブランチの分かれ目の SHA を控える（ファイル方式は台帳の `plan-base/T-xxx`、Beads 方式は metadata `task_plan_base`） | `CREATED`・`LOCKED`・`STATE_READ_ONLY`（ファイル方式） |
 | `claim T-xxx` | clean・未送りなしを確かめ、主ブランチへ追い付き（主ブランチが `HEAD` の祖先なら `merge` を打たない）、印を立て（`.tw/local/task-open-claims/T-xxx` の控えも置く）、設定の `branch` が `既定`・`作業ブランチを切る`（無ければ `既定`）なら枝を切る。追い付くか枝を切るのに `.git` へ書けなければ、印を立てる前に `GIT_READ_ONLY` で止まる。台帳に書けなければ何もせずに `STATE_READ_ONLY`。ファイル方式で、渡したタスクが古い台帳にだけ印を持てば（`status` の `split_claims`）、印を立てずに `TAKEN\tT-xxx\t<古い印の作業ツリー>\t<経過>`。ほかのタスクにだけあれば `CLAIMED` の行のあとに `split_claims` の行を足す。登録時の計画の控えがあれば、名指したファイルが控えから主ブランチの先端までに変わったかを判定し、比べた先端を印に控え（台帳の印の `plan-tip`、metadata `task_plan_tip`）、変わっていなければ印に `registered` を残す（出力は変えない）。近道の印（`direct: Y`・label `direct:Y`）があれば基準を測り直し、`CLAIMED` の行末に `direct=Y`（基準に当たり `registered`）か `direct=N:<理由>`（外れた条件か `登録時の計画が古い`）の列を足す。印が無ければ列を出さない | `CLAIMED`・`TAKEN`・`NOT_READY`・`DIRTY`・`UNSHIPPED`・`GIT_READ_ONLY`・`STATE_READ_ONLY` |
 | `release T-xxx [--force]` | 印と `task-open-claims/T-xxx` の控えを消すだけ（ファイルは戻さない）。`--force` は人が取り残しを片付けるときで、控えは印の持ち主の作業ツリーのものを消す（その作業ツリーが消えていれば何もしない） | `RELEASED`・`NOT_CLAIMED`・`NOT_OWNER`・`STATE_READ_ONLY`（ファイル方式） |
@@ -534,8 +530,8 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | `verify` | 主ブランチを取り込んでから検証コマンドを打つ。取り込むのは、主ブランチが `HEAD` より先へ進んでいて `HEAD` がその祖先のとき（`claim` のあとに自分のコミットがあれば取り込まず、`ship` が付け替える）で、未コミットの中身を一時のコミットにして `git merge-tree` で主ブランチと合わせ、衝突が無ければ作業ツリーに当てて `HEAD` を主ブランチへ進める（作業は未コミットのまま残る。`git add` 済みの区別は消える）。衝突すれば何も書き換えず、検証コマンドを打たずに控えを消して `CONFLICT` で止まる。取り込みが要るのに `.git` へ書けなければ、検証コマンドを打たずに控えを消して `GIT_READ_ONLY` で止まる（取り込みが要らなければ読み取り専用の `.git` でも通る）。取り込みのあと・検証の前に、設定に `format` があれば打つ（無ければ打たない。整形で変わった中身を鍵に取るので、続く `verify-check` は `VERIFIED_SAME` になる。整形が落ちたら検証コマンドを打たずに控えを消して `FORMAT_FAILED` で止まる）。打つ前後で作業ツリーの中身の鍵（`HEAD` の SHA・一時の index に `git add -A` して `<根>/task/`・`<根>/draft/`・`.tw/local/` を外してから `write-tree` した木の SHA・検証コマンドの文字列。本物の index は変えず、新しい object は一時ディレクトリに書くので `.git` に書かない。`.tw/local/` の中身は木に入らない）を取り、通って前後で同じなら `.tw/local/task-verify-stamp` に控える。落ちたら控えを消す。全出力は同じ場所の `task-verify.log`（整形の出力のあとに検証の出力が続く。検証が落ちた回は `task-verify.failed-<時刻>.log` にも写して直近3本を残し、判定行のパスはこちら）。この作業ツリーが着手の印を持つタスク（`done`・`dropped` にしたものを除く）の `## やること` が空か「なし」のまま作業が始まっていれば（`edit` と同じ判定）、検証コマンドを打たずに控えを消して `PLAN_MISSING` で止まる | 取り込んだときは先頭に `FOLDED\t<前の HEAD>..<主ブランチ>` の1行。`CONFLICT\t<ファイル,…>`（終了コード7）。`VERIFIED\t<木の SHA>\t<ログのパス>`（控えた）／`VERIFIED_UNSTAMPED\t<ログのパス>`（通ったが検証のあいだに中身が変わったので控えない）／`VERIFY_NOT_PASSED\t<ログのパス>`（終了コード10）／`FORMAT_FAILED\t<ログのパス>`（整形コマンドが落ちた。終了コード10）。どれも出力の末尾40行が続き、そのあとに同じ判定行をもう一度出す（取り込んだときは `FOLDED` の行も判定行の前にもう一度出す）。出力を `tail` で切るときは、最後の行（取り込んだときは最後の2行）だけで判定と `FOLDED` の有無が取れる。`PLAN_MISSING\tT-xxx\t<次の一手>`（終了コード10。該当するタスクごとに1行）。`GIT_READ_ONLY`（終了コード11）。検証コマンドが無ければ `NOTHING` |
 | `verify-check` | いまの中身の鍵を `verify` の控えと照らす（読むだけ） | `VERIFIED_SAME\t<木の SHA>`（検証を省いてよい）、そうでなければ `NOT_VERIFIED\t<理由>`（`none`＝控えが無い／`base`＝主ブランチが進んでいて `verify` が取り込める。`verify_before_ship` があり取り込みが衝突しないときは、この理由にせず鍵で照らす／`head`／`content`／`command`）。どちらも終了コード0。検証コマンドが無ければ `NOTHING` |
 | `metrics [--days N] [--stages]` | 台帳の `flow/` の記録（`claim`・`release`・`verify`・`pause`・`step`・`lap`・`ship`・`done` のたびに両方式で `tw` が1行足す。書けなくても元のサブコマンドの出力と終了コードは変わらず、標準エラーに1行出るだけ）から、直近 N 日（既定 7）と、その前の同じ長さの期間の数を並べる（読むだけ）。`verify` は着手の印を持つタスクごと、`ship` は送れたタスクごと（`VERIFY_FAILED`・`CONFLICT`・`RACE` は印を持つタスクごと）に1行 | 1行目 `PERIOD\t<N>d\tcurrent\tprevious`、続けて `shipped`（送り出した件数）・`lead_median_seconds`・`lead_max_seconds`（着手から送り出しまで）・`verify_per_task`（1件あたりの `verify` の回数の平均）・`verify_failed`（`FORMAT_FAILED`・`VERIFY_NOT_PASSED` の件数）・`ship_verify_failed`（`ship` の `VERIFY_FAILED`）・`reclaim`（`release` のあとの `claim`）・`reflection_none_ratio`（`done` のうち振り返りが兆候なしの割合。`dropped` と、近道で振り返りを省いた `done`〔`reflection` が `skipped`〕は除く）の各行が `<名前>\t<今>\t<前>`（無ければ `-`）。壊れた行は読み飛ばし `SKIPPED\t<件数>`。記録が無ければ `EMPTY`。`--stages` を付けると上の表の代わりに、直近 N 日に送り出したタスクの段ごとの所要時間を `STAGE\t<段>\t<difficulty>\t<道>\t<件数>\t<中央値秒>\t<最大秒>` の行で出す（道は、着手から送り出しまでに `direct` の `lap` があり `delegate` の `lap` が無ければ `direct`〔委譲しない近道〕、ほかは `normal`。段は計画〔`claim`〕・直し〔`direct` の `lap`〕・委譲〔`delegate` の `lap`・`step`〕・検証〔`verify`。記録された所要秒〕・受け入れ・レビュー・振り返り〔それぞれの `lap`〕・送り出し〔`done`〕の順。検証でない段の時間は、次の検証でない出来事までの差から、検証の区間〔記録の時刻から記録の秒だけ前まで〕と重なった秒を引く。並列の段の返却が重なっても区間は時刻順に切れて重ならないので、委譲の時間は段ごとの和でなく壁時計の長さになる。前の期間との比較は付けない。材料が無ければ `EMPTY`） |
-| `config` | 解けた設定を出す（読むだけ） | 1行目 `CONFIG\t<.tw/config.toml\|AGENTS.md（旧節）\|CLAUDE.md（旧節）>`、続けて全キーを `<キー>\t<解けた値>\t<config\|default>`（`config` は設定に書いてある、`default` は既定。コマンドのキーで値が無ければ `なし`、ほかは `-`。`base_branch` を書いていなければ git で決めた主ブランチ）、最後に `direction\t<パス>`・`draft\t<パス>`・（ファイル方式なら）`task\t<パス>`。設定が無ければ `MISSING\t.tw/config.toml`（終了コード6） |
-| `config-doctor` | このリポジトリが今の読み取りに合っているかを点検する（**読むだけ。`--fix` は無い**）。主ブランチが何で決まったか・設定が読めるか・旧形式の残り、の3検査を必ず1行ずつ出す | `base_branch`・`config`・`legacy` の3行。`config\t<OK\|MISSING\|INVALID>\t<ファイル>\t<詳細>`（読めない・語彙の外は `INVALID`、設定が無い・検証コマンドが無いは `MISSING`）。旧い節で読んでいれば `config` の次に `old_section\tFOUND\t<ファイル>`（終了コードは上げない）。各行の2語目が `OK`／`MISSING`／`FOUND`／`INVALID` |
+| `config` | 解けた設定を出す（読むだけ） | 1行目 `CONFIG\t.tw/config.toml`、続けて全キーを `<キー>\t<解けた値>\t<config\|default>`（`config` は設定に書いてある、`default` は既定。コマンドのキーで値が無ければ `なし`、ほかは `-`。`base_branch` を書いていなければ git で決めた主ブランチ）、最後に `direction\t<パス>`・`draft\t<パス>`・（ファイル方式なら）`task\t<パス>`。設定が無ければ `MISSING\t.tw/config.toml`（終了コード6） |
+| `config-doctor` | このリポジトリが今の読み取りに合っているかを点検する（**読むだけ。`--fix` は無い**）。主ブランチが何で決まったか・設定が読めるか・旧形式の残り、の3検査を必ず1行ずつ出す | `base_branch`・`config`・`legacy` の3行。`config\t<OK\|MISSING\|INVALID>\t<ファイル>\t<詳細>`（読めない・語彙の外は `INVALID`、設定が無い・検証コマンドが無いは `MISSING`）。各行の2語目が `OK`／`MISSING`／`FOUND`／`INVALID` |
 | `commit-guard [--agent-scoped]` | Claude Code の PreToolUse hook（`agents/no-delegate.md` の frontmatter と、plugin の `hooks/hooks.json`）から呼ばれる。`--agent-scoped`（`hooks/hooks.json` だけが付け、`"${CLAUDE_PLUGIN_ROOT}/bin/tw"` の絶対パスで呼ぶ）があるときは、入力の `agent_type` の末尾が `no-delegate` のときだけ掛け、`agent_type` が無い・ほかの名前なら通す。stdin の hook の入力を読み、Bash のコマンドのうちコミットを作る git のサブコマンド（`commit`・`merge`・`pull`・`cherry-pick`・`revert`・`am`・`rebase`）の実効の作業先（入力の `cwd`・`cd <dir>`・`git -C <dir>`）に `.tw/local/task-open-claims/` の控え（読む順は「ファイル配置と設定ファイル」の控えの行のとおり、`.tw/local/` が無ければ `.tw/` 直下、それも無ければ作業ツリー固有の git dir）があれば拒む。両方式で同じ（`bd` を呼ばない） | 拒むときだけ PreToolUse の deny の JSON 1行（理由は「コミットせず…報告で返す」）。通すときは何も出さない |
 | `pause [T-xxx <n>]` | いまの中身の鍵（`verify` と同じ取り方）を `.tw/local/task-pause-stamp` に控え、`flow/` に `pause` を1行足す。着手中のタスクの `### 作業先` が別のリポジトリで、枝の名前がタスクIDの小文字の作業ツリーがあれば、その作業ツリーの `.tw/local/task-pause-stamp` にもその中身の鍵を控える。`handback-guard` は、この控えがいまの中身と同じなら計画・検証が欠けていても返却を通す（目視待ち・判断が要って止める・計画を作業の後に書いた回の委譲先が、返す直前に打つ）。タスクIDと段の番号を付けると、`step` と同じ置き場・同じ鍵の取り方で種類 `pause` の段の印を控える（並列の段の担当が打つ。最後の段にも打てる。段の読めない計画・段の外の番号・片方だけの引数は終了コード2、自分の着手でなければ `NOT_OWNER`） | `PAUSED\t<木の SHA>`・`NOT_OWNER` |
 | `step T-xxx <n>` | 自分の着手の印のタスクの `## やること` の段 `n` を済ませた印として、いまの中身の鍵（`verify` と同じ取り方から、段 `n` と並列の組になる段の触るファイルも外す）とタスクID・段の番号を `.tw/local/task-step-stamps/<ID>.<n>` に控え（段ごとに1つで、ほかの段の控えを上書きしない。着手中でないタスクの控えは消す）、`flow/` に `step` を1行足す。`pause` と同じく、作業先の作業ツリーがあればそこにもその中身の鍵で控える（作業先の作業ツリーでは打たず、着手した作業ツリーで打つ）。`handback-guard` は、そのタスクの段の控えのどれかが同じ外し方で取ったいまの中身と同じで、段がいまの計画の最後より前なら、`plan-check` が通っている限り検証が欠けていても返却を通す（最後でない段を済ませた委譲先が、返す直前に打つ）。段の読めない計画・1〜段の数の外の番号は終了コード2。最後の段は控えずに `LAST_STEP`（終了コード4。`tw verify` を通して返す） | `STEPPED\tT-xxx\t<n>/<段の数>\t<木の SHA>`・`LAST_STEP\tT-xxx\t<n>/<段の数>\t<次の一手>`・`NOT_OWNER` |
@@ -549,7 +545,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | 2 | （stderr） | 渡した引数・本文の誤り | 直して打ち直す |
 | 3 | `INVALID` | データの不備（読めないタスクファイル、移行途中、設定が読めない、主ブランチが決まらない、`--check` の重複） | 理由をそのまま報告して止まる。**直しに行かない** |
 | 4 | `TAKEN`・`NOT_READY`・`DIRTY`・`MAIN_DIRTY`・`UNSHIPPED`・`LOCKED`・`NOT_OWNER`・`WORK_BEFORE_PLAN`・`FRAME_CHANGED`・`LAST_STEP`・`BUSY`・`NOT_LANDED`・`NOT_REMOVED` | いまの状態では進めない | 各スキルの表のとおり（別の1件を選ぶか止まる） |
-| 5 | `LEGACY` | 旧形式 | 下の「旧形式からの移行」を案内して止まる |
+| 5 | `LEGACY`・`OLD_LAYOUT` | 旧形式／旧配置（`.tw/config.toml` が無く `develop/direction.md` がある） | `LEGACY` は下の「旧形式からの移行」を、`OLD_LAYOUT` は `tw migrate-layout --dry-run` を案内して止まる |
 | 6 | `MISSING` | タスク運用を始めていない | `/setup-tasks` を案内して止まる |
 | 7 | `CONFLICT` | `ship` の rebase が衝突した（`--abort` 済み）か、`verify` の主ブランチの取り込みが衝突した（何も書き換えていない） | 衝突したファイルを添えて人に預ける。`verify` の衝突を解いたあとは `tw verify` を打ち直す |
 | 8 | `VERIFY_FAILED` | 付け替えのあとの検証が落ちた（送っていない）。行は `VERIFY_FAILED\t<コマンド>\t<ログのパス>` で、続けて出力の末尾40行。ログは stdout と stderr を出た順に残した全文で、落ちた回のものを時刻つきの別名（`task-ship-verify.failed-<時刻>.log`）に写したもの。打ち直しても上書きされない | ログを読み、落ちた箇所を添えて人に預ける |
@@ -591,7 +587,7 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける。**同じリポ�
    主ブランチへ入っていないコミットと未コミットの変更が無いことを確かめる
 2. 主ブランチを出している作業ツリーで `tw migrate --dry-run` → 件数と `LEFTOVER` を見る
 3. `tw migrate` → 差分を見て1コミット（件名「タスクを1件1ファイルへ移す」。IDなし）
-4. 設定の `branch` を語彙に合わせ、`develop/tasks.json`・
+4. 続けて `tw migrate-layout --dry-run` → `tw migrate-layout`（`tw migrate` は `.tw/task/` に書くが、設定と `develop/direction.md` はまだ旧配置のままで、`tw` は `OLD_LAYOUT` で止まる）。設定の `branch` を語彙に合わせ、`develop/tasks.json`・
    `develop/progress.md` を名指ししている説明を直す
 5. `tw status` の一覧が移行前と ID・status・依存で一致することを確かめる
 6. ほかの作業ツリーは、再開するときに `git rebase <主ブランチ>`（自分のコミットが無いので追い付くだけ）
@@ -603,8 +599,7 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける。**同じリポ�
 全部 `docs/history/progress.md` へ移る。`docs/history/tasks.md` は動かさない。
 `develop/tasks.json` と `develop/task/` の両方があれば移行が途中で、`INVALID`（終了コード3）になる。
 
-**旧配置から `.tw/` へ移す**（`tw migrate-layout`）: `.tw/config.toml` が無く `develop/direction.md` と「## タスク運用」節で
-読んでいるプロジェクト（`tw status` の `old_layout` の行）と、`.tw/` 直下に控えを置いていたプロジェクトが対象。どの作業ツリーでも
+**旧配置から `.tw/` へ移す**（`tw migrate-layout`）: `.tw/config.toml` が無く `develop/direction.md` か「## タスク運用」節があるプロジェクト（`tw` が `OLD_LAYOUT` で止まる）と、`.tw/` 直下に控えを置いていたプロジェクトが対象。どの作業ツリーでも
 clean なら打て、ほかの作業ツリーが開いた着手の印（台帳の印と Beads の `in_progress`。自分の作業ツリーのものは除く）を
 持てば `BUSY` で止まる。手順（人が行う）:
 
@@ -618,8 +613,7 @@ clean なら打て、ほかの作業ツリーが開いた着手の印（台帳�
 - `.tw/` 直下の控えとログを `.tw/local/` へ移す（`MOVE`）。`.tw/.gitignore` が無いか旧い形（`*`・`*` と `!config.toml` の2行）なら
   `local/` に書き換える（`WRITE`。ほかの中身なら `KEPT` で触らない）。この2つは `.tw/config.toml` が既にあるプロジェクトでも行う
 - `.tw/config.toml` があり根が `develop` でないのに、`develop/direction.md`・`develop/draft`・（ファイル方式なら）`develop/task` が
-  追跡されていれば、`git mv` で根の下へ移す（config.toml と節は書き換えない。`tw status` はこの状態でも
-  `old_layout\tdevelop/\ttw migrate-layout --dry-run` を出す）
+  追跡されていれば、`git mv` で根の下へ移す（config.toml と節は書き換えない。`tw status` はこの状態を知らせない）
 - 移す先が既にあれば（設定ファイルの有無によらず）、何も変えずに `INVALID\t<先> が既にある（<元> を移せない）`（終了コード3）で止まる
 - `.tw/config.toml` が無いときだけ、続けて: `git mv` で `develop/direction.md`・`develop/draft`・（ファイル方式なら）`develop/task` を
   `.tw/` へ移す。旧い節から `.tw/config.toml` を書く（`root` は書かない。`- 整形コマンド:` は `format` に写し、値が `なし` なら
