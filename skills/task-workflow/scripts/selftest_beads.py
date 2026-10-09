@@ -266,9 +266,9 @@ def test_setup_and_config_doctor() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, _ = make_repo(tmp, legacy=True, extra="- バックアップ: `/tmp/keep`（git の外）\n")
         r = run_task(wt1, "config-doctor")
-        check("旧い節だけでも Beads 方式で読み、old_section を出す", r.returncode == 0
-              and tail_line(r.stdout, "store").startswith("store\tOK\tbeads")
-              and tail_line(r.stdout, "old_section") == "old_section\tFOUND\tCLAUDE.md", r.stdout)
+        check("旧い節は読まず、config は MISSING で old_section の行は出さない", r.returncode == 1
+              and tail_line(r.stdout, "config").startswith("config\tMISSING\t.tw/config.toml")
+              and tail_line(r.stdout, "old_section") == "", r.stdout)
         r = run_task(wt1, "config")
         check("旧配置の config は OLD_LAYOUT で止まる（終了コード5）",
               r.returncode == 5 and r.stdout == "OLD_LAYOUT\ttw migrate-layout --dry-run\n", r.stdout)

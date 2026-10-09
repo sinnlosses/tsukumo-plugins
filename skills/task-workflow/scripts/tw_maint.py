@@ -159,7 +159,7 @@ def cmd_config_doctor(toplevel: str) -> None:
         print(f"base_branch\tINVALID\t{e}")
         exit_code = 3
 
-    # 検査2: 設定が読めるか（`init.check_config`）。旧い節で読んでいればその行も出す。
+    # 検査2: 設定が読めるか（`init.check_config`）。
     line, config = init.check_config(toplevel)
     kind = line.partition("\t")[0]
     print(f"config\t{line}")
@@ -167,8 +167,6 @@ def cmd_config_doctor(toplevel: str) -> None:
         exit_code = 3
     elif kind != "OK":
         exit_code = max(exit_code, 1)
-    if config is not None and config.legacy:
-        print(f"old_section\tFOUND\t{config.source}")
 
     # 検査3: 旧形式の残り（develop/tasks.json・develop/progress.md）があるか。
     tasks_json = os.path.exists(os.path.join(toplevel, "develop", "tasks.json"))

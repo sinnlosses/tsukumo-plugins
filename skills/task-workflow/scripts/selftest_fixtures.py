@@ -76,7 +76,7 @@ def make_repo(
     `verify` を省略すると `verify = "なし"`。`branch` が `None` なら `branch` を書かない。`base` は主ブランチの
     名前——リモートを持たない足場なので `ledger.base_branch` の順3で決まる。
     `config_filename`（`CLAUDE.md`・`AGENTS.md`）を渡すと、代わりに旧い「## タスク運用」節をそのファイルに書く
-    （互換の読み。値はそのまま行に書き、`verify` を省略すると行を書かない）。`section` が偽なら設定をどこにも書かない。
+    （旧配置の足場。値はそのまま行に書き、`verify` を省略すると行を書かない）。`section` が偽なら設定をどこにも書かない。
     `direction.md` は `.tw/config.toml` を書くときは `.tw/` に、そうでなければ `develop/` に置く。
     """
     main_path = os.path.join(tmp, "base")
@@ -125,8 +125,8 @@ def body_file(dirpath: str, name: str = "body.md") -> str:
 
 
 def task_rel(repo: str) -> str:
-    """`repo` の置き場（`.tw/config.toml` があれば `TASK_REL`、無ければ互換の `develop/task`）。"""
-    return TASK_REL if os.path.exists(os.path.join(repo, ".tw", "config.toml")) else "develop/task"
+    """`repo` のタスクファイルの置き場。"""
+    return TASK_REL
 
 
 def commit_task(main_path: str, task: taskfile.Task) -> None:

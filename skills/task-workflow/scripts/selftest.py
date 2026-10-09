@@ -130,9 +130,9 @@ def test_find_legacy_section() -> None:
             str(found),
         )
 
-        check("develop/direction.md が無ければ read_config は旧い節を読まない", layout.read_config(d).source is None)
+        check("read_config は旧い節を読まない", layout.read_config(d).source is None)
         write(os.path.join(d, "develop", "direction.md"), "# x\n")
-        check("develop/direction.md があれば旧い節を写して読む", layout.read_config(d).source == "AGENTS.md")
+        check("develop/direction.md があっても旧い節を読まない", layout.read_config(d).source is None)
 
         write(os.path.join(d, "CLAUDE.md"), f"# y\n\n{section}")
         raised = False

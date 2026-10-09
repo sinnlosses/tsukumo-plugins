@@ -348,22 +348,26 @@ def test_config_file_agents_md_and_conflict() -> None:
               r.stdout + r.stderr)
 
 
-def _make_config_doctor_repo(tmp: str, name: str) -> str:
-    """`task config-doctor`・`task config` のフィクスチャ用の最小リポジトリ（旧い節の CLAUDE.md）。"""
+def _make_config_doctor_repo(tmp: str, name: str, old_layout: bool = False) -> str:
+    """`task config-doctor`・`task config` のフィクスチャ用の最小リポジトリ。
+    既定は `.tw/config.toml` の配置で、`old_layout` なら旧配置（`develop/direction.md` と CLAUDE.md の旧い節。`.tw/config.toml` 無し）。"""
     repo = os.path.join(tmp, name)
     os.makedirs(repo)
     git(repo, "init", "-q", "-b", "main")
     git(repo, "config", "user.email", "test@example.com")
     git(repo, "config", "user.name", "test")
     write(
-        os.path.join(repo, "develop", "direction.md"),
+        os.path.join(repo, "develop" if old_layout else ".tw", "direction.md"),
         "# 未対応の指示メモ\n\n## ユーザーから\n\n## エージェントのドラフト\n",
     )
     write(os.path.join(repo, "docs", "history", "tasks.md"), "# 完了タスクのアーカイブ\n")
-    write(
-        os.path.join(repo, "CLAUDE.md"),
-        "# x\n\n## タスク運用\n\n- 検証コマンド: なし\n- 整形コマンド: なし\n- ブランチ: 既定\n",
-    )
+    if old_layout:
+        write(
+            os.path.join(repo, "CLAUDE.md"),
+            "# x\n\n## タスク運用\n\n- 検証コマンド: なし\n- 整形コマンド: なし\n- ブランチ: 既定\n",
+        )
+    else:
+        write(os.path.join(repo, ".tw", "config.toml"), 'verify = "なし"\nbranch = "既定"\n')
     git(repo, "add", "-A")
     git(repo, "commit", "-q", "-m", "init")
     return repo
@@ -377,11 +381,11 @@ def test_config_doctor() -> None:
         r = run_task(repo, "config-doctor")
         lines = r.stdout.splitlines()
         check(
-            "OKのリポジトリは終了コード0で検査がOK、旧い節で読んでいれば old_section の行も出す",
+            "OKのリポジトリは終了コード0で検査がOK、old_section の行は無い",
             r.returncode == 0
             and any(l.startswith("base_branch\tOK\tmain\t順3") for l in lines)
-            and any(l.startswith("config\tOK\tCLAUDE.md") for l in lines)
-            and "old_section\tFOUND\tCLAUDE.md" in lines
+            and any(l.startswith("config\tOK\t.tw/config.toml") for l in lines)
+            and not any(l.startswith("old_section") for l in lines)
             and "legacy\tOK" in lines,
             r.stdout + r.stderr,
         )
@@ -408,33 +412,27 @@ def test_config_doctor() -> None:
         )
 
     with tempfile.TemporaryDirectory() as tmp:
-        # AGENTS.md と CLAUDE.md の両方に「## タスク運用」節があるケース。
-        repo = _make_config_doctor_repo(tmp, "conflict")
-        write(os.path.join(repo, "AGENTS.md"), "# a\n\n## タスク運用\n\n- ブランチ: 既定\n")
+        # 旧配置（.tw/config.toml 無し）: 節は読まず、config は MISSING で直す案内になる。
+        repo = _make_config_doctor_repo(tmp, "old", old_layout=True)
         r = run_task(repo, "config-doctor")
         lines = r.stdout.splitlines()
         check(
-            "両方に節があれば終了コード3で全検査がINVALIDと言う",
-            r.returncode == 3
-            and any(l.startswith("base_branch\tINVALID\t") for l in lines)
-            and any(l.startswith("config\tINVALID\t") for l in lines)
+            "旧配置は終了コード1で config が MISSING、old_section の行は出さない",
+            r.returncode == 1
+            and any(l.startswith("config\tMISSING\t.tw/config.toml") for l in lines)
+            and not any(l.startswith("old_section") for l in lines)
             and "legacy\tOK" in lines,
             r.stdout + r.stderr,
         )
 
     with tempfile.TemporaryDirectory() as tmp:
         repo = _make_config_doctor_repo(tmp, "bad-branch")
-        write(
-            os.path.join(repo, "CLAUDE.md"),
-            "# x\n\n## タスク運用\n\n- 検証コマンド: なし\n- ブランチ: 自分で切らない\n- タスクの置き場: develop/task\n",
-        )
+        write(os.path.join(repo, ".tw", "config.toml"), 'verify = "なし"\nbranch = "自分で切らない"\n')
         r = run_task(repo, "config-doctor")
         lines = r.stdout.splitlines()
         check(
-            "旧い節のブランチが語彙の外なら config INVALID で、store の検査は続ける",
-            r.returncode == 3
-            and any(l.startswith("config\tINVALID\tCLAUDE.md\t") for l in lines)
-            and "store\tOK\tfiles" in lines,
+            "branch が語彙の外なら config INVALID（終了コード3）",
+            r.returncode == 3 and any(l.startswith("config\tINVALID\t.tw/config.toml") for l in lines),
             r.stdout + r.stderr,
         )
 
@@ -464,7 +462,7 @@ def test_config_doctor() -> None:
 def test_config_command() -> None:
     say("task.py config: 解けた設定を出す")
     with tempfile.TemporaryDirectory() as tmp:
-        repo = _make_config_doctor_repo(tmp, "legacy")
+        repo = _make_config_doctor_repo(tmp, "legacy", old_layout=True)
         r = run_task(repo, "config")
         lines = r.stdout.splitlines()
         check(
@@ -489,9 +487,8 @@ def test_config_command() -> None:
             r.stdout + r.stderr,
         )
         r = run_task(repo, "status")
-        check("status は節の old_layout を出さず、develop/ に残った置き場を old_layout で知らせる",
-              "old_layout\tCLAUDE.md\ttw migrate-layout --dry-run" not in r.stdout.splitlines()
-              and "old_layout\tdevelop/\ttw migrate-layout --dry-run" in r.stdout.splitlines(), r.stdout + r.stderr)
+        check("config.toml があれば status は old_layout の行を出さない",
+              r.returncode == 0 and "old_layout" not in r.stdout, r.stdout + r.stderr)
 
         write(os.path.join(repo, ".tw", "config.toml"), 'verify = "x"\nbranch = 1\n')
         r = run_task(repo, "config")

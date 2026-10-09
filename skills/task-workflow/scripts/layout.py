@@ -10,7 +10,6 @@
 
 from __future__ import annotations
 
-import dataclasses
 import os
 import posixpath
 import re
@@ -91,7 +90,7 @@ class ConfigError(RuntimeError):
 
 @dataclass(frozen=True)
 class Config:
-    """解けた設定。`source` は読んだファイル（`CONFIG_PATH`・`AGENTS.md`・`CLAUDE.md`。どれも無ければ `None`）。
+    """解けた設定。`source` は読んだファイル（`CONFIG_PATH`。無ければ `None`）。
 
     `written` は設定に書いてあったキー。
     """
@@ -111,10 +110,6 @@ class Config:
     written: frozenset = frozenset()
 
     @property
-    def legacy(self) -> bool:
-        return self.source in CONFIG_FILENAMES
-
-    @property
     def project_owner_number(self) -> tuple[str, str] | None:
         m = GITHUB_PROJECT_PATTERN.fullmatch(self.github_project or "")
         return (m.group(1), m.group(2)) if m else None
@@ -124,13 +119,12 @@ _config_cache: dict[str, tuple[tuple, Config]] = {}
 
 
 def read_config(toplevel: str) -> Config:
-    """`toplevel` の設定。`.tw/config.toml` が無く `develop/direction.md` があれば旧い「## タスク運用」節を
-    写して読み、根は `develop`。どちらも無ければ既定の `Config(source=None)`。
+    """`toplevel` の設定。`.tw/config.toml` が無ければ既定の `Config(source=None)`。
 
     根ごとに覚え、設定のファイルが変わっていれば読み直す。読めなければ `ConfigError`。
     """
     root = os.path.realpath(toplevel)
-    stamp = tuple(_mtime(os.path.join(root, p)) for p in (CONFIG_PATH, LEGACY_DIRECTION_PATH, *CONFIG_FILENAMES))
+    stamp = _mtime(os.path.join(root, CONFIG_PATH))
     cached = _config_cache.get(root)
     if cached is not None and cached[0] == stamp:
         return cached[1]
@@ -138,8 +132,6 @@ def read_config(toplevel: str) -> Config:
     if os.path.exists(path):
         with open(path, encoding="utf-8") as f:
             config = _config_from_values(CONFIG_PATH, parse_config_text(f.read(), CONFIG_PATH))
-    elif os.path.exists(os.path.join(root, LEGACY_DIRECTION_PATH)):
-        config = dataclasses.replace(_config_from_legacy_section(root), root=LEGACY_ROOT)
     else:
         config = Config(source=None)
     _config_cache[root] = (stamp, config)
@@ -291,11 +283,10 @@ def build_config(source: str | None, values: dict[str, str | None]) -> Config:
     return config
 
 
-# --- 旧い「## タスク運用」節（`.tw/config.toml` が無いプロジェクトの互換） -----------
+# --- 旧い「## タスク運用」節（`tw migrate-layout` だけが読む） -----------
 
 CONFIG_FILENAMES = ("AGENTS.md", "CLAUDE.md")
 TASK_SECTION_HEADING = "## タスク運用"
-_LEGACY_STORE_FILES = "develop/task"
 
 
 def has_task_section(text: str) -> bool:
@@ -320,20 +311,6 @@ def find_legacy_section(root: str) -> tuple[str, str] | None:
     if len(hits) > 1:
         raise ConfigError("AGENTS.md と CLAUDE.md の両方に「## タスク運用」節がある")
     return hits[0] if hits else None
-
-
-def _legacy_lines(text: str) -> dict[str, str]:
-    """節の中の `- <ラベル>: <値>` を、ラベルごとに最初の1行だけ拾う。"""
-    found: dict[str, str] = {}
-    in_section = False
-    for line in text.splitlines():
-        if line.startswith("## "):
-            in_section = line.startswith(TASK_SECTION_HEADING)
-            continue
-        m = re.match(r"- ([^:]+):(.*)$", line) if in_section else None
-        if m and m.group(1) not in found:
-            found[m.group(1)] = m.group(2).strip()
-    return found
 
 
 LEGACY_LABELS = {
@@ -386,51 +363,3 @@ def legacy_section_lines(text: str) -> list[LegacyLine]:
                                 tuple(l.strip() for l in lines[i + 1 : end]), i, end))
         i = end
     return found
-
-
-def _legacy_word(value: str) -> str:
-    quoted = re.search(r"`([^`]+)`", value)
-    word = quoted.group(1).strip() if quoted else (value.split() or [""])[0]
-    return re.split(r"[（(、。]", word)[0].strip("`").strip()
-
-
-def _legacy_command(value: str) -> str | None:
-    if value.startswith(NO_COMMAND):
-        return None
-    m = re.search(r"`([^`]+)`", value)
-    return m.group(1) if m else None
-
-
-def _config_from_legacy_section(root: str) -> Config:
-    found = find_legacy_section(root)
-    if found is None:
-        return Config(source=None)
-    path, text = found
-    lines = _legacy_lines(text)
-    values: dict[str, str | None] = {}
-    for label, key in (
-        ("検証コマンド", "verify"),
-        ("送る前の検証コマンド", "verify_before_ship"),
-        ("整形コマンド", "format"),
-        ("規則の発火の集計", "hook_tally"),
-    ):
-        if label in lines:
-            values[key] = _legacy_command(lines[label])
-    if "ブランチ" in lines:
-        value = lines["ブランチ"]
-        values["branch"] = next((w for w in BRANCH_VALUES if value.startswith(w)), None) or (value.split() or [""])[0]
-    for label, key in (("主ブランチ", "base_branch"), ("バックアップ", "backup"), ("GitHub Project", "github_project")):
-        if label in lines:
-            values[key] = _legacy_word(lines[label]) or None
-    if "タスクの置き場" in lines:
-        word = _legacy_word(lines["タスクの置き場"])
-        store = {_LEGACY_STORE_FILES: STORE_FILES, STORE_BEADS: STORE_BEADS}.get(word)
-        if store is None:
-            raise ConfigError(f"- タスクの置き場: の値 {word!r} を機械が読めない（{_LEGACY_STORE_FILES} / {STORE_BEADS}）")
-        values["store"] = store
-    if lines.get("トラッカー"):
-        word = _legacy_word(lines["トラッカー"])
-        if word not in TRACKER_VALUES:
-            raise ConfigError(f"- トラッカー: の値 {word!r} を機械が読めない（{' / '.join(TRACKER_VALUES)}）")
-        values["tracker"] = word
-    return build_config(os.path.basename(path), values)

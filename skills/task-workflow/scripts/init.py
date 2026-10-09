@@ -127,13 +127,12 @@ def create(path: str, body: str, check) -> None:
 def check_config(root: str = ".") -> tuple[str, layout.Config | None]:
     """設定が読めるかの1行 `<OK|MISSING|INVALID>\t<ファイル>\t<詳細>` と、読めた `Config`（読めなければ `None`）。
 
-    旧い節の `- ブランチ:` が語彙の外なら行は `INVALID` で、`Config` は返す。書き換えはしない。
+    `branch` が語彙の外なら行は `INVALID` で、`Config` は返す。書き換えはしない。
     """
     try:
         config = layout.read_config(root)
     except layout.ConfigError as e:
-        where = layout.CONFIG_PATH if os.path.exists(os.path.join(root, layout.CONFIG_PATH)) else "/".join(layout.CONFIG_FILENAMES)
-        return f"INVALID\t{where}\t{e}", None
+        return f"INVALID\t{layout.CONFIG_PATH}\t{e}", None
     if config.source is None:
         return f"MISSING\t{layout.CONFIG_PATH}\t（verify を書いて作る）", config
     if config.branch not in layout.BRANCH_VALUES:

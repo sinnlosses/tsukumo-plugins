@@ -198,7 +198,7 @@ def test_migrate_dry_run_then_real() -> None:
         )
         check("REMOVEにtasks.jsonが出る", "REMOVE\tdevelop/tasks.json" in lines, r.stdout)
         check("末尾はPLAN\\t3", lines[-1] == "PLAN\t3", r.stdout)
-        check("dry-runはファイルを作らない", not os.path.isdir(os.path.join(repo, "develop", "task")))
+        check("dry-runはファイルを作らない", not os.path.isdir(os.path.join(repo, TASK_REL)))
         check("dry-runはtasks.jsonを消さない", os.path.exists(os.path.join(repo, "develop", "tasks.json")))
 
         r = run_task(repo, "migrate")
@@ -207,7 +207,7 @@ def test_migrate_dry_run_then_real() -> None:
         check("末尾はMIGRATED\\t3", lines[-1] == "MIGRATED\t3", r.stdout)
         check("tasks.jsonがファイルから消える", not os.path.exists(os.path.join(repo, "develop", "tasks.json")))
 
-        task_dir = os.path.join(repo, "develop", "task")
+        task_dir = os.path.join(repo, TASK_REL)
         t1, err1 = taskfile.read_task_file(os.path.join(task_dir, "T-001.md"))
         check("todoはtodoのまま", err1 is None and t1 is not None and t1.status == "todo", str(err1))
 
@@ -247,7 +247,7 @@ def test_migrate_dry_run_then_real() -> None:
 
         staged = git(repo, "diff", "--cached", "--name-only").stdout
         check("tasks.jsonの削除がstageされる", "develop/tasks.json" in staged, staged)
-        check("develop/task/以下がstageされる", "develop/task/T-001.md" in staged, staged)
+        check(".tw/task/以下がstageされる", f"{TASK_REL}/T-001.md" in staged, staged)
         check("progress.mdの更新がstageされる", "develop/progress.md" in staged, staged)
         check("history/progress.mdの追記もstageされる", "docs/history/progress.md" in staged, staged)
         check(
@@ -256,7 +256,7 @@ def test_migrate_dry_run_then_real() -> None:
         )
 
         r = run_task(repo, "status", "--all")
-        check("migrate後の develop/ の置き場は旧配置なので status は OLD_LAYOUT で止まり、migrate-layout へ導く",
+        check("migrate後も設定が無く develop/direction.md が残るので status は OLD_LAYOUT で止まり、migrate-layout へ導く",
               r.returncode == 5 and r.stdout == "OLD_LAYOUT\ttw migrate-layout --dry-run\n", r.stdout + r.stderr)
 
 
@@ -300,7 +300,7 @@ def test_migrate_stops_on_doing() -> None:
             r.returncode == 4 and r.stdout.strip() == "NOT_READY\tT-001\tdoing",
             r.stdout + r.stderr,
         )
-        check("develop/task/は作られない", not os.path.isdir(os.path.join(repo, "develop", "task")))
+        check(".tw/task/は作られない", not os.path.isdir(os.path.join(repo, TASK_REL)))
 
 
 def test_migrate_dirty_worktree_stops() -> None:
@@ -433,8 +433,8 @@ def test_migrate_layout() -> None:
         git(main_path, "add", "-A")
         git(main_path, "commit", "-q", "-m", "T-055 の時代の配置")
         r = run_task(main_path, "status")
-        check("config.toml があっても develop/ に置き場が残っていれば status は old_layout を出す",
-              "old_layout\tdevelop/\ttw migrate-layout --dry-run" in r.stdout.splitlines(), r.stdout + r.stderr)
+        check("config.toml があれば develop/ に置き場が残っていても status は止まらず old_layout を出さない",
+              r.returncode == 0 and "old_layout" not in r.stdout, r.stdout + r.stderr)
         r = run_task(main_path, "migrate-layout")
         lines = r.stdout.splitlines()
         check("config.toml があっても develop/ の置き場を根の下へ git mv し、config.toml は書かない",
@@ -455,8 +455,8 @@ def test_migrate_layout() -> None:
         git(main_path, "add", "-A")
         git(main_path, "commit", "-q", "-m", "両方にある")
         r = run_task(main_path, "status")
-        check("根の下にも同じ名前があっても、develop/ に残った置き場を old_layout で知らせる",
-              "old_layout\tdevelop/\ttw migrate-layout --dry-run" in r.stdout.splitlines(), r.stdout + r.stderr)
+        check("根の下にも同じ名前があっても status は old_layout を出さない",
+              r.returncode == 0 and "old_layout" not in r.stdout, r.stdout + r.stderr)
         r = run_task(main_path, "migrate-layout")
         check("根の下にも同じ名前があれば INVALID（終了コード3）で何も変えない",
               r.returncode == 3 and r.stdout.strip() == "INVALID\t.tw/direction.md が既にある（develop/direction.md を移せない）"

@@ -98,7 +98,6 @@ def cmd_status(toplevel: str, show_all: bool, check: bool) -> None:
     tw_base.print_split_claims(ledger.split_claims(cwd=toplevel))
     _print_retrospect_due(toplevel)
     _print_legacy_progress(toplevel)
-    _print_old_layout(toplevel)
 
 
 def _print_status_table(
@@ -183,14 +182,6 @@ def _print_legacy_progress(toplevel: str) -> None:
         )
 
 
-def _print_old_layout(toplevel: str) -> None:
-    config = layout.read_config(toplevel)
-    if config.legacy:
-        print(f"old_layout\t{config.source}\ttw migrate-layout --dry-run")
-    elif layout.stranded_legacy_places(toplevel, config):
-        print(f"old_layout\t{layout.LEGACY_ROOT}/\ttw migrate-layout --dry-run")
-
-
 CONFIG_COMMAND_KEYS = ("verify", "verify_before_ship", "format", "hook_tally")
 
 
@@ -200,7 +191,7 @@ def cmd_config(toplevel: str) -> None:
     if config.source is None:
         print(f"MISSING\t{layout.CONFIG_PATH}")
         raise SystemExit(6)
-    print(f"CONFIG\t{config.source}" + ("（旧節）" if config.legacy else ""))
+    print(f"CONFIG\t{config.source}")
     for key in layout.CONFIG_KEYS:
         value = getattr(config, key)
         if key == "base_branch" and value is None:
@@ -284,7 +275,6 @@ def cmd_beads_status(toplevel: str, show_all: bool, check: bool) -> None:
         print(f"jira_close\t{len(waiting)}\t" + (",".join(waiting) or "-"))
     _print_retrospect_due(toplevel)
     _print_legacy_progress(toplevel)
-    _print_old_layout(toplevel)
 
 
 def cmd_show(toplevel: str, task_id: str, store: str) -> None:
