@@ -73,6 +73,7 @@ def test_weekly() -> None:
         git(d, "config", "user.email", "test@example.com")
         git(d, "config", "user.name", "test")
         write(os.path.join(d, "hook.sh"), 'echo "直近 30 日の拒否の回数"\necho "deny-a: 0"\necho "deny-b: 12"\n')
+        write(os.path.join(d, "CLAUDE.md"), "# x\n")
         write(os.path.join(d, ".tw", "direction.md"), "# 未対応の指示メモ\n\n## ユーザーから\n")
         write(os.path.join(d, ".tw", "config.toml"), 'verify = "なし"\nhook_tally = "sh hook.sh"  # 直近30日\n')
         git(d, "add", "-A")
