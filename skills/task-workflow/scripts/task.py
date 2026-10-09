@@ -3,7 +3,7 @@
 
 使い方: tw <status|new|claim|release|done|ship|land|prune|migrate|migrate-layout|config-doctor|show|edit|plan-check|verify|verify-check|pause|step|commit-guard|handback-guard> ...
 
-正典は `docs/task-workflow-redesign.md`（5章が `task` コマンド、4章が状態と台帳、
+正典は claude-skills の `docs/history/task-workflow-redesign.md`（5章が `task` コマンド、4章が状態と台帳、
 3章がタスクファイル、6章が送り出し、5.9・10章が `migrate`）。`install.sh` が PATH 上に張る
 `tw` と、plugin の `bin/tw` から呼ぶ。`commit-guard`・`handback-guard` の `--agent-scoped` は plugin の
 `hooks/hooks.json` が付け、`agent_type` の末尾が `no-delegate` のときだけ関門を掛ける。スキル側の呼び方の正典は task-workflow の WORKFLOW.md「`tw` コマンドの参照」。

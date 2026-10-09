@@ -9,7 +9,7 @@ git の外の台帳（以下の節の大半）。
 `/next-task`・`/plan-tasks`・`/list-tasks`・`/retrospect`・`/setup-tasks` が従うルール。
 **手順は `tw` コマンドが持ち、自己テスト（`scripts/selftest_task.py`）で守る。** スキルの本文は
 「どのサブコマンドをいつ打つか」と「人が判断する点」だけで、プロジェクト側で手順を上書きする
-仕組みは無い。設計の経緯と採らなかった案は、切り出す前の置き場 `sinnlosses/claude-skills` の `docs/task-workflow-redesign.md`。
+仕組みは無い。設計の経緯と採らなかった案は、切り出す前の置き場 `sinnlosses/claude-skills` の `docs/history/task-workflow-redesign.md`。
 
 ## 目次
 

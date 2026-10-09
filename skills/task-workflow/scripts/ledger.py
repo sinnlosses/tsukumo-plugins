@@ -1,7 +1,7 @@
 """共有の `.git` の中に置く台帳（着手の印・採番の錠・最後の番号・登録時の計画の控え）と、
 作業ツリーの根の `.tw/local/` に置く作業ツリーごとの控え（検証・中断・段の鍵、着手の控え、ログ）。
 
-正典は `docs/task-workflow-redesign.md` の4.2〜4.3。台帳はクローンに1つ
+正典は claude-skills の `docs/history/task-workflow-redesign.md` の4.2〜4.3。台帳はクローンに1つ
 （`git rev-parse --path-format=absolute --git-common-dir` の下）で、どちらもコミットしないので主ブランチを動かさない。取り合いの判定は `mkdir` の成否だけで決める
 （不可分な操作なので、2プロセスが同時に呼んでも一方だけが成功する）。
 """

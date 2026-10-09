@@ -1,6 +1,6 @@
 """`<根>/task/T-xxx.md` の読み書き（front matter の専用文法、本文の節の検査）。
 
-正典は `docs/task-workflow-redesign.md` の3章。front matter は **YAML ではない**
+正典は claude-skills の `docs/history/task-workflow-redesign.md` の3章。front matter は **YAML ではない**
 専用の6行（`id` / `summary` / `status` / `difficulty` / `loopable` / `dependencies`。
 `loopable` の次に任意の `direct: Y` を置けば7行）で、
 この順・この綴りでなければそのファイルを INVALID にする（同章「front matter の文法」）。

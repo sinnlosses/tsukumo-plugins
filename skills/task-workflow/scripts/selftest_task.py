@@ -5,7 +5,7 @@
 
 一時ディレクトリに git リポジトリと作業ツリー2本を作り、`task.py` を実際に
 子プロセスで（並行するテストは同時に）起こして検証する。テストは領域ごとに `selftest_t_*.py` へ分け、この入口がそれを並列に流す。正典は
-`docs/task-workflow-redesign.md`。落ちたら非0で終わる（`selftest.py` と同じ形）。
+claude-skills の `docs/history/task-workflow-redesign.md`。落ちたら非0で終わる（`selftest.py` と同じ形）。
 """
 
 from __future__ import annotations
