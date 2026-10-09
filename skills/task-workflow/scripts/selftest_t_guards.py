@@ -431,7 +431,7 @@ def test_handback_guard_other_repo() -> None:
 def test_worktree_state_dir() -> None:
     say("ledger.py .tw/local/: 作業ツリーごとの控えとログを .tw/local/ に置き、旧い置き場の控えも読んで移す")
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, wt2 = make_repo(tmp, verify="`true`", config_filename="CLAUDE.md")
+        main_path, wt1, wt2 = make_repo(tmp, verify="`true`")
         commit_task(main_path, taskfile.Task("T-100", "新しい置き場", "todo", "sonnet", "Y", (), BODY))
         commit_task(main_path, taskfile.Task("T-101", "古い置き場", "todo", "sonnet", "Y", (), BODY))
 

@@ -393,23 +393,13 @@ def test_ship_default_branch_leaves_feature_branch() -> None:
 
 
 def test_branch_setting_reads_leading_word() -> None:
-    say("task.py claim: 旧い節の - ブランチ: は先頭語だけを読み、config.toml の branch は語彙の外なら INVALID")
+    say("task.py claim: config.toml の branch は語彙の外なら INVALID")
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(
-            tmp, branch="切らない。作業ツリーの枝のまま ship で送る", config_filename="CLAUDE.md"
-        )
-        commit_task(main_path, taskfile.Task("T-100", "先頭語", "todo", "sonnet", "Y", (), BODY))
+        main_path, wt1, _wt2 = make_repo(tmp, branch="自分で切らない")
+        commit_task(main_path, taskfile.Task("T-100", "語彙外", "todo", "sonnet", "Y", (), BODY))
         r = run_task(wt1, "claim", "T-100")
-        check("旧い節は句読点で続いても切らない として読む", r.returncode == 0 and "branch=wt1-branch" in r.stdout,
+        check("config.toml: 語彙に無い値は INVALID（終了コード3）", r.returncode == 3 and r.stdout.startswith("INVALID\t"),
               r.stdout + r.stderr)
-
-    for where, kwargs in (("旧い節", {"config_filename": "CLAUDE.md"}), ("config.toml", {})):
-        with tempfile.TemporaryDirectory() as tmp:
-            main_path, wt1, _wt2 = make_repo(tmp, branch="自分で切らない", **kwargs)
-            commit_task(main_path, taskfile.Task("T-100", "語彙外", "todo", "sonnet", "Y", (), BODY))
-            r = run_task(wt1, "claim", "T-100")
-            check(f"{where}: 語彙に無い値は INVALID（終了コード3）", r.returncode == 3 and r.stdout.startswith("INVALID\t"),
-                  r.stdout + r.stderr)
 
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, _wt2 = make_repo(tmp, branch="切らない。説明")
@@ -428,8 +418,6 @@ def test_branch_setting_missing_is_default() -> None:
     say("task.py claim・ship: branch が無ければ `既定` として枝を切り、ship は送る")
     for reason, kwargs in (
         ("config.toml に branch が無い", {"branch": None}),
-        ("旧い節に - ブランチ: 行が無い", {"branch": None, "config_filename": "CLAUDE.md"}),
-        ("設定がどこにも無い", {"section": False}),
     ):
         with tempfile.TemporaryDirectory() as tmp:
             main_path, wt1, _wt2 = make_repo(tmp, **kwargs)
@@ -464,17 +452,6 @@ def test_base_branch_resolution() -> None:
         write(config, body + 'base_branch = "master"  # 保護ブランチ\n')
         ledger.clear_base_branch_cache()
         check("順1: base_branch が最優先", ledger.base_branch(cwd=master_repo) == "master")
-
-    with tempfile.TemporaryDirectory() as tmp:
-        ledger.clear_base_branch_cache()
-        master_repo, _wt1, _wt2 = make_repo(tmp, base="master", config_filename="CLAUDE.md")
-        git(master_repo, "branch", "main")
-        claude_md = os.path.join(master_repo, "CLAUDE.md")
-        with open(claude_md, encoding="utf-8") as f:
-            body = f.read()
-        write(claude_md, body.replace("- ブランチ:", "- 主ブランチ: `master`（保護ブランチ）\n- ブランチ:"))
-        ledger.clear_base_branch_cache()
-        check("旧い節の `- 主ブランチ:` 行も順1（バッククォートも落ちる）", ledger.base_branch(cwd=master_repo) == "master")
 
     with tempfile.TemporaryDirectory() as tmp:
         # 順2: origin/HEAD の枝名。候補の順（main が先）より優先する。
