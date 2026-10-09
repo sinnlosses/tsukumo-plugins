@@ -336,7 +336,7 @@ Beads 方式は label `direct:Y`。`tw new --direct`・`tw edit --direct Y|N`・
 - 差分の行数は測らない。近道の大きさは、事前に測れる段の数と名指すファイルの数で抑える
 - `/loop` での文脈: 近道でメインが読むのは `tw show`・名指すファイル（数は上の表の基準まで）・`tw verify` の出力の末尾だけで、
   検証のログ全文・正典・`retrospect` は読まない。上の委譲の実測（約7,000文字）と同じ桁に収まり、上限は
-  `/next-task` の続行判断（`context_size.py`）に任せる
+  `/next-task` の続行判断に任せる（送り直すツールがあれば毎回空にし、無ければ `context_size.py` で判断する）
 - **基準を見直す手がかり**: 週ごとの振り返りで `tw metrics --stages` の道の列（`direct`／`normal`）を同じ
   `difficulty` どうしで比べる。近道の段の合計が通常より縮んでいなければ、基準を狭める（表と定数を直す）
 
