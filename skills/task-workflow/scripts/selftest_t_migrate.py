@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import os
+import shutil
 import tempfile
 
 from selftest_support import check, git, say, weight, write  # noqa: E402
+import ledger  # noqa: E402
 import legacy  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_fixtures import BODY, TASK_REL, _make_legacy_repo, commit_task, make_repo, run_task  # noqa: E402
@@ -254,9 +256,8 @@ def test_migrate_dry_run_then_real() -> None:
         )
 
         r = run_task(repo, "status", "--all")
-        check("migrate後はstatusが読める（NEW形式になる）", r.returncode == 0, r.stdout + r.stderr)
-        ids_out = {l.split("\t")[0] for l in r.stdout.splitlines() if l.startswith("T-0")}
-        check("3件とも一覧に出る", ids_out == {"T-001", "T-002", "T-003"}, r.stdout)
+        check("migrate後の develop/ の置き場は旧配置なので status は OLD_LAYOUT で止まり、migrate-layout へ導く",
+              r.returncode == 5 and r.stdout == "OLD_LAYOUT\ttw migrate-layout --dry-run\n", r.stdout + r.stderr)
 
 
 def test_migrate_keeps_preamble_when_sections_empty() -> None:
@@ -334,11 +335,19 @@ MIGRATE_LAYOUT_SECTION = (
 def test_migrate_layout() -> None:
     say("task.py migrate-layout: 旧配置を .tw/ へ移す（git add まで）")
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp, config_filename="CLAUDE.md")
+        main_path, wt1, _wt2 = make_repo(tmp)
+        commit_task(main_path, taskfile.Task("T-100", "移すもの", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        os.makedirs(os.path.join(main_path, "develop"), exist_ok=True)
+        git(main_path, "mv", ".tw/direction.md", "develop/direction.md")
+        git(main_path, "mv", ".tw/task", "develop/task")
+        git(main_path, "rm", "-q", "-r", "-f", ".tw")
         write(os.path.join(main_path, "CLAUDE.md"), MIGRATE_LAYOUT_SECTION)
         write(os.path.join(main_path, "develop", "draft", "x.md"), "- **x**\n")
         write(os.path.join(main_path, "develop", "notes.txt"), "x\n")
-        commit_task(main_path, taskfile.Task("T-100", "移すもの", "todo", "sonnet", "Y", (), BODY))
+        git(main_path, "add", "-A")
+        git(main_path, "commit", "-q", "-m", "旧配置")
+        git(wt1, "merge", "-q", "--ff-only", "main")
         tw = os.path.join(main_path, ".tw")
         write(os.path.join(tw, ".gitignore"), "*\n")
         write(os.path.join(tw, "task-verify-stamp"), "x\ny\nz\n")
@@ -351,7 +360,6 @@ def test_migrate_layout() -> None:
         check("汚れていれば DIRTY（終了コード4）", r.returncode == 4 and r.stdout.strip() == "DIRTY", r.stdout + r.stderr)
         os.remove(os.path.join(main_path, "dirt.txt"))
 
-        run_task(wt1, "claim", "T-100")
         r = run_task(main_path, "migrate-layout", "--dry-run")
         check("ほかの作業ツリーの着手の印があれば BUSY（終了コード4）",
               r.returncode == 4 and r.stdout.startswith("BUSY\tT-100\t") and r.stdout.rstrip().endswith("wt1"),
@@ -359,7 +367,7 @@ def test_migrate_layout() -> None:
         r = run_task(wt1, "migrate-layout", "--dry-run")
         check("自分の作業ツリーの印は BUSY にしない", r.returncode == 0 and r.stdout.splitlines()[-1] == "PLAN",
               r.stdout + r.stderr)
-        run_task(wt1, "release", "T-100")
+        shutil.rmtree(ledger.claim_dir(ledger.ledger_root(cwd=wt1), "T-100"))
 
         r = run_task(main_path, "migrate-layout", "--dry-run")
         lines = r.stdout.splitlines()

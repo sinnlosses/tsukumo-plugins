@@ -18,6 +18,7 @@ import ledger
 
 CONFIG_HEADER = "# タスク運用の設定（tw が読む）\n"
 # `.tw/` 直下にあってよいもの（コミットするものと控えの置き場）
+_LEGACY_STORE_FILES = "develop/task"
 _TW_KNOWN = (".gitignore", "config.toml", "local", "direction.md", "draft", "task")
 
 
@@ -30,11 +31,11 @@ class Outcome:
 def migrate_layout(toplevel: str, dry_run: bool) -> Outcome:
     if not ledger.is_clean(cwd=toplevel):
         return Outcome("DIRTY")
-    config = layout.read_config(toplevel)
+    has_config = os.path.exists(os.path.join(toplevel, layout.CONFIG_PATH))
+    config = layout.read_config(toplevel) if has_config else config_from_legacy_section(toplevel)
     busy = _busy(toplevel, config.store)
     if busy:
         return Outcome("BUSY", busy)
-    has_config = os.path.exists(os.path.join(toplevel, layout.CONFIG_PATH))
 
     if has_config:
         candidates = layout.stranded_legacy_places(toplevel, config)
@@ -94,6 +95,68 @@ def migrate_layout(toplevel: str, dry_run: bool) -> Outcome:
     if staged:
         _git(toplevel, ["add", "--", *staged])
     return Outcome("MIGRATED", lines)
+
+
+def _legacy_lines(text: str) -> dict[str, str]:
+    """節の中の `- <ラベル>: <値>` を、ラベルごとに最初の1行だけ拾う。"""
+    found: dict[str, str] = {}
+    in_section = False
+    for line in text.splitlines():
+        if line.startswith("## "):
+            in_section = line.startswith(layout.TASK_SECTION_HEADING)
+            continue
+        m = re.match(r"- ([^:]+):(.*)$", line) if in_section else None
+        if m and m.group(1) not in found:
+            found[m.group(1)] = m.group(2).strip()
+    return found
+
+
+def _legacy_word(value: str) -> str:
+    quoted = re.search(r"`([^`]+)`", value)
+    word = quoted.group(1).strip() if quoted else (value.split() or [""])[0]
+    return re.split(r"[（(、。]", word)[0].strip("`").strip()
+
+
+def _legacy_command(value: str) -> str | None:
+    if value.startswith(layout.NO_COMMAND):
+        return None
+    m = re.search(r"`([^`]+)`", value)
+    return m.group(1) if m else None
+
+
+def config_from_legacy_section(root: str) -> layout.Config:
+    found = layout.find_legacy_section(root)
+    if found is None:
+        return layout.Config(source=None)
+    path, text = found
+    lines = _legacy_lines(text)
+    values: dict[str, str | None] = {}
+    for label, key in (
+        ("検証コマンド", "verify"),
+        ("送る前の検証コマンド", "verify_before_ship"),
+        ("整形コマンド", "format"),
+        ("規則の発火の集計", "hook_tally"),
+    ):
+        if label in lines:
+            values[key] = _legacy_command(lines[label])
+    if "ブランチ" in lines:
+        value = lines["ブランチ"]
+        values["branch"] = next((w for w in layout.BRANCH_VALUES if value.startswith(w)), None) or (value.split() or [""])[0]
+    for label, key in (("主ブランチ", "base_branch"), ("バックアップ", "backup"), ("GitHub Project", "github_project")):
+        if label in lines:
+            values[key] = _legacy_word(lines[label]) or None
+    if "タスクの置き場" in lines:
+        word = _legacy_word(lines["タスクの置き場"])
+        store = {_LEGACY_STORE_FILES: layout.STORE_FILES, layout.STORE_BEADS: layout.STORE_BEADS}.get(word)
+        if store is None:
+            raise layout.ConfigError(f"- タスクの置き場: の値 {word!r} を機械が読めない（{_LEGACY_STORE_FILES} / {layout.STORE_BEADS}）")
+        values["store"] = store
+    if lines.get("トラッカー"):
+        word = _legacy_word(lines["トラッカー"])
+        if word not in layout.TRACKER_VALUES:
+            raise layout.ConfigError(f"- トラッカー: の値 {word!r} を機械が読めない（{' / '.join(layout.TRACKER_VALUES)}）")
+        values["tracker"] = word
+    return layout.build_config(os.path.basename(path), values)
 
 
 def _busy(toplevel: str, store: str) -> list[str]:

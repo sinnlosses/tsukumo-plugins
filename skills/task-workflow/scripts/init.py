@@ -5,12 +5,13 @@
 
 作るのは `<根>/direction.md` の骨組み（見出しと `## ユーザーから` の節）と、`.tw/local/` を外す
 `.tw/.gitignore`（中身 `local/`。旧い形のものは `local/` に書き換える）だけ（正典は task-workflow の WORKFLOW.md「ファイル配置と設定ファイル」）。
-根は設定の `root`（既定 `.tw`。`.tw/config.toml` が無く `develop/direction.md` があれば `develop`）。
+根は設定の `root`（既定 `.tw`）。
 `<根>/task/` は最初の `task new` が、`<根>/draft/` は最初のドラフトが作る。骨組みは決まりきっているので
 モデルに書かせない（`direction.md` に見出し以外の行が混ざると `/plan-tasks` が「未対応の指示がある」と誤判定する）。
 
 **旧形式（`develop/tasks.json` がある）なら何も作らず `LEGACY` で止まる**（終了コード5。
 `task.py` と同じ）。移すのは `task migrate` で、ここでは骨組みを混ぜない。
+`.tw/config.toml` が無く `develop/direction.md` があるときも何も作らず `OLD_LAYOUT` で止まる（終了コード5。移すのは `tw migrate-layout`）。
 
 **既存ファイルは上書きしない。** 中身の点検結果だけを出し、直すかどうかは呼び出し側が決める。
 設定（`.tw/config.toml`）は**点検するだけで書かない**（値は検証コマンドの選定そのもので、
@@ -43,6 +44,10 @@ def main() -> None:
         print(f"LEGACY\t{tasks_json}\ttw migrate --dry-run")
         raise SystemExit(5)
 
+    if not os.path.exists(layout.CONFIG_PATH) and os.path.exists(layout.LEGACY_DIRECTION_PATH):
+        print("OLD_LAYOUT\ttw migrate-layout --dry-run")
+        raise SystemExit(5)
+
     direction, draft = places(".")
     os.makedirs(os.path.dirname(direction), exist_ok=True)
     create(direction, direction_skeleton(draft), lambda path: check_direction(path, draft))
@@ -55,16 +60,11 @@ def main() -> None:
 
 
 def places(toplevel: str) -> tuple[str, str]:
-    """`(direction.md のパス, draft/ のパス)`。設定が読めなければ、互換のプロジェクトは `develop`、ほかは既定の `.tw` の下
-    （設定の不備は `check_config` が報告する）。"""
+    """`(direction.md のパス, draft/ のパス)`。設定が読めなければ既定の `.tw` の下（設定の不備は `check_config` が報告する）。"""
     try:
         return layout.direction_path(toplevel), layout.draft_dir(toplevel)
     except layout.ConfigError:
-        legacy = not os.path.exists(os.path.join(toplevel, layout.CONFIG_PATH)) and os.path.exists(
-            os.path.join(toplevel, layout.LEGACY_DIRECTION_PATH)
-        )
-        root = layout.LEGACY_ROOT if legacy else layout.DEFAULT_ROOT
-        return os.path.join(root, "direction.md"), os.path.join(root, "draft")
+        return os.path.join(layout.DEFAULT_ROOT, "direction.md"), os.path.join(layout.DEFAULT_ROOT, "draft")
 
 
 def prepare_gitignore(path: str) -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import tempfile
 
 from selftest_support import check, git, say, write  # noqa: E402
@@ -305,6 +306,39 @@ def test_new_missing_and_legacy() -> None:
         git(empty_repo, "commit", "-q", "-m", "init")
         r = run_task(empty_repo, "status")
         check("develop/direction.mdも無ければMISSING", r.returncode == 6 and r.stdout.strip() == "MISSING", r.stdout)
+
+        write(os.path.join(empty_repo, "CLAUDE.md"), "# x\n\n## タスク運用\n\n- 検証コマンド: `true`\n")
+        git(empty_repo, "add", "-A")
+        git(empty_repo, "commit", "-q", "-m", "section")
+        r = run_task(empty_repo, "status")
+        check("節だけで develop/direction.md が無ければ MISSING のまま（節は読まない）",
+              r.returncode == 6 and r.stdout.strip() == "MISSING", r.stdout)
+
+        write(os.path.join(empty_repo, "develop", "direction.md"), "# 未対応の指示メモ\n\n## ユーザーから\n")
+        git(empty_repo, "add", "-A")
+        git(empty_repo, "commit", "-q", "-m", "old layout")
+        for command in ("status", "config", "verify"):
+            r = run_task(empty_repo, command)
+            check(f"旧配置だけなら {command} は OLD_LAYOUT で止まり migrate-layout --dry-run を案内する（終了コード5）",
+                  r.returncode == 5 and r.stdout == "OLD_LAYOUT\ttw migrate-layout --dry-run\n", r.stdout + r.stderr)
+        r = run_task(empty_repo, "migrate-layout", "--dry-run")
+        check("旧配置でも migrate-layout --dry-run は止まらず PLAN を出す",
+              r.returncode == 0 and r.stdout.splitlines()[-1] == "PLAN"
+              and "MOVE\tdevelop/direction.md\t.tw/direction.md" in r.stdout.splitlines(), r.stdout + r.stderr)
+
+        write(os.path.join(empty_repo, ".tw", "direction.md"), "# 未対応の指示メモ\n")
+        git(empty_repo, "add", "-A")
+        git(empty_repo, "commit", "-q", "-m", "both")
+        r = run_task(empty_repo, "status")
+        check("新しい置き場もあっても config.toml が無ければ旧い目印を優先して OLD_LAYOUT",
+              r.returncode == 5 and r.stdout.startswith("OLD_LAYOUT\t"), r.stdout + r.stderr)
+        r = run_task(empty_repo, "migrate-layout", "--dry-run")
+        check("その状態の migrate-layout は移す先が既にあるので INVALID（終了コード3）",
+              r.returncode == 3 and r.stdout.startswith("INVALID\t"), r.stdout + r.stderr)
+        git(empty_repo, "rm", "-q", "-r", "--cached", ".tw")
+        shutil.rmtree(os.path.join(empty_repo, ".tw"))
+        git(empty_repo, "rm", "-q", "-r", "develop")
+        git(empty_repo, "commit", "-q", "-m", "reset")
 
         write(os.path.join(empty_repo, "develop", "tasks.json"), "[]\n")
         git(empty_repo, "add", "-A")

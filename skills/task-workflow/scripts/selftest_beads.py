@@ -129,9 +129,13 @@ def make_repo(tmp: str, branch: str | None = "切らない", extra: str = "", ve
         template, exclude = _beads_templates[prefix]
         shutil.copytree(template, os.path.join(main_path, ".beads"))
         write(os.path.join(main_path, ".git", "info", "exclude"), exclude)
+    if legacy:
+        write(os.path.join(main_path, ".tw", "config.toml"), 'verify = "なし"\nstore = "beads"\n')
     r = subprocess.run([sys.executable, INIT_PY], cwd=main_path, capture_output=True, text=True, env=env())
     if r.returncode != 0:
         raise RuntimeError(f"init.py 失敗: {r.stdout}{r.stderr}")
+    if legacy:
+        shutil.rmtree(os.path.join(main_path, ".tw"))
     git(main_path, "add", "-A")
     git(main_path, "commit", "-q", "-m", "init")
     wt1 = os.path.join(tmp, "wt1")
@@ -144,14 +148,23 @@ def make_repo(tmp: str, branch: str | None = "切らない", extra: str = "", ve
 def test_migrate_layout() -> None:
     say("migrate-layout: Beads 方式では task/ を作らず .beads に触らず、ほかの作業ツリーの in_progress で BUSY")
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _ = make_repo(tmp, legacy=True)
+        main_path, wt1, _ = make_repo(tmp)
         a = new(main_path, "移す前")
         r = run_task(wt1, "claim", a)
         check("claim が通る", r.stdout.startswith("CLAIMED\t"), r.stdout + r.stderr)
+        os.makedirs(os.path.join(main_path, "develop"))
+        git(main_path, "mv", ".tw/direction.md", "develop/direction.md")
+        git(main_path, "rm", "-q", "-r", "-f", ".tw")
+        write(os.path.join(main_path, "CLAUDE.md"),
+              "# x\n\n## タスク運用\n\n- 検証コマンド: なし\n- 整形コマンド: なし\n- タスクの置き場: beads\n")
+        git(main_path, "add", "-A")
+        git(main_path, "commit", "-q", "-m", "旧配置")
+        git(wt1, "merge", "-q", "--ff-only", "main")
         r = run_task(main_path, "migrate-layout", "--dry-run")
         check("ほかの作業ツリーの in_progress があれば BUSY（終了コード4）",
               r.returncode == 4 and r.stdout.strip() == f"BUSY\t{a}\twt1", r.stdout + r.stderr)
-        run_task(wt1, "release", a)
+        r = subprocess.run(["bd", "unclaim", beads.to_bd_id(a), "--force"], cwd=wt1, capture_output=True, text=True, env=env())
+        check("旧配置の status は止まるので bd で印を外す", r.returncode == 0, r.stdout + r.stderr)
         beads_dir = os.path.join(main_path, ".beads")
         before = sorted(os.listdir(beads_dir))
         r = run_task(main_path, "migrate-layout")
@@ -257,11 +270,11 @@ def test_setup_and_config_doctor() -> None:
               and tail_line(r.stdout, "store").startswith("store\tOK\tbeads")
               and tail_line(r.stdout, "old_section") == "old_section\tFOUND\tCLAUDE.md", r.stdout)
         r = run_task(wt1, "config")
-        check("旧い節の値を写して出す", r.returncode == 0 and "store\tbeads\tconfig" in r.stdout.splitlines()
-              and "backup\t/tmp/keep\tconfig" in r.stdout.splitlines(), r.stdout)
+        check("旧配置の config は OLD_LAYOUT で止まる（終了コード5）",
+              r.returncode == 5 and r.stdout == "OLD_LAYOUT\ttw migrate-layout --dry-run\n", r.stdout)
         r = run_task(wt1, "status")
-        check("旧い節の status は old_layout の行を出す",
-              r.returncode == 0 and "old_layout\tCLAUDE.md\ttw migrate-layout --dry-run" in r.stdout.splitlines(), r.stdout)
+        check("旧配置の status も OLD_LAYOUT で止まる（終了コード5）",
+              r.returncode == 5 and r.stdout == "OLD_LAYOUT\ttw migrate-layout --dry-run\n", r.stdout)
 
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, _ = make_repo(tmp, extra='tracker = "gitlab"\n')
@@ -274,7 +287,7 @@ def test_setup_and_config_doctor() -> None:
         write(os.path.join(wt1, "develop", "direction.md"), "# 未対応の指示メモ\n\n## ユーザーから\n")
         write(os.path.join(wt1, "CLAUDE.md"), "# x\n\n## タスク運用\n\n- ブランチ: 切らない\n- タスクの置き場: どこか\n")
         r = run_task(wt1, "status")
-        check("旧い節の読めない置き場も INVALID（終了コード3）", r.returncode == 3 and r.stdout.startswith("INVALID"), r.stdout)
+        check("旧配置は節の中身が読めなくても OLD_LAYOUT（終了コード5）", r.returncode == 5 and r.stdout.startswith("OLD_LAYOUT"), r.stdout)
 
 
 def test_file_mode_untouched_by_beads_dir() -> None:

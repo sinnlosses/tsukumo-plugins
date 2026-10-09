@@ -25,17 +25,19 @@ def detect_format(toplevel: str) -> tuple[str, str | None]:
     if os.path.exists(os.path.join(toplevel, layout.CONFIG_PATH)):
         return "NEW", None
     if os.path.exists(os.path.join(toplevel, layout.LEGACY_DIRECTION_PATH)):
-        return "NEW", None
+        return "OLD_LAYOUT", None
     return "MISSING", None
 
 
 def format_refusal(toplevel: str) -> tuple[str, int] | None:
-    """形式（`detect_format`）のために、サブコマンド（`migrate`・`config-doctor` を除く）を打たずに出す行と終了コード。打てるなら `None`。"""
+    """形式（`detect_format`）のために、サブコマンド（`migrate`・`migrate-layout`・`config-doctor`・`land` を除く）を打たずに出す行と終了コード。打てるなら `None`。"""
     kind, detail = detect_format(toplevel)
     if kind == "INVALID":
         return f"INVALID\t{detail}", 3
     if kind == "LEGACY":
         return "LEGACY\ttw migrate --dry-run", 5
+    if kind == "OLD_LAYOUT":
+        return "OLD_LAYOUT\ttw migrate-layout --dry-run", 5
     if kind == "MISSING":
         return "MISSING", 6
     return None

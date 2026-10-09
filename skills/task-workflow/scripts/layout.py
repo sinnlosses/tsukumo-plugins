@@ -250,7 +250,7 @@ def _config_from_values(source: str, entries: list[tuple[int, str, str]]) -> Con
             )
     if "root" in values:
         values["root"] = _check_root(values["root"] or "", f"{source}:{lines['root']}")
-    return _build_config(source, values)
+    return build_config(source, values)
 
 
 def _check_root(value: str, where: str) -> str:
@@ -267,7 +267,7 @@ def _check_root(value: str, where: str) -> str:
     return root
 
 
-def _build_config(source: str | None, values: dict[str, str | None]) -> Config:
+def build_config(source: str | None, values: dict[str, str | None]) -> Config:
     defaults = Config(source=source)
     config = Config(
         source=source,
@@ -433,4 +433,4 @@ def _config_from_legacy_section(root: str) -> Config:
         if word not in TRACKER_VALUES:
             raise ConfigError(f"- トラッカー: の値 {word!r} を機械が読めない（{' / '.join(TRACKER_VALUES)}）")
         values["tracker"] = word
-    return _build_config(os.path.basename(path), values)
+    return build_config(os.path.basename(path), values)

@@ -158,7 +158,7 @@ def main(argv: list[str] | None = None) -> None:
         print(str(e), file=sys.stderr)
         raise SystemExit(1)
 
-    if args.command not in ("migrate", "config-doctor", "land"):
+    if args.command not in ("migrate", "migrate-layout", "config-doctor", "land"):
         refusal = tw_base.format_refusal(toplevel)
         if refusal is not None:
             print(refusal[0])
@@ -169,7 +169,7 @@ def main(argv: list[str] | None = None) -> None:
         if args.command == "land":
             tw_ship.cmd_land(toplevel, args.branch)
             return
-        store = layout.read_config(toplevel).store if args.command not in ("migrate", "config-doctor") else None
+        store = layout.read_config(toplevel).store if args.command not in ("migrate", "migrate-layout", "config-doctor") else None
         if args.command == "config":
             tw_status.cmd_config(toplevel)
             return

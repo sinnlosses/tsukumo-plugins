@@ -184,17 +184,28 @@ def test_init() -> None:
 
             write("develop/direction.md", "# 未対応の指示メモ\n\nこれをやって\n")
             r = run("init.py")
-            check("develop/direction.md がある互換のプロジェクトではそれを点検し、.tw/direction.md を作らない",
-                  r.stdout.startswith("KEPT\tdevelop/direction.md\t") and not os.path.exists(".tw/direction.md"), r.stdout)
+            check("develop/direction.md があり .tw/config.toml が無ければ OLD_LAYOUT（終了コード5）で止まり、何も作らない",
+                  r.returncode == 5 and r.stdout == "OLD_LAYOUT\ttw migrate-layout --dry-run\n" and not os.path.exists(".tw"), r.stdout)
+            write(".tw/config.toml", 'verify = "なし"\n')
+            r = run("init.py")
+            check(".tw/config.toml があれば develop/direction.md が残っていても止まらない",
+                  r.returncode == 0 and "OLD_LAYOUT" not in r.stdout, r.stdout)
+            shutil.rmtree(".tw")
+            shutil.rmtree("develop")
+
+            write(".tw/direction.md", "# 未対応の指示メモ\n\nこれをやって\n")
+            r = run("init.py")
+            check("既にある .tw/direction.md は点検するだけで作り直さない",
+                  r.stdout.startswith("KEPT\t.tw/direction.md\t"), r.stdout)
             check(
                 "節が無いファイルは全体を「ユーザーから」とみなして PENDING",
                 "PENDING:" in r.stdout and "ユーザーから1行" in r.stdout,
                 r.stdout,
             )
 
-            write("develop/direction.md", "# 未対応の指示メモ\n\n## ユーザーから\nこれをやって\n")
-            write("develop/draft/2026-09-27-fix-a.md", "# a\n\n- 根拠: x\n- 出し先: y\n")
-            write("develop/draft/2026-09-27-fix-b.md", "# b\n")
+            write(".tw/direction.md", "# 未対応の指示メモ\n\n## ユーザーから\nこれをやって\n")
+            write(".tw/draft/2026-09-27-fix-a.md", "# a\n\n- 根拠: x\n- 出し先: y\n")
+            write(".tw/draft/2026-09-27-fix-b.md", "# b\n")
             r = run("init.py")
             check(
                 "ユーザーからは行数、ドラフトは draft/ のファイルの件数で数える",
@@ -202,10 +213,10 @@ def test_init() -> None:
                 r.stdout,
             )
 
-            os.remove("develop/draft/2026-09-27-fix-a.md")
-            os.remove("develop/draft/2026-09-27-fix-b.md")
+            os.remove(".tw/draft/2026-09-27-fix-a.md")
+            os.remove(".tw/draft/2026-09-27-fix-b.md")
             write(
-                "develop/direction.md",
+                ".tw/direction.md",
                 "# 未対応の指示メモ\n\n## ユーザーから\n\n"
                 "## エージェントのドラフト\n"
                 "### 開発フローとスキルの汎用化\n"
@@ -219,21 +230,17 @@ def test_init() -> None:
                 r.stdout,
             )
 
-            write("CLAUDE.md", "# x\n\n## タスク運用\n\n- 整形コマンド: `なし`\n- ブランチ: 既定\n")
+            write(".tw/config.toml", 'format = "なし"\n')
             r = run("init.py")
-            check("旧い節に検証コマンドの行が無ければ config MISSING", "config\tMISSING\tCLAUDE.md" in r.stdout, r.stdout)
+            check("検証コマンドの行が無ければ config INVALID", "config\tINVALID\t.tw/config.toml" in r.stdout, r.stdout)
 
-            write("CLAUDE.md", "# x\n\n## タスク運用\n\n- 検証コマンド: `なし`\n- ブランチ: 自分で切らない\n")
+            write(".tw/config.toml", 'verify = "なし"\nbranch = "自分で切らない"\n')
             r = run("init.py")
-            check("旧い節のブランチの先頭語が語彙に無ければ config INVALID", "config\tINVALID\tCLAUDE.md" in r.stdout, r.stdout)
-
-            write("CLAUDE.md", "# x\n\n## タスク運用\n\n- 検証コマンド: `なし`\n")
-            r = run("init.py")
-            check("旧い節は検証コマンドだけで OK（ブランチは省略可）", "config\tOK\tCLAUDE.md" in r.stdout, r.stdout)
+            check("branch が語彙に無ければ config INVALID", "config\tINVALID\t.tw/config.toml" in r.stdout, r.stdout)
 
             write(".tw/config.toml", 'verify = "なし"\n')
             r = run("init.py")
-            check(".tw/config.toml があればそれを読む", "config\tOK\t.tw/config.toml" in r.stdout, r.stdout)
+            check(".tw/config.toml があればそれを読み、verify だけで OK", "config\tOK\t.tw/config.toml" in r.stdout, r.stdout)
             os.remove(".tw/config.toml")
 
             r = run("init.py", "--help")

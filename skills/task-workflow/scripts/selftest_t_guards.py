@@ -462,7 +462,7 @@ def test_worktree_state_dir() -> None:
         old = ledger.git_dir(wt2)
         shutil.copy2(os.path.join(local2, "task-verify-stamp"), os.path.join(old, "task-verify-stamp"))
         shutil.copytree(os.path.join(local2, "task-open-claims"), os.path.join(old, "task-open-claims"))
-        shutil.rmtree(tw2)
+        shutil.rmtree(local2)
         r = run_task(wt2, "verify-check")
         check(".tw/ が無ければ git_dir の控えを verify-check が読む", r.stdout.startswith("VERIFIED_SAME\t"), r.stdout)
         check("git_dir の控えのまま、検証した中身なら handback-guard は通す", run_handback_guard(tmp, wt2) is None)

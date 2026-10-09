@@ -317,40 +317,34 @@ def test_prune() -> None:
 
 
 def test_config_file_agents_md_and_conflict() -> None:
-    say("設定ファイルの探索（T-020: AGENTS.md → CLAUDE.md の順、両方あれば INVALID）")
+    say("設定の読み: .tw/config.toml だけを読み、AGENTS.md・CLAUDE.md の節は読まない")
     with tempfile.TemporaryDirectory() as tmp:
-        # AGENTS.md だけのリポジトリ: claim・ship まで CLAUDE.md と同じ形で通る。
-        main_path, wt1, _wt2 = make_repo(tmp, config_filename="AGENTS.md", verify="`echo verified`")
-        commit_task(main_path, taskfile.Task("T-100", "AGENTS.md だけ", "todo", "sonnet", "Y", (), BODY))
+        main_path, wt1, _wt2 = make_repo(tmp, verify="`echo verified`")
+        commit_task(main_path, taskfile.Task("T-100", "config.toml", "todo", "sonnet", "Y", (), BODY))
         r = run_task(wt1, "claim", "T-100")
-        check("AGENTS.md だけでも claim できる", r.returncode == 0 and r.stdout.startswith("CLAIMED"), r.stdout + r.stderr)
+        check("config.toml だけで claim できる", r.returncode == 0 and r.stdout.startswith("CLAIMED"), r.stdout + r.stderr)
         result_path = write(os.path.join(tmp, "result.md"), "- 検証: x\n")
         r = run_task(wt1, "done", "T-100", "--result-file", result_path)
         check("done できる", r.returncode == 0, r.stdout + r.stderr)
         git(wt1, "add", "-A")
-        git(wt1, "commit", "-q", "-m", "T-100: AGENTS.md だけ")
+        git(wt1, "commit", "-q", "-m", "T-100: config.toml")
         r = run_task(wt1, "ship")
         check(
-            "ship も AGENTS.md の検証コマンドを読む（verify=none にならない）",
+            "ship も config.toml の検証コマンドを読む（verify=none にならない）",
             r.returncode == 0 and r.stdout.startswith("SHIPPED") and "verify=none" not in r.stdout,
             r.stdout + r.stderr,
         )
 
     with tempfile.TemporaryDirectory() as tmp:
-        # 両方に「## タスク運用」節があるリポジトリ: どちらが正か機械が決められないので INVALID。
-        # `- 主ブランチ:` は無くても main が実在するので順3で決まる（順1・順2が動く前に検査が要る）。
-        main_path, _wt1, _wt2 = make_repo(tmp, config_filename="AGENTS.md")
+        main_path, _wt1, _wt2 = make_repo(tmp)
+        write(os.path.join(main_path, "AGENTS.md"), "# a\n\n## タスク運用\n\n- 検証コマンド: `false`\n")
         write(os.path.join(main_path, "CLAUDE.md"), "# y\n\n## タスク運用\n\n- ブランチ: 既定\n")
         r = run_task(main_path, "status")
-        check(
-            "AGENTS.md と CLAUDE.md の両方に節があれば INVALID（終了コード3）",
-            r.returncode == 3 and r.stdout.startswith("INVALID\t") and "AGENTS.md" in r.stdout and "CLAUDE.md" in r.stdout,
-            r.stdout + r.stderr,
-        )
-        write(os.path.join(main_path, ".tw", "config.toml"), 'verify = "なし"\n')
-        r = run_task(main_path, "status")
-        check(".tw/config.toml があれば旧い節を読まない（両方に節があっても通り、節の old_layout も出ない）",
-              r.returncode == 0 and not any(l.startswith("old_layout\t") and ".md" in l for l in r.stdout.splitlines()),
+        check(".tw/config.toml があれば両方に節があっても読まず、通る",
+              r.returncode == 0 and "OLD_LAYOUT" not in r.stdout and "INVALID" not in r.stdout, r.stdout + r.stderr)
+        r = run_task(main_path, "config")
+        check("config の1行目は .tw/config.toml で、節の値は混ざらない",
+              r.stdout.splitlines()[:1] == ["CONFIG\t.tw/config.toml"] and "verify\tなし\tconfig" in r.stdout.splitlines(),
               r.stdout + r.stderr)
 
 
@@ -474,18 +468,13 @@ def test_config_command() -> None:
         r = run_task(repo, "config")
         lines = r.stdout.splitlines()
         check(
-            "旧い節なら CONFIG に（旧節）を付け、書いたキーは config・無いキーは default",
-            r.returncode == 0
-            and lines[:1] == ["CONFIG\tCLAUDE.md（旧節）"]
-            and "verify\tなし\tconfig" in lines
-            and "branch\t既定\tconfig" in lines
-            and "base_branch\tmain\tdefault" in lines
-            and "task\tdevelop/task" in lines,
+            "旧配置だけなら config も OLD_LAYOUT で止まる（終了コード5）",
+            r.returncode == 5 and lines == ["OLD_LAYOUT\ttw migrate-layout --dry-run"],
             r.stdout + r.stderr,
         )
         r = run_task(repo, "status")
-        check("status は old_layout の行を出す",
-              "old_layout\tCLAUDE.md\ttw migrate-layout --dry-run" in r.stdout.splitlines(), r.stdout + r.stderr)
+        check("旧配置だけなら status も OLD_LAYOUT で止まる（終了コード5）",
+              r.returncode == 5 and r.stdout == "OLD_LAYOUT\ttw migrate-layout --dry-run\n", r.stdout + r.stderr)
 
         write(os.path.join(repo, ".tw", "config.toml"), 'verify = "./check.sh"  # 説明\nbranch = "切らない"\n')
         r = run_task(repo, "config")
