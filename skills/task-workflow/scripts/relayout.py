@@ -17,8 +17,8 @@ import layout
 import ledger
 
 CONFIG_HEADER = "# タスク運用の設定（tw が読む）\n"
-# `.tw/` 直下にあってよいもの（コミットするものと控えの置き場）
 _LEGACY_STORE_FILES = "develop/task"
+# `.tw/` 直下にあってよいもの（コミットするものと控えの置き場）
 _TW_KNOWN = (".gitignore", "config.toml", "local", "direction.md", "draft", "task")
 
 
