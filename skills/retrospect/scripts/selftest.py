@@ -73,11 +73,8 @@ def test_weekly() -> None:
         git(d, "config", "user.email", "test@example.com")
         git(d, "config", "user.name", "test")
         write(os.path.join(d, "hook.sh"), 'echo "直近 30 日の拒否の回数"\necho "deny-a: 0"\necho "deny-b: 12"\n')
-        write(os.path.join(d, "develop", "direction.md"), "# 未対応の指示メモ\n\n## ユーザーから\n")
-        write(
-            os.path.join(d, "CLAUDE.md"),
-            "# x\n\n## タスク運用\n\n- 検証コマンド: なし\n- 規則の発火の集計: `sh hook.sh`（直近30日）\n",
-        )
+        write(os.path.join(d, ".tw", "direction.md"), "# 未対応の指示メモ\n\n## ユーザーから\n")
+        write(os.path.join(d, ".tw", "config.toml"), 'verify = "なし"\nhook_tally = "sh hook.sh"  # 直近30日\n')
         git(d, "add", "-A")
         git(d, "commit", "-q", "-m", "やり方を変える")
         write(
@@ -107,7 +104,7 @@ def test_weekly() -> None:
         flow = lines_of("流れの数", out)
         check("悪くなった数に WORSE", "WORSE\tshipped\t0\t2" in flow, "\n".join(flow))
         check("WORSE があれば期間内のやり方の変更を CHANGE で並べる", any(l.startswith("CHANGE\tproject\t") and l.endswith("\tやり方を変える") for l in flow), "\n".join(flow))
-        check("旧い節の規則の発火の集計のコマンドの出力をそのまま出す", lines_of("規則の棚卸し", out) == ["直近 30 日の拒否の回数", "deny-a: 0", "deny-b: 12"], out)
+        check("設定の規則の発火の集計のコマンドの出力をそのまま出す", lines_of("規則の棚卸し", out) == ["直近 30 日の拒否の回数", "deny-a: 0", "deny-b: 12"], out)
 
         check("期間内に送り出した段が無ければ段の所要時間は EMPTY", lines_of("段の所要時間", out) == ["EMPTY"], out)
         r = weekly(d, "--days", "30")
