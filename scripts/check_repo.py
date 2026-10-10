@@ -8,7 +8,7 @@
 - 各 `agents/*.md`（`install.sh` が `~/.claude/agents/` へ張るエージェント定義）の frontmatter が
   読めて、`name` がファイル名と一致し、`description` があること。`no-delegate` の frontmatter が
   コミットを拒む hook（`tw commit-guard`）と返却を拒む hook（`tw handback-guard`）を持つこと。
-  `reviewer` が `Agent`・`Edit`・`Write`・`NotebookEdit` を持たず hooks も持たないこと
+  `acceptor` が `model: opus` で、`Agent`・`Edit`・`Write`・`NotebookEdit` を持たず hooks も持たないこと
 - README の「由来」一覧が `skills/` と過不足なく一致すること（README が索引なので）
 - スキル同士の相互参照が、実在するスキルか `OPTIONAL_SKILLS`（あれば使う外のスキル）を指していること
 - スクリプトのパスが `${CLAUDE_SKILL_DIR}` 形で書かれ、実在するファイルを指していること
@@ -51,7 +51,7 @@ NO_DELEGATE_HOOK_LINES = (
     "command: tw handback-guard 2>/dev/null || true",
 )
 
-REVIEWER_DISALLOWED_TOOLS = ("Agent", "Edit", "Write", "NotebookEdit")
+ACCEPTOR_DISALLOWED_TOOLS = ("Agent", "Edit", "Write", "NotebookEdit")
 
 problems: list[str] = []
 
@@ -127,16 +127,18 @@ def check_agent_frontmatter(names: list[str]) -> None:
         for hook_line in NO_DELEGATE_HOOK_LINES:
             if hook_line not in lines:
                 fail(f"agents/no-delegate.md: frontmatter に hook の行 {hook_line!r} が無い")
-    if "reviewer" in names:
-        text = read(os.path.join(AGENTS, "reviewer.md"))
+    if "acceptor" in names:
+        text = read(os.path.join(AGENTS, "acceptor.md"))
         head = text[: text.find("\n---\n", 3)]
         fm = frontmatter(text) or {}
+        if str(fm.get("model", "")).strip() != "opus":
+            fail("agents/acceptor.md: frontmatter の model が opus でない")
         denied = {t.strip() for t in str(fm.get("disallowedTools", "")).split(",")}
-        for tool in REVIEWER_DISALLOWED_TOOLS:
+        for tool in ACCEPTOR_DISALLOWED_TOOLS:
             if tool not in denied:
-                fail(f"agents/reviewer.md: disallowedTools に {tool} が無い")
+                fail(f"agents/acceptor.md: disallowedTools に {tool} が無い")
         if "hooks:" in head:
-            fail("agents/reviewer.md: frontmatter に hooks を持たせない")
+            fail("agents/acceptor.md: frontmatter に hooks を持たせない")
 
 
 def check_readme_index(names: list[str]) -> None:

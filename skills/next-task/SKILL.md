@@ -165,10 +165,11 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
    hand-back ではないので、ここで受け入れを始めない）: `${CLAUDE_SKILL_DIR}/visual-review.md` を読んで従う。
 
    **完了条件に目視（画面・見た目）があるとき**: `${CLAUDE_SKILL_DIR}/visual-review.md` の「完了条件に目視があるとき（手順6）」に従う。
-   見比べるまで手順7の `tw finish` に進まない。
+   受け入れ役の `- 目視:` が `可` になるまで手順7の `tw finish` に進まない。
 
-   `## やること` は手順5と5bで見たので（計画どおりに委譲したときは `tw plan-check T-xxx` が
-   `PLAN_REGISTERED` を返し、`PLAN_FIRST` と同じに読む）、ここでは `git diff` を読む。
+   メインは差分を読まず、画像も開かない。差分のレビュー・目視・振り返りの材料は、下の受け入れ役が判断して判定の行で返す。
+   `## やること` は手順5と5bで見た（計画どおりに委譲したときは `tw plan-check T-xxx` が
+   `PLAN_REGISTERED` を返し、`PLAN_FIRST` と同じに読む）。
 
    **束ねた受け入れの準備**: `tw accept T-xxx` は `tw lap T-xxx accept`・`tw plan-check T-xxx`・レビューの要否の判定
    （`review_needed.py`）を順に打ち、その行をそのまま並べる。出力の最後の行で分ける（止まる行が出たらそこで以降を打たず、
@@ -176,44 +177,47 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
 
    | 出力 | すること |
    | --- | --- |
-   | 最後が `SNAPSHOT\t<木の SHA>`（その前に `REVIEW\topus`・`REVIEW\tcode\t<数>`） | レビューが要る。`lap review` は打ってあり、木の SHA が1回目の控え。`git diff` を読んでから下のレビュアーを起こす。直しのあとは `tw accept T-xxx --after-review` |
-   | 最後が `tw verify-check` の行（その前に `SKIP\tdocs-only`・`NOTHING`、設定に `format` があれば `FORMATTED`） | レビューせずに、下の `tw verify-check` の表へ（`git diff` は読む） |
+   | 最後が `SNAPSHOT\t<木の SHA>`（その前に `REVIEW\topus`・`REVIEW\tcode\t<数>`） | レビューが要る。`lap review` は打ってあり、木の SHA が1回目の控え。下の受け入れ役を起こす。直しのあとは `tw accept T-xxx --after-review` |
+   | 最後が `tw verify-check` の行（その前に `SKIP\tdocs-only`・`NOTHING`、設定に `format` があれば `FORMATTED`） | レビューは要らない。下の受け入れ役を `SKIP`・`NOTHING` の依頼（目視と材料だけ）で起こす |
    | `FORMAT_FAILED\t<コマンド>` | 整形が落ちた。続く末尾の行を読んで直し、`tw accept T-xxx --after-review` を打ち直す |
    | `MISSING`・`INVALID` | review_needed.py が見つからない・失敗した。行を添えて人に預けて終了する |
 
    `plan-check` の行（`PLAN_FIRST`・`PLAN_REGISTERED` など）は、手順5bの表で読んだものと同じに読む。
    作業先が別のリポジトリのタスクでは `tw accept` を使わず、`other-repo.md` のとおり個別に打つ。
 
-   レビュアーは Agent ツールで、`difficulty` と同じモデル（`haiku` のときだけ `sonnet`）の新しいサブエージェント（`subagent_type` は、
-   Agent ツールの説明に並ぶエージェント末尾が `reviewer` の行（`reviewer` か
-   `tsukumo-workflow:reviewer`。読むだけの定義で tsukumo-plugins の `agents/reviewer.md`。返却を拒む hook を持たない）が
-   あれば、一覧に出ている名前のままそれ、無ければ手順5の `subagent_type` の選び方と同じ）。決まりの本文は貼らず、
-   渡すのは次だけ（レビュアーは `${CLAUDE_SKILL_DIR}` を持たないので、パスは解決した絶対パスにする）:
+   受け入れ役は Agent ツールで起こす。`subagent_type` は、Agent ツールの説明に並ぶエージェント末尾が `acceptor` の行
+   （`acceptor` か `tsukumo-workflow:acceptor`。tsukumo-plugins の `agents/acceptor.md`。モデルは Opus 固定で、
+   読むだけの定義。返却を拒む hook を持たない）があれば、一覧に出ている名前のまま `model` を渡さずに起こす。
+   無ければ手順5の `subagent_type` の選び方と同じにして `model: opus` を渡す。決まりの本文は貼らず、
+   渡すのは次だけ（受け入れ役は `${CLAUDE_SKILL_DIR}` を持たないので、パスは解決した絶対パスにする）:
    - 作業ツリーのパス・差分を出すコマンド（`git diff HEAD` と、未追跡の新しいファイルを並べる
      `git ls-files --others --exclude-standard`）・`tw show T-xxx` の `## 完了条件` の本文・
      プロジェクトの規約のファイル（AGENTS.md・CLAUDE.md と、そこから引かれるコーディング規約）のパス
-   - `${CLAUDE_SKILL_DIR}/reviewer-brief.md` を解決した絶対パスと「最初にそれを読んで従う」
+   - `${CLAUDE_SKILL_DIR}/acceptor-brief.md` を解決した絶対パスと「最初にそれを読んで従う」
+   - `tw accept` の判定（`REVIEW\t…` か `SKIP`・`NOTHING`）と、`REVIEW` のときは木の SHA
+   - 目視の完了条件があるときは、委譲先が報告した画像のパス（幅ごと。いちばん狭い幅も）
+   - 振り返りの材料: 委譲先の段ごとの返却の friction log の行（そのまま）と、メインの一言メモの数
+     （検証の打ち直し・受け入れでの直し・人の差し戻し）
    - `${CLAUDE_SKILL_DIR}/../comment-audit/SKILL.md` が在るときだけ、差分で足されたコメント行を
      拾うコマンド（`python3 <絶対パス>/diff_added_comment_lines.py HEAD`。`<絶対パス>` は
      `${CLAUDE_SKILL_DIR}/../comment-audit/scripts` を解決したもの）と `comment-audit` の `SKILL.md` の絶対パス
 
-   委譲の依頼文・委譲先の報告・`## やること`・`## 目的・背景` は渡さない。
+   委譲の依頼文・委譲先の報告の本文・`## やること`・`## 目的・背景` は渡さない。
 
-   返ってきた指摘は1つずつ差分で確かめ、当たるものだけを `SendMessage` で委譲先へ伝えて差し戻す
-   （メインは直さない。委譲先が終わっていても `SendMessage` で再開できる。並列の段の担当を起こしたときは、
-   まとめて最後の段の担当へ渡す）。4種類の外の指摘と、確かめて
-   当たらない指摘（規約の指摘は、挙げた規則が規約のファイルに無ければ当たらない）は捨てる。差し戻したときは一言メモしておく（手順6aの材料「受け入れでの直し」）。
+   返却の1行目 `受け入れ <判定> | <1文>` の判定の語で分ける。1行目がこの形でなければ、受け入れ役へ `SendMessage` で
+   形を直して返し直させる（メインは差分を読んで補わない）。
 
-   **差し戻したあとにレビューを掛け直す（2・3回目）とき**と、**3回目のレビューにも当たる指摘が残ったとき**は、
-   `${CLAUDE_SKILL_DIR}/review-rounds.md` を読んで従う（直しの差分だけを見させる。3回目の指摘は人に預けず
-   メインが裏取りして扱う）。
+   | 判定 | すること |
+   | --- | --- |
+   | `受け入れ` | 次へ。`- 材料:` の行を手順6aに使う |
+   | `差し戻し` | `- 指摘:` と `- 目視: 否` の行をそのまま `SendMessage` で委譲先へ渡して差し戻す（メインは直さない。委譲先が終わっていても `SendMessage` で再開できる。並列の段の担当を起こしたときは、まとめて最後の段の担当へ渡す）。差し戻したときは一言メモしておく（手順6aの材料「受け入れでの直し」）。直ったら `${CLAUDE_SKILL_DIR}/review-rounds.md` に従って同じ受け入れ役に続けさせる |
+   | `預ける` | `- 預けること:` の行を添えて人に預けて終了する（`review-rounds.md` の3回目の扱いもここ） |
 
-   完了の関門: スキルの一覧に `verifying-before-completion` があれば、それを読んで従う。無ければ、委譲先の
-   「できた」を主張ごとに差分と、その場で打ったコマンドの出力で確かめてから受け入れる。
+   **差し戻したあとの2・3回目**と、**3回目にも指摘が残ったとき**は、
+   `${CLAUDE_SKILL_DIR}/review-rounds.md` を読んで従う（同じ受け入れ役に `SendMessage` で、直しの差分だけを見させる）。
 
-   方針からズレた実装を見つけたら、レビューの指摘と同じく委譲先へ差し戻す
-   （メインが直すのは、`review-rounds.md` の3回目のレビューに残った指摘だけ）。
-   レビューのあとは、`tw accept T-xxx --after-review` で整形コマンド（`format` の行があれば）→ `tw verify-check` を打つ（下の表。検証を省くか、`tw verify` を背景で起こして手順6aの振り返りと並べるかを決める）。
+   方針からズレた実装を見つけたら、受け入れ役が `- 指摘:` に入れて差し戻しになる。メインは直さない。
+   受け入れのあとは、`tw accept T-xxx --after-review` で整形コマンド（`format` の行があれば）→ `tw verify-check` を打つ（下の表。検証を省くか、`tw verify` を背景で起こして手順6aの振り返りと並べるかを決める）。
    背景で起こした `tw verify` は、手順6bで合流するまで止めない。
    **検証コマンドが1回で通らず、打ち直したら通った**ときは、落ちた・打ち直した・通った、を
    一言メモしておく（手順6aで `retrospect` の材料「検証の打ち直し」に使う。委譲先の friction log の
@@ -237,13 +241,10 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
    `${CLAUDE_SKILL_DIR}/commits-since-claim.md` を読んで扱ってから先へ進む。
 
 6a. **振り返る**（`/loop` から回っているときも。委譲せずメインで行う）: 頭に `tw lap T-xxx retro` を打ち、
-   手順6の一言メモ・レビューの結果・委譲先の friction log から次の5つの値を決めて、
-   `python3 ${CLAUDE_SKILL_DIR}/../retrospect/scripts/material.py . T-xxx --gate --friction … --reverify … --fixes … --human … --review …` を打つ。
-   - `--friction`: 委譲先の段ごとの返却の friction log がすべて `なし` なら `none`、行が1つでもあれば `some`、friction log を書いていない返却があれば `missing`（委譲せずメインで進めた回は、自分で気づいた引っかかりで決める）
-   - `--reverify`: 検証を打ち直した回数（委譲先の friction log の打ち直して通った行と、受け入れで打ち直したもののメモの和）
-   - `--fixes`: 受け入れの差し戻しとメインの直しのメモの数の和
-   - `--human`: 人の差し戻しのメモの数
-   - `--review`: レビューしなかった（`SKIP`・`NOTHING`）なら `skip`、`指摘なし` だけが返ったなら `clean`、指摘が返ったなら（捨てた指摘も）`found`
+   受け入れ役の最後の返却の `- 材料: friction=… reverify=… fixes=… human=… review=…` の5つの値を、
+   `python3 ${CLAUDE_SKILL_DIR}/../retrospect/scripts/material.py . T-xxx --gate --friction … --reverify … --fixes … --human … --review …` にそのまま渡す
+   （決め方は `acceptor-brief.md` の「振り返りの材料」。`human` は手順6で依頼に添えたメモの数が返る。
+   手順6で `受け入れ` を受けたあとに検証を打ち直したときは、`reverify` にその回数を足す）。
 
    出力が `QUIET` の1行なら、`retrospect` の `SKILL.md` を読まずに `- 振り返り: 兆候なし` に決めて先へ進む。
    `SIGNAL` の行が1つでもあれば、`retrospect` スキルの
@@ -269,7 +270,7 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
    EOF
    ```
 
-   完了条件に目視があったときは `- 目視: <開いた画像のパス> を <完了条件の行> と見比べた` の1行を足す。
+   完了条件に目視があったときは 受け入れ役の `- 目視:` の行を写した `- 目視: <見比べた画像のパス> を <完了条件の行> と見比べて可` の1行を足す。
 
    `dropped` にするときは `--dropped` を付け、理由を結果に書く。`DONE` は
    stage せず（`## 結果` は Beads の comment に入る）、コミットは `--add` で渡した作業のファイルと（積んだなら）
@@ -306,7 +307,7 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
    直ったかを1項目ずつ（ファイルの一覧やコマンドの経過ではなく中身を言う）
 3. **人に知らせること**があるときだけ: 受け入れで直したこと、残した判断や気になった点（手順6aでドラフトに積んだかを添える）、
    手順3でタスク化したなら登録したタスクID、`kept=` で枝を消せなかったこと
-4. 検証コマンドの結果（件数。「なし」なら完了条件を目視で確かめたこと。完了条件に目視があれば、開いた画像と見比べた結果も）と、手順6aの振り返り
+4. 検証コマンドの結果（件数。「なし」なら完了条件を目視で確かめたこと。完了条件に目視があれば、受け入れ役が見比べた画像と結果も）と、手順6aの振り返り
    （`## 結果` に入れた `- 振り返り:` の行そのまま）を1行ずつ
 5. `/loop` で進められる行（取り直した `tw status` で `着手可否` が `READY` かつ `loopable` が `Y`）が
    無くなったときだけ1行: 未完了が残っていなければ「全タスク完了」、`HOLD`・`loopable: N` が

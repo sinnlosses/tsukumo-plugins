@@ -17,7 +17,7 @@ tsukumo のワークフローの契約に型の合う1つの例だが、tsukumo 
 ```
 
 スキルは `tsukumo-workflow:<name>`、エージェント定義は `tsukumo-workflow:no-delegate`・
-`tsukumo-workflow:reviewer` の名前で入る。`bin/tw` はプラグインが有効なあいだ Bash の PATH に入る。
+`tsukumo-workflow:acceptor` の名前で入る。`bin/tw` はプラグインが有効なあいだ Bash の PATH に入る。
 プラグインに入れたエージェント定義の frontmatter の `hooks` は無視されるので、`no-delegate` の hook
 （`tw commit-guard`・`tw handback-guard`）は `hooks/hooks.json` が `"${CLAUDE_PLUGIN_ROOT}/bin/tw"` を
 `--agent-scoped` 付きで呼び、`agent_type` の末尾が `no-delegate` のときだけ掛かる。
@@ -56,7 +56,7 @@ tsukumo のワークフローの契約に型の合う1つの例だが、tsukumo 
 | 外のスキル | 使う場所 | 無いとき |
 | --- | --- | --- |
 | verifying-before-completion | next-task の受け入れの関門 | 主張ごとに差分とコマンドの出力で確かめる |
-| comment-audit（兄弟に在るときだけ） | next-task のレビュアーに渡すコメントの判定 | コメント行の判定を依頼文から外す |
+| comment-audit（兄弟に在るときだけ） | next-task の受け入れ役に渡すコメントの判定 | コメント行の判定を依頼文から外す |
 | writing-for-agents | retro の物差し、retrospect の「空振り」の試金石 | retro の「ファイルの使い分け」を物差しにする |
 | code-review | retro が読むレビューの観点 | 読まない |
 | resolving-merge-conflicts | next-task の `CONFLICT` の案内 | 人に預ける |
