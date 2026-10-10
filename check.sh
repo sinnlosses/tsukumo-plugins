@@ -101,6 +101,7 @@ if stage "next-task scripts の自己テスト" 'skills/next-task/*'; then
   python3 "$here/skills/next-task/scripts/selftest_review_needed.py"
   python3 "$here/skills/next-task/scripts/selftest_context_size.py"
   python3 "$here/skills/next-task/scripts/selftest_review_snapshot.py"
+  python3 "$here/skills/next-task/scripts/selftest_self_review.py"
 fi
 
 echo
