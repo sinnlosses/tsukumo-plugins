@@ -176,6 +176,11 @@ def test_edit_section() -> None:
         check("--change-frame を付ければ書き込む", r.returncode == 0 and "別の条件" in read("T-110"), r.stdout + r.stderr)
         r = run_task(wt1, "edit", "T-110", "--section", "やること")
         check("--section だけで --body-file が無ければ拒む（終了コード2）", r.returncode == 2, r.stdout + r.stderr)
+        mid = read("T-110")
+        for flags in (("--section", "やること"), ()):
+            r = run_task(wt1, "edit", "T-110", *flags, "--body-file", "-", stdin="  \n\n")
+            check(f"空白だけの --body-file（{' '.join(flags) or '本文全体'}）は書き込まずに拒む（終了コード2）",
+                  r.returncode == 2 and "usage:" in r.stderr and read("T-110") == mid, r.stdout + r.stderr)
 
         write(os.path.join(wt1, "work.txt"), "x\n")
         r = run_task(wt1, "edit", "T-111", "--section", "やること", "--body-file", "-", stdin="### 1. z\n")
