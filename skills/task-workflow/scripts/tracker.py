@@ -621,7 +621,7 @@ def jira_key(issue: beads.Issue) -> str | None:
 def jira_rename(toplevel: str, bd_ids: list[str] | None = None) -> tuple[dict[str, str], list[str]]:
     """Jira のキーのある課題を `external_ref` のキーの ID へ付け替える。`{元: 先}` と出力の行を返す。
 
-    `bd_ids` が無ければ振り分け前（`difficulty`・`loopable` の label が無い）の課題すべて。
+    `bd_ids` が無ければ振り分け前（`difficulty`・`loopable` が無い）の課題すべて。
     """
     issues = beads.list_issues(toplevel)
     taken = {i.bd_id for i in issues}
@@ -632,7 +632,9 @@ def jira_rename(toplevel: str, bd_ids: list[str] | None = None) -> tuple[dict[st
         if target is None or target == issue.bd_id:
             continue
         if bd_ids is None:
-            if any(l.startswith((beads.DIFFICULTY_LABEL, beads.LOOPABLE_LABEL)) for l in issue.labels):
+            if beads.attribute_values(issue, beads.DIFFICULTY_KEY, beads.DIFFICULTY_LABEL) or beads.attribute_values(
+                issue, beads.LOOPABLE_KEY, beads.LOOPABLE_LABEL
+            ):
                 continue
         elif issue.bd_id not in bd_ids:
             continue

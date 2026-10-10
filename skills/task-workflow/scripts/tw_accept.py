@@ -57,7 +57,7 @@ def _run_part(part: Callable[[], None]) -> None:
 def _review_gate(toplevel: str, task_id: str) -> bool:
     """レビューが要るなら `lap review` と木の控えを出して `True`。要らなければ判定の行だけ出して `False`。"""
     issue = beads.show(toplevel, tw_base.bd_task_id(task_id))
-    difficulty = _difficulty(issue.labels if issue is not None else ())
+    difficulty = _difficulty(issue)
     decided = _next_task_script(toplevel, "review_needed.py", "--difficulty", difficulty)
     print(decided)
     if not decided.startswith("REVIEW"):
@@ -67,8 +67,10 @@ def _review_gate(toplevel: str, task_id: str) -> bool:
     return True
 
 
-def _difficulty(labels: tuple[str, ...] | list[str]) -> str:
-    values = beads.label_values(labels, beads.DIFFICULTY_LABEL)
+def _difficulty(issue: beads.Issue | None) -> str:
+    if issue is None:
+        return "sonnet"
+    values = beads.attribute_values(issue, beads.DIFFICULTY_KEY, beads.DIFFICULTY_LABEL)
     return values[0] if len(values) == 1 else "sonnet"
 
 
