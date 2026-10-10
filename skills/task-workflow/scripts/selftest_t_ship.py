@@ -379,16 +379,63 @@ def test_ship_and_land_report_unsynced_submodule() -> None:
         _advance_submodule(origin, wt2, "v3")
         git(wt2, "submodule", "deinit", "-q", "-f", "vendor/sub")
         shutil.move(origin, origin + "-gone")
+        wt2_head = git(wt2, "rev-parse", "HEAD").stdout.strip()
         r = run_task(main_path, "land", "wt2-branch", env=_FILE_PROTOCOL_ENV)
         lines = r.stdout.splitlines()
-        # サブモジュールを含む作業ツリーは git が消さないので、片付けの NOT_REMOVED(4) はこの足場の事情。
         check("land は LANDED で始まる", lines[0].startswith("LANDED\t"), r.stdout + r.stderr)
         check(
             "LANDED の次に SUBMODULE_NOT_SYNCED（理由は fatal の行）",
             len(lines) > 1 and lines[1].startswith("SUBMODULE_NOT_SYNCED\t") and "\tfatal:" in lines[1],
             r.stdout,
         )
-        check("main は枝の先端まで進んでいる", git(main_path, "merge-base", "--is-ancestor", "wt2-branch", "main").returncode == 0)
+        check("main は枝の先端まで進んでいる", git(main_path, "merge-base", "--is-ancestor", wt2_head, "main").returncode == 0)
+
+
+def test_land_removes_worktree_with_submodule_only_when_clean() -> None:
+    say("task.py land: サブモジュールを持つ作業ツリーは、作業ツリーとサブモジュールが綺麗なときだけ消す")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2, _origin = _make_submodule_repo(tmp)
+
+        def branches() -> list[str]:
+            return git(main_path, "branch", "--format=%(refname:short)").stdout.split()
+
+        r = run_task(main_path, "land", "wt2-branch", env=_FILE_PROTOCOL_ENV)
+        lines = r.stdout.splitlines()
+        check(
+            "綺麗なら LANDED・REMOVED・DELETED（終了コード0）",
+            r.returncode == 0
+            and lines[0].startswith("LANDED\twt2-branch\t")
+            and lines[1:] == [f"REMOVED\t{os.path.realpath(wt2)}", "DELETED\twt2-branch"],
+            r.stdout + r.stderr,
+        )
+        check("作業ツリーと枝が消える", not os.path.exists(wt2) and "wt2-branch" not in branches())
+
+        write(os.path.join(wt1, "vendor", "sub", "dirty.txt"), "x\n")
+        main_head = git(main_path, "rev-parse", "HEAD").stdout.strip()
+        r = run_task(main_path, "land", "wt1-branch", env=_FILE_PROTOCOL_ENV)
+        check(
+            "サブモジュールの中の未追跡は NOT_LANDED(4)",
+            r.returncode == 4 and r.stdout.startswith("NOT_LANDED\twt1-branch\t"),
+            r.stdout + r.stderr,
+        )
+        check(
+            "何も変えない",
+            git(main_path, "rev-parse", "HEAD").stdout.strip() == main_head
+            and os.path.isdir(wt1)
+            and "wt1-branch" in branches(),
+        )
+
+        git(wt1, "config", "submodule.vendor/sub.ignore", "all")
+        r = run_task(main_path, "land", "wt1-branch", env=_FILE_PROTOCOL_ENV)
+        lines = r.stdout.splitlines()
+        check(
+            "本体の status が汚れを隠すなら LANDED のあと作業ツリーは NOT_REMOVED(4)",
+            r.returncode == 4
+            and lines[0].startswith("LANDED\twt1-branch\t")
+            and any(line.startswith(f"NOT_REMOVED\t{os.path.realpath(wt1)}\t") for line in lines),
+            r.stdout + r.stderr,
+        )
+        check("作業ツリーが残り、枝も残る", os.path.isdir(wt1) and "wt1-branch" in branches())
 
 
 def test_ship_without_gitmodules_prints_no_submodule_line() -> None:
@@ -691,6 +738,7 @@ TESTS = (
     test_land,
     test_ship_and_land_sync_submodules,
     test_ship_and_land_report_unsynced_submodule,
+    test_land_removes_worktree_with_submodule_only_when_clean,
     test_ship_without_gitmodules_prints_no_submodule_line,
     test_base_branch_resolution,
 )

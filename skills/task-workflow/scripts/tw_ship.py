@@ -201,11 +201,11 @@ def cmd_land(toplevel: str, branch: str) -> None:
 
     leftovers: list[tuple[str, str]] = []
     for path in branch_trees:
-        removed = tw_base.run_git(base_tree, ["worktree", "remove", path])
-        if removed.returncode == 0:
+        reason = _remove_worktree(base_tree, path)
+        if reason is None:
             print(f"REMOVED\t{path}")
         else:
-            leftovers.append((path, _first_line(removed.stderr)))
+            leftovers.append((path, reason))
     deleted = tw_base.run_git(base_tree, ["branch", "-d", branch])
     if deleted.returncode == 0:
         print(f"DELETED\t{branch}")
@@ -215,6 +215,27 @@ def cmd_land(toplevel: str, branch: str) -> None:
         print(f"NOT_REMOVED\t{name}\t{reason}")
     if leftovers:
         raise SystemExit(4)
+
+
+def _remove_worktree(base_tree: str, path: str) -> str | None:
+    """作業ツリーを消す。消せたら `None`、消せなかったら git の理由の1行を返す。
+
+    git はサブモジュールを持つ作業ツリーを `--force` なしでは消さない。
+    `.gitmodules` があって断られたときだけ、作業ツリーと各サブモジュールの
+    `git status --porcelain` が空なのを確かめて `--force` で消す。
+    """
+    removed = tw_base.run_git(base_tree, ["worktree", "remove", path])
+    if removed.returncode == 0:
+        return None
+    reason = _first_line(removed.stderr)
+    if not os.path.isfile(os.path.join(path, ".gitmodules")):
+        return reason
+    own = tw_base.run_git(path, ["status", "--porcelain"])
+    nested = tw_base.run_git(path, ["submodule", "foreach", "--recursive", "--quiet", "git status --porcelain"])
+    if own.returncode != 0 or nested.returncode != 0 or own.stdout.strip() or nested.stdout.strip():
+        return reason
+    forced = tw_base.run_git(base_tree, ["worktree", "remove", "--force", path])
+    return None if forced.returncode == 0 else _first_line(forced.stderr)
 
 
 def _refuse_land(branch: str, reason: str) -> NoReturn:
