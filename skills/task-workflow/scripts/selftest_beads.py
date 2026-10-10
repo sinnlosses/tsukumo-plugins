@@ -233,6 +233,19 @@ def test_difficulty_loopable_metadata() -> None:
         shown = run_task(main_path, "show", task_id).stdout
         check("show は metadata から読む", "\ndifficulty: haiku\nloopable: N\n" in shown, shown)
 
+        r = bd(main_path, "create", "--id", "t-raw", "--title", "取り込み", "-l", "difficulty:opus,loopable:N",
+               "--silent")
+        check("振り分け前の課題（番号なし・古い label つき）を作れる", r.returncode == 0, r.stdout + r.stderr)
+        r = run_task(main_path, "adopt", "T-RAW", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", "-",
+                     stdin=PLANNED_BODY)
+        adopted_id = r.stdout.strip().split("\t")[-1] if r.stdout.startswith("ADOPTED\t") else ""
+        adopted = beads.show(main_path, beads.to_bd_id(adopted_id)) if adopted_id else None
+        meta = adopted.raw.get("metadata") if adopted is not None else {}
+        check("adopt は metadata に2キーを書き、古い label を外す",
+              adopted is not None and meta.get("difficulty") == "sonnet" and meta.get("loopable") == "Y"
+              and not any(l.startswith(("difficulty:", "loopable:")) for l in adopted.labels),
+              r.stdout + r.stderr + str(adopted))
+
 
 def test_setup_and_config_doctor() -> None:
     say("init.py・config-doctor・MISSING・設定の読み違い")
