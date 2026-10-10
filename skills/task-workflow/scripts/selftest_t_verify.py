@@ -9,10 +9,11 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 from selftest_support import check, git, say, weight, write  # noqa: E402
+import layout  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
-from selftest_fixtures import BODY, DRAFT_REL, TASK_REL, commit_task, make_repo, readonly_git, run_handback_guard, run_task  # noqa: E402
+from selftest_fixtures import BODY, DRAFT_REL, commit_task, make_repo, readonly_git, run_handback_guard, run_task  # noqa: E402
 
 
 @weight(3)
@@ -20,7 +21,7 @@ def test_verify_refuses_unplanned_work() -> None:
     say("task.py verify: 着手中のタスクの ## やること が空のまま作業が始まっていたら検証を打たない")
     planned = task_body([("書く", "")])
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, wt2 = make_repo(tmp, branch="切らない", verify="`echo verified`")
+        main_path, wt1, wt2 = make_repo(tmp, store=layout.STORE_BEADS, branch="切らない", verify="`echo verified`")
         for tid in ("T-110", "T-111"):
             commit_task(main_path, taskfile.Task(tid, "検証の関門", "todo", "sonnet", "Y", (), BODY))
 
@@ -37,8 +38,8 @@ def test_verify_refuses_unplanned_work() -> None:
               and "verified" not in r.stdout and r2.stdout.strip() == "NOT_VERIFIED\tnone", r.stdout + r2.stdout + r.stderr)
 
         r = run_task(wt2, "verify")
-        check("別の作業ツリーの着手には掛からない（遅れていた main は取り込んでから打つ）", r.returncode == 0
-              and r.stdout.startswith("FOLDED\t") and "\nVERIFIED\t" in r.stdout, r.stdout + r.stderr)
+        check("別の作業ツリーの着手には掛からない", r.returncode == 0
+              and r.stdout.startswith("VERIFIED\t"), r.stdout + r.stderr)
 
         run_task(wt1, "edit", "T-110", "--after-work", "--body-file", "-", stdin=planned)
         r = run_task(wt1, "verify")
@@ -63,7 +64,7 @@ VERIFY_SCRIPT = (
 def test_verify_stamp() -> None:
     say("task.py verify・verify-check: 検証が通った中身の鍵を控え、同じなら省いてよいと判定する")
     with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1, wt2 = make_repo(tmp, branch="切らない", verify="`sh verify.sh`")
+        _main, wt1, wt2 = make_repo(tmp, store=layout.STORE_BEADS, branch="切らない", verify="`sh verify.sh`")
         write(os.path.join(wt1, "verify.sh"), VERIFY_SCRIPT)
         write(os.path.join(wt1, ".gitignore"), "ignored/\n")
         write(os.path.join(wt1, "pnpm-lock.yaml"), "lockfileVersion: 9\n")
@@ -162,7 +163,7 @@ def test_verify_stamp() -> None:
         check("検証コマンドが変われば NOT_VERIFIED command", verify_check() == "NOT_VERIFIED\tcommand")
 
     with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1, _wt2 = make_repo(tmp, branch="切らない")
+        _main, wt1, _wt2 = make_repo(tmp, store=layout.STORE_BEADS, branch="切らない")
         r1 = run_task(wt1, "verify")
         r2 = run_task(wt1, "verify-check")
         check("検証コマンドが無ければ verify・verify-check とも NOTHING", r1.returncode == 0 and r2.returncode == 0
@@ -177,9 +178,11 @@ NOTES = "a\nb\nc\nd\ne\n"
 
 def _fold_repo(tmp: str, preship: str | None = None, planned: bool = True) -> tuple[str, str]:
     """`(本体, 作業ツリー1)`。wt1 が T-120 を claim 済みで、検証コマンドは打たれるたびに `verify-count.log` へ1行足す。"""
-    main_path, wt1, _wt2 = make_repo(tmp, branch="切らない", verify="`sh ../verify-count.sh`", preship=preship)
+    main_path, wt1, _wt2 = make_repo(tmp, store=layout.STORE_BEADS, branch="切らない", verify="`sh ../verify-count.sh`", preship=preship)
     write(os.path.join(tmp, "verify-count.sh"), COUNTING_VERIFY_SCRIPT)
     write(os.path.join(main_path, "notes.txt"), NOTES)
+    git(main_path, "add", "notes.txt")
+    git(main_path, "commit", "-q", "-m", "notes.txt を足す")
     body = task_body([("書く", "")]) if planned else BODY
     commit_task(main_path, taskfile.Task("T-120", "取り込み", "todo", "sonnet", "Y", (), body))
     r = run_task(wt1, "claim", "T-120")
@@ -203,7 +206,7 @@ def test_verify_runs_format_first() -> None:
     saw = 'cat formatted.txt >> saw.log\necho "ok"\n'
     with tempfile.TemporaryDirectory() as tmp:
         _main, wt1, _wt2 = make_repo(
-            tmp, branch="切らない", verify="`sh verify.sh`", format_command="`sh format.sh`"
+            tmp, store=layout.STORE_BEADS, branch="切らない", verify="`sh verify.sh`", format_command="`sh format.sh`"
         )
         write(os.path.join(wt1, "format.sh"), fix)
         write(os.path.join(wt1, "verify.sh"), saw)
@@ -218,7 +221,7 @@ def test_verify_runs_format_first() -> None:
         check("整形で変わった中身でも続く verify-check は VERIFIED_SAME", r.stdout.startswith("VERIFIED_SAME\t"), r.stdout + r.stderr)
 
     with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1, _wt2 = make_repo(tmp, branch="切らない", verify="`sh verify.sh`", format_command="なし")
+        _main, wt1, _wt2 = make_repo(tmp, store=layout.STORE_BEADS, branch="切らない", verify="`sh verify.sh`", format_command="なし")
         write(os.path.join(wt1, "format.sh"), fix)
         write(os.path.join(wt1, "verify.sh"), 'echo "ok"\n')
         git(wt1, "add", "-A")
@@ -228,7 +231,7 @@ def test_verify_runs_format_first() -> None:
 
     with tempfile.TemporaryDirectory() as tmp:
         _main, wt1, _wt2 = make_repo(
-            tmp, branch="切らない", verify="`sh verify.sh`", format_command="`sh format.sh`"
+            tmp, store=layout.STORE_BEADS, branch="切らない", verify="`sh verify.sh`", format_command="`sh format.sh`"
         )
         write(os.path.join(wt1, "format.sh"), "echo broken\nexit 1\n")
         write(os.path.join(wt1, "verify.sh"), "echo ran > verify-ran.txt\n")
@@ -253,7 +256,7 @@ def test_verify_keeps_failed_logs() -> None:
     say("task.py verify: 落ちた回のログが時刻つきで直近3本残り、整形と検証の出力が task-verify.log に並ぶ")
     with tempfile.TemporaryDirectory() as tmp:
         _main, wt1, _wt2 = make_repo(
-            tmp, branch="切らない", verify="`sh verify.sh`", format_command="`sh format.sh`"
+            tmp, store=layout.STORE_BEADS, branch="切らない", verify="`sh verify.sh`", format_command="`sh format.sh`"
         )
         write(os.path.join(wt1, "format.sh"), "echo fmt-out\n")
         git(wt1, "add", "-A")
@@ -296,7 +299,7 @@ def _commit_and_ship(wt: str, tmp: str, *paths: str) -> subprocess.CompletedProc
     result_path = write(os.path.join(tmp, "result.md"), "検証OK\n")
     r = run_task(wt, "done", "T-120", "--result-file", result_path)
     check("done は COMMITS_SINCE_CLAIM に main のコミットを数えない",
-          r.stdout.strip() == f"DONE\tT-120\t{TASK_REL}/T-120.md\tstaged", r.stdout + r.stderr)
+          r.stdout.strip() == "DONE\tT-120\tbeads:t-120\tship で閉じる", r.stdout + r.stderr)
     git(wt, "add", *paths)
     git(wt, "commit", "-q", "-m", "T-120: 完了")
     return run_task(wt, "ship")
@@ -326,7 +329,7 @@ def test_verify_folds_base_before_check() -> None:
         r = run_task(wt1, "verify-check")
         check("取り込んだあとの中身の控えで VERIFIED_SAME", r.stdout.startswith("VERIFIED_SAME\t"), r.stdout)
 
-        r = _commit_and_ship(wt1, tmp, "notes.txt", "work.txt", f"{TASK_REL}/T-120.md")
+        r = _commit_and_ship(wt1, tmp, "notes.txt", "work.txt")
         check("ship は付け替えずに送る（verify=skipped）", r.returncode == 0 and r.stdout.startswith("SHIPPED\t")
               and "rebased=no" in r.stdout and "verify=skipped" in r.stdout, r.stdout + r.stderr)
         check("検証コマンドは1回だけ", _verify_count(tmp) == 1, str(_verify_count(tmp)))
@@ -459,8 +462,8 @@ def test_ship_skips_preship_verify_when_stamp_matches() -> None:
         write(os.path.join(wt1, DRAFT_REL, "x.md"), "- **x**\n")
         r = run_task(wt1, "done", "T-120", "--result-file", "-", stdin="- 振り返り: 兆候なし\n")
         check("done が通る", r.returncode == 0 and r.stdout.startswith("DONE\t"), r.stdout + r.stderr)
-        r = _commit_work_and_ship(wt1, "work.txt", f"{DRAFT_REL}/x.md", f"{TASK_REL}/T-120.md")
-        check("verify のあとのドラフトと done のタスクファイルも一緒にコミットしても preship=skipped",
+        r = _commit_work_and_ship(wt1, "work.txt", f"{DRAFT_REL}/x.md")
+        check("verify のあとのドラフトを done のあとに一緒にコミットしても preship=skipped",
               r.returncode == 0 and r.stdout.startswith("SHIPPED\t") and "preship=skipped" in r.stdout, r.stdout + r.stderr)
         check("ドラフトと done の回も送る前の検証コマンドは verify の1回だけ", _preship_count(tmp) == 1, str(_preship_count(tmp)))
 
@@ -520,7 +523,7 @@ def test_ship_runs_preship_verify_when_work_changes_tree() -> None:
             if not passes:
                 write(os.path.join(tmp, "preship-fail"), "")
             head_before = git(main_path, "rev-parse", "HEAD").stdout.strip()
-            r = _commit_and_ship(wt1, tmp, "work.txt", f"{TASK_REL}/T-120.md")
+            r = _commit_and_ship(wt1, tmp, "work.txt")
             preship_count = _count_lines(os.path.join(tmp, "preship-count.log"))
             check("送る前の検証コマンドは ship でもう1回打たれる", preship_count == 2, str(preship_count))
             check("通常の検証コマンドは打たれない", _verify_count(tmp) == 0, str(_verify_count(tmp)))
@@ -591,7 +594,7 @@ def test_verify_check_reports_base() -> None:
         r = run_task(wt1, "verify")
         check("取り込んでから打つ", r.stdout.startswith("FOLDED\t") and "\nVERIFIED\t" in r.stdout, r.stdout + r.stderr)
 
-        r = _commit_and_ship(wt1, tmp, "work.txt", f"{TASK_REL}/T-120.md")
+        r = _commit_and_ship(wt1, tmp, "work.txt")
         check("ship は verify=skipped", r.returncode == 0 and "verify=skipped" in r.stdout, r.stdout + r.stderr)
         check("検証コマンドは委譲先の1回と受け入れの1回", _verify_count(tmp) == 2, str(_verify_count(tmp)))
 

@@ -1,4 +1,4 @@
-"""自己テストのファイル方式の足場と、複数のテストファイルが使う下ごしらえ。"""
+"""自己テストの足場（ファイル方式と Beads 方式）と、複数のテストファイルが使う下ごしらえ。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,9 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from selftest_support import git, write  # noqa: E402
+from selftest_support import copy_beads, git, write  # noqa: E402
+import beads  # noqa: E402
+import layout  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
@@ -69,6 +71,7 @@ def make_repo(
     format_command: str | None = None,
     preship: str | None = None,
     section: bool = True,
+    store: str = layout.STORE_FILES,
 ) -> tuple[str, str, str]:
     """`(本体, 作業ツリー1, 作業ツリー2)`。本体だけが主ブランチを出す。
 
@@ -78,12 +81,16 @@ def make_repo(
     `config_filename`（`CLAUDE.md`・`AGENTS.md`）を渡すと、代わりに旧い「## タスク運用」節をそのファイルに書く
     （旧配置の足場。値はそのまま行に書き、`verify` を省略すると行を書かない）。`section` が偽なら設定をどこにも書かない。
     `direction.md` は `.tw/config.toml` を書くときは `.tw/` に、そうでなければ `develop/` に置く。
+    `store` が Beads なら設定に `store = "beads"` を書き、`beads_home` の `t` の作り置きを `.beads` に写す。
     """
     main_path = os.path.join(tmp, "base")
     os.makedirs(main_path)
     git(main_path, "init", "-q", "-b", base)
     git(main_path, "config", "user.email", "test@example.com")
     git(main_path, "config", "user.name", "test")
+    if store == layout.STORE_BEADS:
+        git(main_path, "config", "beads.role", "maintainer")
+        copy_beads(main_path, beads.PREFIX_LOCAL)
     write(
         os.path.join(main_path, ".tw" if config_filename is None and section else "develop", "direction.md"),
         "# 未対応の指示メモ\n\n## ユーザーから\n\n## エージェントのドラフト\n",
@@ -108,6 +115,8 @@ def make_repo(
             toml += f"verify_before_ship = {_toml_value(preship)}\n"
         if branch is not None:
             toml += f'branch = "{branch}"\n'
+        if store == layout.STORE_BEADS:
+            toml += 'store = "beads"\n'
         write(os.path.join(main_path, ".tw", "config.toml"), toml)
     write(os.path.join(main_path, "shared.txt"), "line1\n")
     git(main_path, "add", "-A")
@@ -130,9 +139,44 @@ def task_rel(repo: str) -> str:
 
 
 def commit_task(main_path: str, task: taskfile.Task) -> None:
+    """`task` を置く。Beads の足場なら `task.id` のまま Beads に作り（コミットしない）、そうでなければファイルをコミットする。"""
+    if os.path.isdir(os.path.join(main_path, ".beads")):
+        _create_issue(main_path, task)
+        return
     write(os.path.join(main_path, task_rel(main_path), f"{task.id}.md"), taskfile.render(task))
     git(main_path, "add", "-A")
     git(main_path, "commit", "-q", "-m", f"{task.id}を足す")
+
+
+def _create_issue(main_path: str, task: taskfile.Task) -> None:
+    """`tw new` を通さずに、`task` の ID・状態・label・本文のまま Beads の課題を作る。"""
+    bd_id = beads.to_bd_id(task.id)
+    parts = beads.split_body(task.body)
+    labels = [f"{beads.DIFFICULTY_LABEL}{task.difficulty}", f"{beads.LOOPABLE_LABEL}{task.loopable}"]
+    if task.direct == "Y":
+        labels.append(beads.DIRECT_ON)
+    if task.status == "dropped":
+        labels.append(beads.CANCELLED_LABEL)
+    cmd = ["create", "--id", bd_id, "--title", task.summary, "--body-file", "-", "-l", ",".join(labels), "--silent"]
+    if parts.acceptance:
+        cmd += ["--acceptance", parts.acceptance]
+    if parts.notes:
+        cmd += ["--notes", parts.notes]
+    if task.status == "hold":
+        cmd += ["-s", beads.HOLD_STATUS]
+    if task.dependencies:
+        cmd += ["--deps", ",".join(beads.to_bd_id(d) for d in task.dependencies)]
+    _bd(main_path, cmd, parts.description)
+    if parts.result is not None:
+        _bd(main_path, ["comment", bd_id, "--stdin"], f"{beads.RESULT_HEADING}\n\n{parts.result}\n")
+    if task.status in ("done", "dropped"):
+        _bd(main_path, ["close", bd_id, "--reason", "cancelled" if task.status == "dropped" else "done"])
+
+
+def _bd(cwd: str, args: list[str], stdin: str | None = None) -> None:
+    r = subprocess.run(["bd", *args], cwd=cwd, capture_output=True, text=True, input=stdin)
+    if r.returncode != 0:
+        raise RuntimeError(f"bd {' '.join(args)} 失敗: {r.stdout}{r.stderr}")
 
 
 def _make_legacy_repo(tmp: str, tasks: list[dict] | None = None, progress: str | None = None) -> str:

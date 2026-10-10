@@ -5,14 +5,11 @@
 
 一時ディレクトリに git リポジトリと作業ツリー2本を作り、`bd init --stealth` で `.beads` を置いて、
 `task.py` を実際に子プロセスで（取り合いは同時に）起こして確かめる。本物の `bd` を使う
-（無ければ飛ばして 0 で終わる。ファイル方式は `selftest_task.py` が見る）。
+（無ければ非0で終わる。家の向け先は `selftest_support.beads_home`）。
 
 GitHub には繋がない。本物の `bd` の `bd github push`・`pull` を `GITHUB_API_URL` で
 偽の HTTP サーバ（`FakeGitHub`。REST の Issue と Project の GraphQL）へ向ける。`gh` は PATH の先頭に置いた
 偽のコマンドが `api` を同じサーバへ転送する。
-`HOME`・`XDG_CONFIG_HOME`・`XDG_DATA_HOME` を一時ディレクトリへ向けて、利用者の家を汚さない
-（`bd init` は利用者の `~/.config/bd/config.yaml` を読み書きし、並行に打つと使用状況の送信の設定まで
-書き戻すことがあった。一時の家には送信を止めた設定を置く）。
 """
 
 from __future__ import annotations
@@ -28,7 +25,6 @@ import tempfile
 import threading
 import time
 from collections.abc import Iterator
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -41,7 +37,7 @@ import layout  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
-from selftest_support import check, finish, git, local, run_parallel, say, select, write  # noqa: E402
+from selftest_support import beads_home, check, copy_beads, finish, git, local, run_parallel, say, select, write  # noqa: E402
 
 # 利用者の値のままだと、一時リポジトリの台帳がその置き場に積もる。
 os.environ.pop(ledger.STATE_DIR_ENV, None)
@@ -55,14 +51,11 @@ BODY = task_body(acceptance="- 通る", caution="z")
 # 登録の既定の本文。`make_repo` が主ブランチに置く `shared.txt` を名指す。
 PLANNED_BODY = task_body([("書く", "x")], ["shared.txt"], acceptance="- 通る", caution="z")
 
-BASE_ENV = os.environ.copy()
-# テストは CPU 数の半分まで並行に走らせる。出力と環境変数はテストごとに持つ。
-# prefix ごとに `bd init --stealth` した `.beads` と、そのとき書かれた `.git/info/exclude`。`main()` が作る。
-_beads_templates: dict[str, tuple[str, str]] = {}
 
 
 def env() -> dict[str, str]:
-    return getattr(local, "env", BASE_ENV)
+    """テストは CPU 数の半分まで並行に走らせる。出力と環境変数はテストごとに持つ。"""
+    return getattr(local, "env", None) or dict(os.environ)
 
 
 def run_task(cwd: str, *args: str, stdin: str | None = None) -> subprocess.CompletedProcess:
@@ -126,9 +119,7 @@ def make_repo(tmp: str, branch: str | None = "切らない", extra: str = "", ve
         write(os.path.join(main_path, ".tw", "config.toml"), config)
     write(os.path.join(main_path, "shared.txt"), "line1\n")
     if prefix is not None:
-        template, exclude = _beads_templates[prefix]
-        shutil.copytree(template, os.path.join(main_path, ".beads"))
-        write(os.path.join(main_path, ".git", "info", "exclude"), exclude)
+        copy_beads(main_path, prefix)
     if legacy:
         write(os.path.join(main_path, ".tw", "config.toml"), 'verify = "なし"\nstore = "beads"\n')
     r = subprocess.run([sys.executable, INIT_PY], cwd=main_path, capture_output=True, text=True, env=env())
@@ -654,7 +645,7 @@ else:
 
 
 def _with_fakes(tmp: str, fake: FakeGitHub) -> dict[str, str]:
-    env = dict(BASE_ENV)
+    env = dict(os.environ)
     env["PATH"] = _fake_bin(tmp) + os.pathsep + env.get("PATH", "")
     env["GITHUB_API_URL"] = fake.url
     env.pop("GITHUB_TOKEN", None)
@@ -735,26 +726,6 @@ def test_backup() -> None:
         check("リポジトリの中へは取らない（終了コード10）", r.returncode == 10 and "BACKUP\tFAILED" in r.stdout, r.stdout)
 
 
-def _make_beads_template(home: str, prefix: str) -> None:
-    repo = os.path.join(home, f"beads-template-{prefix}")
-    os.makedirs(repo)
-    git(repo, "init", "-q", "-b", "main")
-    git(repo, "config", "beads.role", "maintainer")
-    r = bd(repo, "init", "--stealth", "-p", prefix, "--non-interactive", "--skip-hooks", "--quiet")
-    if r.returncode != 0:
-        raise RuntimeError(f"bd init -p {prefix} 失敗: {r.stdout}{r.stderr}")
-    with open(os.path.join(repo, ".git", "info", "exclude"), encoding="utf-8") as f:
-        _beads_templates[prefix] = (os.path.join(repo, ".beads"), f.read())
-
-
-def _stat(path: str) -> tuple[float, int] | None:
-    try:
-        st = os.stat(path)
-    except OSError:
-        return None
-    return st.st_mtime, st.st_size
-
-
 def test_id_forms() -> None:
     """ID の形: `T-<n>`・`GH-<n>`・Jira のキー（`PROJ-123`）を読み、前の2つを Jira のキーと取り違えない。"""
     forms = {"T-123": "t-123", "GH-5": "gh-5", "PROJ-123": "proj-123", "AB2_C-7": "ab2_c-7"}
@@ -794,19 +765,7 @@ def test_bd_time_forms() -> None:
 
 def main() -> None:
     only = sys.argv[1:]  # テストの関数名を渡すとそれだけを走らせる（手で直すとき）
-    if shutil.which("bd") is None:
-        print("bd が無いので Beads 方式の自己テストを飛ばす")
-        return
-    real_config = os.path.join(os.path.expanduser("~"), ".config", "bd", "config.yaml")
-    before = _stat(real_config)
-    with tempfile.TemporaryDirectory() as home:
-        write(os.path.join(home, ".config", "bd", "config.yaml"),
-              "metrics:\n    disabled: true\n    notice_shown: true\nno-git-ops: true\n")
-        BASE_ENV["HOME"] = home
-        BASE_ENV["XDG_CONFIG_HOME"] = os.path.join(home, ".config")
-        BASE_ENV["XDG_DATA_HOME"] = os.path.join(home, ".local", "share")
-        BASE_ENV.pop("BEADS_ACTOR", None)
-        BASE_ENV.pop("GITHUB_TOKEN", None)
+    with beads_home((beads.PREFIX_LOCAL, beads.PREFIX_GITHUB)):
         # 長いものから並列に乗せる（後ろに残ると全体がその分延びる）。
         tests = (
             test_tracker_github_bidirectional,
@@ -823,12 +782,7 @@ def main() -> None:
             test_id_forms,
             test_bd_time_forms,
         )
-        tests = select(tests, only)
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            list(pool.map(lambda prefix: _make_beads_template(home, prefix), (beads.PREFIX_LOCAL, beads.PREFIX_GITHUB)))
-        outputs = run_parallel(tests)
-    local.lines = []
-    check("利用者の ~/.config/bd/config.yaml に触れていない", _stat(real_config) == before, real_config)
+        outputs = run_parallel(select(tests, only))
     finish([*outputs, local.lines])
 
 

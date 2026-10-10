@@ -2,13 +2,89 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
+import shutil
 import subprocess
+import tempfile
 import threading
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 
 failures: list[str] = []
 local = threading.local()
+
+# prefix ごとに `bd init --stealth` した `.beads` と、そのとき書かれた `.git/info/exclude`。`beads_home` が作る。
+_beads_templates: dict[str, tuple[str, str]] = {}
+
+_BD_CONFIG = "metrics:\n    disabled: true\n    notice_shown: true\nno-git-ops: true\n"
+
+
+@contextlib.contextmanager
+def beads_home(prefixes: tuple[str, ...]) -> Iterator[str]:
+    """`HOME`・`XDG_*` を一時ディレクトリへ向け、`prefixes` ごとに `.beads` の作り置きを作る。
+
+    `bd init` は利用者の `~/.config/bd/config.yaml` を読み書きし、並行に打つと使用状況の送信の設定まで
+    書き戻すことがあった。一時の家には送信を止めた設定を置く。抜けるときに環境変数を戻し、
+    利用者の設定ファイルに触れていないことを確かめる（結果は `local.lines` に残す）。
+    `bd` が無ければ非0で終わる（`tw` は `bd` 無しでは動かない）。
+    """
+    if shutil.which("bd") is None:
+        print("bd が PATH に無い（tw は Beads（bd）で動くので、自己テストにも bd が要る）")
+        raise SystemExit(1)
+    real_config = os.path.join(os.path.expanduser("~"), ".config", "bd", "config.yaml")
+    before = _stat(real_config)
+    keys = ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "BEADS_ACTOR", "GITHUB_TOKEN")
+    saved = {k: os.environ.get(k) for k in keys}
+    try:
+        with tempfile.TemporaryDirectory() as home:
+            write(os.path.join(home, ".config", "bd", "config.yaml"), _BD_CONFIG)
+            os.environ["HOME"] = home
+            os.environ["XDG_CONFIG_HOME"] = os.path.join(home, ".config")
+            os.environ["XDG_DATA_HOME"] = os.path.join(home, ".local", "share")
+            os.environ.pop("BEADS_ACTOR", None)
+            os.environ.pop("GITHUB_TOKEN", None)
+            with ThreadPoolExecutor(max_workers=max(1, len(prefixes))) as pool:
+                list(pool.map(lambda prefix: _make_beads_template(home, prefix), prefixes))
+            yield home
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    local.lines = []
+    check("利用者の ~/.config/bd/config.yaml に触れていない", _stat(real_config) == before, real_config)
+
+
+def copy_beads(repo: str, prefix: str) -> None:
+    """`beads_home` が作った `prefix` の `.beads` を `repo` に写す（`bd init` より速い）。"""
+    template, exclude = _beads_templates[prefix]
+    shutil.copytree(template, os.path.join(repo, ".beads"))
+    write(os.path.join(repo, ".git", "info", "exclude"), exclude)
+
+
+def _make_beads_template(home: str, prefix: str) -> None:
+    repo = os.path.join(home, f"beads-template-{prefix}")
+    os.makedirs(repo)
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "config", "beads.role", "maintainer")
+    r = subprocess.run(
+        ["bd", "init", "--stealth", "-p", prefix, "--non-interactive", "--skip-hooks", "--quiet"],
+        cwd=repo, capture_output=True, text=True,
+    )
+    if r.returncode != 0:
+        raise RuntimeError(f"bd init -p {prefix} 失敗: {r.stdout}{r.stderr}")
+    with open(os.path.join(repo, ".git", "info", "exclude"), encoding="utf-8") as f:
+        _beads_templates[prefix] = (os.path.join(repo, ".beads"), f.read())
+
+
+def _stat(path: str) -> tuple[float, int] | None:
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return st.st_mtime, st.st_size
 
 
 def say(line: str = "") -> None:
