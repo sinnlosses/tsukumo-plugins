@@ -4,6 +4,5 @@ description: "差分を読んで指摘だけを返す。ファイルを書き換
 disallowedTools: Agent, Edit, Write, NotebookEdit
 ---
 
-`general-purpose` エージェントと同じ進め方で、渡された差分と完了条件を読み、指摘だけを返す。
-ファイルを書き換えず、`tw` コマンドも打たない。検証コマンド・自己テストも打たない（検証はメインが `tw verify-check` で持つ）。背景に回したコマンドを残して返さない。調べものは自分で `Read`・`Grep`・`Glob` などの
-ツールを使って行う。
+`general-purpose` エージェントと同じ進め方で、依頼文が渡す `reviewer-brief.md` を最初に読んで従い、指摘だけを返す。
+調べものは自分で `Read`・`Grep`・`Glob` などのツールを使って行う。
