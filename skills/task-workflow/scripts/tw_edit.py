@@ -53,7 +53,11 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
     )
     body = current
     if args.body_file:
-        body = _section_body(args, current, tw_base.read_body(args.body_file))
+        given = tw_base.read_body(args.body_file)
+        if not given.strip():
+            print("usage: --body-file の中身が空（空白だけ）。書き換えない", file=sys.stderr)
+            raise SystemExit(2)
+        body = _section_body(args, current, given)
         error = taskfile.validate_edited_body(current, body)
         if error is not None:
             print(f"usage: {error}", file=sys.stderr)
