@@ -36,6 +36,11 @@ def test_verify_refuses_unplanned_work() -> None:
               and r.stdout.startswith("PLAN_MISSING\tT-110\t") and "--after-work" in r.stdout
               and "verified" not in r.stdout and r2.stdout.strip() == "NOT_VERIFIED\tnone", r.stdout + r2.stdout + r.stderr)
 
+        r = run_task(wt1, "verify", "T-111")
+        check("着手していない ID を渡した verify は NOT_OWNER（終了コード4）で、検証コマンドを打たない",
+              r.returncode == 4 and r.stdout.strip() == "NOT_OWNER\tT-111" and "verified" not in r.stdout,
+              r.stdout + r.stderr)
+
         r = run_task(wt2, "verify")
         check("別の作業ツリーの着手には掛からない", r.returncode == 0
               and r.stdout.startswith("VERIFIED\t"), r.stdout + r.stderr)
@@ -43,6 +48,10 @@ def test_verify_refuses_unplanned_work() -> None:
         run_task(wt1, "edit", "T-110", "--after-work", "--body-file", "-", stdin=planned)
         r = run_task(wt1, "verify")
         check("書けば打つ", r.returncode == 0 and r.stdout.startswith("VERIFIED\t"), r.stdout + r.stderr)
+
+        r = run_task(wt1, "verify", "T-110")
+        check("着手中の ID を渡した verify は引数なしと同じに打つ", r.returncode == 0
+              and r.stdout.startswith("VERIFIED\t"), r.stdout + r.stderr)
 
         r = run_task(wt2, "claim", "T-111")
         write(os.path.join(wt2, "work.txt"), "x\n")

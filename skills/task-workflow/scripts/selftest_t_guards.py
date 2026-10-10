@@ -355,9 +355,14 @@ def test_handback_guard_parallel_steps() -> None:
         r = run_task(wt1, "pause", "T-100", "3")
         check("最後の段も tw pause <ID> <n> で控えられる", r.returncode == 0 and run_handback_guard(tmp, wt1) is None,
               r.stdout + r.stderr)
-        for label, args in (("段の番号が無い", ("T-100",)), ("段の外の番号", ("T-100", "4"))):
-            r = run_task(wt1, "pause", *args)
-            check(f"tw pause の引数が{label}なら終了コード2", r.returncode == 2 and "usage:" in r.stderr, r.stdout + r.stderr)
+        r = run_task(wt1, "pause", "T-100", "4")
+        check("tw pause の段の外の番号は終了コード2", r.returncode == 2 and "usage:" in r.stderr, r.stdout + r.stderr)
+        r = run_task(wt1, "pause", "T-100")
+        check("tw pause <ID>（着手中）は引数なしと同じに PAUSED を出して控える", r.returncode == 0
+              and r.stdout.startswith("PAUSED\t") and run_handback_guard(tmp, wt1) is None, r.stdout + r.stderr)
+        r = run_task(wt1, "pause", "T-999")
+        check("tw pause <ID>（着手していない）は NOT_OWNER（終了コード4）", r.returncode == 4
+              and r.stdout.strip() == "NOT_OWNER\tT-999", r.stdout + r.stderr)
         ledger.write_step_stamp(ledger.StepStamp(ledger.content_key("", cwd=wt1), "T-999", 1), cwd=wt1)
         run_task(wt1, "step", "T-100", "1")
         check("着手中でないタスクの段の控えは tw step が消す",

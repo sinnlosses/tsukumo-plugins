@@ -111,6 +111,17 @@ def claimed_here(toplevel: str) -> list[str]:
         return []
 
 
+def require_claimed(toplevel: str, task_id: str) -> None:
+    """引数で渡されたタスクIDが、この作業ツリーの着手の印と一致するか確かめる。違えば `NOT_OWNER`（終了コード4）。"""
+    if not beads.is_initialized(toplevel):
+        print("usage: この作業ツリーには着手の印が無い。タスクIDを付けずに打つ", file=sys.stderr)
+        raise SystemExit(2)
+    shown = beads.to_task_id(bd_task_id(task_id))
+    if shown not in claimed_here(toplevel):
+        print(f"NOT_OWNER\t{shown}")
+        raise SystemExit(4)
+
+
 def record_claimed(toplevel: str, event: str, **fields: str | int | bool) -> None:
     for task_id in claimed_here(toplevel):
         record(toplevel, event, task_id, **fields)

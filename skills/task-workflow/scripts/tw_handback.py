@@ -27,11 +27,10 @@ HANDBACK_VERIFY_OK = ("VERIFIED_SAME", "NOTHING")
 def cmd_pause(toplevel: str, task_id: str | None = None, step: str | None = None) -> None:
     """いまの中身の鍵を、着手した作業ツリーと着手中のタスクの作業先の作業ツリーそれぞれに控える。
 
-    段を名指せば、段の控え（`_write_step_stamps`）を種類 `pause` で残す。
+    タスクIDだけなら着手の印と突き合わせて、引数なしと同じに控える。段を名指せば、段の控え（`_write_step_stamps`）を種類 `pause` で残す。
     """
-    if (task_id is None) != (step is None):
-        print("usage: tw pause [<タスクID> <段の番号>]", file=sys.stderr)
-        raise SystemExit(2)
+    if task_id is not None and step is None:
+        tw_base.require_claimed(toplevel, task_id)
     if task_id is not None and step is not None:
         shown, specs, n = _owned_step(toplevel, task_id, step)
         key = _write_step_stamps(toplevel, shown, specs, n, "pause")

@@ -18,7 +18,9 @@ import tw_plan
 VERIFY_TAIL_LINES = 40
 
 
-def cmd_verify(toplevel: str) -> None:
+def cmd_verify(toplevel: str, task_id: str | None = None) -> None:
+    if task_id is not None:
+        tw_base.require_claimed(toplevel, task_id)
     verify_command = ship.read_stamp_command(toplevel)
     if verify_command is None:
         print("NOTHING\t(検証コマンドが無い)")

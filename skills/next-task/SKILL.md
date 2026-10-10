@@ -119,6 +119,8 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
    - タスクID と「まず `tw show T-xxx` で読む」
    - `${CLAUDE_SKILL_DIR}/implementer-brief.md` を解決した絶対パスと「最初にそれを読んで従う」
      （`no-delegate` でも `general-purpose` でも同じ brief を渡す）
+   - 「`tw verify`・`tw pause` は引数なしで打つのが基本。ID を付けるなら着手中のタスクの ID 1つだけ
+     （違う ID は `NOT_OWNER` で拒まれる）」
 
    `loopable: N` のタスク（ユーザーが直接呼んだとき）は委譲せずメインで行う。
    `${CLAUDE_SKILL_DIR}/main-run.md` を読んで従う。
@@ -146,8 +148,8 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
      `${CLAUDE_SKILL_DIR}/other-repo.md` の「実装の依頼文に足す項目（手順5c）」の項目
    - 並列の段の担当（手順5の「並列の段」）にだけ渡す: 「同じ作業ツリーでほかの段の担当が同時に動いている。
      書き換えるのは渡した段の `- 触るファイル:` の欄のファイルだけにする。最後の段でなければ `tw verify` も
-     検証コマンドの全段も打たない（対象を絞った単体テストは打ってよい）。止めて返すときは `tw pause` の代わりに
-     `tw pause T-xxx <段の番号>` を打つ」
+     検証コマンドの全段も打たない（対象を絞った単体テストは打ってよい）。止めて返すときは、基本の引数なしの
+     `tw pause` の代わりに `tw pause T-xxx <段の番号>`（ID と段の番号の2つ）を打つ」
    - 本文が見本（画・ラフ）を名指しているか、完了条件に目視があるか、描画を変えるタスクのときだけ、
      `${CLAUDE_SKILL_DIR}/visual-review.md` の「実装の依頼文に足す項目（手順5c）」の項目を渡す
 

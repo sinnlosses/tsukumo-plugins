@@ -90,7 +90,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_accept.add_argument("task_id")
     p_accept.add_argument("--after-review", dest="after_review", action="store_true")
 
-    sub.add_parser("verify")
+    sub.add_parser("verify").add_argument("task_id", nargs="?")
     sub.add_parser("verify-check")
     p_lap = sub.add_parser("lap")
     p_lap.add_argument("task_id")
@@ -187,7 +187,10 @@ def main(argv: list[str] | None = None) -> None:
 def _run(toplevel: str, args: argparse.Namespace) -> None:
     """`.beads` を要るサブコマンドを振り分ける（`verify`・`verify-check` だけは `.beads` が無くても打てる）。"""
     if args.command in ("verify", "verify-check") and not beads.is_initialized(toplevel):
-        (tw_verify.cmd_verify if args.command == "verify" else tw_verify.cmd_verify_check)(toplevel)
+        if args.command == "verify":
+            tw_verify.cmd_verify(toplevel, args.task_id)
+        else:
+            tw_verify.cmd_verify_check(toplevel)
         return
     if not beads.is_initialized(toplevel):
         print(f"MISSING\t{beads.beads_dir(toplevel)}")
@@ -217,7 +220,7 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
         elif args.command == "accept":
             tw_accept.cmd_accept(toplevel, args.task_id, args.after_review)
         elif args.command == "verify":
-            tw_verify.cmd_verify(toplevel)
+            tw_verify.cmd_verify(toplevel, args.task_id)
         elif args.command == "verify-check":
             tw_verify.cmd_verify_check(toplevel)
         elif args.command == "pause":
