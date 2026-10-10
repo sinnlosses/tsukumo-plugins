@@ -10,10 +10,10 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 from selftest_support import check, git, say, weight, write  # noqa: E402
-import layout  # noqa: E402
+import beads  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
-from selftest_fixtures import BODY, TASK_PY, _make_legacy_repo, commit_task, flow_rows, hook_env, make_repo, readonly_git, run_handback_guard, run_task, snapshot  # noqa: E402
+from selftest_fixtures import BODY, TASK_PY, commit_task, flow_rows, hook_env, make_repo, metadata, readonly_git, run_handback_guard, run_task, snapshot  # noqa: E402
 
 
 NO_DELEGATE = os.path.join(HERE, "..", "..", "..", "agents", "no-delegate.md")
@@ -561,16 +561,15 @@ def test_readonly_git() -> None:
         branch = git(wt1, "rev-parse", "--abbrev-ref", "HEAD").stdout
         with readonly_git(main_path):
             r = run_task(wt1, "claim", "T-100", env={ledger.STATE_DIR_ENV: state})
-        roots = os.listdir(state) if os.path.isdir(state) else []
         check("枝を切る claim は印を立てる前に GIT_READ_ONLY（終了コード11）で止まる",
               r.returncode == 11 and r.stdout.startswith("GIT_READ_ONLY\t")
-              and not any(os.path.isdir(ledger.claim_dir(os.path.join(state, x), "T-100")) for x in roots)
+              and beads.CLAIM_HEAD_KEY not in metadata(main_path, "T-100")
               and not os.path.exists(os.path.join(wt1, ".tw", "local", "task-open-claims"))
               and git(wt1, "rev-parse", "--abbrev-ref", "HEAD").stdout == branch, r.stdout + r.stderr)
 
 
 def test_readonly_git_stops_writers() -> None:
-    say("task.py: .git が読み取り専用なら ship・migrate は GIT_READ_ONLY で止まり、何も変えない（done は .git に書かない）")
+    say("task.py: .git が読み取り専用なら ship は GIT_READ_ONLY で止まり、何も変えない（done は .git に書かない）")
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, _ = make_repo(tmp, branch="切らない", verify="`true`")
         commit_task(main_path, taskfile.Task("T-100", "書けない", "todo", "sonnet", "Y", (), BODY))
@@ -607,94 +606,27 @@ def test_readonly_git_stops_writers() -> None:
         check("TW_STATE_DIR の台帳がまだ無い ship は GIT_READ_ONLY で止まり、新しい台帳を作らない",
               r.returncode == 11 and not os.path.exists(fresh), r.stdout + r.stderr)
 
-    with tempfile.TemporaryDirectory() as tmp:
-        repo = _make_legacy_repo(tmp)
-        before = snapshot(repo)
-        with readonly_git(repo):
-            r = run_task(repo, "migrate")
-        check("migrate は GIT_READ_ONLY（終了コード11）で何も書かない",
-              r.returncode == 11 and r.stdout.startswith("GIT_READ_ONLY\t") and snapshot(repo) == before,
-              r.stdout + r.stderr)
 
-
-@weight(16)
 def test_state_dir() -> None:
-    say("ledger.py TW_STATE_DIR: 台帳の置き場を変え、古い台帳を写し、分かれた印と書けない置き場を知らせる")
+    say("ledger.py TW_STATE_DIR: 流れの記録をクローンごとの置き場に書き、共有の git dir には書かない")
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, wt2 = make_repo(tmp, branch="切らない", store=layout.STORE_FILES)
-        for tid in ("T-100", "T-101", "T-102"):
-            commit_task(main_path, taskfile.Task(tid, "置き場", "todo", "sonnet", "Y", (), BODY))
+        main_path, wt1, _ = make_repo(tmp, branch="切らない")
+        commit_task(main_path, taskfile.Task("T-100", "置き場", "todo", "sonnet", "Y", (), BODY))
+        shared_root = ledger.ledger_root(cwd=main_path)
         state = os.path.join(tmp, "state")
         env = {ledger.STATE_DIR_ENV: state}
-        old_root = ledger.ledger_root(cwd=main_path)
 
-        run_task(wt2, "claim", "T-100")
-        r = run_task(wt1, "claim", "T-101", env=env)
-        roots = os.listdir(state) if os.path.isdir(state) else []
-        new_root = os.path.join(state, roots[0]) if len(roots) == 1 else ""
-        check("TW_STATE_DIR の下のクローンごとの置き場に印を立て、古い台帳には立てない",
-              r.returncode == 0 and roots[:1] != [] and roots[0].startswith("base-")
-              and os.path.isdir(ledger.claim_dir(new_root, "T-101"))
-              and not os.path.isdir(ledger.claim_dir(old_root, "T-101")), r.stdout + r.stderr + str(roots))
         r = run_task(wt1, "claim", "T-100", env=env)
-        check("初めて書くときに古い台帳を写し、別の作業ツリーの印は TAKEN",
-              r.returncode == 4 and r.stdout.startswith(f"TAKEN\tT-100\t{os.path.realpath(wt2)}\t"), r.stdout + r.stderr)
+        roots = os.listdir(state) if os.path.isdir(state) else []
+        state_flow = ledger.flow_dir(os.path.join(state, roots[0])) if len(roots) == 1 else ""
+        check("TW_STATE_DIR の下の「本体の作業ツリーの名前-…」に流れの記録を書き、共有の git dir には書かない",
+              r.returncode == 0 and roots[:1] != [] and roots[0].startswith("base-")
+              and os.path.isdir(state_flow) and os.listdir(state_flow) != []
+              and not os.path.exists(shared_root), r.stdout + r.stderr + str(roots))
 
-        run_task(wt2, "release", "T-100", env=env)
-        run_task(wt2, "claim", "T-102")
-        r = run_task(wt1, "status", env=env)
-        check("写したあとに古い台帳にだけ立った印を status が split_claims の行で知らせる（写した印は数えない）",
-              "split_claims\t1\tT-102:wt2" in r.stdout.splitlines(), r.stdout + r.stderr)
-        r = run_task(wt1, "claim", "T-102", env=env)
-        check("古い台帳にだけ印のあるタスクの claim は、印を立てずに TAKEN（終了コード4）",
-              r.returncode == 4 and r.stdout.startswith(f"TAKEN\tT-102\t{os.path.realpath(wt2)}\t")
-              and not os.path.isdir(ledger.claim_dir(new_root, "T-102")), r.stdout + r.stderr)
-        r = run_task(wt1, "status")
-        check("TW_STATE_DIR が無ければ split_claims の行を出さない", "split_claims" not in r.stdout, r.stdout)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _ = make_repo(tmp, branch="切らない", store=layout.STORE_FILES)
-        commit_task(main_path, taskfile.Task("T-100", "書けない", "todo", "sonnet", "Y", (), BODY))
-        root = ledger.ledger_root(cwd=main_path)
-        os.makedirs(root, exist_ok=True)
-        os.chmod(root, 0o555)
-        try:
-            r = run_task(wt1, "claim", "T-100")
-        finally:
-            os.chmod(root, 0o755)
-        check("台帳に書けなければ STATE_READ_ONLY（終了コード12）で足す置き場と TW_STATE_DIR を言い、何も立てない",
-              r.returncode == 12 and r.stdout.startswith(f"STATE_READ_ONLY\t{root}\t") and "TW_STATE_DIR" in r.stdout
-              and not os.path.isdir(ledger.claim_dir(root, "T-100"))
-              and not os.path.exists(os.path.join(wt1, ".tw", "local", "task-open-claims", "T-100")), r.stdout + r.stderr)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, wt2 = make_repo(tmp, branch="切らない", verify="`true`", store=layout.STORE_FILES)
-        for tid in ("T-100", "T-101"):
-            commit_task(main_path, taskfile.Task(tid, "途中から", "todo", "sonnet", "Y", (), BODY))
-        run_task(wt1, "claim", "T-100")
-        run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-", stdin="### 1. 書く\n\n### 2. 試す\n")
-        write(os.path.join(wt1, "work.txt"), "x\n")
-        run_task(wt2, "claim", "T-101")
-        write(os.path.join(wt2, "work.txt"), "x\n")
-        state = os.path.join(tmp, "state")
-        env = {ledger.STATE_DIR_ENV: state}
-
-        r = run_task(wt1, "status", env=env)
-        check("TW_STATE_DIR を途中から付けても、初めて書くまでは status が古い台帳の印を数える",
-              any(line.startswith("counts\t") and "claimed=2" in line for line in r.stdout.splitlines()), r.stdout)
-        r = run_task(wt1, "plan-check", "T-100", env=env)
-        check("書く前の plan-check が古い台帳の印と計画の記録を読む", r.stdout.startswith("PLAN_FIRST\tT-100"), r.stdout)
-        r = run_task(wt1, "step", "T-100", "1", env=env)
-        check("書く前の step が古い台帳の印を持ち主と見る", r.stdout.startswith("STEPPED\tT-100\t1/2\t"),
-              r.stdout + r.stderr)
-        r = run_task(wt2, "verify", env=env)
-        check("書く前の verify が古い台帳の印で計画の欠けを見る（PLAN_MISSING）",
-              r.returncode == 10 and r.stdout.startswith("PLAN_MISSING\tT-101\t"), r.stdout + r.stderr)
-        result_path = write(os.path.join(tmp, "result.md"), "- 検証コマンド: 1 pass\n")
-        r = run_task(wt1, "done", "T-100", "--result-file", result_path, env=env)
-        check("書く前の done が古い台帳の印を持ち主と見て DONE、読むだけでは新しい台帳を作らない",
-              r.returncode == 0 and r.stdout.startswith("DONE\tT-100\t") and not os.path.exists(state),
-              r.stdout + r.stderr)
+        r = run_task(wt1, "release", "T-100")
+        check("TW_STATE_DIR が無ければ共有の git dir の台帳に書く",
+              r.returncode == 0 and os.path.isdir(ledger.flow_dir(shared_root)), r.stdout + r.stderr)
 
 
 TESTS = (

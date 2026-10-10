@@ -1,4 +1,4 @@
-"""自己テストの足場（ファイル方式と Beads 方式）と、複数のテストファイルが使う下ごしらえ。"""
+"""自己テストの足場（git の本体と作業ツリー2本と `.beads`）と、複数のテストファイルが使う下ごしらえ。"""
 
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ sys.path.insert(0, HERE)
 
 from selftest_support import copy_beads, git, write  # noqa: E402
 import beads  # noqa: E402
-import layout  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
@@ -31,9 +30,6 @@ BODY = task_body()
 
 # 登録の既定の本文。`make_repo` が主ブランチに置く `shared.txt` を名指す。
 PLANNED_BODY = task_body([("書く", "x")], ["shared.txt"])
-
-# `make_repo` の既定（`.tw/config.toml`）のときの置き場。
-TASK_REL = ".tw/task"
 
 DRAFT_REL = ".tw/draft"
 
@@ -68,57 +64,36 @@ def make_repo(
     branch: str | None = "既定",
     verify: str | None = None,
     base: str = "main",
-    config_filename: str | None = None,
     format_command: str | None = None,
     preship: str | None = None,
-    section: bool = True,
-    store: str = layout.STORE_BEADS,
 ) -> tuple[str, str, str]:
     """`(本体, 作業ツリー1, 作業ツリー2)`。本体だけが主ブランチを出す。
 
     設定は `.tw/config.toml` に書く。`verify`・`format_command`・`preship` は `` `cmd` `` か `なし` の形で渡し、
     `verify` を省略すると `verify = "なし"`。`branch` が `None` なら `branch` を書かない。`base` は主ブランチの
     名前——リモートを持たない足場なので `ledger.base_branch` の順3で決まる。
-    `config_filename`（`CLAUDE.md`・`AGENTS.md`）を渡すと、代わりに旧い「## タスク運用」節をそのファイルに書く
-    （旧配置の足場。値はそのまま行に書き、`verify` を省略すると行を書かない）。`section` が偽なら設定をどこにも書かない。
-    `direction.md` は `.tw/config.toml` を書くときは `.tw/` に、そうでなければ `develop/` に置く。
-    `store` が Beads なら設定に `store = "beads"` を書き、`beads_home` の `t` の作り置きを `.beads` に写す。
+    `.beads` は `beads_home` の `t` の作り置きを写す。
     """
     main_path = os.path.join(tmp, "base")
     os.makedirs(main_path)
     git(main_path, "init", "-q", "-b", base)
     git(main_path, "config", "user.email", "test@example.com")
     git(main_path, "config", "user.name", "test")
-    if store == layout.STORE_BEADS:
-        git(main_path, "config", "beads.role", "maintainer")
-        copy_beads(main_path, beads.PREFIX_LOCAL)
+    git(main_path, "config", "beads.role", "maintainer")
+    copy_beads(main_path, beads.PREFIX_LOCAL)
     write(
-        os.path.join(main_path, ".tw" if config_filename is None and section else "develop", "direction.md"),
+        os.path.join(main_path, ".tw", "direction.md"),
         "# 未対応の指示メモ\n\n## ユーザーから\n\n## エージェントのドラフト\n",
     )
     write(os.path.join(main_path, "docs", "history", "tasks.md"), "# 完了タスクのアーカイブ\n")
-    if config_filename is not None:
-        config_md = "# x\n\n## タスク運用\n\n"
-        if verify is not None:
-            config_md += f"- 検証コマンド: {verify}\n"
-        if format_command is not None:
-            config_md += f"- 整形コマンド: {format_command}\n"
-        if preship is not None:
-            config_md += f"- 送る前の検証コマンド: {preship}\n"
-        if branch is not None:
-            config_md += f"- ブランチ: {branch}\n"
-        write(os.path.join(main_path, config_filename), config_md if section else "# x\n")
-    elif section:
-        toml = f"verify = {_toml_value(verify or 'なし')}\n"
-        if format_command is not None:
-            toml += f"format = {_toml_value(format_command)}\n"
-        if preship is not None:
-            toml += f"verify_before_ship = {_toml_value(preship)}\n"
-        if branch is not None:
-            toml += f'branch = "{branch}"\n'
-        if store == layout.STORE_BEADS:
-            toml += 'store = "beads"\n'
-        write(os.path.join(main_path, ".tw", "config.toml"), toml)
+    toml = f"verify = {_toml_value(verify or 'なし')}\n"
+    if format_command is not None:
+        toml += f"format = {_toml_value(format_command)}\n"
+    if preship is not None:
+        toml += f"verify_before_ship = {_toml_value(preship)}\n"
+    if branch is not None:
+        toml += f'branch = "{branch}"\n'
+    write(os.path.join(main_path, ".tw", "config.toml"), toml)
     write(os.path.join(main_path, "shared.txt"), "line1\n")
     git(main_path, "add", "-A")
     git(main_path, "commit", "-q", "-m", "init")
@@ -134,23 +109,8 @@ def body_file(dirpath: str, name: str = "body.md") -> str:
     return write(os.path.join(dirpath, name), PLANNED_BODY)
 
 
-def task_rel(repo: str) -> str:
-    """`repo` のタスクファイルの置き場。"""
-    return TASK_REL
-
-
 def commit_task(main_path: str, task: taskfile.Task) -> None:
-    """`task` を置く。Beads の足場なら `task.id` のまま Beads に作り（コミットしない）、そうでなければファイルをコミットする。"""
-    if os.path.isdir(os.path.join(main_path, ".beads")):
-        _create_issue(main_path, task)
-        return
-    write(os.path.join(main_path, task_rel(main_path), f"{task.id}.md"), taskfile.render(task))
-    git(main_path, "add", "-A")
-    git(main_path, "commit", "-q", "-m", f"{task.id}を足す")
-
-
-def _create_issue(main_path: str, task: taskfile.Task) -> None:
-    """`tw new` を通さずに、`task` の ID・状態・label・本文のまま Beads の課題を作る。"""
+    """`tw new` を通さずに、`task` の ID・状態・label・本文のまま Beads の課題を作る（コミットしない）。"""
     bd_id = beads.to_bd_id(task.id)
     parts = beads.split_body(task.body)
     labels = [f"{beads.DIFFICULTY_LABEL}{task.difficulty}", f"{beads.LOOPABLE_LABEL}{task.loopable}"]
@@ -218,29 +178,6 @@ def _bd(cwd: str, args: list[str], stdin: str | None = None) -> None:
     r = subprocess.run(["bd", *args], cwd=cwd, capture_output=True, text=True, input=stdin)
     if r.returncode != 0:
         raise RuntimeError(f"bd {' '.join(args)} 失敗: {r.stdout}{r.stderr}")
-
-
-def _make_legacy_repo(tmp: str, tasks: list[dict] | None = None, progress: str | None = None) -> str:
-    """旧形式（`develop/tasks.json` あり）の一時リポジトリを1つ作る。`develop/direction.md` は
-    実在のプロジェクトと同じく最初から置く（無いと移行後に `NEW` ではなく `MISSING` になる）。
-    """
-    repo = os.path.join(tmp, "legacy")
-    os.makedirs(repo)
-    git(repo, "init", "-q", "-b", "main")
-    git(repo, "config", "user.email", "test@example.com")
-    git(repo, "config", "user.name", "test")
-    write(
-        os.path.join(repo, "develop", "direction.md"),
-        "# 未対応の指示メモ\n\n## ユーザーから\n\n## エージェントのドラフト\n",
-    )
-    write(os.path.join(repo, "docs", "history", "tasks.md"), "# 完了タスクのアーカイブ\n")
-    if tasks is not None:
-        write(os.path.join(repo, "develop", "tasks.json"), json.dumps(tasks, ensure_ascii=False, indent=2) + "\n")
-    if progress is not None:
-        write(os.path.join(repo, "develop", "progress.md"), progress)
-    git(repo, "add", "-A")
-    git(repo, "commit", "-q", "-m", "init")
-    return repo
 
 
 def hook_env(tmp: str, path: str) -> dict[str, str]:

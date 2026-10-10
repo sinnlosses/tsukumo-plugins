@@ -9,7 +9,6 @@ import sys
 from typing import Callable
 
 import beads
-import layout
 import ledger
 import ship
 import taskfile
@@ -61,7 +60,7 @@ def cmd_step(toplevel: str, task_id: str, step: str) -> None:
 
 def _owned_step(toplevel: str, task_id: str, step: str) -> tuple[str, tuple[taskfile.PlanStep, ...], int]:
     """`(表示のタスクID, 段, 段の番号)`。自分の着手でなければ `NOT_OWNER`（終了コード4）、段が読めないか番号が段の外なら終了コード2。"""
-    shown = beads.to_task_id(beads.to_bd_id(task_id)) if layout.read_config(toplevel).store == layout.STORE_BEADS else task_id
+    shown = beads.to_task_id(beads.to_bd_id(task_id))
     if shown not in tw_base.claimed_here(toplevel):
         print(f"NOT_OWNER\t{shown}")
         raise SystemExit(4)
@@ -98,7 +97,7 @@ def cmd_lap(toplevel: str, task_id: str, stage: str) -> None:
     if stage not in LAP_STAGES:
         print(f"usage: 段 {stage!r} が {'・'.join(LAP_STAGES)} のどれでもない", file=sys.stderr)
         raise SystemExit(2)
-    shown = beads.to_task_id(beads.to_bd_id(task_id)) if layout.read_config(toplevel).store == layout.STORE_BEADS else task_id
+    shown = beads.to_task_id(beads.to_bd_id(task_id))
     if shown not in tw_base.claimed_here(toplevel):
         print(f"NOT_CLAIMED\t{shown}")
         return
@@ -130,19 +129,16 @@ def _current_key(tree: str, excluded: tuple[str, ...] = ()) -> ledger.ContentKey
 
 
 def _claimed_plan_body(toplevel: str, task_id: str) -> str:
-    """着手中のタスクの `## やること` を含む本文（Beads 方式は `## やること` の節だけ）。読めなければ空。"""
-    if layout.read_config(toplevel).store == layout.STORE_BEADS:
-        issue = beads.show(toplevel, beads.to_bd_id(task_id))
-        return f"{taskfile.PLAN_HEADING}\n{issue.raw.get('notes') or ''}\n" if issue is not None else ""
-    task, _ = taskfile.read_task_file(taskfile.task_path(os.path.join(toplevel, layout.task_dir(toplevel)), task_id))
-    return task.body if task is not None else ""
+    """着手中のタスクの `## やること` の節だけの本文。読めなければ空。"""
+    issue = beads.show(toplevel, beads.to_bd_id(task_id))
+    return f"{taskfile.PLAN_HEADING}\n{issue.raw.get('notes') or ''}\n" if issue is not None else ""
 
 
 def handback_refusal(where: str) -> str | None:
     """`where` の作業ツリーから委譲先が返すのを拒む理由。通すなら `None`。
 
     控えのタスクごとに、その作業ツリー（`_task_trees`）を1つずつ見る。作業ツリーを通すのは、作業が無い
-    （着手した作業ツリーでは `claim` 時の `HEAD` より後のコミットも、タスク自身のファイル以外の変更も無い。
+    （着手した作業ツリーでは `claim` 時の `HEAD` より後のコミットも、変更も無い。
     作業先の作業ツリーでは主ブランチとの分かれ目より後のコミットも、変更も無い）か、`plan-check` が通ったうえで
     その作業ツリーの `verify-check` が通っているか `tw step` の印が最後でない段をいまの中身で指しているか、
     その作業ツリーの `tw pause` の控えがいまの中身と同じとき。段の印のいまの中身は、その段と並列の組になる段の
@@ -154,8 +150,7 @@ def handback_refusal(where: str) -> str | None:
     if not claims:
         return None
     toplevel = ledger.git_toplevel(where)
-    store = layout.read_config(toplevel).store
-    gaps = [line for task_id in claims for line in _handback_gaps(toplevel, task_id, store)]
+    gaps = [line for task_id in claims for line in _handback_gaps(toplevel, task_id)]
     if not gaps:
         return None
     shown = ",".join(claims)
@@ -168,27 +163,20 @@ def handback_refusal(where: str) -> str | None:
     )
 
 
-def _handback_gaps(toplevel: str, task_id: str, store: str) -> list[str]:
+def _handback_gaps(toplevel: str, task_id: str) -> list[str]:
     """作業がある作業ツリーの、通っていない `plan-check`・`verify-check` の行。作業が無ければ空。
 
     作業先の作業ツリーの `verify-check` の行には、その作業ツリーのパスを添える。
     """
-    if store == layout.STORE_BEADS:
-        issue = beads.show(toplevel, beads.to_bd_id(task_id))
-        metadata = issue.raw.get("metadata") if issue is not None else None
-        head = metadata.get(beads.CLAIM_HEAD_KEY) if isinstance(metadata, dict) else None
-        own_path = None
-        plan_line = _first_output_line(lambda: tw_edit.cmd_beads_plan_check(toplevel, task_id))
-    else:
-        owner = ledger.read_owner(ledger.claim_dir(ledger.ledger_root(cwd=toplevel), task_id)) or {}
-        head = owner.get("head")
-        own_path = f"{layout.task_dir(toplevel)}/{task_id}.md"
-        plan_line = _first_output_line(lambda: tw_edit.cmd_plan_check(toplevel, task_id))
+    issue = beads.show(toplevel, beads.to_bd_id(task_id))
+    metadata = issue.raw.get("metadata") if issue is not None else None
+    head = metadata.get(beads.CLAIM_HEAD_KEY) if isinstance(metadata, dict) else None
+    plan_line = _first_output_line(lambda: tw_edit.cmd_plan_check(toplevel, task_id))
     plan_ok = plan_line.split("\t")[0] in HANDBACK_PLAN_OK
     gaps: list[str] = []
     for tree in _task_trees(toplevel, task_id):
-        work_head, work_own_path = (head, own_path) if tree == toplevel else (_fork_point(tree), None)
-        if tw_plan.plan_state(tree, work_head, "-", work_own_path) == tw_plan.PLAN_FIRST:
+        work_head = head if tree == toplevel else _fork_point(tree)
+        if tw_plan.plan_state(tree, work_head, "-") == tw_plan.PLAN_FIRST:
             continue
         stamped = _current_stamp_kinds(toplevel, tree, task_id)
         if "pause" in stamped:

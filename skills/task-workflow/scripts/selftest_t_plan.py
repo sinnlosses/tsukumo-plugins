@@ -8,7 +8,7 @@ from selftest_support import check, git, say, weight, write  # noqa: E402
 import beads  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
-from selftest_fixtures import BODY, PLANNED_BODY, TASK_REL, _claim_work_and_done, commit_task, issue_count, make_repo, metadata, run_task, set_plan_directly, shown, shown_body  # noqa: E402
+from selftest_fixtures import BODY, PLANNED_BODY, _claim_work_and_done, commit_task, issue_count, make_repo, metadata, run_task, set_plan_directly, shown, shown_body  # noqa: E402
 
 
 @weight(21)
@@ -508,7 +508,7 @@ def test_root_setting() -> None:
         check("claim が通る", r.returncode == 0, r.stdout + r.stderr)
         r = run_task(wt1, "done", "T-100", "--result-file", "-", stdin="- 振り返り: 兆候なし\n")
         check("done が通る", r.returncode == 0 and r.stdout.startswith("DONE\tT-100\t"), r.stdout + r.stderr)
-        check("タスクファイルの置き場は作られない", not os.path.exists(os.path.join(wt1, TASK_REL))
+        check("タスクファイルの置き場は作られない", not os.path.exists(os.path.join(wt1, ".tw", "task"))
               and not os.path.exists(os.path.join(wt1, "work", "tw", "task")))
 
         for bad in ("../x", "a/../../x", "/x", ".", "./", ".git", ".git/hooks", ".tw/local", ".tw/local/x"):

@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import tempfile
 from datetime import datetime, timedelta, timezone
 
-from selftest_support import check, git, say, weight, write  # noqa: E402
-import layout  # noqa: E402
+from selftest_support import check, copy_beads, git, say, weight, write  # noqa: E402
+import beads  # noqa: E402
 import ledger  # noqa: E402
 import metrics  # noqa: E402
 import taskfile  # noqa: E402
-from selftest_fixtures import BODY, PLANNED_BODY, TASK_REL, commit_task, flow_rows, make_repo, run_task, task_rel  # noqa: E402
+from selftest_fixtures import BODY, PLANNED_BODY, commit_task, flow_rows, make_repo, run_task  # noqa: E402
 
 
 @weight(14)
@@ -266,57 +267,6 @@ def test_retrospect_due() -> None:
         check("主ブランチへ入れれば、ほかの作業ツリーでも出なくなる", due_line(r.stdout) is None, r.stdout)
 
 
-def test_prune() -> None:
-    say("task.py prune: 振り返り済みの done/dropped だけを git rm して stage する")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, _wt1, _wt2 = make_repo(tmp, branch="切らない", store=layout.STORE_FILES)
-        reviewed_body =BODY + "\n## 結果\n\n- 検証: x\n- 振り返り: 兆候なし\n"
-        plain_body = BODY + "\n## 結果\n\n- 検証: x\n"
-        commit_task(main_path, taskfile.Task("T-102", "振り返りの印が無い dropped", "dropped", "sonnet", "Y", (), plain_body))
-        commit_task(main_path, taskfile.Task("T-101", "1件ごとに振り返り済み", "done", "sonnet", "Y", (), reviewed_body))
-        commit_task(main_path, taskfile.Task("T-103", "振り返りの印が無い done", "done", "sonnet", "Y", (), plain_body))
-        commit_task(main_path, taskfile.Task("T-104", "T-101 を待つ", "todo", "sonnet", "Y", ("T-101",), BODY))
-        commit_task(main_path, taskfile.Task("T-105", "印が立っている", "done", "sonnet", "Y", (), reviewed_body))
-        ledger.try_claim(ledger.ledger_root(cwd=main_path), "T-105", main_path, "main")
-
-        r = run_task(main_path, "prune")
-        check("既定のしきい値（10件）に届かなければ NOTHING", r.returncode == 0 and r.stdout.startswith("NOTHING\t"), r.stdout + r.stderr)
-        check("しきい値未満では消さない", os.path.exists(os.path.join(main_path, task_rel(main_path), "T-101.md")))
-        r = run_task(main_path, "prune", "--min", "2", "--dry-run")
-        check("--min 2 でも1件なら --dry-run も NOTHING", r.returncode == 0 and r.stdout.startswith("NOTHING\t"), r.stdout + r.stderr)
-
-        r = run_task(main_path, "prune", "--min", "1", "--dry-run")
-        check("--dry-run は PLAN で1件", r.returncode == 0 and r.stdout.splitlines()[-1] == "PLAN\t1", r.stdout + r.stderr)
-        check(
-            "対象と理由（振り返りの印が無い T-102・T-103 は対象にならない）",
-            r.stdout.splitlines()[:1] == ["PRUNE\tT-101\treviewed"],
-            r.stdout,
-        )
-        check("--dry-run は消さない", os.path.exists(os.path.join(main_path, task_rel(main_path), "T-101.md")))
-
-        write(os.path.join(main_path, "scratch.txt"), "x\n")
-        r = run_task(main_path, "prune", "--min", "1")
-        check("汚れていれば DIRTY(4)", r.returncode == 4 and r.stdout.strip() == "DIRTY", r.stdout + r.stderr)
-        r = run_task(main_path, "prune", "--min", "1", "--dry-run")
-        check("--dry-run は汚れていても打てる", r.returncode == 0, r.stdout + r.stderr)
-        os.remove(os.path.join(main_path, "scratch.txt"))
-
-        r = run_task(main_path, "prune", "--min", "1")
-        check("PRUNED で1件", r.returncode == 0 and r.stdout.splitlines()[-1] == "PRUNED\t1", r.stdout + r.stderr)
-        staged = git(main_path, "diff", "--cached", "--name-status").stdout.split()
-        check(
-            "1件の削除だけが stage される（振り返りの印が無いものは残る）",
-            staged == ["D", f"{TASK_REL}/T-101.md"],
-            str(staged),
-        )
-        git(main_path, "commit", "-q", "-m", "振り返り済みのタスクファイルを消す（1件）")
-        status = run_task(main_path, "status").stdout
-        check("消した依存は解決済みのまま", any(l.startswith("T-104\ttodo") and "\tREADY\t" in l for l in status.splitlines()), status)
-        check("status --check が通る", run_task(main_path, "status", "--check").returncode == 0)
-        r = run_task(main_path, "prune", "--min", "1")
-        check("2回目は NOTHING", r.returncode == 0 and r.stdout.startswith("NOTHING"), r.stdout + r.stderr)
-
-
 def test_config_file_agents_md_and_conflict() -> None:
     say("設定の読み: .tw/config.toml だけを読み、AGENTS.md・CLAUDE.md の節は読まない")
     with tempfile.TemporaryDirectory() as tmp:
@@ -343,87 +293,87 @@ def test_config_file_agents_md_and_conflict() -> None:
         write(os.path.join(main_path, "CLAUDE.md"), "# y\n\n## タスク運用\n\n- ブランチ: 既定\n")
         r = run_task(main_path, "status")
         check(".tw/config.toml があれば両方に節があっても読まず、通る",
-              r.returncode == 0 and "OLD_LAYOUT" not in r.stdout and "INVALID" not in r.stdout, r.stdout + r.stderr)
+              r.returncode == 0 and "MISSING" not in r.stdout and "INVALID" not in r.stdout, r.stdout + r.stderr)
         r = run_task(main_path, "config")
         check("config の1行目は .tw/config.toml で、節の値は混ざらない",
               r.stdout.splitlines()[:1] == ["CONFIG\t.tw/config.toml"] and "verify\tなし\tconfig" in r.stdout.splitlines(),
               r.stdout + r.stderr)
 
 
-def _make_config_doctor_repo(tmp: str, name: str, old_layout: bool = False) -> str:
-    """`task config-doctor`・`task config` のフィクスチャ用の最小リポジトリ。
-    既定は `.tw/config.toml` の配置で、`old_layout` なら旧配置（`develop/direction.md` と CLAUDE.md の旧い節。`.tw/config.toml` 無し）。"""
+def _make_config_doctor_repo(tmp: str, name: str, with_config: bool = True) -> str:
+    """`task config-doctor`・`task config` のフィクスチャ用の最小リポジトリ（`.beads` 付き）。
+    `with_config` が偽なら `.tw/config.toml` を置かず、`develop/direction.md` と CLAUDE.md の旧い節だけを置く。"""
     repo = os.path.join(tmp, name)
     os.makedirs(repo)
     git(repo, "init", "-q", "-b", "main")
     git(repo, "config", "user.email", "test@example.com")
     git(repo, "config", "user.name", "test")
+    git(repo, "config", "beads.role", "maintainer")
+    copy_beads(repo, beads.PREFIX_LOCAL)
     write(
-        os.path.join(repo, "develop" if old_layout else ".tw", "direction.md"),
+        os.path.join(repo, ".tw" if with_config else "develop", "direction.md"),
         "# 未対応の指示メモ\n\n## ユーザーから\n\n## エージェントのドラフト\n",
     )
     write(os.path.join(repo, "docs", "history", "tasks.md"), "# 完了タスクのアーカイブ\n")
-    if old_layout:
+    if with_config:
+        write(os.path.join(repo, ".tw", "config.toml"), 'verify = "なし"\nbranch = "既定"\n')
+    else:
         write(
             os.path.join(repo, "CLAUDE.md"),
             "# x\n\n## タスク運用\n\n- 検証コマンド: なし\n- 整形コマンド: なし\n- ブランチ: 既定\n",
         )
-    else:
-        write(os.path.join(repo, ".tw", "config.toml"), 'verify = "なし"\nbranch = "既定"\n')
     git(repo, "add", "-A")
     git(repo, "commit", "-q", "-m", "init")
     return repo
 
 
 def test_config_doctor() -> None:
-    say("task.py config-doctor（T-021: 設定と形式のズレの点検。読むだけ）")
+    say("task.py config-doctor（設定と置き場のズレの点検。読むだけ）")
 
     with tempfile.TemporaryDirectory() as tmp:
         repo = _make_config_doctor_repo(tmp, "ok")
         r = run_task(repo, "config-doctor")
         lines = r.stdout.splitlines()
         check(
-            "OKのリポジトリは終了コード0で検査がOK、old_section の行は無い",
+            "OKのリポジトリは終了コード0で検査がOK、old_section・legacy の行は無い",
             r.returncode == 0
             and any(l.startswith("base_branch\tOK\tmain\t順3") for l in lines)
             and any(l.startswith("config\tOK\t.tw/config.toml") for l in lines)
-            and not any(l.startswith("old_section") for l in lines)
-            and "legacy\tOK" in lines,
+            and any(l.startswith("beads\tOK\t") for l in lines)
+            and not any(l.startswith(("old_section", "legacy")) for l in lines),
             r.stdout + r.stderr,
         )
 
     with tempfile.TemporaryDirectory() as tmp:
-        # 旧形式の残り（develop/tasks.json・develop/progress.md）だけがあるケース。
-        # 他の3検査はOKでも、残りがあれば全体は「直すものがある」＝終了コード1。
         repo = _make_config_doctor_repo(tmp, "leftover")
         write(os.path.join(repo, "develop", "tasks.json"), "[]\n")
         write(os.path.join(repo, "develop", "progress.md"), "## 未解決\n\n- x\n")
         r = run_task(repo, "config-doctor")
-        lines = r.stdout.splitlines()
         check(
-            "旧形式の残りがあれば終了コード1で案内する",
-            r.returncode == 1
-            and any(
-                l.startswith("legacy\tFOUND\t") and "develop/tasks.json" in l and "develop/progress.md" in l
-                and l.endswith("tw migrate --dry-run")
-                for l in lines
-            )
-            and any(l.startswith("base_branch\tOK") for l in lines)
-            and any(l.startswith("config\tOK") for l in lines),
+            "develop/ の旧い形式のファイルは見ない（終了コード0で legacy の行も無い）",
+            r.returncode == 0 and "legacy" not in r.stdout and "develop/" not in r.stdout,
             r.stdout + r.stderr,
         )
 
     with tempfile.TemporaryDirectory() as tmp:
-        # 旧配置（.tw/config.toml 無し）: 節は読まず、config は MISSING で直す案内になる。
-        repo = _make_config_doctor_repo(tmp, "old", old_layout=True)
+        repo = _make_config_doctor_repo(tmp, "no-config", with_config=False)
         r = run_task(repo, "config-doctor")
         lines = r.stdout.splitlines()
         check(
-            "旧配置は終了コード1で config が MISSING、old_section の行は出さない",
+            ".tw/config.toml が無ければ終了コード1で config が MISSING、CLAUDE.md の節は読まない",
             r.returncode == 1
             and any(l.startswith("config\tMISSING\t.tw/config.toml") for l in lines)
-            and not any(l.startswith("old_section") for l in lines)
-            and "legacy\tOK" in lines,
+            and not any(l.startswith(("old_section", "legacy")) for l in lines),
+            r.stdout + r.stderr,
+        )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = _make_config_doctor_repo(tmp, "no-beads")
+        shutil.rmtree(os.path.join(repo, ".beads"))
+        r = run_task(repo, "config-doctor")
+        check(
+            ".beads が無ければ終了コード1で beads が MISSING",
+            r.returncode == 1 and any(l.startswith("beads\tMISSING\t") for l in r.stdout.splitlines()),
             r.stdout + r.stderr,
         )
 
@@ -464,17 +414,13 @@ def test_config_doctor() -> None:
 def test_config_command() -> None:
     say("task.py config: 解けた設定を出す")
     with tempfile.TemporaryDirectory() as tmp:
-        repo = _make_config_doctor_repo(tmp, "legacy", old_layout=True)
+        repo = _make_config_doctor_repo(tmp, "no-config", with_config=False)
         r = run_task(repo, "config")
-        lines = r.stdout.splitlines()
-        check(
-            "旧配置だけなら config も OLD_LAYOUT で止まる（終了コード5）",
-            r.returncode == 5 and lines == ["OLD_LAYOUT\ttw migrate-layout --dry-run"],
-            r.stdout + r.stderr,
-        )
+        check("設定ファイルが無ければ config は MISSING（終了コード6）",
+              r.returncode == 6 and r.stdout == "MISSING\n", r.stdout + r.stderr)
         r = run_task(repo, "status")
-        check("旧配置だけなら status も OLD_LAYOUT で止まる（終了コード5）",
-              r.returncode == 5 and r.stdout == "OLD_LAYOUT\ttw migrate-layout --dry-run\n", r.stdout + r.stderr)
+        check("設定ファイルが無ければ status も MISSING（終了コード6）",
+              r.returncode == 6 and r.stdout == "MISSING\n", r.stdout + r.stderr)
 
         write(os.path.join(repo, ".tw", "config.toml"), 'verify = "./check.sh"  # 説明\nbranch = "切らない"\n')
         r = run_task(repo, "config")
@@ -500,7 +446,6 @@ def test_config_command() -> None:
 
 TESTS = (
     test_flow_records_and_metrics,
-    test_prune,
     test_config_file_agents_md_and_conflict,
     test_retrospect_due,
     test_config_doctor,

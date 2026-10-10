@@ -1,78 +1,20 @@
 from __future__ import annotations
 
 import os
-import shutil
 import tempfile
 
 from selftest_support import check, git, say, write  # noqa: E402
 import beads  # noqa: E402
-import layout  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
-from selftest_fixtures import BODY, PLANNED_BODY, body_file, commit_task, issue_json, make_repo, run_task, shown, start_task, task_rel, unset_metadata  # noqa: E402
+from selftest_fixtures import BODY, PLANNED_BODY, body_file, commit_task, issue_json, make_repo, run_task, shown, start_task, unset_metadata  # noqa: E402
 
 
-def test_taskfile_parse() -> None:
-    say("taskfile.parse / render / validate_new_body")
-    ok_text = (
-        "---\nid: T-001\nsummary: 例\nstatus: todo\ndifficulty: sonnet\nloopable: Y\n"
-        "dependencies: []\n---\n本文\n"
-    )
-    task, err = taskfile.parse(ok_text)
-    check("正しい6行は読める", err is None and task is not None and task.id == "T-001", str(err))
-    check("本文がそのまま残る", task is not None and task.body == "本文\n")
-
-    task, err = taskfile.parse(ok_text.replace("dependencies: []", "dependencies: [T-001, T-002]"))
-    check(
-        "dependenciesは', '区切りで読める",
-        err is None and task is not None and task.dependencies == ("T-001", "T-002"),
-        str(err),
-    )
-
-    _, err = taskfile.parse(ok_text.replace("dependencies: []", "dependencies: [T-001,T-002]"))
-    check("区切りが','だけだとINVALID", err is not None, str(err))
-
+def test_taskfile_body() -> None:
+    say("taskfile.validate_new_body ほか（本文の検査）")
     check("全角括弧を省いた「決まっていること」が枠の見出しに当たる",
           taskfile.section_heading("決まっていること") in taskfile.SECTION_HEADINGS)
-
-    _, err = taskfile.parse(ok_text.replace("loopable: Y", "loopable: y"))
-    check("loopableの小文字はINVALID", err is not None, str(err))
-
-    _, err = taskfile.parse(ok_text.replace("status: todo", "status: doing"))
-    check("着手中(doing)はファイルに書けないのでINVALID", err is not None, str(err))
-
-    _, err = taskfile.parse(ok_text.replace("\n", "\r\n"))
-    check("CRLFはINVALID", err is not None, str(err))
-
-    task, err = taskfile.parse(ok_text.replace("summary: 例", "summary: `a: b` # c [d]"))
-    check(
-        "summaryは記号を含んでもそのまま",
-        err is None and task is not None and task.summary == "`a: b` # c [d]",
-        str(err),
-    )
-
-    task, err = taskfile.parse(ok_text.replace("summary: 例", "summary:   前後に空白   "))
-    check(
-        "summaryの前後の空白は落ちる", err is None and task is not None and task.summary == "前後に空白", str(err)
-    )
-    assert task is not None
-    task2, err2 = taskfile.parse(taskfile.render(task))
-    check("render→parseで往復する", err2 is None and task2 == task)
-
-    direct_text = ok_text.replace("loopable: Y\n", "loopable: Y\ndirect: Y\n")
-    task, err = taskfile.parse(direct_text)
-    check("loopable の次の direct: Y は近道の印として読める", err is None and task is not None and task.direct == "Y"
-          and task.body == "本文\n", str(err))
-    check("direct: Y を持つタスクは render→parse で往復する",
-          task is not None and taskfile.parse(taskfile.render(task)) == (task, None))
-    task, _ = taskfile.parse(ok_text)
-    check("direct 行が無ければ印なし（N）で、render は行を書かない",
-          task is not None and task.direct == "N" and "direct:" not in taskfile.render(task))
-    _, err = taskfile.parse(ok_text.replace("loopable: Y\n", "loopable: Y\ndirect: N\n"))
-    check("direct: N はINVALID（印が無ければ行を置かない）", err is not None, str(err))
-    _, err = taskfile.parse(ok_text.replace("dependencies: []\n", "dependencies: []\ndirect: Y\n"))
-    check("dependencies の後ろの direct 行はINVALID", err is not None, str(err))
 
     check("正しい登録時の本文はOK（空・「なし」の欄を含む）", taskfile.validate_new_body(PLANNED_BODY, hold=False) is None)
     check("枠の見出しが欠けた本文は拒む", taskfile.validate_new_body("## 目的・背景\nx\n", hold=True) is not None)
@@ -290,60 +232,6 @@ def test_claim_and_release_single_worktree() -> None:
         check("存在しないIDはNOT_READY", r.returncode == 4 and r.stdout.startswith("NOT_READY\t"), r.stdout)
 
 
-def test_new_missing_and_legacy() -> None:
-    say("task.py: MISSING/LEGACY の判定")
-    with tempfile.TemporaryDirectory() as tmp:
-        empty_repo = os.path.join(tmp, "empty")
-        os.makedirs(empty_repo)
-        git(empty_repo, "init", "-q", "-b", "main")
-        git(empty_repo, "config", "user.email", "test@example.com")
-        git(empty_repo, "config", "user.name", "test")
-        write(os.path.join(empty_repo, ".gitkeep"), "")
-        git(empty_repo, "add", "-A")
-        git(empty_repo, "commit", "-q", "-m", "init")
-        r = run_task(empty_repo, "status")
-        check("develop/direction.mdも無ければMISSING", r.returncode == 6 and r.stdout.strip() == "MISSING", r.stdout)
-
-        write(os.path.join(empty_repo, "CLAUDE.md"), "# x\n\n## タスク運用\n\n- 検証コマンド: `true`\n")
-        git(empty_repo, "add", "-A")
-        git(empty_repo, "commit", "-q", "-m", "section")
-        r = run_task(empty_repo, "status")
-        check("節だけで develop/direction.md が無ければ MISSING のまま（節は読まない）",
-              r.returncode == 6 and r.stdout.strip() == "MISSING", r.stdout)
-
-        write(os.path.join(empty_repo, "develop", "direction.md"), "# 未対応の指示メモ\n\n## ユーザーから\n")
-        git(empty_repo, "add", "-A")
-        git(empty_repo, "commit", "-q", "-m", "old layout")
-        for command in ("status", "config", "verify"):
-            r = run_task(empty_repo, command)
-            check(f"旧配置だけなら {command} は OLD_LAYOUT で止まり migrate-layout --dry-run を案内する（終了コード5）",
-                  r.returncode == 5 and r.stdout == "OLD_LAYOUT\ttw migrate-layout --dry-run\n", r.stdout + r.stderr)
-        r = run_task(empty_repo, "migrate-layout", "--dry-run")
-        check("旧配置でも migrate-layout --dry-run は止まらず PLAN を出す",
-              r.returncode == 0 and r.stdout.splitlines()[-1] == "PLAN"
-              and "MOVE\tdevelop/direction.md\t.tw/direction.md" in r.stdout.splitlines(), r.stdout + r.stderr)
-
-        write(os.path.join(empty_repo, ".tw", "direction.md"), "# 未対応の指示メモ\n")
-        git(empty_repo, "add", "-A")
-        git(empty_repo, "commit", "-q", "-m", "both")
-        r = run_task(empty_repo, "status")
-        check("新しい置き場もあっても config.toml が無ければ旧い目印を優先して OLD_LAYOUT",
-              r.returncode == 5 and r.stdout.startswith("OLD_LAYOUT\t"), r.stdout + r.stderr)
-        r = run_task(empty_repo, "migrate-layout", "--dry-run")
-        check("その状態の migrate-layout は移す先が既にあるので INVALID（終了コード3）",
-              r.returncode == 3 and r.stdout.startswith("INVALID\t"), r.stdout + r.stderr)
-        git(empty_repo, "rm", "-q", "-r", "--cached", ".tw")
-        shutil.rmtree(os.path.join(empty_repo, ".tw"))
-        git(empty_repo, "rm", "-q", "-r", "develop")
-        git(empty_repo, "commit", "-q", "-m", "reset")
-
-        write(os.path.join(empty_repo, "develop", "tasks.json"), "[]\n")
-        git(empty_repo, "add", "-A")
-        git(empty_repo, "commit", "-q", "-m", "legacy")
-        r = run_task(empty_repo, "status")
-        check("tasks.jsonがあればLEGACY", r.returncode == 5 and r.stdout.startswith("LEGACY\t"), r.stdout)
-
-
 #
 # **架空のタスクだけを使う**（実際のプロジェクトの tasks.json をフィクスチャにしない）。
 
@@ -456,32 +344,6 @@ def test_done_single_worktree() -> None:
               beads.SHIP_LABELS["dropped"] in labels and beads.SHIP_LABELS["done"] not in labels, repr(labels))
 
 
-def test_body_frame_check() -> None:
-    say("task.py done・status --check: 本文の枠を検査する")
-    bad = BODY.replace("## 注意\n\n## 参考情報\n", "## 参考情報\n\n## 注意\n")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp, store=layout.STORE_FILES)
-        commit_task(main_path, taskfile.Task("T-100", "枠が崩れた", "todo", "sonnet", "Y", (), bad))
-        commit_task(main_path, taskfile.Task("T-101", "枠が崩れた完了済み", "done", "sonnet", "Y", (), bad))
-        r = run_task(main_path, "status", "--check")
-        check(
-            "status --check は todo の崩れだけを invalid に数える（done は見ない）",
-            r.returncode == 3 and "T-100:" in r.stdout and "T-101" not in r.stdout,
-            r.stdout,
-        )
-
-        run_task(wt1, "claim", "T-100")
-        result_path = write(os.path.join(tmp, "result.md"), "結果\n")
-        task_path = os.path.join(wt1, task_rel(wt1), "T-100.md")
-        with open(task_path, encoding="utf-8") as f:
-            before = f.read()
-        r = run_task(wt1, "done", "T-100", "--result-file", result_path)
-        with open(task_path, encoding="utf-8") as f:
-            after = f.read()
-        check("done は枠の違う本文を INVALID（終了コード3）で拒む", r.returncode == 3 and r.stdout.startswith("INVALID\t"), r.stdout)
-        check("拒んだときファイルを書き換えない", before == after)
-
-
 def test_done_commits_since_claim() -> None:
     say("task.py done: claim 後のコミットを COMMITS_SINCE_CLAIM で知らせる（控えの無い印は出さない）")
     with tempfile.TemporaryDirectory() as tmp:
@@ -523,12 +385,10 @@ TESTS = (
     test_done_commits_since_claim,
     test_done_single_worktree,
     test_claim_and_release_single_worktree,
-    test_body_frame_check,
     test_new_and_status_single_worktree,
     test_claim_race,
     test_new_parallel_no_collision,
     test_new_avoids_history_ids,
-    test_new_missing_and_legacy,
-    test_taskfile_parse,
+    test_taskfile_body,
     test_taskfile_set_result_section,
 )

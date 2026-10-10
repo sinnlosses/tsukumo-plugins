@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""`task.py` の Beads 方式（`- タスクの置き場: beads`）の自己テスト。
+"""`task.py` の Beads との往復（`bd`・トラッカー・設定の読み）の自己テスト。
 
 使い方: python3 selftest_beads.py
 
@@ -95,38 +95,25 @@ def tail_line(out: str, key: str) -> str:
 
 
 def make_repo(tmp: str, branch: str | None = "切らない", extra: str = "", verify: str | None = None,
-              prefix: str | None = beads.PREFIX_LOCAL, legacy: bool = False) -> tuple[str, str, str]:
+              prefix: str | None = beads.PREFIX_LOCAL) -> tuple[str, str, str]:
     """`(本体, 作業ツリー1, 作業ツリー2)`。`.beads` は `prefix` の作り置きを写してから `init.py` を打つ。
     `prefix` が `None` なら `init.py` が `bd init` で作る。設定は `.tw/config.toml` に書き、`extra` はその続きの行。
-    `verify` はコマンドそのもの。`branch` が `None` なら `branch` を書かない。`legacy` なら旧い「## タスク運用」節を
-    CLAUDE.md に書く（`extra` は節の行）。"""
+    `verify` はコマンドそのもの。`branch` が `None` なら `branch` を書かない。"""
     main_path = os.path.join(tmp, "base")
     os.makedirs(main_path)
     git(main_path, "init", "-q", "-b", "main")
     git(main_path, "config", "user.email", "test@example.com")
     git(main_path, "config", "user.name", "test")
     git(main_path, "config", "beads.role", "maintainer")
-    if legacy:
-        config = "# x\n\n## タスク運用\n\n"
-        config += f"- 検証コマンド: `{verify}`\n" if verify else "- 検証コマンド: なし\n"
-        config += "- 整形コマンド: なし\n" + (f"- ブランチ: {branch}\n" if branch is not None else "")
-        config += f"- タスクの置き場: beads\n{extra}"
-        write(os.path.join(main_path, "CLAUDE.md"), config)
-        write(os.path.join(main_path, "develop", "direction.md"), "# 未対応の指示メモ\n\n## ユーザーから\n")
-    else:
-        config = f'verify = "{verify or "なし"}"\n' + (f'branch = "{branch}"\n' if branch is not None else "")
-        config += f'store = "beads"\n{extra}'
-        write(os.path.join(main_path, ".tw", "config.toml"), config)
+    config = f'verify = "{verify or "なし"}"\n' + (f'branch = "{branch}"\n' if branch is not None else "")
+    config += f'store = "beads"\n{extra}'
+    write(os.path.join(main_path, ".tw", "config.toml"), config)
     write(os.path.join(main_path, "shared.txt"), "line1\n")
     if prefix is not None:
         copy_beads(main_path, prefix)
-    if legacy:
-        write(os.path.join(main_path, ".tw", "config.toml"), 'verify = "なし"\nstore = "beads"\n')
     r = subprocess.run([sys.executable, INIT_PY], cwd=main_path, capture_output=True, text=True, env=env())
     if r.returncode != 0:
         raise RuntimeError(f"init.py 失敗: {r.stdout}{r.stderr}")
-    if legacy:
-        shutil.rmtree(os.path.join(main_path, ".tw"))
     git(main_path, "add", "-A")
     git(main_path, "commit", "-q", "-m", "init")
     wt1 = os.path.join(tmp, "wt1")
@@ -134,43 +121,6 @@ def make_repo(tmp: str, branch: str | None = "切らない", extra: str = "", ve
     git(main_path, "worktree", "add", "-q", "-b", "wt1", wt1, "main")
     git(main_path, "worktree", "add", "-q", "-b", "wt2", wt2, "main")
     return main_path, wt1, wt2
-
-
-def test_migrate_layout() -> None:
-    say("migrate-layout: Beads 方式では task/ を作らず .beads に触らず、ほかの作業ツリーの in_progress で BUSY")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _ = make_repo(tmp)
-        a = new(main_path, "移す前")
-        r = run_task(wt1, "claim", a)
-        check("claim が通る", r.stdout.startswith("CLAIMED\t"), r.stdout + r.stderr)
-        os.makedirs(os.path.join(main_path, "develop"))
-        git(main_path, "mv", ".tw/direction.md", "develop/direction.md")
-        git(main_path, "rm", "-q", "-r", "-f", ".tw")
-        write(os.path.join(main_path, "CLAUDE.md"),
-              "# x\n\n## タスク運用\n\n- 検証コマンド: なし\n- 整形コマンド: なし\n- タスクの置き場: beads\n")
-        git(main_path, "add", "-A")
-        git(main_path, "commit", "-q", "-m", "旧配置")
-        git(wt1, "merge", "-q", "--ff-only", "main")
-        r = run_task(main_path, "migrate-layout", "--dry-run")
-        check("ほかの作業ツリーの in_progress があれば BUSY（終了コード4）",
-              r.returncode == 4 and r.stdout.strip() == f"BUSY\t{a}\twt1", r.stdout + r.stderr)
-        r = subprocess.run(["bd", "unclaim", beads.to_bd_id(a), "--force"], cwd=wt1, capture_output=True, text=True, env=env())
-        check("旧配置の status は止まるので bd で印を外す", r.returncode == 0, r.stdout + r.stderr)
-        beads_dir = os.path.join(main_path, ".beads")
-        before = sorted(os.listdir(beads_dir))
-        r = run_task(main_path, "migrate-layout")
-        lines = r.stdout.splitlines()
-        check("Beads 方式は direction.md だけを移して MIGRATED",
-              r.returncode == 0 and lines[-1] == "MIGRATED" and "MOVE\tdevelop/direction.md\t.tw/direction.md" in lines
-              and not any(l.startswith("MOVE\tdevelop/task") for l in lines), r.stdout + r.stderr)
-        config = open(os.path.join(main_path, ".tw", "config.toml"), encoding="utf-8").read()
-        check(".tw/task/ を作らず、.beads は変わらず、config.toml は store = beads",
-              not os.path.exists(os.path.join(main_path, ".tw", "task")) and sorted(os.listdir(beads_dir)) == before
-              and 'store = "beads"\n' in config and "root" not in config, config)
-        git(main_path, "commit", "-q", "-m", "移す")
-        r = run_task(main_path, "status")
-        check("移したあとも Beads のタスクを読む", r.returncode == 0 and any(l.startswith(f"{a}\t") for l in r.stdout.splitlines()),
-              r.stdout + r.stderr)
 
 
 def new(cwd: str, summary: str, *extra: str, body: str = PLANNED_BODY) -> str:
@@ -247,25 +197,10 @@ def test_setup_and_config_doctor() -> None:
         r = run_task(wt1, "status")
         check("まっさらな status は集計だけ（triage 行つき）", r.returncode == 0 and r.stdout.startswith("---\n")
               and "triage\t0\t-" in r.stdout, r.stdout)
-        r = run_task(wt1, "prune")
-        check("prune は NOTHING", r.returncode == 0 and r.stdout.startswith("NOTHING"), r.stdout)
 
         shutil.rmtree(os.path.join(main_path, ".beads"))
         r = run_task(wt1, "status")
         check(".beads が無ければ MISSING（終了コード6）", r.returncode == 6 and r.stdout.startswith("MISSING"), r.stdout)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _ = make_repo(tmp, legacy=True, extra="- バックアップ: `/tmp/keep`（git の外）\n")
-        r = run_task(wt1, "config-doctor")
-        check("旧い節は読まず、config は MISSING で old_section の行は出さない", r.returncode == 1
-              and tail_line(r.stdout, "config").startswith("config\tMISSING\t.tw/config.toml")
-              and tail_line(r.stdout, "old_section") == "", r.stdout)
-        r = run_task(wt1, "config")
-        check("旧配置の config は OLD_LAYOUT で止まる（終了コード5）",
-              r.returncode == 5 and r.stdout == "OLD_LAYOUT\ttw migrate-layout --dry-run\n", r.stdout)
-        r = run_task(wt1, "status")
-        check("旧配置の status も OLD_LAYOUT で止まる（終了コード5）",
-              r.returncode == 5 and r.stdout == "OLD_LAYOUT\ttw migrate-layout --dry-run\n", r.stdout)
 
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, _ = make_repo(tmp, extra='tracker = "gitlab"\n')
@@ -274,32 +209,71 @@ def test_setup_and_config_doctor() -> None:
         write(os.path.join(wt1, ".tw", "config.toml"), 'verify = "なし"\nstore = "どこか"\n')
         r = run_task(wt1, "status")
         check("読めない置き場は INVALID（終了コード3）", r.returncode == 3 and r.stdout.startswith("INVALID"), r.stdout)
+
+
+def test_missing_config_ignores_old_layout() -> None:
+    say("設定ファイルが無ければ、旧い置き場や節があっても MISSING")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _ = make_repo(tmp)
         os.remove(os.path.join(wt1, ".tw", "config.toml"))
         write(os.path.join(wt1, "develop", "direction.md"), "# 未対応の指示メモ\n\n## ユーザーから\n")
-        write(os.path.join(wt1, "CLAUDE.md"), "# x\n\n## タスク運用\n\n- ブランチ: 切らない\n- タスクの置き場: どこか\n")
-        r = run_task(wt1, "status")
-        check("旧配置は節の中身が読めなくても OLD_LAYOUT（終了コード5）", r.returncode == 5 and r.stdout.startswith("OLD_LAYOUT"), r.stdout)
+        write(os.path.join(wt1, "develop", "tasks.json"), "[]\n")
+        write(os.path.join(wt1, "CLAUDE.md"), "# x\n\n## タスク運用\n\n- 検証コマンド: なし\n- タスクの置き場: beads\n")
+        for command in ("status", "config", "verify"):
+            r = run_task(wt1, command)
+            check(f"{command} は MISSING（終了コード6）で、OLD_LAYOUT・LEGACY を出さない",
+                  r.returncode == 6 and r.stdout.startswith("MISSING")
+                  and "OLD_LAYOUT" not in r.stdout and "LEGACY" not in r.stdout, r.stdout + r.stderr)
+        r = run_task(wt1, "config-doctor")
+        check("config-doctor は config MISSING（終了コード1）で、old_section・legacy の行を出さない", r.returncode == 1
+              and tail_line(r.stdout, "config").startswith("config\tMISSING\t.tw/config.toml")
+              and tail_line(r.stdout, "old_section") == "" and tail_line(r.stdout, "legacy") == "", r.stdout)
 
 
-def test_file_mode_untouched_by_beads_dir() -> None:
-    say("store が無ければ .beads があってもファイル方式のまま")
+def test_store_default_is_beads() -> None:
+    say("store の行が無ければ Beads 方式")
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, _ = make_repo(tmp)
         write(os.path.join(main_path, ".tw", "config.toml"), 'verify = "なし"\nbranch = "切らない"\n')
         git(main_path, "add", "-A")
-        git(main_path, "commit", "-q", "-m", "ファイル方式へ")
-        r = run_task(main_path, "new", "--summary", "f", "--difficulty", "haiku", "--loopable", "Y",
-                     "--body-file", "-", stdin=PLANNED_BODY)
-        check("new がタスクファイルを作る", r.returncode == 0 and ".tw/task/T-001.md" in r.stdout
-              and os.path.exists(os.path.join(main_path, ".tw", "task", "T-001.md")), r.stdout)
+        git(main_path, "commit", "-q", "-m", "store の行を外す")
+        task_id = new(main_path, "store なし")
+        check("new は Beads に課題を作り、タスクファイルを作らない",
+              not os.path.exists(os.path.join(main_path, ".tw", "task"))
+              and any(i.get("id") == beads.to_bd_id(task_id) for i in json.loads(bd(main_path, "list", "--json", "--all").stdout or "[]")),
+              task_id)
         r = run_task(main_path, "config-doctor")
-        check("config-doctor は store の行を足さない（3行）", len(r.stdout.strip().splitlines()) == 3, r.stdout)
-        r = run_task(main_path, "edit", "T-001", "--summary", "x")
-        check("edit はファイル方式では --body-file だけ（ほかは終了コード2）", r.returncode == 2, r.stdout + r.stderr)
-        r = run_task(main_path, "show", "T-001")
-        check("show はファイル方式でもタスクファイルを出す", r.returncode == 0 and r.stdout.startswith("---\nid: T-001"), r.stdout)
-        r = bd(main_path, "list", "--json", "--all")
-        check("Beads には何も作らない", json.loads(r.stdout or "[]") == [], r.stdout)
+        check("config-doctor は store OK beads の行を出す", r.returncode == 0
+              and tail_line(r.stdout, "store").startswith("store\tOK\tbeads"), r.stdout)
+
+        beads_dir = os.path.join(main_path, ".beads")
+        shutil.rmtree(beads_dir)
+        r = run_task(main_path, "status")
+        check(".beads が無ければ MISSING と置き場（終了コード6）",
+              r.returncode == 6 and r.stdout == f"MISSING\t{os.path.realpath(beads_dir)}\n", r.stdout + r.stderr)
+
+
+def test_store_files_is_invalid() -> None:
+    say('store = "files" は行番号つきの INVALID')
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, _wt1, _ = make_repo(tmp)
+        write(os.path.join(main_path, ".tw", "config.toml"), 'verify = "なし"\nstore = "files"\n')
+        for command in ("status", "config"):
+            r = run_task(main_path, command)
+            check(f"{command} は INVALID（終了コード3）で .tw/config.toml の2行目を指す",
+                  r.returncode == 3 and r.stdout.startswith("INVALID\t.tw/config.toml:2:"), r.stdout + r.stderr)
+        r = run_task(main_path, "config-doctor")
+        check("config-doctor は config INVALID（終了コード3）",
+              r.returncode == 3 and tail_line(r.stdout, "config").startswith("config\tINVALID\t.tw/config.toml"), r.stdout)
+
+
+def test_removed_commands() -> None:
+    say("migrate・migrate-layout・prune は無い")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, _wt1, _ = make_repo(tmp)
+        for command in ("migrate", "migrate-layout", "prune"):
+            r = run_task(main_path, command)
+            check(f"{command} は使い方の誤り（終了コード2）", r.returncode == 2 and r.stdout == "", r.stdout + r.stderr)
 
 
 def test_claim_race_owner_and_release() -> None:
@@ -777,8 +751,10 @@ def main() -> None:
             test_setup_and_config_doctor,
             test_backup,
             test_direct_mark,
-            test_file_mode_untouched_by_beads_dir,
-            test_migrate_layout,
+            test_missing_config_ignores_old_layout,
+            test_store_default_is_beads,
+            test_store_files_is_invalid,
+            test_removed_commands,
             test_id_forms,
             test_bd_time_forms,
         )

@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 import time
-from typing import Callable
 
 import beads
 import fold
@@ -20,20 +18,12 @@ import tw_plan
 VERIFY_TAIL_LINES = 40
 
 
-def _print_verify_end(folded_line: str, verdict: str, tail: str) -> None:
-    print(verdict)
-    print(tail)
-    if folded_line:
-        print(folded_line)
-    print(verdict)
-
-
-def cmd_verify(toplevel: str, unplanned_work: Callable[[], list[str]]) -> None:
+def cmd_verify(toplevel: str) -> None:
     verify_command = ship.read_stamp_command(toplevel)
     if verify_command is None:
         print("NOTHING\t(検証コマンドが無い)")
         return
-    unplanned = unplanned_work()
+    unplanned = _unplanned_work(toplevel)
     if unplanned:
         ledger.clear_verify_stamp(cwd=toplevel)
         for shown in unplanned:
@@ -112,25 +102,16 @@ def cmd_verify_check(toplevel: str) -> None:
     print(f"NOT_VERIFIED\t{reason}")
 
 
-def file_unplanned_work(toplevel: str) -> list[str]:
+def _print_verify_end(folded_line: str, verdict: str, tail: str) -> None:
+    print(verdict)
+    print(tail)
+    if folded_line:
+        print(folded_line)
+    print(verdict)
+
+
+def _unplanned_work(toplevel: str) -> list[str]:
     """この作業ツリーが印を持つ着手中のタスクのうち、`## やること` が空のまま作業が始まっているもの。"""
-    root = ledger.ledger_root(cwd=toplevel)
-    task_dir = os.path.join(toplevel, layout.task_dir(toplevel))
-    found: list[str] = []
-    for task_id in ledger.list_claims(root):
-        owner = ledger.read_owner(ledger.claim_dir(root, task_id))
-        if owner is None or owner.get("worktree") != toplevel:
-            continue
-        task, err = taskfile.read_task_file(taskfile.task_path(task_dir, task_id))
-        if err is not None or task is None or task.status not in ("todo", "hold") or taskfile.has_plan(task.body):
-            continue
-        own = f"{layout.task_dir(toplevel)}/{task_id}.md"
-        if tw_plan.plan_state(toplevel, owner.get("head"), "-", own) == tw_plan.PLAN_AFTER_WORK:
-            found.append(task_id)
-    return found
-
-
-def beads_unplanned_work(toplevel: str) -> list[str]:
     actor = tw_base.actor(toplevel)
     found: list[str] = []
     for issue in beads.list_issues(toplevel):
@@ -140,6 +121,6 @@ def beads_unplanned_work(toplevel: str) -> list[str]:
             continue
         metadata = issue.raw.get("metadata")
         head = metadata.get(beads.CLAIM_HEAD_KEY) if isinstance(metadata, dict) else None
-        if tw_plan.plan_state(toplevel, head, "-", None) == tw_plan.PLAN_AFTER_WORK:
+        if tw_plan.plan_state(toplevel, head, "-") == tw_plan.PLAN_AFTER_WORK:
             found.append(beads.to_task_id(issue.bd_id))
     return found

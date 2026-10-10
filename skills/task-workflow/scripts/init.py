@@ -70,18 +70,18 @@ def prepare_gitignore(path: str) -> None:
 
 
 def prepare_beads(root: str) -> int:
-    """設定が Beads 方式（`store = "beads"`）なら `.beads` を用意する。終了コードを返す。
+    """設定ファイルがあれば `.beads` を用意する。終了コードを返す。
 
     `bd init --stealth` は `.git/info/exclude` で `.beads` を外し、コミットも `AGENTS.md`・
     `CLAUDE.md` への書き足しもしない（`--stealth` なしでは両方をして自動でコミットする）。
     `.beads` は主ブランチを出している作業ツリーの根に置くので、別の作業ツリーからは作らない。
-    ファイル方式なら何もしない。
+    設定ファイルが無い・読めないときは作らない（ID の接頭辞をトラッカーの行で決めるため）。
     """
     try:
         config = layout.read_config(root)
     except layout.ConfigError:
         return 0
-    if config.store != layout.STORE_BEADS:
+    if config.source is None:
         return 0
     target = beads.beads_dir(root)
     if os.path.isdir(target):

@@ -5,7 +5,6 @@ import shutil
 import tempfile
 
 from selftest_support import check, git, say, weight, write  # noqa: E402
-import layout  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_fixtures import BODY, _claim_work_and_done, body_file, commit_task, make_repo, run_task  # noqa: E402
@@ -24,7 +23,7 @@ def _closed(repo: str, task_id: str) -> bool:
 def test_ship_fast_forward() -> None:
     say("task.py ship: main が進んでいなければ追い付くだけで送る")
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp, store=layout.STORE_BEADS, branch="切らない")
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
         commit_task(main_path, taskfile.Task("T-100", "追い付くだけ", "todo", "sonnet", "Y", (), BODY))
 
         run_task(wt1, "claim", "T-100")
@@ -42,7 +41,7 @@ def test_ship_fast_forward() -> None:
 def test_ship_rebases_when_main_advances() -> None:
     say("task.py ship: main が先に進んでいれば付け替えてから送る")
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp, store=layout.STORE_BEADS, branch="切らない", verify="`echo verified`")
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない", verify="`echo verified`")
         commit_task(main_path, taskfile.Task("T-100", "付け替え", "todo", "sonnet", "Y", (), BODY))
 
         run_task(wt1, "claim", "T-100")
@@ -74,7 +73,7 @@ def test_ship_forces_verify_after_verify_failed_without_new_rebase() -> None:
             os.path.join(tmp, "verify.sh"),
             f'if [ -f "{flag}" ]; then echo ok; exit 0; else echo fail; exit 1; fi\n',
         )
-        main_path, wt1, _wt2 = make_repo(tmp, store=layout.STORE_BEADS, branch="切らない", verify=f"`sh {verify_script}`")
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない", verify=f"`sh {verify_script}`")
         commit_task(main_path, taskfile.Task("T-100", "打ち直し", "todo", "sonnet", "Y", (), BODY))
 
         run_task(wt1, "claim", "T-100")
@@ -110,7 +109,7 @@ def test_ship_verify_failed_keeps_full_log_in_order() -> None:
             os.path.join(tmp, "verify.sh"),
             "echo out-1\necho err-1 >&2\necho out-2\necho err-2 >&2\nexit 1\n",
         )
-        main_path, wt1, _wt2 = make_repo(tmp, store=layout.STORE_BEADS, branch="切らない", verify=f"`sh {verify_script}`")
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない", verify=f"`sh {verify_script}`")
         commit_task(main_path, taskfile.Task("T-100", "ログ", "todo", "sonnet", "Y", (), BODY))
 
         run_task(wt1, "claim", "T-100")
@@ -134,7 +133,7 @@ def test_ship_verify_failed_keeps_full_log_in_order() -> None:
 def test_ship_stale_verify_owed_does_not_block_nothing_or_main_worktree() -> None:
     say("task.py ship: 検証の借りの印が残っていても、main に送るものが無い・main上で起こしたときは今までどおり動く")
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp, store=layout.STORE_BEADS, branch="切らない", verify="`false`")
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない", verify="`false`")
 
         # 送るものが無い（NOTHING）側: 古い印が残っていても検証コマンド（`false`）は打たれない。
         ledger.mark_verify_owed("`false`", cwd=wt1)
@@ -159,7 +158,7 @@ def test_ship_stale_verify_owed_does_not_block_nothing_or_main_worktree() -> Non
 def test_ship_conflict_aborts_rebase() -> None:
     say("task.py ship: 衝突すればrebase --abortして止まる")
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp, store=layout.STORE_BEADS, branch="切らない")
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
         commit_task(main_path, taskfile.Task("T-100", "衝突", "todo", "sonnet", "Y", (), BODY))
 
         run_task(wt1, "claim", "T-100")
@@ -188,7 +187,7 @@ def test_ship_conflict_aborts_rebase() -> None:
 def test_ship_main_dirty_stops() -> None:
     say("task.py ship: 本体が汚れていれば送らずに止まる")
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp, store=layout.STORE_BEADS, branch="切らない")
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
         commit_task(main_path, taskfile.Task("T-100", "本体汚れ", "todo", "sonnet", "Y", (), BODY))
 
         run_task(wt1, "claim", "T-100")
@@ -204,7 +203,7 @@ def test_ship_main_dirty_stops() -> None:
 def test_land() -> None:
     say("task.py land: 主ブランチへ ff-only で合流して入ったことを確かめてから、作業ツリーと枝を消す")
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, wt2 = make_repo(tmp, store=layout.STORE_BEADS)
+        main_path, wt1, wt2 = make_repo(tmp)
 
         def head(path: str) -> str:
             return git(path, "rev-parse", "HEAD").stdout.strip()
@@ -295,7 +294,7 @@ def test_land() -> None:
 def test_ship_skips_send_on_main_worktree() -> None:
     say("task.py ship: main の作業ツリーで起こしたときは送る段を飛ばす")
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, _wt1, _wt2 = make_repo(tmp, store=layout.STORE_BEADS, branch="切らない")
+        main_path, _wt1, _wt2 = make_repo(tmp, branch="切らない")
         commit_task(main_path, taskfile.Task("T-100", "本体で完結", "todo", "sonnet", "Y", (), BODY))
 
         r = run_task(main_path, "claim", "T-100")
@@ -322,7 +321,7 @@ def test_ship_race_gives_up_after_three_tries() -> None:
         # 進むので `--ff-only` は毎回落ちる。（別スレッドから一定間隔で commit する形は、
         # 機械の混み具合で窓を外すと送れてしまい、落ち方が日によって変わった。）
         racer = os.path.join(tmp, "racer.sh")
-        main_path, wt1, _wt2 = make_repo(tmp, store=layout.STORE_BEADS, branch="切らない", verify=f"`sh {racer}`")
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない", verify=f"`sh {racer}`")
         write(
             racer,
             "set -e\n"
@@ -360,7 +359,7 @@ def test_ship_race_gives_up_after_three_tries() -> None:
 def test_ship_default_branch_leaves_feature_branch() -> None:
     say("task.py ship: 既定の枝設定で本体が main を出していても feature 枝を残さない")
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, wt2 = make_repo(tmp, store=layout.STORE_BEADS, branch="既定")
+        main_path, wt1, wt2 = make_repo(tmp, branch="既定")
         commit_task(main_path, taskfile.Task("T-100", "戻り先あり", "todo", "sonnet", "Y", (), BODY))
         commit_task(main_path, taskfile.Task("T-101", "戻り先なし", "todo", "sonnet", "Y", (), BODY))
 
@@ -394,14 +393,14 @@ def test_ship_default_branch_leaves_feature_branch() -> None:
 def test_branch_setting_reads_leading_word() -> None:
     say("task.py claim: config.toml の branch は語彙の外なら INVALID")
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp, store=layout.STORE_BEADS, branch="自分で切らない")
+        main_path, wt1, _wt2 = make_repo(tmp, branch="自分で切らない")
         commit_task(main_path, taskfile.Task("T-100", "語彙外", "todo", "sonnet", "Y", (), BODY))
         r = run_task(wt1, "claim", "T-100")
         check("config.toml: 語彙に無い値は INVALID（終了コード3）", r.returncode == 3 and r.stdout.startswith("INVALID\t"),
               r.stdout + r.stderr)
 
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp, store=layout.STORE_BEADS, branch="切らない。説明")
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない。説明")
         r = run_task(wt1, "status")
         check("config.toml は値の後ろの説明文を許さず INVALID", r.returncode == 3 and r.stdout.startswith("INVALID\t.tw/config.toml:"),
               r.stdout + r.stderr)
@@ -419,7 +418,7 @@ def test_branch_setting_missing_is_default() -> None:
         ("config.toml に branch が無い", {"branch": None}),
     ):
         with tempfile.TemporaryDirectory() as tmp:
-            main_path, wt1, _wt2 = make_repo(tmp, store=layout.STORE_BEADS, **kwargs)
+            main_path, wt1, _wt2 = make_repo(tmp, **kwargs)
             commit_task(main_path, taskfile.Task("T-100", "作業ツリーで", "todo", "sonnet", "Y", (), BODY))
             git(wt1, "merge", "-q", "--ff-only", "main")
 
@@ -439,7 +438,7 @@ def test_base_branch_resolution() -> None:
     say("ledger.base_branch: 設定の base_branch → origin/HEAD → main/master/trunk → NoBaseBranch")
     with tempfile.TemporaryDirectory() as tmp:
         ledger.clear_base_branch_cache()
-        master_repo, _wt1, _wt2 = make_repo(tmp, store=layout.STORE_BEADS, base="master")
+        master_repo, _wt1, _wt2 = make_repo(tmp, base="master")
         check("順3: master しか無ければ master", ledger.base_branch(cwd=master_repo) == "master")
 
         git(master_repo, "branch", "main")
@@ -455,7 +454,7 @@ def test_base_branch_resolution() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         # 順2: origin/HEAD の枝名。候補の順（main が先）より優先する。
         ledger.clear_base_branch_cache()
-        repo, _wt1, _wt2 = make_repo(tmp, store=layout.STORE_BEADS, base="main")
+        repo, _wt1, _wt2 = make_repo(tmp, base="main")
         git(repo, "branch", "trunk")
         git(repo, "remote", "add", "origin", repo)
         git(repo, "update-ref", "refs/remotes/origin/trunk", "trunk")
@@ -466,7 +465,7 @@ def test_base_branch_resolution() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         # 順4: 候補の枝が無ければ黙って main を作らず INVALID（終了コード3）。
         ledger.clear_base_branch_cache()
-        repo, _wt1, _wt2 = make_repo(tmp, store=layout.STORE_BEADS, base="dev")
+        repo, _wt1, _wt2 = make_repo(tmp, base="dev")
         raised = False
         try:
             ledger.base_branch(cwd=repo)
@@ -486,7 +485,7 @@ def test_base_branch_resolution() -> None:
 def test_full_cycle_on_master_repo() -> None:
     say("task.py: 主ブランチが master のリポジトリで一式（status→new→claim→done→ship）")
     with tempfile.TemporaryDirectory() as tmp:
-        base_path, wt1, wt2 = make_repo(tmp, store=layout.STORE_BEADS, branch="既定", verify="`echo verified`", base="master")
+        base_path, wt1, wt2 = make_repo(tmp, branch="既定", verify="`echo verified`", base="master")
         commit_task(base_path, taskfile.Task("T-100", "master で一式", "todo", "sonnet", "Y", (), BODY))
 
         status = run_task(wt1, "status")
@@ -534,7 +533,7 @@ def test_full_cycle_on_master_repo() -> None:
 
     # 本体（master を出している作業ツリー）で枝を切らずに起こしたときは送る段が無い。
     with tempfile.TemporaryDirectory() as tmp:
-        base_path, _wt1, _wt2 = make_repo(tmp, store=layout.STORE_BEADS, branch="切らない", base="master")
+        base_path, _wt1, _wt2 = make_repo(tmp, branch="切らない", base="master")
         commit_task(base_path, taskfile.Task("T-100", "本体で完結", "todo", "sonnet", "Y", (), BODY))
         run_task(base_path, "claim", "T-100")
         _claim_work_and_done(base_path, "T-100")

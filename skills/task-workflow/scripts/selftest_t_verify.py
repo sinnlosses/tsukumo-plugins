@@ -9,7 +9,6 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 from selftest_support import check, git, say, weight, write  # noqa: E402
-import layout  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
@@ -21,7 +20,7 @@ def test_verify_refuses_unplanned_work() -> None:
     say("task.py verify: 着手中のタスクの ## やること が空のまま作業が始まっていたら検証を打たない")
     planned = task_body([("書く", "")])
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, wt2 = make_repo(tmp, store=layout.STORE_BEADS, branch="切らない", verify="`echo verified`")
+        main_path, wt1, wt2 = make_repo(tmp, branch="切らない", verify="`echo verified`")
         for tid in ("T-110", "T-111"):
             commit_task(main_path, taskfile.Task(tid, "検証の関門", "todo", "sonnet", "Y", (), BODY))
 
@@ -64,7 +63,7 @@ VERIFY_SCRIPT = (
 def test_verify_stamp() -> None:
     say("task.py verify・verify-check: 検証が通った中身の鍵を控え、同じなら省いてよいと判定する")
     with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1, wt2 = make_repo(tmp, store=layout.STORE_BEADS, branch="切らない", verify="`sh verify.sh`")
+        _main, wt1, wt2 = make_repo(tmp, branch="切らない", verify="`sh verify.sh`")
         write(os.path.join(wt1, "verify.sh"), VERIFY_SCRIPT)
         write(os.path.join(wt1, ".gitignore"), "ignored/\n")
         write(os.path.join(wt1, "pnpm-lock.yaml"), "lockfileVersion: 9\n")
@@ -163,7 +162,7 @@ def test_verify_stamp() -> None:
         check("検証コマンドが変われば NOT_VERIFIED command", verify_check() == "NOT_VERIFIED\tcommand")
 
     with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1, _wt2 = make_repo(tmp, store=layout.STORE_BEADS, branch="切らない")
+        _main, wt1, _wt2 = make_repo(tmp, branch="切らない")
         r1 = run_task(wt1, "verify")
         r2 = run_task(wt1, "verify-check")
         check("検証コマンドが無ければ verify・verify-check とも NOTHING", r1.returncode == 0 and r2.returncode == 0
@@ -178,7 +177,7 @@ NOTES = "a\nb\nc\nd\ne\n"
 
 def _fold_repo(tmp: str, preship: str | None = None, planned: bool = True) -> tuple[str, str]:
     """`(本体, 作業ツリー1)`。wt1 が T-120 を claim 済みで、検証コマンドは打たれるたびに `verify-count.log` へ1行足す。"""
-    main_path, wt1, _wt2 = make_repo(tmp, store=layout.STORE_BEADS, branch="切らない", verify="`sh ../verify-count.sh`", preship=preship)
+    main_path, wt1, _wt2 = make_repo(tmp, branch="切らない", verify="`sh ../verify-count.sh`", preship=preship)
     write(os.path.join(tmp, "verify-count.sh"), COUNTING_VERIFY_SCRIPT)
     write(os.path.join(main_path, "notes.txt"), NOTES)
     git(main_path, "add", "notes.txt")
@@ -206,7 +205,7 @@ def test_verify_runs_format_first() -> None:
     saw = 'cat formatted.txt >> saw.log\necho "ok"\n'
     with tempfile.TemporaryDirectory() as tmp:
         _main, wt1, _wt2 = make_repo(
-            tmp, store=layout.STORE_BEADS, branch="切らない", verify="`sh verify.sh`", format_command="`sh format.sh`"
+            tmp, branch="切らない", verify="`sh verify.sh`", format_command="`sh format.sh`"
         )
         write(os.path.join(wt1, "format.sh"), fix)
         write(os.path.join(wt1, "verify.sh"), saw)
@@ -221,7 +220,7 @@ def test_verify_runs_format_first() -> None:
         check("整形で変わった中身でも続く verify-check は VERIFIED_SAME", r.stdout.startswith("VERIFIED_SAME\t"), r.stdout + r.stderr)
 
     with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1, _wt2 = make_repo(tmp, store=layout.STORE_BEADS, branch="切らない", verify="`sh verify.sh`", format_command="なし")
+        _main, wt1, _wt2 = make_repo(tmp, branch="切らない", verify="`sh verify.sh`", format_command="なし")
         write(os.path.join(wt1, "format.sh"), fix)
         write(os.path.join(wt1, "verify.sh"), 'echo "ok"\n')
         git(wt1, "add", "-A")
@@ -231,7 +230,7 @@ def test_verify_runs_format_first() -> None:
 
     with tempfile.TemporaryDirectory() as tmp:
         _main, wt1, _wt2 = make_repo(
-            tmp, store=layout.STORE_BEADS, branch="切らない", verify="`sh verify.sh`", format_command="`sh format.sh`"
+            tmp, branch="切らない", verify="`sh verify.sh`", format_command="`sh format.sh`"
         )
         write(os.path.join(wt1, "format.sh"), "echo broken\nexit 1\n")
         write(os.path.join(wt1, "verify.sh"), "echo ran > verify-ran.txt\n")
@@ -256,7 +255,7 @@ def test_verify_keeps_failed_logs() -> None:
     say("task.py verify: 落ちた回のログが時刻つきで直近3本残り、整形と検証の出力が task-verify.log に並ぶ")
     with tempfile.TemporaryDirectory() as tmp:
         _main, wt1, _wt2 = make_repo(
-            tmp, store=layout.STORE_BEADS, branch="切らない", verify="`sh verify.sh`", format_command="`sh format.sh`"
+            tmp, branch="切らない", verify="`sh verify.sh`", format_command="`sh format.sh`"
         )
         write(os.path.join(wt1, "format.sh"), "echo fmt-out\n")
         git(wt1, "add", "-A")

@@ -294,24 +294,18 @@ LAYOUT_CONSUMERS = (
     os.path.join(_TASK_WORKFLOW_SCRIPTS, "tw_base.py"),
     os.path.join(_TASK_WORKFLOW_SCRIPTS, "tw_claim.py"),
     os.path.join(_TASK_WORKFLOW_SCRIPTS, "tw_edit.py"),
-    os.path.join(_TASK_WORKFLOW_SCRIPTS, "tw_handback.py"),
     os.path.join(_TASK_WORKFLOW_SCRIPTS, "tw_maint.py"),
     os.path.join(_TASK_WORKFLOW_SCRIPTS, "tw_new.py"),
     os.path.join(_TASK_WORKFLOW_SCRIPTS, "tw_ship.py"),
     os.path.join(_TASK_WORKFLOW_SCRIPTS, "tw_status.py"),
     os.path.join(_TASK_WORKFLOW_SCRIPTS, "tw_verify.py"),
-    os.path.join(_TASK_WORKFLOW_SCRIPTS, "taskfile.py"),
     os.path.join(_TASK_WORKFLOW_SCRIPTS, "init.py"),
-    os.path.join(_TASK_WORKFLOW_SCRIPTS, "legacy.py"),
     os.path.join(_RETROSPECT_SCRIPTS, "material.py"),
     os.path.join(_RETROSPECT_SCRIPTS, "transcript.py"),
 )
 
 # layout.py が持つ値そのもの（値は1文字も変えない。ここは「他のファイルに戻っていないか」の検査）。
 _LAYOUT_PATHS = {
-    "develop/task",
-    "develop/direction.md",
-    "develop/draft",
     "docs/history/tasks.md",
 }
 _LAYOUT_STRINGS = _LAYOUT_PATHS | {

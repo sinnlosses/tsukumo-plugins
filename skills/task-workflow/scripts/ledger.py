@@ -1,9 +1,7 @@
-"""共有の `.git` の中に置く台帳（着手の印・採番の錠・最後の番号・登録時の計画の控え）と、
+"""git の薄い包みと主ブランチの決め方、共有の `.git` の中（か `TW_STATE_DIR`）に置く台帳の流れの記録（`flow/`）、
 作業ツリーの根の `.tw/local/` に置く作業ツリーごとの控え（検証・中断・段の鍵、着手の控え、ログ）。
 
-正典は claude-skills の `docs/history/task-workflow-redesign.md` の4.2〜4.3。台帳はクローンに1つ
-（`git rev-parse --path-format=absolute --git-common-dir` の下）で、どちらもコミットしないので主ブランチを動かさない。取り合いの判定は `mkdir` の成否だけで決める
-（不可分な操作なので、2プロセスが同時に呼んでも一方だけが成功する）。
+台帳はクローンに1つ（`git rev-parse --path-format=absolute --git-common-dir` の下）で、どちらもコミットしないので主ブランチを動かさない。
 """
 
 from __future__ import annotations
@@ -16,19 +14,13 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import layout
 
-CLAIM_DIR_NAME = "claim"
-LOCK_DIR_NAME = "lock"
-LAST_ID_FILE_NAME = "last-id"
 LEDGER_DIR_NAME = "task-workflow"
 STATE_DIR_ENV = "TW_STATE_DIR"
-# `TW_STATE_DIR` の台帳へ古い台帳を写したときの着手の印（`<タスクID>\t<claimed_at>` の行）。
-CARRIED_CLAIMS_FILE_NAME = "carried-claims"
 READ_ONLY_ERRNOS = (errno.EACCES, errno.EPERM, errno.EROFS)
 
 
@@ -38,14 +30,6 @@ class GitCommandError(RuntimeError):
 
 class NoBaseBranch(RuntimeError):
     """主ブランチが決まらなかった。データの不備（呼ぶ側が `INVALID`・終了コード3 にする）。"""
-
-
-class StateReadOnly(RuntimeError):
-    """台帳の置き場に書けない（呼ぶ側が `STATE_READ_ONLY`・終了コード12 にする）。"""
-
-    def __init__(self, path: str) -> None:
-        super().__init__(path)
-        self.path = path
 
 
 class GitReadOnly(RuntimeError):
@@ -105,7 +89,7 @@ def is_clean(cwd: str | None = None) -> bool:
 
 
 def head_sha_or_none(cwd: str | None = None) -> str | None:
-    """`git rev-parse HEAD`。引けなければ `None`（`try_claim` が `head` を控えずに済ませる）。"""
+    """`git rev-parse HEAD`。引けなければ `None`（`claim` が `head` を控えずに済ませる）。"""
     r = subprocess.run(["git", "rev-parse", "HEAD"], cwd=cwd, capture_output=True, text=True)
     return r.stdout.strip() if r.returncode == 0 else None
 
@@ -217,59 +201,10 @@ def list_worktrees(cwd: str | None = None) -> list[Worktree]:
 
 
 def ledger_root(cwd: str | None = None) -> str:
-    """読む側の台帳の置き場。`TW_STATE_DIR` の台帳（`_state_ledger_root`）があればそこ。
-    無ければ共有の git dir の `task-workflow/`（`TW_STATE_DIR` があっても、初めて書くまでは古い台帳を読む）。"""
-    new = _state_ledger_root(cwd)
-    if new is not None and os.path.isdir(new):
-        return new
-    old = os.path.join(git_common_dir(cwd), LEDGER_DIR_NAME)
-    return new if new is not None and not os.path.isdir(old) else old
-
-
-def ledger_root_for_write(cwd: str | None = None) -> str:
-    """書く側の台帳の置き場。`TW_STATE_DIR` の台帳がまだ無く古い台帳があれば丸ごと写してから、
-    置き場を作って書けるかを確かめる。書けなければ `StateReadOnly`。"""
-    new = _state_ledger_root(cwd)
-    old = os.path.join(git_common_dir(cwd), LEDGER_DIR_NAME)
-    root = new if new is not None else old
-    try:
-        if new is not None and not os.path.isdir(new) and os.path.isdir(old):
-            _carry_over_ledger(old, new)
-        os.makedirs(root, exist_ok=True)
-        fd, probe = tempfile.mkstemp(prefix=".probe-", dir=root)
-        os.close(fd)
-        os.remove(probe)
-    except OSError as e:
-        if e.errno in READ_ONLY_ERRNOS:
-            raise StateReadOnly(root) from e
-        raise
-    return root
-
-
-@dataclass(frozen=True)
-class SplitClaim:
-    task_id: str
-    worktree: str
-    claimed_at: str
-
-
-def split_claims(cwd: str | None = None) -> list[SplitClaim]:
-    """`TW_STATE_DIR` を使っているとき、古い台帳にあって新しい台帳に無く、写したときにも無かった
-    着手の印。使っていなければ空。"""
-    old = _old_ledger_root(cwd)
-    if old is None:
-        return []
-    root = ledger_root(cwd)
-    current = set(list_claims(root))
-    carried = _read_carried_claims(root)
-    found: list[SplitClaim] = []
-    for task_id in list_claims(old):
-        owner = read_owner(claim_dir(old, task_id)) or {}
-        claimed_at = owner.get("claimed_at", "")
-        if task_id in current or (task_id, claimed_at) in carried:
-            continue
-        found.append(SplitClaim(task_id, owner.get("worktree", "?"), claimed_at))
-    return found
+    """流れの記録（`flow/`）を置く台帳の置き場。`TW_STATE_DIR` があればその下の台帳（`_state_ledger_root`）、
+    無ければ共有の git dir の `task-workflow/`。"""
+    state = _state_ledger_root(cwd)
+    return state if state is not None else os.path.join(git_common_dir(cwd), LEDGER_DIR_NAME)
 
 
 def _state_ledger_root(cwd: str | None) -> str | None:
@@ -284,242 +219,8 @@ def _state_ledger_root(cwd: str | None) -> str | None:
     return os.path.join(os.path.abspath(os.path.expanduser(state)), f"{name}-{digest}")
 
 
-def _old_ledger_root(cwd: str | None) -> str | None:
-    if not os.environ.get(STATE_DIR_ENV):
-        return None
-    return os.path.join(git_common_dir(cwd), LEDGER_DIR_NAME)
-
-
-def _carry_over_ledger(old: str, root: str) -> None:
-    """古い台帳を錠を除いて一時ディレクトリへ写し、写した印を控えてから `root` へ `rename` する
-    （先を越されたら一時ディレクトリを捨てる）。"""
-    parent = os.path.dirname(root)
-    os.makedirs(parent, exist_ok=True)
-    tmp = tempfile.mkdtemp(prefix=os.path.basename(root) + "-", dir=parent)
-    try:
-        shutil.copytree(old, tmp, dirs_exist_ok=True, ignore=shutil.ignore_patterns(LOCK_DIR_NAME))
-        lines = [
-            f"{task_id}\t{(read_owner(claim_dir(old, task_id)) or {}).get('claimed_at', '')}\n"
-            for task_id in list_claims(old)
-        ]
-        with open(os.path.join(tmp, CARRIED_CLAIMS_FILE_NAME), "w", encoding="utf-8") as f:
-            f.write("".join(lines))
-        os.rename(tmp, root)
-    except OSError:
-        shutil.rmtree(tmp, ignore_errors=True)
-        if not os.path.isdir(root):
-            raise
-
-
-def _read_carried_claims(root: str) -> set[tuple[str, str]]:
-    path = os.path.join(root, CARRIED_CLAIMS_FILE_NAME)
-    if not os.path.exists(path):
-        return set()
-    carried: set[tuple[str, str]] = set()
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            task_id, sep, claimed_at = line.rstrip("\n").partition("\t")
-            if sep:
-                carried.add((task_id, claimed_at))
-    return carried
-
-
-def _ensure_dirs(root: str) -> None:
-    os.makedirs(os.path.join(root, CLAIM_DIR_NAME), exist_ok=True)
-
-
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
-
-
-def _write_owner_file(dir_path: str, lines: dict[str, str]) -> None:
-    """一時ファイル→rename で書く（4.2: 読み手はまだ無い owner を「書き込み中」として扱う）。"""
-    tmp = os.path.join(dir_path, ".owner.tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        for k, v in lines.items():
-            f.write(f"{k}={v}\n")
-    os.replace(tmp, os.path.join(dir_path, "owner"))
-
-
-def read_owner(dir_path: str) -> dict[str, str] | None:
-    owner_path = os.path.join(dir_path, "owner")
-    if not os.path.exists(owner_path):
-        return None
-    out: dict[str, str] = {}
-    with open(owner_path, encoding="utf-8") as f:
-        for line in f:
-            line = line.rstrip("\n")
-            if "=" in line:
-                k, v = line.split("=", 1)
-                out[k] = v
-    return out
-
-
-def owner_age_seconds(dir_path: str) -> float | None:
-    owner = read_owner(dir_path)
-    if owner is None:
-        return None
-    key = "claimed_at" if "claimed_at" in owner else "locked_at"
-    try:
-        claimed_at = datetime.fromisoformat(owner[key])
-    except (KeyError, ValueError):
-        return None
-    return (datetime.now(timezone.utc) - claimed_at).total_seconds()
-
-
-# --- claim（着手の印） ---------------------------------------------------
-
-
-def claim_dir(root: str, task_id: str) -> str:
-    return os.path.join(root, CLAIM_DIR_NAME, task_id)
-
-
-def try_claim(root: str, task_id: str, worktree: str, branch: str, head: str | None = None) -> bool:
-    """`mkdir claim/T-xxx` が不可分な取り合いの錠そのもの（4.2）。
-
-    `head` は claim した時点の `HEAD` の SHA（`task done` が委譲先のコミットを知らせるのに使う。
-    `git rev-parse HEAD` が引けなかったときは `None` のままにし、owner に `head=` を書かない
-    （その印は古い形と同じに読める）。
-    """
-    _ensure_dirs(root)
-    d = claim_dir(root, task_id)
-    try:
-        os.mkdir(d)
-    except FileExistsError:
-        return False
-    lines = {"worktree": worktree, "branch": branch, "claimed_at": now_iso()}
-    if head is not None:
-        lines["head"] = head
-    _write_owner_file(d, lines)
-    return True
-
-
-def release_claim(root: str, task_id: str, worktree: str, force: bool = False) -> str:
-    """`RELEASED` / `NOT_CLAIMED` / `NOT_OWNER` を返す（5.6）。"""
-    d = claim_dir(root, task_id)
-    if not os.path.isdir(d):
-        return "NOT_CLAIMED"
-    if not force:
-        owner = read_owner(d)
-        if owner is None or owner.get("worktree") != worktree:
-            return "NOT_OWNER"
-    shutil.rmtree(d)
-    return "RELEASED"
-
-
-PLAN_FILE_NAME = "plan"
-
-
-def write_plan_mark(root: str, task_id: str, state: str) -> None:
-    """印のディレクトリに `## やること` を初めて書いた時点の判定を残す。2回目以降は書き換えない。"""
-    try:
-        fd = os.open(os.path.join(claim_dir(root, task_id), PLAN_FILE_NAME), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
-    except FileExistsError:
-        return
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        f.write(f"{state}\n")
-
-
-def read_plan_mark(root: str, task_id: str) -> str | None:
-    return _read_line(os.path.join(claim_dir(root, task_id), PLAN_FILE_NAME))
-
-
-PLAN_TIP_FILE_NAME = "plan-tip"
-
-
-def write_plan_tip(root: str, task_id: str, sha: str) -> None:
-    """登録時の計画を判定した、着手時の主ブランチの先端を印のディレクトリに残す。"""
-    with open(os.path.join(claim_dir(root, task_id), PLAN_TIP_FILE_NAME), "w", encoding="utf-8") as f:
-        f.write(f"{sha}\n")
-
-
-def read_plan_tip(root: str, task_id: str) -> str | None:
-    return _read_line(os.path.join(claim_dir(root, task_id), PLAN_TIP_FILE_NAME))
-
-
-# --- plan-base（登録時に `## やること` を書いたときの主ブランチの SHA） -----
-
-PLAN_BASE_DIR_NAME = "plan-base"
-
-
-def write_plan_base(root: str, task_id: str, sha: str) -> None:
-    d = os.path.join(root, PLAN_BASE_DIR_NAME)
-    os.makedirs(d, exist_ok=True)
-    with open(os.path.join(d, task_id), "w", encoding="utf-8") as f:
-        f.write(f"{sha}\n")
-
-
-def read_plan_base(root: str, task_id: str) -> str | None:
-    return _read_line(os.path.join(root, PLAN_BASE_DIR_NAME, task_id))
-
-
-def clear_plan_base(root: str, task_id: str) -> None:
-    try:
-        os.remove(os.path.join(root, PLAN_BASE_DIR_NAME, task_id))
-    except FileNotFoundError:
-        pass
-
-
-def _read_line(path: str) -> str | None:
-    if not os.path.exists(path):
-        return None
-    with open(path, encoding="utf-8") as f:
-        return f.read().strip() or None
-
-
-def list_claims(root: str) -> list[str]:
-    d = os.path.join(root, CLAIM_DIR_NAME)
-    if not os.path.isdir(d):
-        return []
-    return sorted(os.listdir(d))
-
-
-# --- lock（採番の錠） -----------------------------------------------------
-
-
-def acquire_lock(root: str, timeout: float = 10.0, interval: float = 0.1) -> bool:
-    """`mkdir lock/` を `interval` おきに `timeout` 秒まで試す（4.2）。"""
-    os.makedirs(root, exist_ok=True)
-    d = os.path.join(root, LOCK_DIR_NAME)
-    deadline = time.monotonic() + timeout
-    while True:
-        try:
-            os.mkdir(d)
-        except FileExistsError:
-            if time.monotonic() >= deadline:
-                return False
-            time.sleep(interval)
-            continue
-        _write_owner_file(d, {"pid": str(os.getpid()), "locked_at": now_iso()})
-        return True
-
-
-def release_lock(root: str) -> None:
-    shutil.rmtree(os.path.join(root, LOCK_DIR_NAME), ignore_errors=True)
-
-
-def lock_owner_age_seconds(root: str) -> float | None:
-    return owner_age_seconds(os.path.join(root, LOCK_DIR_NAME))
-
-
-# --- last-id ---------------------------------------------------------------
-
-
-def read_last_id(root: str) -> int | None:
-    path = os.path.join(root, LAST_ID_FILE_NAME)
-    if not os.path.exists(path):
-        return None
-    with open(path, encoding="utf-8") as f:
-        text = f.read().strip()
-    return int(text) if text.isdigit() else None
-
-
-def write_last_id(root: str, number: int) -> None:
-    os.makedirs(root, exist_ok=True)
-    tmp = os.path.join(root, ".last-id.tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write(f"{number}\n")
-    os.replace(tmp, os.path.join(root, LAST_ID_FILE_NAME))
 
 
 # --- 作業ツリーごとの控えの置き場（作業ツリーの根の `.tw/local/`）----------
@@ -624,7 +325,7 @@ def _worktree_state_read_dir(cwd: str | None = None) -> str:
 
 
 def mark_verify_owed(verify_command: str, cwd: str | None = None) -> None:
-    """**作業ツリーごと**に置く（`claim`／`lock` の共有台帳とは別）。
+    """**作業ツリーごと**に置く（共有の台帳とは別）。
     検証を跨いだ枝を抱えているのはこの作業ツリーだけなので、共有すると
     無関係な作業ツリーの `ship` まで検証を強制してしまう。"""
     path = os.path.join(worktree_state_dir(cwd), VERIFY_OWED_FILE_NAME)
@@ -662,8 +363,8 @@ def content_key(verify_command: str, cwd: str | None = None, excluded: tuple[str
 
 
 def content_tree(toplevel: str, excluded: tuple[str, ...] = ()) -> str:
-    """鍵に取る木の SHA。`worktree_tree` の木から `<根>/task/`・`<根>/draft/`・`.tw/local/` と `excluded` を外す。`.git` に書かない。"""
-    places = (layout.task_dir(toplevel), layout.draft_dir(toplevel), layout.LOCAL_DIR)
+    """鍵に取る木の SHA。`worktree_tree` の木から `<根>/draft/`・`.tw/local/` と `excluded` を外す。`.git` に書かない。"""
+    places = (layout.draft_dir(toplevel), layout.LOCAL_DIR)
     return worktree_tree(toplevel, objects_in_repo=False, excluded=(*places, *excluded))
 
 

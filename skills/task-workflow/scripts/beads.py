@@ -22,7 +22,7 @@ Issue 番号（`gh-5` ↔ `GH-5`）、`t` なら `task` の採番（`t-123` ↔ 
 | `blocks` の依存 | `dependencies` |
 | `title` | `summary` |
 
-読み手は例外を投げない（`taskfile.parse` と同じ `(値, 理由)` の形）。`bd` そのものが落ちたときだけ
+読み手は例外を投げず `(値, 理由)` の対を返す。`bd` そのものが落ちたときだけ
 `BeadsError`（環境の故障。呼ぶ側は traceback にせず終了コード1にする）。
 """
 

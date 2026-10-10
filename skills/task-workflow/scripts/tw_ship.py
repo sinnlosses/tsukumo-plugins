@@ -5,8 +5,7 @@ from __future__ import annotations
 
 import os
 import sys
-from dataclasses import dataclass
-from typing import Callable, NoReturn
+from typing import NoReturn
 
 import beads
 import layout
@@ -16,56 +15,10 @@ import tracker
 import tw_base
 
 
-def _release_own_claims_when_shipped(root: str, toplevel: str) -> list[str]:
-    """4.4・5.8手順7: 自分の作業ツリーの印のうち、主ブランチ（HEAD）で done/dropped に
-    なったものを消す。主ブランチを正として読む（`tw_base.load_tasks` は git show 経由なので、
-    直前に送った変更もここで反映済みのものとして見える）。"""
-    tasks, _invalid, _local_only = tw_base.load_tasks(toplevel)
-    released: list[str] = []
-    for tid in ledger.list_claims(root):
-        owner = ledger.read_owner(ledger.claim_dir(root, tid))
-        if owner is None or owner.get("worktree") != toplevel:
-            continue
-        t = tasks.get(tid)
-        if t is not None and t.status in ("done", "dropped"):
-            ledger.release_claim(root, tid, toplevel)
-            ledger.clear_plan_base(root, tid)
-            ledger.clear_open_claim(tid, cwd=toplevel)
-            released.append(tid)
-    return released
-
-
-@dataclass(frozen=True)
-class ShipHooks:
-    """`ship` のうち、タスクの置き場（ファイル方式・Beads 方式）で変わる3点。
-
-    `release_shipped`: 送り終えたあと自分の印を消し、消した ID を返す。
-    `claimed_branch`: `claim` した時点の枝（作業ブランチから降りる先）。
-    `after_send`: `SHIPPED`・`NOTHING` の行のあとに足す行（トラッカー・バックアップ）。
-    """
-
-    release_shipped: Callable[[], list[str]]
-    claimed_branch: Callable[[str], "str | None"]
-    after_send: Callable[[], list[str]]
-
-
-def _file_ship_hooks(toplevel: str) -> ShipHooks:
-    root = ledger.ledger_root_for_write(cwd=toplevel)
-    return ShipHooks(
-        release_shipped=lambda: _release_own_claims_when_shipped(root, toplevel),
-        claimed_branch=lambda tid: (ledger.read_owner(ledger.claim_dir(root, tid)) or {}).get("branch"),
-        after_send=lambda: [],
-    )
-
-
-def cmd_ship(toplevel: str, hooks: "ShipHooks | None" = None) -> None:
+def cmd_ship(toplevel: str) -> None:
     if not ledger.is_clean(cwd=toplevel):
         print("DIRTY")
         raise SystemExit(4)
-
-    def resolved_hooks() -> ShipHooks:
-        """ファイル方式の hooks は台帳の置き場を作るので、送る道では `require_git_writable` のあとに作る。"""
-        return hooks if hooks is not None else _file_ship_hooks(toplevel)
 
     branch_setting = layout.read_config(toplevel).branch
     base = ledger.base_branch(toplevel)
@@ -73,22 +26,20 @@ def cmd_ship(toplevel: str, hooks: "ShipHooks | None" = None) -> None:
 
     if branch == base:
         # 4.4: 主ブランチを出している作業ツリーで起こしたときは送る段が無い。
-        local_hooks = resolved_hooks()
         ledger.clear_verify_owed(cwd=toplevel)
-        released = local_hooks.release_shipped()
+        released, not_closed = _close_shipped(toplevel)
         _record_shipped(toplevel, released)
         print(f"SHIPPED\t{base}\t(送る段なし)\treleased={','.join(released) or '-'}")
-        tw_base.print_lines(local_hooks.after_send())
+        tw_base.print_lines(not_closed + _after_send(toplevel))
         return
 
     ahead = tw_base.run_git(toplevel, ["rev-list", "--count", f"{base}..HEAD"])
     ahead_count = int(ahead.stdout.strip()) if ahead.returncode == 0 and ahead.stdout.strip().isdigit() else 0
     if ahead_count == 0:
-        local_hooks = resolved_hooks()
         ledger.clear_verify_owed(cwd=toplevel)
-        local_hooks.release_shipped()
+        _released, not_closed = _close_shipped(toplevel)
         print(f"NOTHING\t({base} に無いコミットが無い)")
-        tw_base.print_lines(local_hooks.after_send())
+        tw_base.print_lines(not_closed + _after_send(toplevel))
         return
 
     worktrees = ledger.list_worktrees(cwd=toplevel)
@@ -97,7 +48,6 @@ def cmd_ship(toplevel: str, hooks: "ShipHooks | None" = None) -> None:
         print(f"MAIN_DIRTY\t{base_worktree.path}")
         raise SystemExit(4)
     ledger.require_git_writable(toplevel)
-    hooks = resolved_hooks()
 
     old_base = tw_base.run_git(toplevel, ["rev-parse", base]).stdout.strip()
     config = layout.read_config(toplevel)
@@ -144,9 +94,9 @@ def cmd_ship(toplevel: str, hooks: "ShipHooks | None" = None) -> None:
     branch_note = f"branch={branch}"
     if branch_setting in ("既定", "作業ブランチを切る") and FEATURE_BRANCH.fullmatch(branch):
         # 印を消す前に読む（戻り先は印にある）。
-        branch_note = _leave_feature_branch(toplevel, branch, hooks.claimed_branch)
+        branch_note = _leave_feature_branch(toplevel, branch)
 
-    released = hooks.release_shipped()
+    released, not_closed = _close_shipped(toplevel)
     _record_shipped(toplevel, released)
     new_base = tw_base.run_git(toplevel, ["rev-parse", base]).stdout.strip()
     preship_note = ""
@@ -157,7 +107,40 @@ def cmd_ship(toplevel: str, hooks: "ShipHooks | None" = None) -> None:
         f"\tverify={outcome.verify_state}{preship_note}\ttries={outcome.tries}\treleased={','.join(released) or '-'}"
         f"\t{branch_note}"
     )
-    tw_base.print_lines(hooks.after_send())
+    tw_base.print_lines(not_closed + _after_send(toplevel))
+
+
+def _close_shipped(toplevel: str) -> tuple[list[str], list[str]]:
+    """送り終えたあと、この作業ツリーが着手した `done` を打ったタスクを閉じる。
+
+    `(閉じたタスクID, 閉じられなかったものの NOT_CLOSED の行)` を返す。
+    """
+    actor = tw_base.actor(toplevel)
+    closed: list[str] = []
+    not_closed: list[str] = []
+    for issue in beads.list_issues(toplevel):
+        mark = beads.ship_mark(issue)
+        if issue.status != "in_progress" or issue.assignee != actor or mark is None:
+            continue
+        reason = "cancelled" if mark == "dropped" else "done"
+        r = beads.run(toplevel, ["close", issue.bd_id, "--reason", reason], actor)
+        if r.returncode != 0:
+            not_closed.append(f"NOT_CLOSED\t{beads.to_task_id(issue.bd_id)}\t{(r.stderr or r.stdout).strip()}")
+            continue
+        update = ["update", issue.bd_id, "--remove-label", beads.SHIP_LABELS[mark]]
+        if mark == "dropped":
+            update += ["--add-label", beads.CANCELLED_LABEL]
+        if issue.external_ref and tracker.read_tracker(toplevel).kind == "jira":
+            update += ["--add-label", beads.JIRA_CLOSE_LABEL]
+        beads.run_ok(toplevel, update, actor)
+        ledger.clear_open_claim(beads.to_task_id(issue.bd_id), cwd=toplevel)
+        closed.append(beads.to_task_id(issue.bd_id))
+    return closed, not_closed
+
+
+def _after_send(toplevel: str) -> list[str]:
+    """`SHIPPED`・`NOTHING` の行のあとに足す行（トラッカー・バックアップ）。"""
+    return tracker.session(toplevel).sync_all(pull=False) + beads.backup(toplevel)
 
 
 def _record_shipped(toplevel: str, released: list[str]) -> None:
@@ -228,10 +211,10 @@ def _first_line(text: str) -> str:
 FEATURE_BRANCH = layout.FEATURE_BRANCH_PATTERN
 
 
-def _leave_feature_branch(toplevel: str, branch: str, claimed_branch: Callable[[str], "str | None"]) -> str:
+def _leave_feature_branch(toplevel: str, branch: str) -> str:
     """送り終えた `feature/T-xxx` から降りて枝を消す（6.2手順7）。出力の `branch=…` 欄を返す。
 
-    戻り先は `claim` した時点の枝（`claimed_branch`。ファイル方式は印の owner の `branch=`）→ 主ブランチの順に試す。主ブランチを
+    戻り先は `claim` した時点の枝（`_claimed_branch`）→ 主ブランチの順に試す。主ブランチを
     別の作業ツリー（本体）が出していると `checkout` は通らないので、作業ツリー固有の枝が
     あればそこへ戻して主ブランチまで追い付かせる。どちらにも移れなければ主ブランチの位置で
     detached HEAD にする（枝を黙って残さない。detached のままでも次の `claim` は主ブランチから切る）。
@@ -239,7 +222,7 @@ def _leave_feature_branch(toplevel: str, branch: str, claimed_branch: Callable[[
     """
     base = ledger.base_branch(toplevel)
     m = FEATURE_BRANCH.fullmatch(branch)
-    back = claimed_branch(m.group(1)) if m else None
+    back = _claimed_branch(toplevel, m.group(1)) if m else None
     targets = [b for b in dict.fromkeys([back, base]) if b and b not in (branch, "HEAD")]
 
     landed = None
@@ -259,37 +242,8 @@ def _leave_feature_branch(toplevel: str, branch: str, claimed_branch: Callable[[
     return f"branch={landed}"
 
 
-def beads_ship_hooks(toplevel: str) -> ShipHooks:
-    actor = tw_base.actor(toplevel)
-    not_closed: list[str] = []
-
-    def release_shipped() -> list[str]:
-        closed: list[str] = []
-        for issue in beads.list_issues(toplevel):
-            mark = beads.ship_mark(issue)
-            if issue.status != "in_progress" or issue.assignee != actor or mark is None:
-                continue
-            reason = "cancelled" if mark == "dropped" else "done"
-            r = beads.run(toplevel, ["close", issue.bd_id, "--reason", reason], actor)
-            if r.returncode != 0:
-                not_closed.append(f"NOT_CLOSED\t{beads.to_task_id(issue.bd_id)}\t{(r.stderr or r.stdout).strip()}")
-                continue
-            update = ["update", issue.bd_id, "--remove-label", beads.SHIP_LABELS[mark]]
-            if mark == "dropped":
-                update += ["--add-label", beads.CANCELLED_LABEL]
-            if issue.external_ref and tracker.read_tracker(toplevel).kind == "jira":
-                update += ["--add-label", beads.JIRA_CLOSE_LABEL]
-            beads.run_ok(toplevel, update, actor)
-            ledger.clear_open_claim(beads.to_task_id(issue.bd_id), cwd=toplevel)
-            closed.append(beads.to_task_id(issue.bd_id))
-        return closed
-
-    def claimed_branch(task_id: str) -> str | None:
-        issue = beads.show(toplevel, beads.to_bd_id(task_id))
-        metadata = issue.raw.get("metadata") if issue is not None else None
-        return metadata.get(beads.CLAIM_BRANCH_KEY) if isinstance(metadata, dict) else None
-
-    def after_send() -> list[str]:
-        return not_closed + tracker.session(toplevel).sync_all(pull=False) + beads.backup(toplevel)
-
-    return ShipHooks(release_shipped, claimed_branch, after_send)
+def _claimed_branch(toplevel: str, task_id: str) -> str | None:
+    """`claim` した時点の枝（metadata の `beads.CLAIM_BRANCH_KEY`）。引けなければ `None`。"""
+    issue = beads.show(toplevel, beads.to_bd_id(task_id))
+    metadata = issue.raw.get("metadata") if issue is not None else None
+    return metadata.get(beads.CLAIM_BRANCH_KEY) if isinstance(metadata, dict) else None

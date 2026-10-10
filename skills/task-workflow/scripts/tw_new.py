@@ -4,15 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
-import shlex
 import sys
 import time
 
 import beads
 import layout
-import ledger
 import taskfile
 import tracker
 import tw_base
@@ -20,68 +17,6 @@ import tw_plan
 
 
 def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
-    summary = args.summary.strip()
-    if summary == "" or "\n" in args.summary:
-        print("usage: --summary は改行を含まない1行にする", file=sys.stderr)
-        raise SystemExit(2)
-
-    deps = tuple(d for d in (x.strip() for x in args.deps.split(",")) if d) if args.deps else ()
-    for d in deps:
-        if not taskfile.ID_PATTERN.match(d):
-            print(f"usage: --deps の {d!r} が T-999 の形式でない", file=sys.stderr)
-            raise SystemExit(2)
-
-    body = tw_base.read_body(args.body_file)
-    error = taskfile.validate_new_body(body, args.hold)
-    if error is not None:
-        print(f"usage: {error}", file=sys.stderr)
-        raise SystemExit(2)
-    if args.direct:
-        tw_plan.refuse_direct(args.difficulty, body)
-    plan_base = tw_plan.registered_plan_base(toplevel, body) if taskfile.has_plan(body) else None
-
-    root = ledger.ledger_root_for_write(cwd=toplevel)
-    if not ledger.acquire_lock(root):
-        age = ledger.lock_owner_age_seconds(root)
-        hint = f"\trmdir {shlex.quote(os.path.join(root, ledger.LOCK_DIR_NAME))}" if age and age > 60 else ""
-        print(f"LOCKED\t採番の錠が取れない{hint}")
-        raise SystemExit(4)
-    try:
-        tasks, invalid, _ = tw_base.load_tasks(toplevel)
-
-        status = "hold" if args.hold else "todo"
-        history_path = os.path.join(toplevel, layout.HISTORY_TASKS_PATH)
-        candidate_ids = (
-            list(tasks) + [i for i in invalid if taskfile.ID_PATTERN.match(i)]
-            + list(taskfile.history_ids(history_path))
-            + list(tw_base.history_ids_at_base(toplevel))
-        )
-        candidates = [0] + [taskfile.id_number(i) for i in candidate_ids]
-        last_id = ledger.read_last_id(root)
-        if last_id is not None:
-            candidates.append(last_id)
-        number = max(candidates) + 1
-        task_id = taskfile.format_id(number)
-
-        task_dir = os.path.join(toplevel, layout.task_dir(toplevel))
-        os.makedirs(task_dir, exist_ok=True)
-        path = taskfile.task_path(task_dir, task_id)
-        rendered = taskfile.render(
-            taskfile.Task(task_id, summary, status, args.difficulty, args.loopable, deps, body, "Y" if args.direct else "N")
-        )
-        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(rendered)
-
-        ledger.write_last_id(root, number)
-        if plan_base is not None:
-            ledger.write_plan_base(root, task_id, plan_base)
-        print(f"CREATED\t{task_id}\t{layout.task_dir(toplevel)}/{task_id}.md")
-    finally:
-        ledger.release_lock(root)
-
-
-def cmd_beads_new(toplevel: str, args: argparse.Namespace) -> None:
     summary = args.summary.strip()
     if summary == "" or "\n" in args.summary:
         print("usage: --summary は改行を含まない1行にする", file=sys.stderr)
@@ -157,27 +92,17 @@ NEW_ATTEMPTS = 20
 
 
 def _next_number(toplevel: str, snap: tw_base.BeadsSnapshot) -> int:
-    """Beads の番号・`bd kv` の最後の番号・主ブランチの `<根>/task/` と `docs/history/tasks.md`・
-    ファイル方式の台帳の `last-id`（残っていれば）のうち最大の次。"""
+    """Beads の番号・`bd kv` の最後の番号・主ブランチの `docs/history/tasks.md` のうち最大の次。"""
     candidates = [0]
     candidates += [n for n in (beads.id_number(i.bd_id) for i in snap.issues.values()) if n is not None]
     last = beads.read_last_id(toplevel)
     if last is not None:
         candidates.append(last)
-    base = ledger.base_branch(toplevel)
-    candidates += [
-        taskfile.id_number(os.path.splitext(f)[0])
-        for f in tw_base.list_base_task_filenames(toplevel, base)
-        if taskfile.ID_PATTERN.match(os.path.splitext(f)[0])
-    ]
     candidates += [taskfile.id_number(i) for i in tw_base.history_ids_at_base(toplevel)]
-    ledger_last = ledger.read_last_id(ledger.ledger_root(cwd=toplevel))
-    if ledger_last is not None:
-        candidates.append(ledger_last)
     return max(candidates) + 1
 
 
-def cmd_beads_adopt(toplevel: str, args: argparse.Namespace) -> None:
+def cmd_adopt(toplevel: str, args: argparse.Namespace) -> None:
     """振り分け前の課題（トラッカーから取り込んだものなど）に番号・difficulty・loopable を付ける。"""
     old = beads.to_bd_id(args.bd_id)
     body = tw_base.read_body(args.body_file)

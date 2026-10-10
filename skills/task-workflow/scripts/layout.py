@@ -23,10 +23,6 @@ TW_GITIGNORE = "local/\n"
 # `.tw/` 直下の控えを git の外に置いていたころの `.tw/.gitignore`
 OLD_TW_GITIGNORES = ("*", "*\n", "*\n!config.toml", "*\n!config.toml\n")
 
-# 旧配置（`.tw/config.toml` が無いプロジェクト）の根
-LEGACY_ROOT = "develop"
-LEGACY_DIRECTION_PATH = "develop/direction.md"
-
 # <根>/direction.md の節（正典「指示メモ」）
 SECTION_USER = "## ユーザーから"
 # ドラフトを direction.md に積んでいたころの節。移し忘れを数えるためだけに残す。
@@ -41,13 +37,13 @@ RETROSPECT_RECORD_HEADING_PATTERN = re.compile(r"^## (\d{4}-\d{2}-\d{2})", re.MU
 
 # タスクID: "T-" + 3桁以上の数字（正典3.1）
 ID_FRAGMENT = r"T-\d{3,}"
-ID_PATTERN = re.compile(rf"^{ID_FRAGMENT}$")  # 全体一致（front matter の id・--deps の各要素）
-# Beads 方式でトラッカーが github なら、タスクID は Issue 番号の `GH-<n>`（ゼロ埋めしない。正典「Beads 方式」）。
+ID_PATTERN = re.compile(rf"^{ID_FRAGMENT}$")  # 全体一致
+# トラッカーが github なら、タスクID は Issue 番号の `GH-<n>`（ゼロ埋めしない）。
 GH_ID_FRAGMENT = r"GH-\d+"
 # Jira のキー（`PROJ-123`。プロジェクトキーは2文字以上・英大文字始まり）。
 JIRA_ID_FRAGMENT = r"[A-Z][A-Z0-9_]+-\d+"
 ANY_ID_FRAGMENT = rf"(?:{ID_FRAGMENT}|{GH_ID_FRAGMENT}|{JIRA_ID_FRAGMENT})"
-ANY_ID_PATTERN = re.compile(rf"^{ANY_ID_FRAGMENT}$")  # Beads 方式の --deps・retrospect の引数
+ANY_ID_PATTERN = re.compile(rf"^{ANY_ID_FRAGMENT}$")  # --deps・retrospect の引数
 ID_SEARCH_PATTERN = re.compile(rf"\b{ANY_ID_FRAGMENT}\b")  # 文中から拾う（コミット件名・トランスクリプト）
 HISTORY_HEADING_PATTERN = re.compile(rf"^## ({ID_FRAGMENT})\b", re.MULTILINE)  # docs/history/tasks.md の見出し
 
@@ -59,9 +55,8 @@ FEATURE_BRANCH_PATTERN = re.compile(rf"{FEATURE_BRANCH_PREFIX}({ANY_ID_FRAGMENT}
 
 CONFIG_PATH = ".tw/config.toml"
 
-STORE_FILES = "files"
 STORE_BEADS = "beads"
-STORE_VALUES = (STORE_FILES, STORE_BEADS)
+STORE_VALUES = (STORE_BEADS,)
 TRACKER_VALUES = ("なし", "github", "jira")
 BRANCH_VALUES = ("既定", "作業ブランチを切る", "切らない")
 DEFAULT_BRANCH = "既定"
@@ -101,7 +96,7 @@ class Config:
     format: str | None = None
     branch: str = DEFAULT_BRANCH
     base_branch: str | None = None
-    store: str = STORE_FILES
+    store: str = STORE_BEADS
     tracker: str = "なし"
     github_project: str | None = None
     backup: str | None = None
@@ -138,29 +133,12 @@ def read_config(toplevel: str) -> Config:
     return config
 
 
-def task_dir(toplevel: str) -> str:
-    """タスクファイルの置き場（`toplevel` からの相対）。"""
-    return posixpath.join(read_config(toplevel).root, "task")
-
-
 def direction_path(toplevel: str) -> str:
     return posixpath.join(read_config(toplevel).root, "direction.md")
 
 
 def draft_dir(toplevel: str) -> str:
     return posixpath.join(read_config(toplevel).root, "draft")
-
-
-def stranded_legacy_places(toplevel: str, config: Config) -> list[tuple[str, str]]:
-    """`.tw/config.toml` があり根が `develop` でないのに `develop/` に残っている置き場の `(元, 先)`（先が既にあっても返す）。"""
-    if config.source != CONFIG_PATH or config.root == LEGACY_ROOT:
-        return []
-    names = ["direction.md", "draft"] + (["task"] if config.store == STORE_FILES else [])
-    return [
-        (posixpath.join(LEGACY_ROOT, n), posixpath.join(config.root, n))
-        for n in names
-        if os.path.lexists(os.path.join(toplevel, LEGACY_ROOT, n))
-    ]
 
 
 def _mtime(path: str) -> tuple[int, int] | None:
@@ -281,85 +259,3 @@ def build_config(source: str | None, values: dict[str, str | None]) -> Config:
     if config.tracker == "github" and config.github_project is None:
         raise ConfigError(f"{source}: tracker = \"github\" には github_project = \"<owner>/<番号>\" が要る")
     return config
-
-
-# --- 旧い「## タスク運用」節（`tw migrate-layout` だけが読む） -----------
-
-CONFIG_FILENAMES = ("AGENTS.md", "CLAUDE.md")
-TASK_SECTION_HEADING = "## タスク運用"
-
-
-def has_task_section(text: str) -> bool:
-    """本文に `## タスク運用` の見出し行があるか（行頭一致）。"""
-    return any(line.startswith(TASK_SECTION_HEADING) for line in text.splitlines())
-
-
-def find_legacy_section(root: str) -> tuple[str, str] | None:
-    """`## タスク運用` 節を持つファイルを `AGENTS.md` → `CLAUDE.md` の順で探し、`(パス, 中身)` を返す。
-
-    両方に節があれば `ConfigError`。どちらにも無ければ `None`。
-    """
-    hits: list[tuple[str, str]] = []
-    for name in CONFIG_FILENAMES:
-        path = os.path.normpath(os.path.join(root, name))
-        if not os.path.exists(path):
-            continue
-        with open(path, encoding="utf-8") as f:
-            text = f.read()
-        if has_task_section(text):
-            hits.append((path, text))
-    if len(hits) > 1:
-        raise ConfigError("AGENTS.md と CLAUDE.md の両方に「## タスク運用」節がある")
-    return hits[0] if hits else None
-
-
-LEGACY_LABELS = {
-    "検証コマンド": "verify",
-    "送る前の検証コマンド": "verify_before_ship",
-    "整形コマンド": "format",
-    "規則の発火の集計": "hook_tally",
-    "ブランチ": "branch",
-    "主ブランチ": "base_branch",
-    "バックアップ": "backup",
-    "GitHub Project": "github_project",
-    "タスクの置き場": "store",
-    "トラッカー": "tracker",
-}
-
-
-@dataclass(frozen=True)
-class LegacyLine:
-    """節の中の知っているラベルの `- <ラベル>: <値>` 行。`start`〜`end`（含まない）が続きの字下げ行までの行番号（0始まり）。"""
-
-    key: str
-    value: str
-    continuation: tuple[str, ...]
-    start: int
-    end: int
-
-
-def legacy_section_lines(text: str) -> list[LegacyLine]:
-    """「## タスク運用」節の、知っているラベルの行（ラベルごとに最初の1行）。"""
-    lines = text.splitlines()
-    found: list[LegacyLine] = []
-    seen: set[str] = set()
-    in_section = False
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        if line.startswith("## "):
-            in_section = line.startswith(TASK_SECTION_HEADING)
-            i += 1
-            continue
-        m = re.match(r"- ([^:]+):(.*)$", line) if in_section else None
-        if m is None or m.group(1) not in LEGACY_LABELS or m.group(1) in seen:
-            i += 1
-            continue
-        seen.add(m.group(1))
-        end = i + 1
-        while end < len(lines) and lines[end][:1] in (" ", "\t") and lines[end].strip():
-            end += 1
-        found.append(LegacyLine(LEGACY_LABELS[m.group(1)], m.group(2).strip(),
-                                tuple(l.strip() for l in lines[i + 1 : end]), i, end))
-        i = end
-    return found

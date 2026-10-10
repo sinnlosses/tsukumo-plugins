@@ -77,7 +77,7 @@ if stage "install.sh・uninstall.sh の自己テスト" \
   sh "$here/scripts/selftest_links.sh"
 fi
 
-if stage "task-workflow: scripts・task コマンド（ファイル方式・Beads 方式）の自己テスト" \
+if stage "task-workflow: scripts・task コマンドの自己テスト" \
   'skills/task-workflow/*' 'agents/*' 'hooks/*' 'bin/*' 'skills/retrospect/scripts/*'; then
   python3 "$here/skills/task-workflow/scripts/selftest.py"
   echo

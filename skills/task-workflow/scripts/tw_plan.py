@@ -105,8 +105,7 @@ def _base_tip(toplevel: str) -> str | None:
 def commits_since_claim(toplevel: str, head: str | None) -> list[str]:
     """`head`（claim 時の HEAD）から今の HEAD までにできた、主ブランチに無いコミット（古い順、短縮ハッシュ）。
 
-    `head` が無い（控えの無い古い印。ファイル方式は owner の `head=`、Beads 方式は metadata の
-    `task_claim_head`）か `git log` が引けなければ空のまま返す（`task done` はそれを「委譲先の
+    `head` が無い（metadata の `task_claim_head` が無い古い印）か `git log` が引けなければ空のまま返す（`task done` はそれを「委譲先の
     コミットは無い」と同じに扱い、落とさない）。
     """
     if not head:
@@ -118,15 +117,15 @@ def commits_since_claim(toplevel: str, head: str | None) -> list[str]:
     return [line for line in r.stdout.splitlines() if line]
 
 
-def plan_state(toplevel: str, head: str | None, body_file: str, own_path: str | None) -> str:
+def plan_state(toplevel: str, head: str | None, body_file: str) -> str:
     """いま `## やること` を書くと、作業より先（`first`）か作業が始まってから（`after-work`）か。
 
-    作業が始まっているとは、claim した時点の `head` より後のコミットがあるか、タスク自身のファイル
-    （`own_path`）と `body_file` 以外に `git status` の変更があること。
+    作業が始まっているとは、claim した時点の `head` より後のコミットがあるか、`body_file` 以外に
+    `git status` の変更があること。
     """
     if commits_since_claim(toplevel, head):
         return PLAN_AFTER_WORK
-    ignored = {own_path} if own_path else set()
+    ignored: set[str] = set()
     if body_file != "-":
         ignored.add(os.path.relpath(os.path.realpath(body_file), os.path.realpath(toplevel)))
     r = tw_base.run_git(toplevel, ["status", "--porcelain", "-z", "--untracked-files=all"])
