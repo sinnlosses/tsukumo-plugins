@@ -291,6 +291,29 @@ def test_land() -> None:
         check("ほかの枝の作業ツリーは残る", os.path.isdir(wt1) and "wt1-branch" in branches())
 
 
+def test_land_without_base_worktree() -> None:
+    say("task.py land: 主ブランチを出している作業ツリーが無ければ何も合流せず消さない")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp)
+        write(os.path.join(wt1, "a.txt"), "a\n")
+        git(wt1, "add", "a.txt")
+        git(wt1, "commit", "-q", "-m", "wt1")
+        git(main_path, "checkout", "-q", "--detach")
+        main_before = git(main_path, "rev-parse", "main").stdout.strip()
+        r = run_task(wt1, "land", "wt1-branch")
+        check(
+            "主ブランチを出している作業ツリーが無ければ NOT_LANDED(4)",
+            r.returncode == 4 and r.stdout.startswith("NOT_LANDED\twt1-branch\t"),
+            r.stdout + r.stderr,
+        )
+        check(
+            "何も合流せず作業ツリーも枝も残る",
+            git(main_path, "rev-parse", "main").stdout.strip() == main_before
+            and os.path.isdir(wt1)
+            and "wt1-branch" in git(main_path, "branch", "--format=%(refname:short)").stdout.split(),
+        )
+
+
 _FILE_PROTOCOL = ("-c", "protocol.file.allow=always")
 _FILE_PROTOCOL_ENV = {
     "GIT_CONFIG_COUNT": "1",
@@ -736,6 +759,7 @@ TESTS = (
     test_ship_skips_send_on_main_worktree,
     test_ship_main_dirty_stops,
     test_land,
+    test_land_without_base_worktree,
     test_ship_and_land_sync_submodules,
     test_ship_and_land_report_unsynced_submodule,
     test_land_removes_worktree_with_submodule_only_when_clean,

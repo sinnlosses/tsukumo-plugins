@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import NoReturn
+from dataclasses import dataclass
+from typing import Literal, NoReturn
 
 import beads
 import layout
@@ -44,10 +45,10 @@ def cmd_ship(toplevel: str) -> None:
 
     worktrees = ledger.list_worktrees(cwd=toplevel)
     base_worktree = ship.find_base_worktree(worktrees, toplevel, base)
-    if base_worktree is not None and not ledger.is_clean(cwd=base_worktree.path):
-        print(f"MAIN_DIRTY\t{base_worktree.path}")
+    blocker = _merge_blocker(base_worktree.path if base_worktree else None, base, [], toplevel, need_base=False)
+    if blocker is not None:
+        print(f"MAIN_DIRTY\t{blocker.detail}")
         raise SystemExit(4)
-    ledger.require_git_writable(toplevel)
 
     old_base = tw_base.run_git(toplevel, ["rev-parse", base]).stdout.strip()
     config = layout.read_config(toplevel)
@@ -178,19 +179,11 @@ def cmd_land(toplevel: str, branch: str) -> None:
         raise SystemExit(2)
     worktrees = ledger.list_worktrees(toplevel)
     base_tree = next((w.path for w in worktrees if w.branch == base), None)
-    if base_tree is None:
-        _refuse_land(branch, f"{base} を出している作業ツリーが無い")
     branch_trees = [w.path for w in worktrees if w.branch == branch]
-    missing = [path for path in [base_tree, *branch_trees] if not os.path.isdir(path)]
-    if missing:
-        _refuse_land(branch, f"作業ツリーのディレクトリが無い: {','.join(missing)}")
-    if not ledger.is_clean(base_tree):
-        _refuse_land(branch, f"{base} を出している作業ツリーに未コミットの変更がある: {base_tree}")
-    dirty = [path for path in branch_trees if not ledger.is_clean(path)]
-    if dirty:
-        _refuse_land(branch, f"作業ツリーに未コミットの変更がある: {','.join(dirty)}")
-
-    ledger.require_git_writable(base_tree)
+    blocker = _merge_blocker(base_tree, base, branch_trees, base_tree or "", need_base=True)
+    if blocker is not None:
+        _refuse_land(branch, _LAND_REASON[blocker.kind].format(base=base, detail=blocker.detail))
+    assert base_tree is not None
     merged = tw_base.run_git(base_tree, ["merge", "--ff-only", "--quiet", branch])
     if merged.returncode != 0:
         _refuse_land(branch, f"{base} へ ff-only で合流できない: {_first_line(merged.stderr)}")
@@ -236,6 +229,46 @@ def _remove_worktree(base_tree: str, path: str) -> str | None:
         return reason
     forced = tw_base.run_git(base_tree, ["worktree", "remove", "--force", path])
     return None if forced.returncode == 0 else _first_line(forced.stderr)
+
+
+BlockerKind = Literal["NO_BASE", "MISSING_DIR", "MAIN_DIRTY", "BRANCH_DIRTY"]
+
+
+@dataclass(frozen=True)
+class MergeBlocker:
+    kind: BlockerKind
+    detail: str
+
+
+_LAND_REASON: dict[BlockerKind, str] = {
+    "NO_BASE": "{base} を出している作業ツリーが無い",
+    "MISSING_DIR": "作業ツリーのディレクトリが無い: {detail}",
+    "MAIN_DIRTY": "{base} を出している作業ツリーに未コミットの変更がある: {detail}",
+    "BRANCH_DIRTY": "作業ツリーに未コミットの変更がある: {detail}",
+}
+
+
+def _merge_blocker(
+    base_tree: str | None, base: str, branch_trees: list[str], writable_in: str, need_base: bool
+) -> MergeBlocker | None:
+    """合流の前提（主ブランチを出している作業ツリーが在る・汚れていない・`.git` に書ける）で欠けたものを返す。
+
+    `need_base` が偽のとき、主ブランチの作業ツリーが無くても欠けとしない（ディレクトリの実在も見ない）。
+    書けないときは `ledger.GitReadOnly` を投げる。
+    """
+    if need_base:
+        if base_tree is None:
+            return MergeBlocker("NO_BASE", base)
+        missing = [path for path in [base_tree, *branch_trees] if not os.path.isdir(path)]
+        if missing:
+            return MergeBlocker("MISSING_DIR", ",".join(missing))
+    if base_tree is not None and not ledger.is_clean(base_tree):
+        return MergeBlocker("MAIN_DIRTY", base_tree)
+    dirty = [path for path in branch_trees if not ledger.is_clean(path)]
+    if dirty:
+        return MergeBlocker("BRANCH_DIRTY", ",".join(dirty))
+    ledger.require_git_writable(writable_in)
+    return None
 
 
 def _refuse_land(branch: str, reason: str) -> NoReturn:
