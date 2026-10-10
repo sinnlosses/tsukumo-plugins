@@ -13,7 +13,7 @@
      作業先の作業ツリーの `tw verify-check` が `VERIFIED_SAME` でなければ hook に拒まれる。**`main` へ入れず、
      作業ツリーと枝を消さずに残して**、作業ツリーのパスと `tw verify` の判定行（`VERIFIED`・
      `VERIFY_NOT_PASSED` など）を報告に書く。作業先に `.tw/config.toml` があれば台帳（`.beads`）が無くても
-     `tw verify` は打てる。設定が無く `tw verify` が `MISSING` を返すときは、検証コマンドを自分で打って通し、打ったコマンドと終了コードを報告に書く」。
+     `tw verify` は打てる。設定が無く `tw verify` が `MISSING` を返すときは、検証コマンドを自分で打って通し、打ったコマンドと終了コードを報告に書く。作業先が tsukumo-plugins で `skills/task-workflow/scripts/` を直すタスク（tw 自身を直すタスク）のときは、`tw` を打たず（グローバルの `tw` は本体の旧い版を指すため）、作業ツリーの `skills/task-workflow/scripts/task.py <サブコマンド>` を直に実行して確かめる」。
      `<枝>` と `<パス>` は依頼文に書いて渡す。`tw handback-guard` は `### 作業先` のリポジトリの作業ツリーのうち
      この名前の枝のものを見るので、別の名前で作ると関門が作業先を見ない。作業先で `tw verify` が `MISSING`
      （`INVALID` も同じ）を返すとき、または作業先の設定ファイルに検証コマンドの行が無いときは、関門は
