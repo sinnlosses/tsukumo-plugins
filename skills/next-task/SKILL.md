@@ -211,27 +211,33 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
 
 6. **受け入れる**: 作業ツリーを直し始める前に、委譲先の最後の段（`段 N/N`）の hand-back が届いていることを
    確かめる（並列の段の担当を起こしたときは、どの担当も最後に渡した段を返していることを確かめる）。
-   確かめた直後に `tw lap T-xxx accept` を打つ。
+   確かめた直後に、作業ツリーを cwd にした残りのプロセスが無いかを `ps` で見て（あれば止める）、`tw accept T-xxx` を打つ（下の表）。
    届いていなければ `TaskStop` か `SendMessage` で止めてから触る。報告をそのまま信用しない。
 
    **目視待ちの報告が来たとき**（描画を変えるタスクで、委譲先が組み立てた直後に返したもの。完了の
    hand-back ではないので、ここで受け入れを始めない）: `${CLAUDE_SKILL_DIR}/visual-review.md` を読んで従う。
 
    **完了条件に目視（画面・見た目）があるとき**: `${CLAUDE_SKILL_DIR}/visual-review.md` の「完了条件に目視があるとき（手順6）」に従う。
-   見比べるまで手順7の `tw done` に進まない。
+   見比べるまで手順7の `tw finish` に進まない。
 
    `## やること` は手順5と5bで見たので（計画どおりに委譲したときは `tw plan-check T-xxx` が
    `PLAN_REGISTERED` を返し、`PLAN_FIRST` と同じに読む）、ここでは `git diff` を読む。
 
-   **新しい文脈でレビューする**（`git diff` を読んだあと、`tw verify-check` の前）:
-   `python3 ${CLAUDE_SKILL_DIR}/scripts/review_needed.py --difficulty <タスクの difficulty>` を打つ。
+   **束ねた受け入れの準備**: `tw accept T-xxx` は `tw lap T-xxx accept`・`tw plan-check T-xxx`・レビューの要否の判定
+   （`review_needed.py`）を順に打ち、その行をそのまま並べる。出力の最後の行で分ける（止まる行が出たらそこで以降を打たず、
+   行の終了コードで終わる。`NOT_CLAIMED`・`NOT_OWNER` は手順4の印が無い合図で、メインで原因を見る）。
 
    | 出力 | すること |
    | --- | --- |
-   | `REVIEW\topus`・`REVIEW\tcode\t<数>` | 下のレビュアーを起こす |
-   | `SKIP\tdocs-only`・`NOTHING` | レビューせずに次へ |
+   | 最後が `SNAPSHOT\t<木の SHA>`（その前に `REVIEW\topus`・`REVIEW\tcode\t<数>`） | レビューが要る。`lap review` は打ってあり、木の SHA が1回目の控え。`git diff` を読んでから下のレビュアーを起こす。直しのあとは `tw accept T-xxx --after-review` |
+   | 最後が `tw verify-check` の行（その前に `SKIP\tdocs-only`・`NOTHING`、設定に `format` があれば `FORMATTED`） | レビューせずに、下の `tw verify-check` の表へ（`git diff` は読む） |
+   | `FORMAT_FAILED\t<コマンド>` | 整形が落ちた。続く末尾の行を読んで直し、`tw accept T-xxx --after-review` を打ち直す |
+   | `MISSING`・`INVALID` | review_needed.py が見つからない・失敗した。行を添えて人に預けて終了する |
 
-   レビュアーを起こす直前（1〜3回目とも）に `tw lap T-xxx review` を打ち、その時点の木を
+   `plan-check` の行（`PLAN_FIRST`・`PLAN_REGISTERED` など）は、手順5bの表で読んだものと同じに読む。
+   作業先が別のリポジトリのタスクでは `tw accept` を使わず、`other-repo.md` のとおり個別に打つ。
+
+   2・3回目のレビューの直前は、今までどおり個別に `tw lap T-xxx review` を打ち、その時点の木を
    `python3 ${CLAUDE_SKILL_DIR}/scripts/review_snapshot.py` の出力（木の SHA）で控える。
    レビュアーは Agent ツールで、`difficulty` と同じモデル（`haiku` のときだけ `sonnet`）の新しいサブエージェント（`subagent_type` は、
    Agent ツールの説明に並ぶエージェント末尾が `reviewer` の行（`reviewer` か
@@ -286,8 +292,7 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
 
    方針からズレた実装を見つけたら、レビューの指摘と同じく委譲先へ差し戻す
    （メインが直すのは、上の3回目のレビューに残った指摘だけ）。
-   作業ツリーを cwd にした残りのプロセスが無いかを `ps` で見て、あれば止める。
-   そのあとで整形コマンド（`format` の行があれば）→ `tw verify-check` を打つ（下の表。検証を省くか、`tw verify` を背景で起こして手順6aの振り返りと並べるかを決める）。
+   レビューのあとは、`tw accept T-xxx --after-review` で整形コマンド（`format` の行があれば）→ `tw verify-check` を打つ（下の表。検証を省くか、`tw verify` を背景で起こして手順6aの振り返りと並べるかを決める）。
    背景で起こした `tw verify` は、手順6bで合流するまで止めない。
    **検証コマンドが1回で通らず、打ち直したら通った**ときは、落ちた・打ち直した・通った、を
    一言メモしておく（手順6aで `retrospect` の材料「検証の打ち直し」に使う。委譲先の friction log の
@@ -304,10 +309,10 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
    **作業先が別のリポジトリのとき**（タスクが直す対象が自分の作業ツリーの外のリポジトリ）:
    `${CLAUDE_SKILL_DIR}/other-repo.md` の「受け入れ（手順6）」に従う。
 
-   受け入れで作業ツリーを直したら、`tw verify-check` から打ち直す。`tw ship` が付け替えたときの
+   受け入れで作業ツリーを直したら、`tw accept T-xxx --after-review` から打ち直す。`tw ship` が付け替えたときの
    検証は、この控えでは省かれない（付け替えが起きるのは、受け入れのあとに主ブランチが進んだときだけ）。
 
-   手順7で `tw done` を打ったときの出力に `COMMITS_SINCE_CLAIM` の行が続いたら、
+   手順7の `tw finish` の出力に（`tw done` の行として） `COMMITS_SINCE_CLAIM` の行が続いたら、
    `${CLAUDE_SKILL_DIR}/commits-since-claim.md` を読んで扱ってから先へ進む。
 
 6a. **振り返る**（`/loop` から回っているときも。委譲せずメインで行う）: 頭に `tw lap T-xxx retro` を打ち、
@@ -341,11 +346,11 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
    | `PLAN_MISSING` | `## やること` が空のまま作業がある（手順5bを通っていれば出ない）。差分から中身を書き起こして `tw edit T-xxx --after-work` で渡してから `tw verify` を打ち直す |
    | `GIT_READ_ONLY` | 取り込みが要るのに `.git` に書けない（何も書き換えず、検証コマンドは打っていない）。sandbox の外で `tw verify` を打ち直す。打ち直せなければ、行を添えて行の3列目の次の一手を案内し、人に預けて終了する |
 
-7. **完了にしてコミットする**: `## 結果`（正典「結果の書き方と知見の置き場」。3行程度、自分の
-   コミットのハッシュは書かない）を標準入力で渡す:
+7. **完了にしてコミットして送る**: `tw finish` が `tw done`・コミット・`tw ship` を順に打つ。
+   `## 結果`（正典「結果の書き方と知見の置き場」。3行程度、自分のコミットのハッシュは書かない）を標準入力で渡す:
 
    ```bash
-   tw done T-xxx --result-file - <<'EOF'
+   tw finish T-xxx --result-file - --message 'T-xxx: <何をしたか>' --add <作業のファイル> --add <ドラフトのファイル> <<'EOF'
    - 検証コマンド: 1204 pass / 0 fail（+9）
    - 振り返り: 兆候なし
    EOF
@@ -354,14 +359,16 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
    完了条件に目視があったときは `- 目視: <開いた画像のパス> を <完了条件の行> と見比べた` の1行を足す。
 
    `dropped` にするときは `--dropped` を付け、理由を結果に書く。`DONE` は
-   stage せず（`## 結果` は Beads の comment に入る）、コミットは作業のファイルと（積んだなら）
-   ドラフトのファイルだけ。作業のファイルを**個別に** `git add` し（`git add -A` は使わない）、
-   **1コミット**にする。件名は `T-xxx: <何をしたか>`
-   （正典「コミットメッセージ」）、末尾の署名も同じ節に従う。差分が無ければコミットせずに手順8へ進む
-   （`tw ship` が `NOTHING` を返して閉じる）。知見は
-   `## 結果`・`## 注意`・正典の docs・新しいタスクへ置き、`develop/progress.md` には書かない。
+   stage せず（`## 結果` は Beads の comment に入る）、コミットは `--add` で渡した作業のファイルと（積んだなら）
+   ドラフトのファイルだけ。`--add` のファイルは**個別に** `git add` され（`git add -A` は使わない）、
+   **1コミット**になる。件名は `T-xxx: <何をしたか>`
+   （正典「コミットメッセージ」）、末尾の署名も同じ節に従って `--message` に入れる。`--add` を付けないか差分が無ければ
+   `NO_COMMIT` を出してコミットせず、そのまま ship へ進む（`tw ship` が `NOTHING` を返して閉じる）。
+   知見は `## 結果`・`## 注意`・正典の docs・新しいタスクへ置き、`develop/progress.md` には書かない。
+   `tw finish` は `tw done`・コミット・`tw ship` の行をそのまま並べ、止まる行（`NOT_OWNER`・`CONFLICT` など）が出たら
+   以降を打たない。`DONE` の次に `COMMITS_SINCE_CLAIM` が続いたら、下の `commits-since-claim.md` を読んでから先へ進む。
 
-8. **送る**: `tw ship`。
+8. **送ったあとを読む**: 手順7の `tw finish` の出力の最後の行（`tw ship` の判定）で分ける。
 
    | 出力 | すること |
    | --- | --- |
