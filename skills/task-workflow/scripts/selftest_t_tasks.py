@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import glob
 import os
+import subprocess
+import sys
 import tempfile
 
 from selftest_support import check, git, refuse_direct_run, say, write  # noqa: E402
@@ -381,7 +384,22 @@ def test_done_commits_since_claim() -> None:
         )
 
 
+def test_part_direct_run_refused() -> None:
+    say("selftest_t_*.py を直に打ったときの案内（部品を glob で全部引く）")
+    here = os.path.dirname(os.path.abspath(__file__))
+    parts = sorted(glob.glob(os.path.join(here, "selftest_t_*.py")))
+    check("部品が1本以上ある", len(parts) > 0)
+    for part in parts:
+        r = subprocess.run([sys.executable, part], capture_output=True, text=True)
+        check(
+            f"{os.path.basename(part)} は selftest_task.py を案内して 2 で終わる",
+            r.returncode == 2 and "selftest_task.py" in r.stderr,
+            detail=f"exit={r.returncode}",
+        )
+
+
 TESTS = (
+    test_part_direct_run_refused,
     test_done_commits_since_claim,
     test_done_single_worktree,
     test_claim_and_release_single_worktree,
