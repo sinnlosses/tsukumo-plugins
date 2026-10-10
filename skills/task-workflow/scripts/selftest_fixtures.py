@@ -113,12 +113,15 @@ def commit_task(main_path: str, task: taskfile.Task) -> None:
     """`tw new` を通さずに、`task` の ID・状態・label・本文のまま Beads の課題を作る（コミットしない）。"""
     bd_id = beads.to_bd_id(task.id)
     parts = beads.split_body(task.body)
-    labels = [f"{beads.DIFFICULTY_LABEL}{task.difficulty}", f"{beads.LOOPABLE_LABEL}{task.loopable}"]
+    labels: list[str] = []
     if task.direct == "Y":
         labels.append(beads.DIRECT_ON)
     if task.status == "dropped":
         labels.append(beads.CANCELLED_LABEL)
-    cmd = ["create", "--id", bd_id, "--title", task.summary, "--body-file", "-", "-l", ",".join(labels), "--silent"]
+    metadata = json.dumps({beads.DIFFICULTY_KEY: task.difficulty, beads.LOOPABLE_KEY: task.loopable})
+    cmd = ["create", "--id", bd_id, "--title", task.summary, "--body-file", "-", "--metadata", metadata, "--silent"]
+    if labels:
+        cmd += ["-l", ",".join(labels)]
     if parts.acceptance:
         cmd += ["--acceptance", parts.acceptance]
     if parts.notes:

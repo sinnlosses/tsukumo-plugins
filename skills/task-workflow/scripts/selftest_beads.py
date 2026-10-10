@@ -183,6 +183,57 @@ def test_direct_mark() -> None:
         check("edit --direct Y は label を付ける", r.returncode == 0 and "direct: Y" in shown(task_id), r.stdout + r.stderr)
 
 
+def test_difficulty_loopable_metadata() -> None:
+    say("difficulty・loopable: new・edit は metadata に書き、読みは metadata 優先で label に後退し、取り込みで消えたら戻す")
+    import tracker  # noqa: PLC0415
+
+    def issue(status: str = "open", labels: tuple[str, ...] = (), metadata: dict | None = None) -> beads.Issue:
+        return beads.Issue("t-005", "題", status, labels, (), None, None, None, {"metadata": metadata or {}})
+
+    both = issue(labels=("difficulty:opus", "loopable:N"), metadata={"difficulty": "haiku", "loopable": "Y"})
+    task, _ = beads.to_task(both)
+    check("metadata と label が両方あれば metadata が勝つ",
+          task is not None and (task.difficulty, task.loopable) == ("haiku", "Y"), str(task))
+    task, _ = beads.to_task(issue(labels=("difficulty:opus", "loopable:N")))
+    check("metadata が無ければ label を読む", task is not None and (task.difficulty, task.loopable) == ("opus", "N"), str(task))
+    task, _ = beads.to_task(issue(labels=("loopable:N",), metadata={"difficulty": "sonnet"}))
+    check("片方が metadata・片方が label でも読める",
+          task is not None and (task.difficulty, task.loopable) == ("sonnet", "N"), str(task))
+    task, reason = beads.to_task(issue(metadata={"difficulty": "gpt", "loopable": "Y"}))
+    check("表に無い値は INVALID", task is None and reason is not None and "difficulty" in reason, str(reason))
+    check("どちらも無ければ振り分け前", beads.to_task(issue()) == (None, None))
+
+    marks = {"difficulty": "opus", "loopable": "N"}
+    check("取り込みで metadata が消えたら2キーを戻す",
+          tracker._claim_restore_args(issue(metadata=marks), issue(), None, None)
+          == ["--set-metadata", "difficulty=opus", "--set-metadata", "loopable=N"])
+    check("片方だけ消えたらその1つだけ戻す",
+          tracker._claim_restore_args(issue(metadata=marks), issue(metadata={"difficulty": "opus"}), None, None)
+          == ["--set-metadata", "loopable=N"])
+    check("閉じた課題も2キーだけ戻す",
+          tracker._claim_restore_args(issue(metadata={**marks, "task_branch": "b"}), issue("closed"), None, None)
+          == ["--set-metadata", "difficulty=opus", "--set-metadata", "loopable=N"])
+
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, _, _ = make_repo(tmp)
+        task_id = new(main_path, "属性")
+        created = beads.show(main_path, beads.to_bd_id(task_id))
+        meta = created.raw.get("metadata") if created is not None else {}
+        check("new は metadata に書き、label を付けない",
+              created is not None and meta.get("difficulty") == "sonnet" and meta.get("loopable") == "Y"
+              and not any(l.startswith(("difficulty:", "loopable:")) for l in created.labels), str(created))
+        bd(main_path, "update", beads.to_bd_id(task_id), "--add-label", "difficulty:opus")
+        r = run_task(main_path, "edit", task_id, "--difficulty", "haiku", "--loopable", "N")
+        edited = beads.show(main_path, beads.to_bd_id(task_id))
+        meta = edited.raw.get("metadata") if edited is not None else {}
+        check("edit は metadata を書き換え、残った label を外す",
+              r.returncode == 0 and edited is not None and meta.get("difficulty") == "haiku"
+              and meta.get("loopable") == "N" and not any(l.startswith("difficulty:") for l in edited.labels),
+              r.stdout + r.stderr + str(edited))
+        shown = run_task(main_path, "show", task_id).stdout
+        check("show は metadata から読む", "\ndifficulty: haiku\nloopable: N\n" in shown, shown)
+
+
 def test_setup_and_config_doctor() -> None:
     say("init.py・config-doctor・MISSING・設定の読み違い")
     with tempfile.TemporaryDirectory() as tmp:
@@ -751,6 +802,7 @@ def main() -> None:
             test_setup_and_config_doctor,
             test_backup,
             test_direct_mark,
+            test_difficulty_loopable_metadata,
             test_missing_config_ignores_old_layout,
             test_store_default_is_beads,
             test_store_files_is_invalid,
