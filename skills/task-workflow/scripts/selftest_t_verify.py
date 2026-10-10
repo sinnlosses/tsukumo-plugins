@@ -59,6 +59,34 @@ VERIFY_SCRIPT = (
 )
 
 
+@weight(3)
+def test_verify_without_ledger() -> None:
+    say("task.py verify・verify-check: .beads の無いリポジトリでも検証の控えを残し、ほかのサブコマンドは MISSING")
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = os.path.join(tmp, "plain")
+        os.makedirs(repo)
+        git(repo, "init", "-q", "-b", "main")
+        git(repo, "config", "user.email", "test@example.com")
+        git(repo, "config", "user.name", "test")
+        write(os.path.join(repo, ".tw", "config.toml"), 'verify = "true"\n')
+        write(os.path.join(repo, ".tw", ".gitignore"), "local/\n")
+        git(repo, "add", "-A")
+        git(repo, "commit", "-q", "-m", "init")
+
+        r = run_task(repo, "verify-check")
+        check("控えが無ければ NOT_VERIFIED none", r.returncode == 0 and r.stdout.strip() == "NOT_VERIFIED\tnone", r.stdout + r.stderr)
+        r = run_task(repo, "verify")
+        first = r.stdout.splitlines()[0] if r.stdout else ""
+        check("tw verify は MISSING にならず VERIFIED", r.returncode == 0 and first.startswith("VERIFIED\t"), r.stdout + r.stderr)
+        r = run_task(repo, "verify-check")
+        check("控えを読んで VERIFIED_SAME", r.stdout.strip() == f"VERIFIED_SAME\t{first.split(chr(9))[1]}", r.stdout + r.stderr)
+        write(os.path.join(repo, "x.txt"), "x\n")
+        r = run_task(repo, "verify-check")
+        check("中身が変われば NOT_VERIFIED content", r.stdout.strip() == "NOT_VERIFIED\tcontent", r.stdout + r.stderr)
+        r = run_task(repo, "status")
+        check("status は MISSING（終了コード6）のまま", r.returncode == 6 and r.stdout.startswith("MISSING\t"), r.stdout + r.stderr)
+
+
 @weight(22)
 def test_verify_stamp() -> None:
     say("task.py verify・verify-check: 検証が通った中身の鍵を控え、同じなら省いてよいと判定する")
@@ -636,6 +664,7 @@ def test_verify_check_passes_base_with_preship() -> None:
 TESTS = (
     test_ship_skips_preship_verify_when_stamp_matches,
     test_verify_stamp,
+    test_verify_without_ledger,
     test_readonly_commands_stay_out_of_git,
     test_verify_check_passes_base_with_preship,
     test_ship_runs_preship_verify_when_work_changes_tree,

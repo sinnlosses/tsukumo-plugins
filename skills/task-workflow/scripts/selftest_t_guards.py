@@ -423,9 +423,39 @@ def test_handback_guard_other_repo() -> None:
         run_task(wt2, "edit", "T-101", "--section", "やること", "--body-file", "-",
                  stdin=f"### 1. 書く\n\n### 作業先\n- `{bare_repo}`\n")
         r = run_task(bare_tree, "verify")
-        check("develop/direction.md が無く検証コマンドの行だけがある作業先では、tw verify が MISSING でも最後の段の返却を通す",
+        check(".tw/config.toml が無い作業先では、tw verify が MISSING で、最後の段の返却を通す",
               r.returncode == 6 and r.stdout.strip() == "MISSING" and run_handback_guard(tmp, wt2) is None,
               r.stdout + r.stderr)
+
+        ledgerless = os.path.join(tmp, "ledgerless")
+        os.makedirs(ledgerless)
+        git(ledgerless, "init", "-q", "-b", "main")
+        git(ledgerless, "config", "user.email", "test@example.com")
+        git(ledgerless, "config", "user.name", "test")
+        write(os.path.join(ledgerless, ".tw", "config.toml"), 'verify = "true"\n')
+        write(os.path.join(ledgerless, ".tw", ".gitignore"), "local/\n")
+        git(ledgerless, "add", "-A")
+        git(ledgerless, "commit", "-q", "-m", "init")
+        ledgerless_tree = os.path.join(tmp, "ledgerless-t-102")
+        git(ledgerless, "worktree", "add", "-q", "-b", "t-102", ledgerless_tree, "main")
+        write(os.path.join(ledgerless_tree, "work.txt"), "x\n")
+        git(ledgerless_tree, "add", "work.txt")
+        git(ledgerless_tree, "commit", "-q", "-m", "作業先で直す")
+        main_wt3 = os.path.join(tmp, "wt3")
+        git(main_path, "worktree", "add", "-q", "-b", "wt3", main_wt3, "main")
+        commit_task(main_path, taskfile.Task("T-102", "台帳は無いが設定がある作業先", "todo", "sonnet", "Y", (), BODY))
+        run_task(main_wt3, "claim", "T-102")
+        run_task(main_wt3, "edit", "T-102", "--section", "やること", "--body-file", "-",
+                 stdin=f"### 1. 書く\n\n### 作業先\n- `{ledgerless}`\n")
+        reason = _block_reason(run_handback_guard(tmp, main_wt3))
+        check(".tw/config.toml が在る作業先では、控えが無ければ最後の段の返却を block し、理由に作業ツリーのパス",
+              "NOT_VERIFIED\tnone" in reason and ledgerless_tree in reason, reason)
+        r = run_task(ledgerless_tree, "verify")
+        check(".beads の無い作業先でも tw verify が通れば最後の段の返却を通す",
+              r.returncode == 0 and r.stdout.startswith("VERIFIED\t") and run_handback_guard(tmp, main_wt3) is None,
+              r.stdout + r.stderr)
+        write(os.path.join(ledgerless_tree, "work.txt"), "y\n")
+        check("控えのあとに中身を変えると block", "NOT_VERIFIED" in _block_reason(run_handback_guard(tmp, main_wt3)))
 
 
 @weight(17)

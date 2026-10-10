@@ -23,7 +23,7 @@ def cmd_verify(toplevel: str) -> None:
     if verify_command is None:
         print("NOTHING\t(検証コマンドが無い)")
         return
-    unplanned = _unplanned_work(toplevel)
+    unplanned = _unplanned_work(toplevel) if beads.is_initialized(toplevel) else []
     if unplanned:
         ledger.clear_verify_stamp(cwd=toplevel)
         for shown in unplanned:

@@ -173,7 +173,10 @@ def main(argv: list[str] | None = None) -> None:
 
 
 def _run(toplevel: str, args: argparse.Namespace) -> None:
-    """`.beads` を要るサブコマンドを振り分ける。"""
+    """`.beads` を要るサブコマンドを振り分ける（`verify`・`verify-check` だけは `.beads` が無くても打てる）。"""
+    if args.command in ("verify", "verify-check") and not beads.is_initialized(toplevel):
+        (tw_verify.cmd_verify if args.command == "verify" else tw_verify.cmd_verify_check)(toplevel)
+        return
     if not beads.is_initialized(toplevel):
         print(f"MISSING\t{beads.beads_dir(toplevel)}")
         raise SystemExit(6)
