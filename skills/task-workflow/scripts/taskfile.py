@@ -22,7 +22,7 @@ DIRECT_DIFFICULTY = "haiku"
 DIRECT_MAX_STEPS = 1
 DIRECT_MAX_PLAN_FILES = 2
 
-# 本文の枠（WORKFLOW.md「タスクファイル」）。7つの見出しを必ずこの順で置き、要らない欄は空か「なし」にする。
+# 本文の枠（WORKFLOW.md「タスクの本文」）。7つの見出しを必ずこの順で置き、要らない欄は空か「なし」にする。
 PURPOSE_HEADING = "## 目的・背景"
 PLAN_HEADING = "## やること"
 # 登録時（`tw new`・`tw adopt`）に書いた `## やること` が名指すファイル。1行1つの「- `パス`」。

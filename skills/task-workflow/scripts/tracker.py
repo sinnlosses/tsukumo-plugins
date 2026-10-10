@@ -1,6 +1,6 @@
-"""トラッカー（GitHub・Jira・なし）との橋渡し。Beads 方式でだけ使う。
+"""トラッカー（GitHub・Jira・なし）との橋渡し。
 
-正典は WORKFLOW.md「Beads 方式」の「トラッカー」と「GitHub との双方向」。錠と本文は Beads が持ち、
+正典は WORKFLOW.md「Beads とトラッカー」の「トラッカー」と「GitHub との双方向」。錠と本文は Beads が持ち、
 トラッカーは写しを持つだけなので、ここの失敗はタスクの操作を止めない（呼ぶ側は
 `TRACKER\\tFAILED\\t…` の行を足して先へ進み、`task sync` で打ち直す）。
 
