@@ -372,7 +372,7 @@ class BodyParts:
 
 
 def split_body(body: str) -> BodyParts:
-    """タスクファイルの本文を Beads の欄へ分ける。見出しは `description` の中ではそのまま残す。
+    """タスクの本文を Beads の欄へ分ける。見出しは `description` の中ではそのまま残す。
 
     `## 完了条件` → `acceptance_criteria`、`## やること` → `notes`、`## 結果` → 取り出すだけ
     （呼ぶ側が拒むか comment にする）。どれも見出しの行を除いた中身。
@@ -427,7 +427,7 @@ def _sections(text: str) -> tuple[str, list[tuple[str, str]]]:
 
 
 def render_task(task: taskfile.Task, issue: Issue, result: str | None) -> str:
-    """`task show` の出力（タスクファイルと同じ形）。"""
+    """`tw show` の出力（front matter と本文。正典「タスクの本文」の形）。"""
     raw = issue.raw
     body = compose_body(
         str(raw.get("description") or ""),

@@ -282,7 +282,7 @@ def check_python_syntax(names: list[str]) -> None:
                     fail(f"{os.path.relpath(p, ROOT)}: 構文エラー（{e}）")
 
 
-# T-018: develop/task 等の置き場・IDの形は skills/task-workflow/scripts/layout.py に
+# T-018: 履歴の置き場・指示メモの見出し・IDの形は skills/task-workflow/scripts/layout.py に
 # 1箇所だけ書き、読む側は直書きしない（正典は task-workflow の WORKFLOW.md「ファイル配置と
 # 設定ファイル（AGENTS.md → CLAUDE.md の順）」）。ここでは layout.py 自身は対象から外し、
 # 読む側のファイルだけを見る。
@@ -323,7 +323,7 @@ _LAYOUT_STRINGS = _LAYOUT_PATHS | {
 def _docstring_constant_ids(tree: ast.AST) -> set[int]:
     """モジュール／クラス／関数の docstring として使われている `Constant` ノードの `id()` の集合。
 
-    人向けの説明文で `develop/task/T-xxx.md` のようにパスへ触れるのは直書きの問題ではないので、
+    人向けの説明文で `docs/history/tasks.md` のようにパスへ触れるのは直書きの問題ではないので、
     リテラルの検査から外す（対象は実際に使われる値だけ）。
     """
     ids: set[int] = set()

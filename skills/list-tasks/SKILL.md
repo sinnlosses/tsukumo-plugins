@@ -1,20 +1,20 @@
 ---
 name: list-tasks
-description: "tw status の出力から、タスクの置き場に登録されている未完了タスクの一覧をテーブル1つで表示し、着手できるものがあれば次の1件を推薦する。ユーザーが「タスク一覧を見せて」「今どのタスクが残ってる？」「次は何をやるべき？」「誰が何を作業中？」と言ったときに使う。読み取り専用で、タスクの実行も登録もしない。旧形式（develop/tasks.json）なら移行の案内だけ出す。"
+description: "tw status の出力から、タスクの置き場に登録されている未完了タスクの一覧をテーブル1つで表示し、着手できるものがあれば次の1件を推薦する。ユーザーが「タスク一覧を見せて」「今どのタスクが残ってる？」「次は何をやるべき？」「誰が何を作業中？」と言ったときに使う。読み取り専用で、タスクの実行も登録もしない。"
 ---
 
 未完了タスクを**テーブル1つに要約し、次の1件を推薦する**。**何も書き換えない・実行しない**（実行は
 `/next-task`、登録は `/plan-tasks`）。ルールは `task-workflow` スキルの `WORKFLOW.md`（以下「正典」）。
-タスクファイルは開かない（要約は `summary` にある）。
+タスクの本文は読まない（要約は `summary` にある）。
 
 ```bash
 tw status
 ```
 
 行の列は `id / status / difficulty / loopable / dependencies / 着手可否 / 印 / summary`（`id` は `T-xxx`。
-Beads 方式でトラッカーが `github` なら Issue 番号の `GH-<n>` もあり、`T-xxx` の行のあとに並ぶ）。`---` の後ろに
-`counts`・`ready`（READY 件数）・`todo_loopable`・`stale`・`invalid`、Beads 方式（正典「Beads 方式」）なら
-`triage`（とトラッカーが `jira` なら `jira_close`）、残っていれば `legacy_progress`。
+トラッカーが `github` なら Issue 番号の `GH-<n>` もあり、`T-xxx` の行のあとに並ぶ）。`---` の後ろに
+`counts`・`ready`（READY 件数）・`todo_loopable`・`stale`・`invalid`・`triage`（正典「Beads とトラッカー」）、
+トラッカーが `jira` なら `jira_close`。
 
 ## 表示のしかた
 
@@ -22,10 +22,9 @@ Beads 方式でトラッカーが `github` なら Issue 番号の `GH-<n>` も�
    `MISSING` を報告して終了する（plugin で入れるなら `/plugin install tsukumo-workflow@tsukumo-plugins`、
    リンクで入れるなら `task-workflow` を含めて `./install.sh` を打ち直すよう案内する）。
 
-1. 終了コードが0でなければ表を出さずに終わる: 5（`LEGACY`）は「旧形式（`develop/tasks.json`）。
-   正典「旧形式からの移行」の手順で `tw migrate --dry-run` から移す」、6（`MISSING`）は「タスク運用を
-   始めていない（`/setup-tasks`）」、3 は `INVALID` の理由、1 はエラー出力をそのまま添える。
-   **タスクファイルを読んで代用しない。**
+1. 終了コードが0でなければ表を出さずに終わる: 6（`MISSING`）は「タスク運用を始めていない
+   （`/setup-tasks`）」、3 は `INVALID` の理由、1 はエラー出力をそのまま添える。
+   **`bd` を直に打って代用しない。**
 
 2. 未完了を**テーブル1つ**で。行の順は `READY` → `BLOCKED` → 作業中（`CLAIMED`）→ 判断待ち（`HOLD`）、
    同じ区分の中は ID 順:
@@ -43,7 +42,7 @@ Beads 方式でトラッカーが `github` なら Issue 番号の `GH-<n>` も�
    | `BLOCKED:T-124` | `T-124 待ち` |
    | `CLAIMED` | `作業中（<印の列>）` |
    | `HOLD` | `判断待ち` |
-   | `TRIAGE` | `振り分け待ち`（Beads 方式。トラッカーから取り込んだもの） |
+   | `TRIAGE` | `振り分け待ち`（トラッカーから取り込んだもの） |
    | 印の列が `local` | 状態の後ろに `（未送り）` |
    | `loopable` が `Y` / `N` | `可` / `要判断` |
 
@@ -54,9 +53,8 @@ Beads 方式でトラッカーが `github` なら Issue 番号の `GH-<n>` も�
    件数、`todo_loopable` の `N` が1件以上なら「うち `/loop` では進まない N 件」。
    続けて、あるものだけ1行ずつ:
    - `stale` が1件以上: 「取り残しの印: T-xxx（STALE:gone …）。片付けるのは人（`tw release T-xxx --force`）」
-   - `invalid` が1件以上: 「読めないタスクファイル: T-xxx」
+   - `invalid` が1件以上: 「読めないタスク: T-xxx」
    - `long_summary` に当たるもの（80桁を超える `summary`）: 「`summary` が長すぎる: T-xxx」
-   - `legacy_progress`: 「移行の残り: `develop/progress.md`（未解決 n / 注意 m）。振り分けたら消す」
    - `triage` が1件以上: 「振り分け待ち: <ID>（`/plan-tasks` で `tw adopt` する）」
    - `jira_close` が1件以上: 「Jira で閉じてほしいもの: T-xxx（閉じたら `tw jira-closed T-xxx`）」
 
@@ -81,4 +79,4 @@ Beads 方式でトラッカーが `github` なら Issue 番号の `GH-<n>` も�
 ## 出さないもの
 
 タスク本文と `## 結果`、2件目以降の実行計画、推薦したタスクの進め方（本文を読んでいないので中身の
-話はできない）。特定のタスクを読みたいと言われたら task の行のディレクトリの `T-xxx.md`（例 `.tw/task/T-xxx.md`）を1つ開く（Beads 方式では `tw show T-xxx`。このスキルの範囲外）。
+話はできない）。特定のタスクを読みたいと言われたら `tw show T-xxx` を案内する（このスキルの範囲外）。

@@ -3,7 +3,7 @@
 タスクを段に分けて委譲し、受け入れて送り出すワークフローの Claude Code プラグイン `tsukumo-workflow` と、
 それを配るマーケットプレイス `tsukumo-plugins`。
 
-タスクは `.tw/task/` の1件1ファイルか Beads に置き、`/plan-tasks` で指示をタスクにし、`/next-task` で
+タスクは Beads（`bd`）に置き、`/plan-tasks` で指示をタスクにし、`/next-task` で
 1件ずつ difficulty のモデルのサブエージェントへ委譲して、受け入れてから主ブランチへ送る。手順はコマンド `tw`
 が持ち、スキルは「どのサブコマンドをいつ打つか」だけを書く（正典は `skills/task-workflow/WORKFLOW.md`）。
 
@@ -40,9 +40,8 @@ tsukumo のワークフローの契約に型の合う1つの例だが、tsukumo 
 ## 要るもの
 
 - `python3`（`tw` とスキルのスクリプト。標準ライブラリだけ）と `git`
-- Beads 方式（`.tw/config.toml` に `store = "beads"`）で使うなら `bd`（Beads）と Dolt。
-  トラッカーが `github` なら `gh` も要る（`skills/task-workflow/WORKFLOW.md`「Beads 方式」）。
-  既定のファイル方式では要らない
+- `bd`（Beads）と Dolt（タスクの置き場。`tw` は `bd` が無いと動かない）。
+  トラッカーが `github` なら `gh` も要る（`skills/task-workflow/WORKFLOW.md`「Beads とトラッカー」）
 
 使うプロジェクトの側は、`.tw/direction.md` と、検証コマンドを書いた `.tw/config.toml` を置く。用意するのは `/setup-tasks`。
 
@@ -111,7 +110,7 @@ tsukumo のワークフローの契約に型の合う1つの例だが、tsukumo 
 1. `install.sh`・`uninstall.sh`・`scripts/links.sh` の構文
 2. `install.sh`・`uninstall.sh` の自己テスト（`scripts/selftest_links.sh`）
 3. `task-workflow` のスクリプトの自己テスト（`selftest.py`・`selftest_task.py`・`selftest_beads.py`。
-   `selftest_beads.py` は `bd` が無ければ飛ばす）
+   `bd` が無ければ非0で終わる）
 4. `retrospect` の自己テスト
 5. `plan-tasks` の自己テスト
 6. `next-task` の自己テスト

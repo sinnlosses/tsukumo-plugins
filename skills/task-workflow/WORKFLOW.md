@@ -318,28 +318,27 @@ Beads の label・各スキルの本文は触らない）:
 
 ## 1サイクル
 
-`/next-task` の1回。各段で打つものと、止まる出力は `skills/next-task/SKILL.md`。
+`/next-task` の1回。各段で打つものと、止まる出力は `skills/next-task/SKILL.md`。番号は `next-task/SKILL.md` の手順の番号と同じ。
 
-1. `tw status` で見渡す → `READY` を1件選ぶ（`retrospect_due` の行があれば、選ぶ前に横断の振り返りを1回行って送る。
-   `next-task/weekly-retrospect.md`）
-2. `tw claim T-xxx`（主ブランチへ追い付き、印を立て、必要なら作業ブランチを切る）→ `tw plan-check T-xxx`
-3. 確かめる: `PLAN_REGISTERED`（登録時に書いた `## やること` が名指すファイルが変わっていない）なら、メインが
-   `## やること` が `## 完了条件` の各行を覆うかを読んで確かめ、覆っていれば計画どおりに委譲する。
-   `PLAN_STALE`（変わった）・`PLAN_NOT_FIRST missing`・`unrecorded`・`steps`、または覆っていなければ、書き直しから委譲する
-   （委譲先が**いまの主ブランチで調べ直して `## やること` を書き直し、作業せずに返す**。`tw edit T-xxx --section 'やること' --body-file -`
-   が作業より先に書いたかを印に残し、作業の後の初回の記入は拒む）。設計を利用者とすでに決め、正典・コードを
-   読んでいるときはメインが書いてもよい。条件・渡す言葉は `next-task/rewrite-plan.md`
-4. `tw claim` が `direct=Y` を出し `tw plan-check` が `PLAN_REGISTERED` なら、委譲せず近道で進める（`tw lap T-xxx direct` → メインの直し → 整形コマンド → `tw verify` → 6 → 7 → 8。5・5a・5b は通らない。「difficulty とモデルの切り替え」の「委譲しない近道」と `next-task/direct-run.md`）。
-   委譲（段ごと。`next-task/SKILL.md` 手順5・5b）: 最初の委譲で段1を渡し、委譲先は段を1つ済ませるたびに返す。最後でない段は `tw step T-xxx <n>` を打ってから、最後の段は `tw verify` を通してから返す。メインは同じ委譲先を `SendMessage` で再開して次の段を渡す（`difficulty` を上げるときだけ上のモデルで起こし直す）。前提が崩れていれば作業せず、`tw done --dropped` にする理由を報告させる。`tw plan-check T-xxx` が `PARALLEL` を出した計画では、`STEP` の行で待つ段がすべて返った段から別々の担当で同時に起こし、最後の段はほかの段がすべて返ってから渡して、その担当が `tw verify` を1回打つ（担当の割り当て・依頼文は `next-task/SKILL.md` 手順5の「並列の段」と手順5c）。返りではメインが `tw plan-check T-xxx`（`PLAN_REGISTERED` か `PLAN_FIRST` か）と `## やること` の中身を見る（`next-task/SKILL.md` 手順5b）。`<根>/`（`direction.md`・`draft/`）は触らない。検証コマンドは `tw verify` で打つ（打つ前に主ブランチを未コミットの中身ごと取り込み、衝突したら打たずに `CONFLICT`。通ると作業ツリーの中身の鍵を控える。`## やること` が空のまま作業があれば打たない）。描画を変えるタスクでは、組み立てた直後に画を撮ってメインの目視を受けてから、E2E の期待値の撮り直しと `tw verify` に進む（`next-task/visual-review.md`）
-5. 受け入れ: 完了条件に目視があれば委譲先の画像を最低1枚（いちばん狭い幅）開いて見比べる → 差分を読む → レビュー（差し戻しの往復まで）→ 整形（設定の `format`）→ `tw verify-check`（作業先が別のリポジトリなら、委譲先が残したそのリポジトリの作業ツリーで打つ。`next-task/other-repo.md`。`VERIFIED_SAME` なら検証を省く。ほかは `tw verify` を背景で起こし、待たずに 5a へ。主ブランチが進んでいれば `NOT_VERIFIED base` で、`tw verify` が取り込んでから打つ。ただし `verify_before_ship` があり、取り込みが衝突しなければ `base` にせず鍵で照らす）
-5a. 振り返り（`/loop` からも。`retrospect` の SKILL.md「1件だけ振り返る」。背景の検証と並べる）: 材料が観点に当たり物差しを通ったときだけ
-   `<根>/draft/` にドラフトのファイルを足す
-5b. 合流: 背景の `tw verify` の結果を読む。落ちていれば、振り返りの結果（ドラフトと `- 振り返り:` の行）を持ったまま直して打ち直す
-6. `tw done T-xxx --result-file -`（`## 結果` を comment に入れ、label `ship:done`／`ship:dropped` を立てる。
-   stage しない。印はまだ消さない）
-7. 作業（積んだならドラフトのファイルも）を**1コミット**（`T-xxx: <件名>`。触ったファイルを個別に `git add`。
-   差分が無ければコミットしない）
-8. `tw ship`（主ブランチへ送り、`ship:*` の立った自分の印を `bd close` する）
+- **1〜3.** `tw status` で見渡す → `READY` を1件選ぶ（`retrospect_due` の行があれば、選ぶ前に横断の振り返りを1回行って送る。
+  `next-task/weekly-retrospect.md`）
+- **4.** `tw claim T-xxx`（主ブランチへ追い付き、印を立て、必要なら作業ブランチを切る）→ `tw plan-check T-xxx`
+- **5.** 確かめる: `PLAN_REGISTERED`（登録時に書いた `## やること` が名指すファイルが変わっていない）なら、メインが
+  `## やること` が `## 完了条件` の各行を覆うかを読んで確かめ、覆っていれば計画どおりに委譲する。
+  `PLAN_STALE`（変わった）・`PLAN_NOT_FIRST missing`・`unrecorded`・`steps`、または覆っていなければ、書き直しから委譲する
+  （委譲先が**いまの主ブランチで調べ直して `## やること` を書き直し、作業せずに返す**。`tw edit T-xxx --section 'やること' --body-file -`
+  が作業より先に書いたかを印に残し、作業の後の初回の記入は拒む）。設計を利用者とすでに決め、正典・コードを
+  読んでいるときはメインが書いてもよい。条件・渡す言葉は `next-task/rewrite-plan.md`。
+  `tw claim` が `direct=Y` を出し `tw plan-check` が `PLAN_REGISTERED` なら、委譲せず近道で進める（`tw lap T-xxx direct` → メインの直し → 整形コマンド → `tw verify` → 7 → 8。委譲と 6〜6b は通らない。「difficulty とモデルの切り替え」の「委譲しない近道」と `next-task/direct-run.md`）。
+  委譲（段ごと。`next-task/SKILL.md` 手順5・5b）: 最初の委譲で段1を渡し、委譲先は段を1つ済ませるたびに返す。最後でない段は `tw step T-xxx <n>` を打ってから、最後の段は `tw verify` を通してから返す。メインは同じ委譲先を `SendMessage` で再開して次の段を渡す（`difficulty` を上げるときだけ上のモデルで起こし直す）。前提が崩れていれば作業せず、`tw done --dropped` にする理由を報告させる。`tw plan-check T-xxx` が `PARALLEL` を出した計画では、`STEP` の行で待つ段がすべて返った段から別々の担当で同時に起こし、最後の段はほかの段がすべて返ってから渡して、その担当が `tw verify` を1回打つ（担当の割り当て・依頼文は `next-task/SKILL.md` 手順5の「並列の段」と手順5c）。返りではメインが `tw plan-check T-xxx`（`PLAN_REGISTERED` か `PLAN_FIRST` か）と `## やること` の中身を見る（`next-task/SKILL.md` 手順5b）。`<根>/`（`direction.md`・`draft/`）は触らない。検証コマンドは `tw verify` で打つ（打つ前に主ブランチを未コミットの中身ごと取り込み、衝突したら打たずに `CONFLICT`。通ると作業ツリーの中身の鍵を控える。`## やること` が空のまま作業があれば打たない）。描画を変えるタスクでは、組み立てた直後に画を撮ってメインの目視を受けてから、E2E の期待値の撮り直しと `tw verify` に進む（`next-task/visual-review.md`）
+- **6.** 受け入れ: 完了条件に目視があれば委譲先の画像を最低1枚（いちばん狭い幅）開いて見比べる → 差分を読む → レビュー（差し戻しの往復まで）→ 整形（設定の `format`）→ `tw verify-check`（作業先が別のリポジトリなら、委譲先が残したそのリポジトリの作業ツリーで打つ。`next-task/other-repo.md`。`VERIFIED_SAME` なら検証を省く。ほかは `tw verify` を背景で起こし、待たずに 6a へ。主ブランチが進んでいれば `NOT_VERIFIED base` で、`tw verify` が取り込んでから打つ。ただし `verify_before_ship` があり、取り込みが衝突しなければ `base` にせず鍵で照らす）
+- **6a.** 振り返り（`/loop` からも。`retrospect` の SKILL.md「1件だけ振り返る」。背景の検証と並べる）: 材料が観点に当たり物差しを通ったときだけ
+  `<根>/draft/` にドラフトのファイルを足す
+- **6b.** 合流: 背景の `tw verify` の結果を読む。落ちていれば、振り返りの結果（ドラフトと `- 振り返り:` の行）を持ったまま直して打ち直す
+- **7.** `tw done T-xxx --result-file -`（`## 結果` を comment に入れ、label `ship:done`／`ship:dropped` を立てる。
+  stage しない。印はまだ消さない）→ 作業（積んだならドラフトのファイルも）を**1コミット**（`T-xxx: <件名>`。
+  触ったファイルを個別に `git add`。差分が無ければコミットしない）
+- **8.** `tw ship`（主ブランチへ送り、`ship:*` の立った自分の印を `bd close` する）
 
 ## 送り出し
 
@@ -408,7 +407,7 @@ Beads の label・各スキルの本文は触らない）:
 ## コミットメッセージ
 
 - タスクのコミットは**件名の先頭にタスクID**（`T-110: コミットメッセージにタスクIDを振る`）。
-  1タスク＝1コミットは「1サイクル」の手順7で守られる。分けられない場合だけ
+  1タスク＝1コミットは「1サイクル」の7で守られる。分けられない場合だけ
   `T-105, T-108: 〜`
 - **IDを持たない作業には付けない**（登録・振り返り・`hold` の切り替え・移行・typo修正）
 - 過去のコミットは書き換えない。末尾の署名は、利用者の `CLAUDE.md`（グローバル・プロジェクト）に定めがあればそれに従い（署名を省く定めなら付けない）、無ければセッションの attribution の指示に従う
