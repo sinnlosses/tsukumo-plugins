@@ -43,18 +43,18 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
 
     parts = beads.split_body(body)
     actor = tw_base.actor(toplevel)
-    labels = f"{beads.DIFFICULTY_LABEL}{args.difficulty},{beads.LOOPABLE_LABEL}{args.loopable}"
-    if args.direct:
-        labels += f",{beads.DIRECT_ON}"
+    metadata = {beads.DIFFICULTY_KEY: args.difficulty, beads.LOOPABLE_KEY: args.loopable}
+    if plan_base is not None:
+        metadata[beads.PLAN_BASE_KEY] = plan_base
 
     def create_cmd(bd_id: str) -> list[str]:
-        cmd = ["create", "--id", bd_id, "--title", summary, "--body-file", "-", "-l", labels, "--silent"]
+        cmd = ["create", "--id", bd_id, "--title", summary, "--body-file", "-", "--metadata", json.dumps(metadata), "--silent"]
+        if args.direct:
+            cmd += ["-l", beads.DIRECT_ON]
         if parts.acceptance:
             cmd += ["--acceptance", parts.acceptance]
         if parts.notes:
             cmd += ["--notes", parts.notes]
-        if plan_base is not None:
-            cmd += ["--metadata", json.dumps({beads.PLAN_BASE_KEY: plan_base})]
         if args.hold:
             cmd += ["-s", beads.HOLD_STATUS]
         if deps:
@@ -150,7 +150,7 @@ def cmd_adopt(toplevel: str, args: argparse.Namespace) -> None:
         if l.startswith((beads.DIFFICULTY_LABEL, beads.LOOPABLE_LABEL, beads.DIRECT_LABEL))
         for x in ("--remove-label", l)
     ]
-    cmd += ["--add-label", f"{beads.DIFFICULTY_LABEL}{args.difficulty}", "--add-label", f"{beads.LOOPABLE_LABEL}{args.loopable}"]
+    cmd += ["--set-metadata", f"{beads.DIFFICULTY_KEY}={args.difficulty}", "--set-metadata", f"{beads.LOOPABLE_KEY}={args.loopable}"]
     if args.direct:
         cmd += ["--add-label", beads.DIRECT_ON]
     if args.summary:

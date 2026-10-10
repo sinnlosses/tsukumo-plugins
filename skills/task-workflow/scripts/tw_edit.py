@@ -83,11 +83,14 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
             print("usage: --summary は改行を含まない1行にする", file=sys.stderr)
             raise SystemExit(2)
         cmd += ["--title", args.summary.strip()]
-    for value, prefix in ((args.difficulty, beads.DIFFICULTY_LABEL), (args.loopable, beads.LOOPABLE_LABEL)):
+    for value, key, prefix in (
+        (args.difficulty, beads.DIFFICULTY_KEY, beads.DIFFICULTY_LABEL),
+        (args.loopable, beads.LOOPABLE_KEY, beads.LOOPABLE_LABEL),
+    ):
         if value:
             cmd += [x for l in issue.labels if l.startswith(prefix) for x in ("--remove-label", l)]
-            cmd += ["--add-label", f"{prefix}{value}"]
-    difficulties = beads.label_values(issue.labels, beads.DIFFICULTY_LABEL)
+            cmd += ["--set-metadata", f"{key}={value}"]
+    difficulties = beads.attribute_values(issue, beads.DIFFICULTY_KEY, beads.DIFFICULTY_LABEL)
     difficulty = args.difficulty or (difficulties[0] if difficulties else "?")
     had_direct = "Y" if beads.DIRECT_ON in issue.labels else "N"
     direct, direct_off = _edited_direct(had_direct, args.direct, difficulty, body)
