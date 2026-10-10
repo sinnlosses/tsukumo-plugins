@@ -27,16 +27,18 @@ HANDBACK_VERIFY_OK = ("VERIFIED_SAME", "NOTHING")
 def cmd_pause(toplevel: str, task_id: str | None = None, step: str | None = None) -> None:
     """いまの中身の鍵を、着手した作業ツリーと着手中のタスクの作業先の作業ツリーそれぞれに控える。
 
-    タスクIDだけなら着手の印と突き合わせて、引数なしと同じに控える。段を名指せば、段の控え（`_write_step_stamps`）を種類 `pause` で残す。
+    タスクIDだけなら着手の印と突き合わせて、引数なしと同じに控える。
+    段を名指せば、段の控え（`_write_step_stamps`）を種類 `pause` で残す。
     """
-    if task_id is not None and step is None:
-        tw_base.require_claimed(toplevel, task_id)
-    if task_id is not None and step is not None:
-        shown, specs, n = _owned_step(toplevel, task_id, step)
-        key = _write_step_stamps(toplevel, shown, specs, n, "pause")
-        tw_base.record(toplevel, "pause", shown, step=n, steps=len(specs))
-        print(f"PAUSED\t{key.tree}")
-        return
+    if task_id is not None:
+        if step is None:
+            tw_base.require_claimed(toplevel, task_id)
+        else:
+            shown, specs, n = _owned_step(toplevel, task_id, step)
+            key = _write_step_stamps(toplevel, shown, specs, n, "pause")
+            tw_base.record(toplevel, "pause", shown, step=n, steps=len(specs))
+            print(f"PAUSED\t{key.tree}")
+            return
     key = _current_key(toplevel)
     ledger.write_pause_stamp(key, cwd=toplevel)
     others = [tree for task_id in tw_base.claimed_here(toplevel) for tree in _task_trees(toplevel, task_id)[1:]]
