@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -71,7 +72,7 @@ def make_repo(
     format_command: str | None = None,
     preship: str | None = None,
     section: bool = True,
-    store: str = layout.STORE_FILES,
+    store: str = layout.STORE_BEADS,
 ) -> tuple[str, str, str]:
     """`(本体, 作業ツリー1, 作業ツリー2)`。本体だけが主ブランチを出す。
 
@@ -173,6 +174,46 @@ def _create_issue(main_path: str, task: taskfile.Task) -> None:
         _bd(main_path, ["close", bd_id, "--reason", "cancelled" if task.status == "dropped" else "done"])
 
 
+def shown(repo: str, task_id: str) -> str:
+    """`tw show` の出力（front matter と本文）。"""
+    return run_task(repo, "show", task_id).stdout
+
+
+def shown_body(repo: str, task_id: str) -> str:
+    """`tw show` の本文（front matter の後ろ）。"""
+    return shown(repo, task_id).split("\n---\n", 1)[-1]
+
+
+def issue_json(repo: str, task_id: str) -> dict:
+    """`bd show --json` の課題（無ければ空）。"""
+    r = subprocess.run(["bd", "show", beads.to_bd_id(task_id), "--json"], cwd=repo, capture_output=True, text=True)
+    data = json.loads(r.stdout) if r.returncode == 0 and r.stdout.strip() else {}
+    issue = data[0] if isinstance(data, list) and data else data
+    return issue if isinstance(issue, dict) else {}
+
+
+def metadata(repo: str, task_id: str) -> dict:
+    """Beads の課題の metadata（無ければ空）。"""
+    value = issue_json(repo, task_id).get("metadata")
+    return value if isinstance(value, dict) else {}
+
+
+def unset_metadata(repo: str, task_id: str, key: str) -> None:
+    _bd(repo, ["update", beads.to_bd_id(task_id), "--unset-metadata", key])
+
+
+def issue_count(repo: str) -> int:
+    """Beads の課題の数（閉じたものも数える）。"""
+    r = subprocess.run(["bd", "list", "--all", "-n", "0", "--flat", "--json"], cwd=repo, capture_output=True, text=True)
+    data = json.loads(r.stdout) if r.returncode == 0 and r.stdout.strip() else []
+    return len(data) if isinstance(data, list) else 0
+
+
+def set_plan_directly(repo: str, task_id: str, plan: str) -> None:
+    """`tw edit` を通さずに `## やること` の中身（Beads の notes）を書き換える。"""
+    _bd(repo, ["update", beads.to_bd_id(task_id), "--notes", plan])
+
+
 def _bd(cwd: str, args: list[str], stdin: str | None = None) -> None:
     r = subprocess.run(["bd", *args], cwd=cwd, capture_output=True, text=True, input=stdin)
     if r.returncode != 0:
@@ -200,6 +241,16 @@ def _make_legacy_repo(tmp: str, tasks: list[dict] | None = None, progress: str |
     git(repo, "add", "-A")
     git(repo, "commit", "-q", "-m", "init")
     return repo
+
+
+def hook_env(tmp: str, path: str) -> dict[str, str]:
+    """hook の行を `sh -c` で打つときの環境。`path` に `bd` だけを置いたディレクトリを足し、家の向け先を引き継ぐ。"""
+    bd_dir = os.path.join(tmp, "bd-only-bin")
+    if not os.path.isdir(bd_dir):
+        os.makedirs(bd_dir)
+        os.symlink(shutil.which("bd") or "bd", os.path.join(bd_dir, "bd"))
+    homes = {k: os.environ[k] for k in ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME") if k in os.environ}
+    return {"PATH": f"{path}:{bd_dir}", **homes}
 
 
 def run_handback_guard(tmp: str, where: str, event: str = "SubagentStop", tool: str | None = None) -> dict | None:

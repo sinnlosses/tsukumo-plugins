@@ -5,6 +5,7 @@ import shutil
 import tempfile
 
 from selftest_support import check, git, say, weight, write  # noqa: E402
+import layout  # noqa: E402
 import ledger  # noqa: E402
 import legacy  # noqa: E402
 import taskfile  # noqa: E402
@@ -335,7 +336,7 @@ MIGRATE_LAYOUT_SECTION = (
 def test_migrate_layout() -> None:
     say("task.py migrate-layout: 旧配置を .tw/ へ移す（git add まで）")
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp)
+        main_path, wt1, _wt2 = make_repo(tmp, store=layout.STORE_FILES)
         commit_task(main_path, taskfile.Task("T-100", "移すもの", "todo", "sonnet", "Y", (), BODY))
         run_task(wt1, "claim", "T-100")
         os.makedirs(os.path.join(main_path, "develop"), exist_ok=True)
@@ -425,7 +426,7 @@ def test_migrate_layout() -> None:
         check("移し終えていれば NOTHING", r.returncode == 0 and r.stdout.startswith("NOTHING\t"), r.stdout + r.stderr)
 
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, _wt1, _wt2 = make_repo(tmp)
+        main_path, _wt1, _wt2 = make_repo(tmp, store=layout.STORE_FILES)
         os.makedirs(os.path.join(main_path, "develop"), exist_ok=True)
         git(main_path, "mv", ".tw/direction.md", "develop/direction.md")
         write(os.path.join(main_path, "develop", "task", "T-100.md"),
@@ -450,7 +451,7 @@ def test_migrate_layout() -> None:
               r.stdout + r.stderr)
 
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, _wt1, _wt2 = make_repo(tmp)
+        main_path, _wt1, _wt2 = make_repo(tmp, store=layout.STORE_FILES)
         write(os.path.join(main_path, "develop", "direction.md"), "# 未対応の指示メモ\n\n## ユーザーから\n")
         git(main_path, "add", "-A")
         git(main_path, "commit", "-q", "-m", "両方にある")
@@ -463,7 +464,7 @@ def test_migrate_layout() -> None:
               and git(main_path, "status", "--porcelain").stdout == "", r.stdout + r.stderr)
 
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, _wt1, _wt2 = make_repo(tmp)
+        main_path, _wt1, _wt2 = make_repo(tmp, store=layout.STORE_FILES)
         tw = os.path.join(main_path, ".tw")
         write(os.path.join(tw, ".gitignore"), "*\n!config.toml\n")
         write(os.path.join(tw, "task-verify-stamp"), "x\ny\nz\n")

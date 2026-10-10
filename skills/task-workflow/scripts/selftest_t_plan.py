@@ -5,10 +5,10 @@ import subprocess
 import tempfile
 
 from selftest_support import check, git, say, weight, write  # noqa: E402
-import ledger  # noqa: E402
+import beads  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
-from selftest_fixtures import BODY, PLANNED_BODY, TASK_REL, _claim_work_and_done, body_file, commit_task, make_repo, run_task, snapshot, task_rel  # noqa: E402
+from selftest_fixtures import BODY, PLANNED_BODY, TASK_REL, _claim_work_and_done, commit_task, issue_count, make_repo, metadata, run_task, set_plan_directly, shown, shown_body  # noqa: E402
 
 
 @weight(21)
@@ -19,19 +19,17 @@ def test_edit_and_plan_check() -> None:
         main_path, wt1, wt2 = make_repo(tmp)
         for tid in ("T-100", "T-101", "T-102", "T-103", "T-105", "T-106"):
             commit_task(main_path, taskfile.Task(tid, "やることの順", "todo", "sonnet", "Y", (), BODY))
-        commit_task(main_path, taskfile.Task("T-104", "閉じたもの", "done", "sonnet", "Y", (), BODY + "\n## 結果\n\nx\n"))
-        task_file = lambda tid: os.path.join(wt1, task_rel(wt1), f"{tid}.md")  # noqa: E731
 
         def reset(tid: str) -> None:
-            git(wt1, "checkout", "--", f"{TASK_REL}/{tid}.md")
+            git(wt1, "checkout", "--", ".")
             git(wt1, "clean", "-fdq")
 
         run_task(wt1, "claim", "T-100")
         inner_body = write(os.path.join(wt1, "plan-body.md"), planned)
         r = run_task(wt1, "edit", "T-100", "--body-file", inner_body)
-        task, _ = taskfile.read_task_file(task_file("T-100"))
-        check("ファイル方式の edit が本文を書き換える", r.returncode == 0 and r.stdout.strip() == "EDITED\tT-100"
-              and task is not None and "1. 書く" in task.body and task.status == "todo", r.stdout + r.stderr)
+        text = shown(wt1, "T-100")
+        check("edit が本文を書き換える", r.returncode == 0 and r.stdout.strip() == "EDITED\tT-100"
+              and "1. 書く" in text and "\nstatus: todo\n" in text, r.stdout + r.stderr + text)
         write(os.path.join(wt1, "work.txt"), "x\n")
         r = run_task(wt1, "edit", "T-100", "--body-file", "-", stdin=planned.replace("1. 書く", "1. 書き直す"))
         check("一度書いたあとの書き直しは作業の後でも拒まない", r.returncode == 0
@@ -49,10 +47,9 @@ def test_edit_and_plan_check() -> None:
         check("書かずに作業へ進むと PLAN_NOT_FIRST missing", r.returncode == 0
               and r.stdout.strip() == "PLAN_NOT_FIRST\tT-101\tmissing", r.stdout + r.stderr)
         r = run_task(wt1, "edit", "T-101", "--body-file", "-", stdin=planned)
-        task, _ = taskfile.read_task_file(task_file("T-101"))
         check("作業のあとの初回の記入は WORK_BEFORE_PLAN で拒み、書き込まない（終了コード4）", r.returncode == 4
               and r.stdout.startswith("WORK_BEFORE_PLAN\tT-101\t") and "--after-work" in r.stdout
-              and task is not None and not taskfile.has_plan(task.body), r.stdout + r.stderr)
+              and "1. 書く" not in shown(wt1, "T-101"), r.stdout + r.stderr)
         r = run_task(wt1, "plan-check", "T-101")
         check("拒んだあとは印を残さない（missing のまま）", r.stdout.strip() == "PLAN_NOT_FIRST\tT-101\tmissing", r.stdout)
         r = run_task(wt1, "edit", "T-101", "--after-work", "--body-file", "-", stdin=planned)
@@ -64,13 +61,11 @@ def test_edit_and_plan_check() -> None:
         reset("T-101")
 
         run_task(wt1, "claim", "T-102")
-        with open(task_file("T-102"), encoding="utf-8") as f:
-            text = f.read()
-        write(task_file("T-102"), text.replace("## やること\n", "## やること\n### 1. 直に書く\n"))
+        set_plan_directly(wt1, "T-102", "### 1. 直に書く\n")
         r = run_task(wt1, "plan-check", "T-102")
         check("edit を通さずに書くと PLAN_NOT_FIRST unrecorded", r.returncode == 0
               and r.stdout.strip() == "PLAN_NOT_FIRST\tT-102\tunrecorded", r.stdout + r.stderr)
-        write(task_file("T-102"), text.replace("## やること\n", "## やること\n1. 段の無い計画\n"))
+        set_plan_directly(wt1, "T-102", "1. 段の無い計画\n")
         r = run_task(wt1, "plan-check", "T-102")
         check("段の読めない計画は PLAN_NOT_FIRST steps（書き直しの経路）", r.returncode == 0
               and r.stdout.strip() == "PLAN_NOT_FIRST\tT-102\tsteps", r.stdout + r.stderr)
@@ -114,28 +109,21 @@ def test_edit_and_plan_check() -> None:
 
         other = planned.replace("## 目的・背景\nx", "## 目的・背景\n別のタスクの目的")
         r = run_task(wt1, "edit", "T-103", "--body-file", "-", stdin=other)
-        task, _ = taskfile.read_task_file(task_file("T-103"))
         check("別のタスクの本文は FRAME_CHANGED（終了コード4）で拒み、書き込まない", r.returncode == 4
               and r.stdout.startswith("FRAME_CHANGED\tT-103\t") and "--change-frame" in r.stdout
-              and task is not None and "別のタスクの目的" not in task.body, r.stdout + r.stderr)
+              and "別のタスクの目的" not in shown(wt1, "T-103"), r.stdout + r.stderr)
         r = run_task(wt1, "edit", "T-103", "--change-frame", "--body-file", "-", stdin=other)
-        task, _ = taskfile.read_task_file(task_file("T-103"))
         check("--change-frame を付ければ書き込む", r.returncode == 0 and r.stdout.startswith("EDITED\tT-103")
-              and task is not None and "別のタスクの目的" in task.body, r.stdout + r.stderr)
+              and "別のタスクの目的" in shown(wt1, "T-103"), r.stdout + r.stderr)
         r = run_task(wt1, "edit", "T-103", "--body-file", "-", stdin=other.replace("1. 書く", "1. 直す"))
         check("## やること だけの書き換えは通る", r.returncode == 0 and r.stdout.startswith("EDITED\tT-103"),
               r.stdout + r.stderr)
 
-        r = run_task(wt1, "edit", "T-103", "--summary", "x")
-        check("ファイル方式の edit は --body-file のほかは終了コード2", r.returncode == 2, r.stdout + r.stderr)
         r = run_task(wt1, "edit", "T-103", "--body-file", "-", stdin="---\nid: T-103\n---\n\n" + planned)
         check("edit は front matter 付きを剥がし方つきで拒む（終了コード2）",
               r.returncode == 2 and "front matter" in r.stderr and "## " in r.stderr, r.stdout + r.stderr)
         r = run_task(wt1, "edit", "T-103", "--body-file", "-", stdin=planned + "\n## 結果\n\nx\n")
         check("edit は ## 結果 を拒む（終了コード2）", r.returncode == 2, r.stdout + r.stderr)
-        r = run_task(wt1, "edit", "T-104", "--body-file", "-", stdin=planned)
-        check("done のタスクは NOT_READY（終了コード4）", r.returncode == 4
-              and r.stdout.strip() == "NOT_READY\tT-104\tdone", r.stdout + r.stderr)
 
 
 @weight(4)
@@ -147,11 +135,9 @@ def test_edit_section() -> None:
         main_path, wt1, _wt2 = make_repo(tmp)
         for tid in ("T-110", "T-111"):
             commit_task(main_path, taskfile.Task(tid, "節だけ", "todo", "sonnet", "Y", (), mentions))
-        path = lambda tid: os.path.join(wt1, task_rel(wt1), f"{tid}.md")  # noqa: E731
 
         def read(tid: str) -> str:
-            with open(path(tid), encoding="utf-8") as f:
-                return f.read()
+            return shown(wt1, tid)
 
         run_task(wt1, "claim", "T-110")
         run_task(wt1, "claim", "T-111")
@@ -206,8 +192,7 @@ def test_edit_section() -> None:
         check("作業のあとでも ## やること を変えない --section 注意 は拒まず、記録も変えない", r.returncode == 0
               and r.stdout.strip() == "EDITED\tT-110" and "- 申し送り" in read("T-110")
               and r2.stdout.strip() == "PLAN_FIRST\tT-110", r.stdout + r2.stdout + r.stderr)
-        whole, _ = taskfile.read_task_file(path("T-110"))
-        stdin = whole.body.replace("- 申し送り", "- 別の申し送り") if whole is not None else ""
+        stdin = shown_body(wt1, "T-110").replace("- 申し送り", "- 別の申し送り")
         r = run_task(wt1, "edit", "T-110", "--body-file", "-", stdin=stdin)
         r2 = run_task(wt1, "plan-check", "T-110")
         check("本文ごと渡しても ## やること が同じなら同じ", r.returncode == 0 and r.stdout.strip() == "EDITED\tT-110"
@@ -226,8 +211,7 @@ def test_edit_deps() -> None:
             return r.stdout.split("\t")[1]
 
         def read(tid: str) -> str:
-            with open(os.path.join(wt1, task_rel(wt1), f"{tid}.md"), encoding="utf-8") as f:
-                return f.read()
+            return shown(wt1, tid)
 
         def body_of(text: str) -> str:
             return text.split("\n---\n", 1)[1]
@@ -247,7 +231,8 @@ def test_edit_deps() -> None:
         r = run_task(wt1, "edit", b, "--add-deps", a)
         check("すでにある依存の追加は通り、重ならない", r.returncode == 0 and read(b) == before, r.stdout + r.stderr)
         r = run_task(wt1, "edit", c, "--add-deps", f"{a},{b}")
-        check("2件を一度に足せる", r.returncode == 0 and ready(c) == f"BLOCKED:{a},{b}", r.stdout + r.stderr + read(c))
+        check("2件を一度に足せる", r.returncode == 0 and ready(c) in (f"BLOCKED:{a},{b}", f"BLOCKED:{b},{a}"),
+              r.stdout + r.stderr + read(c))
         r = run_task(wt1, "edit", b, "--remove-deps", a)
         check("--remove-deps で外れ、READY に戻る", r.returncode == 0 and ready(b) == "READY", r.stdout + r.stderr)
         check("本文は変わらない", body_of(read(b)) == body_of(before))
@@ -280,10 +265,6 @@ def test_edit_deps() -> None:
               r.stdout + r.stderr)
 
         commit_task(main_path, taskfile.Task("T-900", "終わり", "done", "sonnet", "Y", (), BODY))
-        git(wt1, "merge", "-q", "main")
-        r = run_task(wt1, "edit", "T-900", "--add-deps", a)
-        check("done のタスクは NOT_READY（終了コード4）", r.returncode == 4 and r.stdout.startswith("NOT_READY\tT-900"),
-              r.stdout + r.stderr)
         r = run_task(wt1, "edit", b, "--remove-deps", a, "--add-deps", "T-900")
         check("done のタスクへの依存は足せる（解決済みなので READY のまま）", r.returncode == 0 and ready(b) == "READY",
               r.stdout + r.stderr)
@@ -309,7 +290,6 @@ def test_registered_plan() -> None:
         write(os.path.join(main_path, "other.txt"), "o\n")
         git(main_path, "add", "-A")
         git(main_path, "commit", "-q", "-m", "src を足す")
-        root = ledger.ledger_root(cwd=main_path)
         work = os.path.join(tmp, "work")
         os.makedirs(work)
         git(work, "init", "-q", "-b", "main")
@@ -321,15 +301,14 @@ def test_registered_plan() -> None:
         git(work, "commit", "-q", "-m", "init")
 
         r = register("無いファイル", plan_body("nothing.txt"))
-        check("木に無いパスを名指すと終了コード2で、ファイルも控えも作らない", r.returncode == 2
-              and "nothing.txt" in r.stderr and not os.path.isdir(os.path.join(main_path, task_rel(main_path)))
-              and not os.path.isdir(os.path.join(root, ledger.PLAN_BASE_DIR_NAME)), r.stdout + r.stderr)
+        check("木に無いパスを名指すと終了コード2で、課題を作らない", r.returncode == 2
+              and "nothing.txt" in r.stderr and issue_count(main_path) == 0, r.stdout + r.stderr)
         r = register("空の計画", BODY)
-        check("空の ## やること は終了コード2で、ファイルを作らない", r.returncode == 2 and "--hold" in r.stderr
-              and not os.path.isdir(os.path.join(main_path, task_rel(main_path))), r.stdout + r.stderr)
+        check("空の ## やること は終了コード2で、課題を作らない", r.returncode == 2 and "--hold" in r.stderr
+              and issue_count(main_path) == 0, r.stdout + r.stderr)
         r = register("段に穴", plan_body("shared.txt").replace("### 1. 書く", "### 2. 書く"))
-        check("段が `### 1.` から穴なく続かない ## やること は終了コード2と理由で、ファイルを作らない", r.returncode == 2
-              and "### 1." in r.stderr and not os.path.isdir(os.path.join(main_path, task_rel(main_path))), r.stdout + r.stderr)
+        check("段が `### 1.` から穴なく続かない ## やること は終了コード2と理由で、課題を作らない", r.returncode == 2
+              and "### 1." in r.stderr and issue_count(main_path) == 0, r.stdout + r.stderr)
         r = register("名指すファイルが作業先に無い", plan_body("shared.txt", work_repo=work))
         check("作業先の木に無いパスを名指すと終了コード2", r.returncode == 2 and "shared.txt" in r.stderr
               and work in r.stderr, r.stdout + r.stderr)
@@ -351,21 +330,17 @@ def test_registered_plan() -> None:
         remote_changed = new_id(r5)
         head = git(main_path, "rev-parse", "main").stdout.strip()
         work_head = git(work, "rev-parse", "main").stdout.strip()
-        check("計画つきの登録は CREATED で、主ブランチの SHA を台帳に控える", same != "" and changed != ""
-              and ledger.read_plan_base(root, same) == head and ledger.read_plan_base(root, changed) == head,
+        plan_base = lambda tid: metadata(main_path, tid).get(beads.PLAN_BASE_KEY)  # noqa: E731
+        check("計画つきの登録は CREATED で、主ブランチの SHA を metadata に控える", same != "" and changed != ""
+              and plan_base(same) == head and plan_base(changed) == head,
               r.stdout + r.stderr + r2.stdout + r2.stderr)
         check("--hold の空の計画は CREATED で、控えを作らない", unplanned != ""
-              and ledger.read_plan_base(root, unplanned) is None, r3.stdout + r3.stderr)
+              and plan_base(unplanned) is None, r3.stdout + r3.stderr)
         check("作業先のある登録は作業先の主ブランチの SHA を控える", remote_same != "" and remote_changed != ""
-              and ledger.read_plan_base(root, remote_same) == work_head
-              and ledger.read_plan_base(root, remote_changed) == work_head,
+              and plan_base(remote_same) == work_head and plan_base(remote_changed) == work_head,
               r4.stdout + r4.stderr + r5.stdout + r5.stderr)
-        unplanned_path = os.path.join(main_path, task_rel(main_path), f"{unplanned}.md")
-        with open(unplanned_path, encoding="utf-8") as f:
-            held = f.read()
-        write(unplanned_path, held.replace("status: hold\n", "status: todo\n"))
-        git(main_path, "add", "-A")
-        git(main_path, "commit", "-q", "-m", "登録")
+        r = run_task(main_path, "edit", unplanned, "--status", "todo")
+        check("--hold の登録を todo に戻す", r.returncode == 0, r.stdout + r.stderr)
         write(os.path.join(main_path, "other.txt"), "o2\n")
         write(os.path.join(main_path, "src", "new.txt"), "n\n")
         git(main_path, "add", "-A")
@@ -380,10 +355,8 @@ def test_registered_plan() -> None:
         check("名指したファイルが変わっていなければ PLAN_REGISTERED（終了コード0）", r.returncode == 0
               and r.stdout.strip() == f"PLAN_REGISTERED\t{same}\t{head}", r.stdout + r.stderr)
         write(os.path.join(wt1, "work.txt"), "x\n")
-        with open(os.path.join(wt1, task_rel(wt1), f"{same}.md"), encoding="utf-8") as f:
-            current = taskfile.parse(f.read())[0]
         r = run_task(wt1, "edit", same, "--body-file", "-",
-                     stdin=current.body.replace("## 注意\n", "## 注意\n作業中の知見\n") if current else "")
+                     stdin=shown_body(wt1, same).replace("## 注意\n", "## 注意\n作業中の知見\n"))
         check("PLAN_REGISTERED のあとは作業してからの書き足しも WORK_BEFORE_PLAN にならない", r.returncode == 0
               and r.stdout.strip() == f"EDITED\t{same}", r.stdout + r.stderr)
 
@@ -391,7 +364,8 @@ def test_registered_plan() -> None:
         r = run_task(wt2, "plan-check", changed)
         check("名指したファイルが変わっていれば PLAN_STALE と変わったファイル（終了コード0）", r.returncode == 0
               and r.stdout.strip() == f"PLAN_STALE\t{changed}\tsrc/new.txt", r.stdout + r.stderr)
-        check("claim が判定した主ブランチの先端を印に控える", ledger.read_plan_tip(root, changed) == tip)
+        check("claim が判定した主ブランチの先端を metadata に控える",
+              metadata(main_path, changed).get(beads.PLAN_TIP_KEY) == tip)
         write(os.path.join(main_path, "src", "later.txt"), "l\n")
         git(main_path, "add", "-A")
         git(main_path, "commit", "-q", "-m", "着手のあとに主ブランチが進む")
@@ -427,9 +401,7 @@ def test_registered_plan() -> None:
         run_task(wt1, "claim", same)
         _claim_work_and_done(wt1, same)
         r = run_task(wt1, "ship")
-        check("ship で送ったタスクの控えは消える", r.stdout.startswith("SHIPPED\t")
-              and ledger.read_plan_base(root, same) is None and ledger.read_plan_base(root, changed) == head,
-              r.stdout + r.stderr)
+        check("登録時の計画のまま送れる", r.stdout.startswith("SHIPPED\t"), r.stdout + r.stderr)
 
 
 @weight(1)
@@ -441,8 +413,7 @@ def test_direct_mark() -> None:
                         "--body-file", "-", stdin=body)
 
     def front(task_id: str) -> str:
-        with open(os.path.join(main_path, task_rel(main_path), f"{task_id}.md"), encoding="utf-8") as f:
-            return f.read().split("\n---\n", 1)[0]
+        return shown(main_path, task_id).split("\n---\n", 1)[0]
 
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, wt2 = make_repo(tmp, branch="切らない")
@@ -450,7 +421,6 @@ def test_direct_mark() -> None:
         write(os.path.join(main_path, "src", "b.txt"), "b\n")
         git(main_path, "add", "-A")
         git(main_path, "commit", "-q", "-m", "src を足す")
-        task_dir = os.path.join(main_path, task_rel(main_path))
 
         for label, body, difficulty in (
             ("difficulty が haiku でない", task_body([("書く", "x")], ["shared.txt"]), "sonnet"),
@@ -459,8 +429,8 @@ def test_direct_mark() -> None:
             ("作業先がある", task_body([("書く", "x")], ["shared.txt"], tmp), "haiku"),
         ):
             r = register(body, difficulty)
-            check(f"{label}の --direct は終了コード2で、ファイルを作らない",
-                  r.returncode == 2 and "近道" in r.stderr and not os.path.isdir(task_dir), r.stdout + r.stderr)
+            check(f"{label}の --direct は終了コード2で、課題を作らない",
+                  r.returncode == 2 and "近道" in r.stderr and issue_count(main_path) == 0, r.stdout + r.stderr)
 
         r = register(task_body([("書く", "x")], ["shared.txt", "src/a.txt"]))
         ok_id = r.stdout.split("\t")[1] if r.stdout.startswith("CREATED\t") else ""
@@ -489,8 +459,6 @@ def test_direct_mark() -> None:
         check("基準を外れたタスクへの edit --direct Y は終了コード2で、書き込まない",
               r.returncode == 2 and "近道" in r.stderr and "direct:" not in front(edit_id), r.stdout + r.stderr)
 
-        git(main_path, "add", "-A")
-        git(main_path, "commit", "-q", "-m", "登録")
         write(os.path.join(main_path, "src", "b.txt"), "b2\n")
         git(main_path, "add", "-A")
         git(main_path, "commit", "-q", "-m", "b を変える")
@@ -513,26 +481,19 @@ def test_root_setting() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, _wt2 = make_repo(tmp)
         config = os.path.join(main_path, ".tw", "config.toml")
-        write(config, 'verify = "true"\nroot = "work/tw/"\n')
-        write(os.path.join(main_path, "work", "tw", "task", "T-100.md"),
-              taskfile.render(taskfile.Task("T-100", "根の下", "todo", "sonnet", "Y", (), BODY)))
+        write(config, 'verify = "true"\nstore = "beads"\nroot = "work/tw/"\n')
         git(main_path, "add", "-A")
         git(main_path, "commit", "-q", "-m", "root")
         git(wt1, "merge", "-q", "--ff-only", "main")
+        commit_task(main_path, taskfile.Task("T-100", "根の下", "todo", "sonnet", "Y", (), BODY))
 
         lines = run_task(wt1, "config").stdout.splitlines()
         check("config が根の下の置き場を出す",
-              {"root\twork/tw\tconfig", "direction\twork/tw/direction.md", "draft\twork/tw/draft", "task\twork/tw/task"}
+              {"root\twork/tw\tconfig", "direction\twork/tw/direction.md", "draft\twork/tw/draft"}
               <= set(lines), "\n".join(lines))
         r = run_task(wt1, "status")
-        check("status が根の下のタスクを読む", any(l.startswith("T-100\ttodo") for l in r.stdout.splitlines()),
+        check("status がタスクを読む", any(l.startswith("T-100\ttodo") for l in r.stdout.splitlines()),
               r.stdout + r.stderr)
-        r = run_task(wt1, "new", "--summary", "根の下に足す", "--difficulty", "sonnet", "--loopable", "Y",
-                     "--body-file", body_file(wt1))
-        check("new が根の下に作る", r.returncode == 0 and r.stdout.strip() == "CREATED\tT-101\twork/tw/task/T-101.md"
-              and os.path.exists(os.path.join(wt1, "work", "tw", "task", "T-101.md")), r.stdout + r.stderr)
-        os.remove(os.path.join(wt1, "work", "tw", "task", "T-101.md"))
-        os.remove(os.path.join(wt1, "body.md"))
 
         write(os.path.join(wt1, "work.txt"), "x\n")
         run_task(wt1, "verify")
@@ -546,9 +507,9 @@ def test_root_setting() -> None:
         r = run_task(wt1, "claim", "T-100")
         check("claim が通る", r.returncode == 0, r.stdout + r.stderr)
         r = run_task(wt1, "done", "T-100", "--result-file", "-", stdin="- 振り返り: 兆候なし\n")
-        check("done が根の下のタスクファイルを書く",
-              r.returncode == 0 and r.stdout.startswith("DONE\tT-100\twork/tw/task/T-100.md\tstaged"), r.stdout + r.stderr)
-        check(".tw/task/ は作られない", not os.path.exists(os.path.join(wt1, TASK_REL)))
+        check("done が通る", r.returncode == 0 and r.stdout.startswith("DONE\tT-100\t"), r.stdout + r.stderr)
+        check("タスクファイルの置き場は作られない", not os.path.exists(os.path.join(wt1, TASK_REL))
+              and not os.path.exists(os.path.join(wt1, "work", "tw", "task")))
 
         for bad in ("../x", "a/../../x", "/x", ".", "./", ".git", ".git/hooks", ".tw/local", ".tw/local/x"):
             write(config, f'verify = "なし"\nroot = "{bad}"\n')

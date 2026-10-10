@@ -10,9 +10,10 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 from selftest_support import check, git, say, weight, write  # noqa: E402
+import layout  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
-from selftest_fixtures import BODY, TASK_PY, _make_legacy_repo, commit_task, flow_rows, make_repo, readonly_git, run_handback_guard, run_task, snapshot  # noqa: E402
+from selftest_fixtures import BODY, TASK_PY, _make_legacy_repo, commit_task, flow_rows, hook_env, make_repo, readonly_git, run_handback_guard, run_task, snapshot  # noqa: E402
 
 
 NO_DELEGATE = os.path.join(HERE, "..", "..", "..", "agents", "no-delegate.md")
@@ -133,7 +134,7 @@ def test_agent_scoped_guard() -> None:
                   h.startswith('"${CLAUDE_PLUGIN_ROOT}/bin/tw" ') and " --agent-scoped " in h for h in hooks),
               str(hooks))
         env = {
-            "PATH": f"{os.path.dirname(sys.executable)}:/usr/bin:/bin",
+            **hook_env(tmp, f"{os.path.dirname(sys.executable)}:/usr/bin:/bin"),
             "CLAUDE_PLUGIN_ROOT": os.path.abspath(os.path.join(HERE, "..", "..", "..")),
         }
         for hook in hooks:
@@ -165,7 +166,7 @@ def _check_hook_line(
             write(os.path.join(bin_dir, "tw"), tw_script)
             os.chmod(os.path.join(bin_dir, "tw"), 0o755)
             path = f"{bin_dir}:{bare_path}"
-        return subprocess.run(["sh", "-c", hook], input=payload, capture_output=True, text=True, env={"PATH": path})
+        return subprocess.run(["sh", "-c", hook], input=payload, capture_output=True, text=True, env=hook_env(tmp, path))
 
     r = run_hook(f'#!/bin/sh\nexec {sys.executable} {TASK_PY} "$@"\n')
     check(f"hook の行は tw {subcommand} を呼んで拒む", r.returncode == 0 and refused in r.stdout, r.stdout + r.stderr)
@@ -499,6 +500,8 @@ def test_worktree_state_dir() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, _wt2 = make_repo(tmp, verify="`true`")
         write(os.path.join(main_path, ".tw", ".gitignore"), "local/\n")
+        git(main_path, "add", ".tw/.gitignore")
+        git(main_path, "commit", "-q", "-m", ".tw/.gitignore を足す")
         commit_task(main_path, taskfile.Task("T-100", "local/ だけを外す .tw/", "todo", "sonnet", "Y", (), BODY))
         git(wt1, "merge", "-q", "--ff-only", "main")
         run_task(wt1, "claim", "T-100")
@@ -567,7 +570,7 @@ def test_readonly_git() -> None:
 
 
 def test_readonly_git_stops_writers() -> None:
-    say("task.py: .git が読み取り専用なら done・ship・migrate は GIT_READ_ONLY で止まり、何も変えない")
+    say("task.py: .git が読み取り専用なら ship・migrate は GIT_READ_ONLY で止まり、何も変えない（done は .git に書かない）")
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, _ = make_repo(tmp, branch="切らない", verify="`true`")
         commit_task(main_path, taskfile.Task("T-100", "書けない", "todo", "sonnet", "Y", (), BODY))
@@ -584,15 +587,14 @@ def test_readonly_git_stops_writers() -> None:
             refs = git(wt1, "rev-parse", "HEAD", "main").stdout
             return refs, git(wt1, "status", "--porcelain").stdout, snapshot(wt1, state)
 
-        before = unchanged()
+        refs = git(wt1, "rev-parse", "HEAD", "main").stdout
         with readonly_git(main_path):
             r = run_task(wt1, "done", "T-100", "--result-file", result_path, env=env)
-        check("done は GIT_READ_ONLY（終了コード11）で、タスクファイル・index・台帳・.tw/ を変えない",
-              r.returncode == 11 and r.stdout.startswith("GIT_READ_ONLY\t") and unchanged() == before,
-              r.stdout + r.stderr)
+        check("done は .git に書かないので読み取り専用でも DONE で、HEAD・主ブランチ・index を変えない",
+              r.returncode == 0 and r.stdout.startswith("DONE\tT-100\t")
+              and git(wt1, "rev-parse", "HEAD", "main").stdout == refs
+              and git(wt1, "status", "--porcelain").stdout == "", r.stdout + r.stderr)
 
-        r = run_task(wt1, "done", "T-100", "--result-file", result_path, env=env)
-        git(wt1, "commit", "-q", "-m", "T-100: 完了")
         before = unchanged()
         with readonly_git(main_path):
             r = run_task(wt1, "ship", env=env)
@@ -619,7 +621,7 @@ def test_readonly_git_stops_writers() -> None:
 def test_state_dir() -> None:
     say("ledger.py TW_STATE_DIR: 台帳の置き場を変え、古い台帳を写し、分かれた印と書けない置き場を知らせる")
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, wt2 = make_repo(tmp, branch="切らない")
+        main_path, wt1, wt2 = make_repo(tmp, branch="切らない", store=layout.STORE_FILES)
         for tid in ("T-100", "T-101", "T-102"):
             commit_task(main_path, taskfile.Task(tid, "置き場", "todo", "sonnet", "Y", (), BODY))
         state = os.path.join(tmp, "state")
@@ -651,7 +653,7 @@ def test_state_dir() -> None:
         check("TW_STATE_DIR が無ければ split_claims の行を出さない", "split_claims" not in r.stdout, r.stdout)
 
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _ = make_repo(tmp, branch="切らない")
+        main_path, wt1, _ = make_repo(tmp, branch="切らない", store=layout.STORE_FILES)
         commit_task(main_path, taskfile.Task("T-100", "書けない", "todo", "sonnet", "Y", (), BODY))
         root = ledger.ledger_root(cwd=main_path)
         os.makedirs(root, exist_ok=True)
@@ -666,7 +668,7 @@ def test_state_dir() -> None:
               and not os.path.exists(os.path.join(wt1, ".tw", "local", "task-open-claims", "T-100")), r.stdout + r.stderr)
 
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, wt2 = make_repo(tmp, branch="切らない", verify="`true`")
+        main_path, wt1, wt2 = make_repo(tmp, branch="切らない", verify="`true`", store=layout.STORE_FILES)
         for tid in ("T-100", "T-101"):
             commit_task(main_path, taskfile.Task(tid, "途中から", "todo", "sonnet", "Y", (), BODY))
         run_task(wt1, "claim", "T-100")

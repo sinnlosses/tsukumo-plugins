@@ -5,10 +5,12 @@ import shutil
 import tempfile
 
 from selftest_support import check, git, say, write  # noqa: E402
+import beads  # noqa: E402
+import layout  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
-from selftest_fixtures import BODY, PLANNED_BODY, TASK_REL, body_file, commit_task, make_repo, run_task, start_task, task_rel  # noqa: E402
+from selftest_fixtures import BODY, PLANNED_BODY, body_file, commit_task, issue_json, make_repo, run_task, shown, start_task, task_rel, unset_metadata  # noqa: E402
 
 
 def test_taskfile_parse() -> None:
@@ -229,22 +231,17 @@ def test_new_and_status_single_worktree() -> None:
         )
         check("CREATEDで返る", r.returncode == 0 and r.stdout.startswith("CREATED\t"), r.stdout + r.stderr)
         task_id = r.stdout.split("\t")[1]
+        written = shown(wt1, task_id)
         check(
-            ".tw/task/T-xxx.md ができる",
-            os.path.exists(os.path.join(wt1, task_rel(wt1), f"{task_id}.md")),
-        )
-        with open(os.path.join(wt1, task_rel(wt1), f"{task_id}.md"), encoding="utf-8") as f:
-            written = f.read()
-        check(
-            "閉じる --- の次は空行1行で、末尾は改行1つ（整形ツールの検査に合う）",
+            "show の閉じる --- の次は空行1行で、末尾は改行1つ",
             "\n---\n\n## " in written and "\n---\n\n\n" not in written and written.endswith("\n") and not written.endswith("\n\n"),
             written,
         )
 
         r = run_task(wt1, "status")
         check(
-            "statusにlocalの印が出る",
-            any(l.startswith(f"{task_id}\t") and "\tlocal\t" in l for l in r.stdout.splitlines()),
+            "status に READY の行が出る",
+            any(l.startswith(f"{task_id}\ttodo\t") and "\tREADY\t" in l for l in r.stdout.splitlines()),
             r.stdout,
         )
         check("long_summary 行は0件", "\nlong_summary\t0\t-" in r.stdout, r.stdout)
@@ -366,11 +363,6 @@ def test_new_parallel_no_collision() -> None:
         id1 = out1.split("\t")[1] if out1.startswith("CREATED\t") else "?1"
         id2 = out2.split("\t")[1] if out2.startswith("CREATED\t") else "?2"
         check("番号が重ならない", id1 != id2, f"{id1} {id2}")
-        check(
-            "2本ともそれぞれの作業ツリーにファイルができる",
-            os.path.exists(os.path.join(wt1, task_rel(wt1), f"{id1}.md"))
-            and os.path.exists(os.path.join(wt2, task_rel(wt2), f"{id2}.md")),
-        )
 
 
 def test_claim_race() -> None:
@@ -447,34 +439,28 @@ def test_done_single_worktree() -> None:
         result_path = write(os.path.join(wt1, "result.md"), "bun run check: 5 pass\n")
         r = run_task(wt1, "done", "T-100", "--result-file", result_path)
         check(
-            "DONEで返りstaged",
-            r.returncode == 0 and r.stdout.strip() == f"DONE\tT-100\t{TASK_REL}/T-100.md\tstaged",
+            "DONEで返り、ship で閉じると言う",
+            r.returncode == 0 and r.stdout.strip() == "DONE\tT-100\tbeads:t-100\tship で閉じる",
             r.stdout,
         )
-
-        staged = git(wt1, "diff", "--cached", "--name-only").stdout
-        check(".tw/task/T-100.mdがstageされる", f"{TASK_REL}/T-100.md" in staged, staged)
-
-        task_path = os.path.join(wt1, task_rel(wt1), "T-100.md")
-        task, err = taskfile.read_task_file(task_path)
-        check("statusがdoneになる", err is None and task is not None and task.status == "done", str(err))
-        check(
-            "結果節が入る",
-            task is not None and "bun run check: 5 pass" in task.body,
-            task.body if task else "",
-        )
+        check("何も stage しない", git(wt1, "diff", "--cached", "--name-only").stdout == "")
+        labels = issue_json(wt1, "T-100").get("labels") or []
+        check("送ったら done で閉じる印が付く", beads.SHIP_LABELS["done"] in labels, repr(labels))
+        text = shown(wt1, "T-100")
+        check("結果節が入る", "## 結果" in text and "bun run check: 5 pass" in text, text)
 
         r = run_task(wt1, "done", "T-100", "--dropped", "--result-file", result_path)
         check("--droppedもDONEで返る", r.returncode == 0, r.stdout + r.stderr)
-        task2, _err2 = taskfile.read_task_file(task_path)
-        check("--droppedでdroppedになる", task2 is not None and task2.status == "dropped")
+        labels = issue_json(wt1, "T-100").get("labels") or []
+        check("--dropped で送ったら dropped で閉じる印に替わる",
+              beads.SHIP_LABELS["dropped"] in labels and beads.SHIP_LABELS["done"] not in labels, repr(labels))
 
 
 def test_body_frame_check() -> None:
     say("task.py done・status --check: 本文の枠を検査する")
     bad = BODY.replace("## 注意\n\n## 参考情報\n", "## 参考情報\n\n## 注意\n")
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp)
+        main_path, wt1, _wt2 = make_repo(tmp, store=layout.STORE_FILES)
         commit_task(main_path, taskfile.Task("T-100", "枠が崩れた", "todo", "sonnet", "Y", (), bad))
         commit_task(main_path, taskfile.Task("T-101", "枠が崩れた完了済み", "done", "sonnet", "Y", (), bad))
         r = run_task(main_path, "status", "--check")
@@ -514,25 +500,21 @@ def test_done_commits_since_claim() -> None:
         check(
             "claim 後のコミットは COMMITS_SINCE_CLAIM で続けて知らせる",
             r.returncode == 0
-            and lines[0] == f"DONE\tT-100\t{TASK_REL}/T-100.md\tstaged"
+            and lines[0] == "DONE\tT-100\tbeads:t-100\tship で閉じる"
             and lines[1:] == [f"COMMITS_SINCE_CLAIM\tT-100\t{sha}"],
             r.stdout,
         )
 
         run_task(wt2, "claim", "T-101")
-        root = ledger.ledger_root(cwd=wt2)
-        owner_path = os.path.join(ledger.claim_dir(root, "T-101"), "owner")
-        with open(owner_path, encoding="utf-8") as f:
-            kept = [line for line in f.read().splitlines() if not line.startswith("head=")]
-        write(owner_path, "\n".join(kept) + "\n")
+        unset_metadata(wt2, "T-101", beads.CLAIM_HEAD_KEY)
         write(os.path.join(wt2, "illicit2.txt"), "x\n")
         git(wt2, "add", "-A")
         git(wt2, "commit", "-q", "-m", "illicit2")
         result_path2 = write(os.path.join(wt2, "result2.md"), "bun run check: 1 pass\n")
         r2 = run_task(wt2, "done", "T-101", "--result-file", result_path2)
         check(
-            "控え（head=）の無い印はコミットがあっても落ちず、知らせない",
-            r2.returncode == 0 and r2.stdout.strip() == f"DONE\tT-101\t{TASK_REL}/T-101.md\tstaged",
+            "控え（task_claim_head）の無い印はコミットがあっても落ちず、知らせない",
+            r2.returncode == 0 and r2.stdout.strip() == "DONE\tT-101\tbeads:t-101\tship で閉じる",
             r2.stdout,
         )
 

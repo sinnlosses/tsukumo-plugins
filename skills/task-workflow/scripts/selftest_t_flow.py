@@ -6,6 +6,7 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 
 from selftest_support import check, git, say, weight, write  # noqa: E402
+import layout  # noqa: E402
 import ledger  # noqa: E402
 import metrics  # noqa: E402
 import taskfile  # noqa: E402
@@ -268,8 +269,8 @@ def test_retrospect_due() -> None:
 def test_prune() -> None:
     say("task.py prune: 振り返り済みの done/dropped だけを git rm して stage する")
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, _wt1, _wt2 = make_repo(tmp, branch="切らない")
-        reviewed_body = BODY + "\n## 結果\n\n- 検証: x\n- 振り返り: 兆候なし\n"
+        main_path, _wt1, _wt2 = make_repo(tmp, branch="切らない", store=layout.STORE_FILES)
+        reviewed_body =BODY + "\n## 結果\n\n- 検証: x\n- 振り返り: 兆候なし\n"
         plain_body = BODY + "\n## 結果\n\n- 検証: x\n"
         commit_task(main_path, taskfile.Task("T-102", "振り返りの印が無い dropped", "dropped", "sonnet", "Y", (), plain_body))
         commit_task(main_path, taskfile.Task("T-101", "1件ごとに振り返り済み", "done", "sonnet", "Y", (), reviewed_body))
@@ -326,6 +327,7 @@ def test_config_file_agents_md_and_conflict() -> None:
         result_path = write(os.path.join(tmp, "result.md"), "- 検証: x\n")
         r = run_task(wt1, "done", "T-100", "--result-file", result_path)
         check("done できる", r.returncode == 0, r.stdout + r.stderr)
+        write(os.path.join(wt1, "work.txt"), "x\n")
         git(wt1, "add", "-A")
         git(wt1, "commit", "-q", "-m", "T-100: config.toml")
         r = run_task(wt1, "ship")
