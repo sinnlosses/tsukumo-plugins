@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Beads に置いたタスクの運用を操作する入口コマンド。
 
-使い方: tw <status|new|claim|release|done|ship|land|config|config-doctor|show|edit|plan-check|verify|verify-check|pause|step|lap|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard> ...
+使い方: tw <status|new|claim|release|done|ship|land|config|config-doctor|show|edit|plan-check|verify|verify-check|accept|pause|step|lap|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard> ...
 
 `install.sh` が PATH 上に張る `tw` と、plugin の `bin/tw` から呼ぶ。`commit-guard`・`handback-guard` の
 `--agent-scoped` は plugin の `hooks/hooks.json` が付け、`agent_type` の末尾が `no-delegate` のときだけ関門を掛ける。
@@ -26,6 +26,7 @@ import ledger
 import metrics
 import taskfile
 import tracker
+import tw_accept
 import tw_base
 import tw_claim
 import tw_edit
@@ -77,6 +78,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_plan_check = sub.add_parser("plan-check")
     p_plan_check.add_argument("task_id")
+
+    p_accept = sub.add_parser("accept")
+    p_accept.add_argument("task_id")
+    p_accept.add_argument("--after-review", dest="after_review", action="store_true")
 
     sub.add_parser("verify")
     sub.add_parser("verify-check")
@@ -200,6 +205,8 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
             tw_edit.cmd_edit(toplevel, args)
         elif args.command == "plan-check":
             tw_edit.cmd_plan_check(toplevel, args.task_id)
+        elif args.command == "accept":
+            tw_accept.cmd_accept(toplevel, args.task_id, args.after_review)
         elif args.command == "verify":
             tw_verify.cmd_verify(toplevel)
         elif args.command == "verify-check":
