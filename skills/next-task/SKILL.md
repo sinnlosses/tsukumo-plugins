@@ -26,7 +26,7 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
    `MISSING` を報告して終了する（plugin で入れるなら `/plugin install tsukumo-workflow@tsukumo-plugins`、
    リンクで入れるなら `task-workflow` を含めて `./install.sh` を打ち直すよう案内する）。
 
-1. **見渡す**: `tw status`（トラッカーが `jira`・`github` なら、先に `tw sync` で取り込む。
+1. **見渡す**: `tw status`（手順8のあとに取り直した `tw status` が同じ会話に残っていて、その後に状態を変える `tw` を打っていなければ打ち直さない。トラッカーが `jira`・`github` なら、先に `tw sync` で取り込む。
    `TRACKER\tFAILED` は報告に添えて先へ進む）。終了コードが 6 `MISSING`・1・3 なら、
    `${CLAUDE_SKILL_DIR}/start-stopped.md` の「手順1の表」に従って終了する。
 
@@ -135,7 +135,9 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
    | `段 <N>/<N>`（最後の段） | 下の表へ |
    | `止めた <n>/<N>`・「前提が誤り」・`dropped` にすべき理由、または1行目が上の形でない | `${CLAUDE_SKILL_DIR}/return-abnormal.md` の表に従う |
 
-   最後の段の返却か計画だけの回で、`tw plan-check T-xxx` を打ち、`tw show T-xxx` の `## やること` を読む:
+   計画だけの回では、`tw plan-check T-xxx` を打ち、`tw show T-xxx` の `## やること` を読む。
+   最後の段の返却では打たない（`tw accept` が手順6で `plan-check` を打つので、その `PLAN_*` の行を下の表で読む。
+   `PLAN_REGISTERED` なら手順5と5bで `## やること` を見てあるので `tw show` も打たず、`PLAN_FIRST` のときだけ `tw show T-xxx` で読む）:
 
    | 見たもの | すること |
    | --- | --- |
