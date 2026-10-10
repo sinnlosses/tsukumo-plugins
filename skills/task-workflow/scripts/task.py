@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Beads に置いたタスクの運用を操作する入口コマンド。
 
-使い方: tw <status|new|claim|release|done|ship|land|config|config-doctor|show|edit|plan-check|verify|verify-check|accept|pause|step|lap|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard> ...
+使い方: tw <status|new|claim|release|done|ship|finish|land|config|config-doctor|show|edit|plan-check|verify|verify-check|accept|pause|step|lap|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard> ...
 
 `install.sh` が PATH 上に張る `tw` と、plugin の `bin/tw` から呼ぶ。`commit-guard`・`handback-guard` の
 `--agent-scoped` は plugin の `hooks/hooks.json` が付け、`agent_type` の末尾が `no-delegate` のときだけ関門を掛ける。
@@ -30,6 +30,7 @@ import tw_accept
 import tw_base
 import tw_claim
 import tw_edit
+import tw_finish
 import tw_handback
 import tw_maint
 import tw_new
@@ -68,6 +69,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_done.add_argument("--result-file", required=True)
 
     sub.add_parser("ship")
+    p_finish = sub.add_parser("finish")
+    p_finish.add_argument("task_id")
+    p_finish.add_argument("--dropped", action="store_true")
+    p_finish.add_argument("--result-file", required=True)
+    p_finish.add_argument("--message", required=True)
+    p_finish.add_argument("--add", dest="files", action="append", default=[])
     sub.add_parser("land").add_argument("branch")
 
     sub.add_parser("config-doctor")
@@ -199,6 +206,8 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
             tw_claim.cmd_done(toplevel, args.task_id, args.dropped, args.result_file)
         elif args.command == "ship":
             tw_ship.cmd_ship(toplevel)
+        elif args.command == "finish":
+            tw_finish.cmd_finish(toplevel, args.task_id, args.dropped, args.result_file, args.message, args.files)
         elif args.command == "show":
             tw_status.cmd_show(toplevel, args.task_id)
         elif args.command == "edit":
