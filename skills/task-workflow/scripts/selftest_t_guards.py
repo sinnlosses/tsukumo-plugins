@@ -9,7 +9,7 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-from selftest_support import check, git, say, weight, write  # noqa: E402
+from selftest_support import check, git, refuse_direct_run, say, weight, write  # noqa: E402
 import beads  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
@@ -677,3 +677,7 @@ TESTS = (
     test_lap,
     test_readonly_git_stops_writers,
 )
+
+
+if __name__ == "__main__":
+    refuse_direct_run()

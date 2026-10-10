@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import tempfile
 
-from selftest_support import check, git, say, write  # noqa: E402
+from selftest_support import check, git, refuse_direct_run, say, write  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_fixtures import BODY, commit_task, make_repo, run_task  # noqa: E402
 
@@ -101,3 +101,7 @@ TESTS = (
     test_finish_bundles_done_commit_ship,
     test_finish_stops_on_stop_lines,
 )
+
+
+if __name__ == "__main__":
+    refuse_direct_run()

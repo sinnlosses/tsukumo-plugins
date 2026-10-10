@@ -6,6 +6,7 @@ import contextlib
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 from collections.abc import Iterator
@@ -154,3 +155,8 @@ def finish(outputs: list[list[str]]) -> None:
         print(f"FAILED {len(failures)}件: " + ", ".join(failures))
         raise SystemExit(1)
     print("すべて通った")
+
+
+def refuse_direct_run() -> None:
+    sys.stderr.write("部品は直に打てない。`python3 selftest_task.py`（絞るならテスト名を渡す）で打つ\n")
+    raise SystemExit(2)

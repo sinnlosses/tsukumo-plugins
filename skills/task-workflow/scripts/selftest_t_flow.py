@@ -6,7 +6,7 @@ import shutil
 import tempfile
 from datetime import datetime, timedelta, timezone
 
-from selftest_support import check, copy_beads, git, say, weight, write  # noqa: E402
+from selftest_support import check, copy_beads, git, refuse_direct_run, say, weight, write  # noqa: E402
 import beads  # noqa: E402
 import ledger  # noqa: E402
 import metrics  # noqa: E402
@@ -453,3 +453,7 @@ TESTS = (
     test_metrics_stages,
     test_metrics_stages_parallel_steps,
 )
+
+
+if __name__ == "__main__":
+    refuse_direct_run()

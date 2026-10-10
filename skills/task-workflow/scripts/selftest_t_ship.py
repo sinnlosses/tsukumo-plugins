@@ -4,7 +4,7 @@ import os
 import shutil
 import tempfile
 
-from selftest_support import check, git, say, weight, write  # noqa: E402
+from selftest_support import check, git, refuse_direct_run, say, weight, write  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_fixtures import BODY, _claim_work_and_done, body_file, commit_task, make_repo, run_task  # noqa: E402
@@ -742,3 +742,7 @@ TESTS = (
     test_ship_without_gitmodules_prints_no_submodule_line,
     test_base_branch_resolution,
 )
+
+
+if __name__ == "__main__":
+    refuse_direct_run()

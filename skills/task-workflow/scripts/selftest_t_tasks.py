@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import tempfile
 
-from selftest_support import check, git, say, write  # noqa: E402
+from selftest_support import check, git, refuse_direct_run, say, write  # noqa: E402
 import beads  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
@@ -392,3 +392,7 @@ TESTS = (
     test_taskfile_body,
     test_taskfile_set_result_section,
 )
+
+
+if __name__ == "__main__":
+    refuse_direct_run()

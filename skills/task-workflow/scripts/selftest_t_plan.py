@@ -4,7 +4,7 @@ import os
 import subprocess
 import tempfile
 
-from selftest_support import check, git, say, weight, write  # noqa: E402
+from selftest_support import check, git, refuse_direct_run, say, weight, write  # noqa: E402
 import beads  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
@@ -526,3 +526,7 @@ TESTS = (
     test_root_setting,
     test_direct_mark,
 )
+
+
+if __name__ == "__main__":
+    refuse_direct_run()
