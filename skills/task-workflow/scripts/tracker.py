@@ -673,8 +673,14 @@ def _claim_restore_args(
     GitHub で手放された着手（担当者が付いた、または着手を送ったあとで label `status::in_progress` が
     外れて `open` に戻った）は戻さない。着手を送る前の GitHub の版で `open` に戻ったものは戻す。
     """
+    had, has = _marks(was), _marks(issue)
     if issue.status == "closed":
-        return []
+        return [
+            x
+            for k, v in had.items()
+            if k in (beads.DIFFICULTY_KEY, beads.LOOPABLE_KEY) and k not in has
+            for x in ("--set-metadata", f"{k}={v}")
+        ]
     args: list[str] = []
     claimed = was.status == "in_progress" and bool(was.assignee)
     if claimed and not issue.assignee:
@@ -692,7 +698,6 @@ def _claim_restore_args(
             args += ["--assignee", was.assignee]
         elif issue.status == "open" and unsent:
             args += ["--status", "in_progress", "--assignee", was.assignee]
-    had, has = _marks(was), _marks(issue)
     args += [x for k, v in had.items() if k not in has for x in ("--set-metadata", f"{k}={v}")]
     return args
 

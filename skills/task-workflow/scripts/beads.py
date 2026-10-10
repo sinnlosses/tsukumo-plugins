@@ -72,7 +72,7 @@ PLAN_BASE_KEY = "task_plan_base"
 # 登録時の計画を判定した、着手時の主ブランチの先端。
 PLAN_TIP_KEY = "task_plan_tip"
 # この運用が metadata に置く印（GitHub には載らないので、取り込みで消えたら戻す）。
-MARK_KEYS = (CLAIM_BRANCH_KEY, CLAIM_HEAD_KEY, PLAN_KEY, PLAN_BASE_KEY, PLAN_TIP_KEY)
+MARK_KEYS = (CLAIM_BRANCH_KEY, CLAIM_HEAD_KEY, PLAN_KEY, PLAN_BASE_KEY, PLAN_TIP_KEY, DIFFICULTY_KEY, LOOPABLE_KEY)
 RESULT_HEADING = taskfile.RESULT_HEADING
 
 # 本文の節のうち、`description` 以外へ入るもの。
