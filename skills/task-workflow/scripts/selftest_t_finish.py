@@ -76,7 +76,28 @@ def test_finish_stops_on_stop_lines() -> None:
         )
 
 
+def test_finish_stops_on_commits_since_claim() -> None:
+    say("task.py finish: claim のあとのコミットがあれば COMMITS_SINCE_CLAIM の行で止まり、コミットも ship も打たない")
+    with tempfile.TemporaryDirectory() as tmp:
+        _main, wt1 = _claimed(tmp)
+        write(os.path.join(wt1, "stray.txt"), "x")
+        git(wt1, "add", "stray.txt")
+        git(wt1, "commit", "-q", "-m", "委譲先のコミット")
+        write(os.path.join(wt1, "work.txt"), "x")
+        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "T-100: 完了", "--add", "work.txt", stdin=RESULT)
+        check(
+            "DONE と COMMITS_SINCE_CLAIM を出して終了コード12、COMMITTED も SHIPPED も無い",
+            r.returncode == 12
+            and "DONE\t" in r.stdout
+            and "COMMITS_SINCE_CLAIM\tT-100\t" in r.stdout
+            and "COMMITTED" not in r.stdout
+            and "SHIPPED" not in r.stdout,
+            r.stdout + r.stderr,
+        )
+
+
 TESTS = (
+    test_finish_stops_on_commits_since_claim,
     test_finish_bundles_done_commit_ship,
     test_finish_stops_on_stop_lines,
 )

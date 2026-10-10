@@ -312,7 +312,7 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
    受け入れで作業ツリーを直したら、`tw accept T-xxx --after-review` から打ち直す。`tw ship` が付け替えたときの
    検証は、この控えでは省かれない（付け替えが起きるのは、受け入れのあとに主ブランチが進んだときだけ）。
 
-   手順7の `tw finish` の出力に（`tw done` の行として） `COMMITS_SINCE_CLAIM` の行が続いたら、
+   手順7の `tw finish` の出力に（`tw done` の行として） `COMMITS_SINCE_CLAIM` の行が出たら（`tw finish` は終了コード12で止まる）、
    `${CLAUDE_SKILL_DIR}/commits-since-claim.md` を読んで扱ってから先へ進む。
 
 6a. **振り返る**（`/loop` から回っているときも。委譲せずメインで行う）: 頭に `tw lap T-xxx retro` を打ち、
@@ -366,9 +366,11 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
    `NO_COMMIT` を出してコミットせず、そのまま ship へ進む（`tw ship` が `NOTHING` を返して閉じる）。
    知見は `## 結果`・`## 注意`・正典の docs・新しいタスクへ置き、`develop/progress.md` には書かない。
    `tw finish` は `tw done`・コミット・`tw ship` の行をそのまま並べ、止まる行（`NOT_OWNER`・`CONFLICT` など）が出たら
-   以降を打たない。`DONE` の次に `COMMITS_SINCE_CLAIM` が続いたら、下の `commits-since-claim.md` を読んでから先へ進む。
+   以降を打たない。`DONE` の次に `COMMITS_SINCE_CLAIM` が続いたら、`tw finish` はそこで（`tw done` は済んだまま）
+   コミットも `tw ship` も打たず終了コード12で止まる。`${CLAUDE_SKILL_DIR}/commits-since-claim.md` に従って判断し、
+   個別の `git add`・`git commit`・`tw ship` で続ける（`tw finish`・`tw done` は打ち直さない。`## 結果` が二重になる）。
 
-8. **送ったあとを読む**: 手順7の `tw finish` の出力の最後の行（`tw ship` の判定）で分ける。
+8. **送ったあとを読む**: 手順7の `tw finish`（`COMMITS_SINCE_CLAIM` で止まったあとは個別の `tw ship`）の出力の最後の行（`tw ship` の判定）で分ける。
 
    | 出力 | すること |
    | --- | --- |
