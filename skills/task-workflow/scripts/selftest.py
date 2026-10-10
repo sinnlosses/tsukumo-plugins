@@ -7,7 +7,7 @@
 落ちたら非0で終わる。`task.py` 一式は `selftest_task.py` が見る。
 
 **ここで守っているのは「モデルが誤読しない出力を返すこと」**。
-`INVALID` と traceback の区別、旧形式で骨組みを混ぜないこと、既存ファイルを上書きしないこと
+`INVALID` と traceback の区別、既存ファイルを上書きしないこと
 といった、間違えると*静かに*データを失う／原因を取り違える経路を重点的に見る。
 """
 
@@ -183,13 +183,12 @@ def test_init() -> None:
             shutil.rmtree(".tw")
 
             write("develop/direction.md", "# 未対応の指示メモ\n\nこれをやって\n")
+            write("develop/tasks.json", "[]\n")
             r = run("init.py")
-            check("develop/direction.md があり .tw/config.toml が無ければ OLD_LAYOUT（終了コード5）で止まり、何も作らない",
-                  r.returncode == 5 and r.stdout == "OLD_LAYOUT\ttw migrate-layout --dry-run\n" and not os.path.exists(".tw"), r.stdout)
-            write(".tw/config.toml", 'verify = "なし"\n')
-            r = run("init.py")
-            check(".tw/config.toml があれば develop/direction.md が残っていても止まらない",
-                  r.returncode == 0 and "OLD_LAYOUT" not in r.stdout, r.stdout)
+            check("develop/direction.md・develop/tasks.json があっても止まらずに .tw/ を作る",
+                  r.returncode == 0 and "CREATED\t.tw/direction.md" in r.stdout
+                  and "OLD_LAYOUT" not in r.stdout and "LEGACY" not in r.stdout, r.stdout)
+            check("develop/ には触らない", open("develop/direction.md", encoding="utf-8").read() == "# 未対応の指示メモ\n\nこれをやって\n")
             shutil.rmtree(".tw")
             shutil.rmtree("develop")
 
@@ -245,17 +244,6 @@ def test_init() -> None:
 
             r = run("init.py", "--help")
             check("打ち間違いをディレクトリにしない", r.returncode == 2 and not os.path.exists("--help"))
-        finally:
-            os.chdir(cwd)
-
-    with tempfile.TemporaryDirectory() as d:
-        cwd = os.getcwd()
-        os.chdir(d)
-        try:
-            write("develop/tasks.json", "[]\n")
-            r = run("init.py")
-            check("旧形式なら LEGACY（終了コード5）", r.returncode == 5 and r.stdout.startswith("LEGACY\t"), r.stdout)
-            check("旧形式には骨組みを混ぜない", not os.path.exists("develop/direction.md") and not os.path.exists(".tw"))
         finally:
             os.chdir(cwd)
 

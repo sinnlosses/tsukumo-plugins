@@ -17,13 +17,11 @@
 - `--human`: 人の差し戻しの回数
 - `--review`: レビューを省いた（`skip`）／指摘なし（`clean`）／指摘が返った（`found`）
 
-- **タスク**: `<根>/task/T-XXX.md`（`HEAD` の版。front matter と本文、`## 結果`）。
-  無ければ旧形式の `develop/tasks.json`、それも無ければ `docs/history/tasks.md` から本文と evidence。
-  Beads 方式（task-workflow の WORKFLOW.md「Beads 方式」）では Beads の課題（`task show` と同じ形）
-- **登録から完了までの差分**: `<根>/task/T-XXX.md` を足したコミットの版と `HEAD` の版の差
-  （着手時に書き足した `## やること`・`## 注意` の量が出る）。旧タスクは代わりに
-  `develop/progress.md`・`docs/history/progress.md` の該当の小節。Beads 方式では `bd history` の
-  最初の版と最後の版の差
+- **タスク**: Beads の課題（`tw show` と同じ形。front matter と本文、`## 結果`）。
+  Beads に無い古いタスクは `docs/history/tasks.md` のアーカイブから本文
+- **登録から完了までの差分**: `bd history` の最初の版と最後の版の本文の差
+  （着手時に書き足した `## やること`・`## 注意` の量が出る）。Beads に無い古いタスクは代わりに
+  `docs/history/progress.md` の該当の小節
 - **コミット**: 件名とファイルごとの増減（`--diff` を付けたときだけ中身も）
 - **手数**: サブエージェントのトランスクリプトから取った**数だけ**
 
@@ -37,9 +35,7 @@
 from __future__ import annotations
 
 import difflib
-import json
 import os
-import posixpath
 import re
 import subprocess
 import sys
@@ -72,23 +68,12 @@ def main() -> None:
         print_signals(root, task_id)
         return
 
-    if is_beads(root):
-        section("タスク")
-        print_beads_task(root, task_id)
+    section("タスク")
+    if print_task(root, task_id):
         section("登録から完了までの差分（Beads の版）")
-        print_beads_history(root, task_id)
-        is_file_task = None
+        print_task_history(root, task_id)
     else:
-        section("タスク")
-        is_file_task = print_task(root, task_id)
-
-    if is_file_task is None:
-        pass
-    elif is_file_task:
-        section("登録から完了までの差分（タスクファイル）")
-        print_task_file_diff(root, task_id)
-    else:
-        section("progress の小節（旧形式のタスク）")
+        section("progress の小節（Beads に無い古いタスク）")
         print_progress(root, task_id)
 
     section("コミット")
@@ -102,105 +87,25 @@ def main() -> None:
         print(f"注意\t{task_id} を件名に含むコミットが見つからない（件名の書き方が違う可能性）")
 
 
-# ---- タスク本文と evidence ----------------------------------------------------
+# ---- タスク本文 ---------------------------------------------------------------
 
 
 def print_task(root: str, task_id: str) -> bool:
-    """タスクの本文を出す。新しい形（`<根>/task/`）で見つかれば True。
+    """タスクを出す。Beads に課題があれば True。
 
-    振り返り後にファイルを消したタスクは `HEAD` に無いので、最後に存在した版
-    （`last_existing_ref`）を代わりに読む。
+    Beads に無い古いタスクは `docs/history/tasks.md` のアーカイブから本文を出す。
     """
-    rel = f"{task_dir(root)}/{task_id}.md"
-    text, _ = git_out(root, "show", f"HEAD:{rel}")
-    if text is not None:
-        print(f"出典\t{rel}（HEAD）")
-        print()
-        print(text.rstrip())
+    if print_beads_task(root, task_id):
         return True
-
-    ref = last_existing_ref(root, rel)
-    if ref is not None:
-        text, _ = git_out(root, "show", f"{ref}:{rel}")
-        if text is not None:
-            print(f"出典\t{rel}（{ref}、削除前の最後の版）")
-            print()
-            print(text.rstrip())
-            return True
-
-    live = os.path.join(root, "develop", "tasks.json")
-    if os.path.exists(live):
-        try:
-            with open(live, encoding="utf-8") as f:
-                tasks = json.load(f)
-        except (OSError, ValueError) as e:
-            print(f"INVALID\t{live}\t{e}")
-            tasks = []
-        for t in tasks if isinstance(tasks, list) else []:
-            if isinstance(t, dict) and t.get("id") == task_id:
-                print(f"出典\t{live}")
-                for k in ("summary", "difficulty", "loopable", "dependencies", "passes"):
-                    print(f"{k}\t{t.get(k, '?')}")
-                print("evidence\t" + str(t.get("evidence", "")))
-                print()
-                print(t.get("task", ""))
-                return False
-
     archive = os.path.join(root, layout.HISTORY_TASKS_PATH)
     body = find_archived_task(archive, task_id)
     if body is None:
-        print(f"-\t{task_id} が {task_dir(root)}/ にも tasks.json にもアーカイブにも無い")
+        print(f"-\t{task_id} が Beads にもアーカイブにも無い")
         return False
     print(f"出典\t{archive}")
     print()
     print(body)
     return False
-
-
-def print_task_file_diff(root: str, task_id: str) -> None:
-    """登録した版（ファイルを足したコミット）と最後の版の差を出す。
-
-    登録の粗さと、着手までにどれだけ前提が動いたかがここに出る（`## やること` は着手直後に
-    書く節なので、登録時の版には無い）。`HEAD` に無いタスクは、最後に存在した版
-    （`last_existing_ref`）までの差にする。
-    """
-    rel = f"{task_dir(root)}/{task_id}.md"
-    added, err = git_out(root, "log", "--diff-filter=A", "--format=%h", "--", rel)
-    first = (added or "").split()
-    if not first:
-        print(f"-\t{rel} を足したコミットが見つからない（{err or '履歴に無い'}）")
-        return
-    base = first[-1]
-    print(f"登録\t{base}")
-    registered, _ = git_out(root, "show", f"{base}:{rel}")
-    end_ref = "HEAD"
-    current, _ = git_out(root, "show", f"HEAD:{rel}")
-    if current is None:
-        ref = last_existing_ref(root, rel)
-        if ref is not None:
-            end_ref = ref
-            current, _ = git_out(root, "show", f"{end_ref}:{rel}")
-    if end_ref != "HEAD":
-        print(f"最後の版\t{end_ref}（HEAD に無いので、消える直前の版までの差）")
-    for label, text in (("登録時の節", registered), ("いまの節", current)):
-        heads = [ln for ln in (text or "").splitlines() if ln.startswith("## ")]
-        print(f"{label}\t" + (", ".join(f"{h[3:]}" for h in heads) or "-"))
-    diff, _ = git_out(root, "diff", f"{base}", end_ref, "--", rel)
-    print()
-    print((diff or "（差分なし）").rstrip())
-
-
-def last_existing_ref(root: str, rel: str) -> str | None:
-    """`rel` が `HEAD` に無いとき、最後に存在した版を指す ref を返す。
-
-    「そのパスを最後に消したコミット」の親が、消える直前＝最後に存在した版。パスが一度も
-    消えていなければ（そもそも作られていない等）`None`。
-    """
-    deleted, _ = git_out(root, "log", "-1", "--diff-filter=D", "--format=%H", "--", rel)
-    deleted_hash = (deleted or "").strip()
-    if not deleted_hash:
-        return None
-    return f"{deleted_hash}^"
 
 
 def find_archived_task(path: str, task_id: str) -> str | None:
@@ -226,44 +131,32 @@ def find_archived_task(path: str, task_id: str) -> str | None:
     return "\n".join(lines[start:]).rstrip() if start is not None else None
 
 
-# ---- Beads 方式 ---------------------------------------------------------------
+# ---- Beads の課題 -------------------------------------------------------------
 
 
-def task_dir(root: str) -> str:
-    try:
-        return layout.task_dir(root)
-    except layout.ConfigError:
-        return posixpath.join(layout.DEFAULT_ROOT, "task")
-
-
-def is_beads(root: str) -> bool:
-    try:
-        return layout.read_config(root).store == layout.STORE_BEADS
-    except layout.ConfigError:
-        return False
-
-
-def print_beads_task(root: str, task_id: str) -> None:
+def print_beads_task(root: str, task_id: str) -> bool:
+    """Beads の課題を `tw show` と同じ形で出す。課題が無い・`bd` を読めなければ理由だけ出して False。"""
     bd_id = beads.to_bd_id(task_id)
     try:
         issue = beads.show(root, bd_id)
         result = beads.last_result(beads.comments(root, bd_id)) if issue is not None else None
     except beads.BeadsError as e:
         print(f"-\t{e}")
-        return
+        return False
     if issue is None:
         print(f"-\t{task_id} が Beads に無い")
-        return
+        return False
     task, err = beads.to_task(issue)
     if task is None:
         print(f"-\t{task_id} を読めない（{err or '振り分け前'}）")
-        return
+        return True
     print(f"出典\tBeads {bd_id}")
     print()
     print(beads.render_task(task, issue, result).rstrip())
+    return True
 
 
-def print_beads_history(root: str, task_id: str) -> None:
+def print_task_history(root: str, task_id: str) -> None:
     """登録した版（`bd history` の最初）と最後の版の本文の差。"""
     try:
         snaps = beads.history(root, beads.to_bd_id(task_id))
@@ -296,16 +189,13 @@ def print_beads_history(root: str, task_id: str) -> None:
 
 
 def print_progress(root: str, task_id: str) -> None:
-    found = False
-    for path in (os.path.join(root, "develop", "progress.md"),
-                 os.path.join(root, "docs", "history", "progress.md")):
-        block = find_progress_section(path, task_id)
-        if block:
-            print(f"出典\t{path}")
-            print(block)
-            found = True
-    if not found:
+    path = os.path.join(root, "docs", "history", "progress.md")
+    block = find_progress_section(path, task_id)
+    if not block:
         print(f"-\t{task_id} を見出しに含む小節が progress.md に無い")
+        return
+    print(f"出典\t{path}")
+    print(block)
 
 
 def find_progress_section(path: str, task_id: str) -> str:

@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""`weekly.py`（横断の振り返りの材料）と `material.py --signals` の `長く待った呼び出し`・`--gate` の判定の自己テスト。
+"""`weekly.py`（横断の振り返りの材料）と `material.py` のタスクの材料・`--signals` の `長く待った呼び出し`・`--gate` の判定の自己テスト。
 
 使い方: python3 selftest.py
 
-標準ライブラリだけで動く。落ちたら非0で終わる。
+標準ライブラリと `bd`（タスクの材料を Beads から読む）で動く。`bd` は一時の HOME で打つ。落ちたら非0で終わる。
 """
 
 from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -293,10 +294,64 @@ def test_gate() -> None:
         check("値が違えば終了コード2", r.returncode == 2, r.stdout + r.stderr)
 
 
+def test_task_material() -> None:
+    print("material.py のタスクと登録からの差分（Beads の課題・Beads に無い古いタスク）")
+    if shutil.which("bd") is None:
+        check("bd が PATH にある（material.py はタスクを Beads から読む）", False)
+        return
+    with tempfile.TemporaryDirectory() as d:
+        home = os.path.join(d, "home")
+        write(os.path.join(home, ".config", "bd", "config.yaml"), "metrics:\n    disabled: true\n    notice_shown: true\nno-git-ops: true\n")
+        env = {
+            **os.environ,
+            "HOME": home,
+            "XDG_CONFIG_HOME": os.path.join(home, ".config"),
+            "XDG_DATA_HOME": os.path.join(home, ".local", "share"),
+            "CLAUDE_CONFIG_DIR": os.path.join(d, "cfg"),
+        }
+        env.pop("BEADS_ACTOR", None)
+        env.pop("GITHUB_TOKEN", None)
+        root = os.path.join(d, "repo")
+        os.makedirs(root)
+        git(root, "init", "-q", "-b", "main")
+        git(root, "config", "beads.role", "maintainer")
+
+        def bd(*args: str, stdin: str | None = None) -> None:
+            subprocess.run(["bd", *args], cwd=root, env=env, input=stdin, check=True, capture_output=True, text=True)
+
+        bd("init", "--stealth", "-p", "t", "--non-interactive", "--skip-hooks", "--quiet")
+        bd("create", "--id", "t-001", "--title", "材料", "--body-file", "-", "-l", "difficulty:sonnet,loopable:Y", "--silent",
+           stdin="## 目的・背景\n\n登録時の目的\n")
+        bd("update", "t-001", "--description", "## 目的・背景\n\n書き直した目的\n")
+        write(os.path.join(root, "docs", "history", "tasks.md"), "# 履歴\n\n## T-002 古いもの\n\n古い本文\n")
+        write(os.path.join(root, "docs", "history", "progress.md"), "## 2026-01-01\n\n### T-002 古いもの\n\n進めた\n")
+
+        def material(task_id: str, path: str) -> subprocess.CompletedProcess:
+            return subprocess.run(
+                [sys.executable, os.path.join(HERE, "material.py"), root, task_id],
+                capture_output=True, text=True, env={**env, "PATH": path},
+            )
+
+        r = material("T-001", env["PATH"])
+        task = lines_of("タスク", r.stdout)
+        diff = lines_of("登録から完了までの差分（Beads の版）", r.stdout)
+        check("Beads の課題を出典つきで出す", r.returncode == 0 and task[:1] == ["出典\tBeads t-001"] and "書き直した目的" in task, r.stdout + r.stderr)
+        check("bd history の最初と最後の版の差を出す", "-登録時の目的" in diff and "+書き直した目的" in diff, r.stdout)
+
+        r = material("T-002", env["PATH"])
+        check("Beads に無い古いタスクはアーカイブから出す", "古い本文" in lines_of("タスク", r.stdout), r.stdout + r.stderr)
+        check("Beads に無い古いタスクは progress の小節を出す",
+              "進めた" in lines_of("progress の小節（Beads に無い古いタスク）", r.stdout), r.stdout)
+
+        r = material("T-002", "/usr/bin:/bin")
+        check("bd が無くても落ちずにアーカイブから出す", r.returncode == 0 and "古い本文" in lines_of("タスク", r.stdout), r.stdout + r.stderr)
+
+
 def main() -> None:
     test_weekly()
     test_slow_calls()
     test_gate()
+    test_task_material()
     print()
     if failures:
         print(f"FAILED {len(failures)}件: " + ", ".join(failures))

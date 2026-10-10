@@ -6,12 +6,8 @@
 作るのは `<根>/direction.md` の骨組み（見出しと `## ユーザーから` の節）と、`.tw/local/` を外す
 `.tw/.gitignore`（中身 `local/`。旧い形のものは `local/` に書き換える）だけ（正典は task-workflow の WORKFLOW.md「ファイル配置と設定ファイル」）。
 根は設定の `root`（既定 `.tw`）。
-`<根>/task/` は最初の `task new` が、`<根>/draft/` は最初のドラフトが作る。骨組みは決まりきっているので
+`<根>/draft/` は最初のドラフトが作る。骨組みは決まりきっているので
 モデルに書かせない（`direction.md` に見出し以外の行が混ざると `/plan-tasks` が「未対応の指示がある」と誤判定する）。
-
-**旧形式（`develop/tasks.json` がある）なら何も作らず `LEGACY` で止まる**（終了コード5。
-`task.py` と同じ）。移すのは `task migrate` で、ここでは骨組みを混ぜない。
-`.tw/config.toml` が無く `develop/direction.md` があるときも何も作らず `OLD_LAYOUT` で止まる（終了コード5。移すのは `tw migrate-layout`）。
 
 **既存ファイルは上書きしない。** 中身の点検結果だけを出し、直すかどうかは呼び出し側が決める。
 設定（`.tw/config.toml`）は**点検するだけで書かない**（値は検証コマンドの選定そのもので、
@@ -38,15 +34,6 @@ def main() -> None:
     if sys.argv[1:]:
         print("usage: init.py   （引数は取らない。プロジェクトの根で打つ）", file=sys.stderr)
         raise SystemExit(2)
-
-    tasks_json = os.path.join(layout.LEGACY_ROOT, "tasks.json")
-    if os.path.exists(tasks_json):
-        print(f"LEGACY\t{tasks_json}\ttw migrate --dry-run")
-        raise SystemExit(5)
-
-    if not os.path.exists(layout.CONFIG_PATH) and os.path.exists(layout.LEGACY_DIRECTION_PATH):
-        print("OLD_LAYOUT\ttw migrate-layout --dry-run")
-        raise SystemExit(5)
 
     direction, draft = places(".")
     os.makedirs(os.path.dirname(direction), exist_ok=True)
