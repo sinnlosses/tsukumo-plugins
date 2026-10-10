@@ -98,6 +98,7 @@ def cmd_ship(toplevel: str) -> None:
 
     released, not_closed = _close_shipped(toplevel)
     _record_shipped(toplevel, released)
+    submodule_lines = _sync_submodules(base_worktree.path) if base_worktree is not None else []
     new_base = tw_base.run_git(toplevel, ["rev-parse", base]).stdout.strip()
     preship_note = ""
     if preship_command is not None:
@@ -107,7 +108,23 @@ def cmd_ship(toplevel: str) -> None:
         f"\tverify={outcome.verify_state}{preship_note}\ttries={outcome.tries}\treleased={','.join(released) or '-'}"
         f"\t{branch_note}"
     )
-    tw_base.print_lines(not_closed + _after_send(toplevel))
+    tw_base.print_lines(submodule_lines + not_closed + _after_send(toplevel))
+
+
+def _sync_submodules(base_tree: str) -> list[str]:
+    """主ブランチを出している作業ツリーのサブモジュールを、合流で進んだ記録の版へ揃える。
+
+    `.gitmodules` が無ければ何もしない。揃えられないときは合流を取り消さず
+    `SUBMODULE_NOT_SYNCED`（作業ツリーと理由の1行をタブで区切る）の行を返す。
+    """
+    if not os.path.isfile(os.path.join(base_tree, ".gitmodules")):
+        return []
+    updated = tw_base.run_git(base_tree, ["submodule", "update", "--init"])
+    if updated.returncode == 0:
+        return []
+    lines = [line.strip() for line in (updated.stderr or updated.stdout).splitlines() if line.strip()]
+    reason = next((line for line in lines if line.startswith(("fatal:", "error:"))), lines[-1] if lines else "")
+    return [f"SUBMODULE_NOT_SYNCED\t{base_tree}\t{reason}"]
 
 
 def _close_shipped(toplevel: str) -> tuple[list[str], list[str]]:
@@ -180,6 +197,7 @@ def cmd_land(toplevel: str, branch: str) -> None:
     if tw_base.run_git(base_tree, ["merge-base", "--is-ancestor", branch, base]).returncode != 0:
         _refuse_land(branch, f"{base} に入っていない")
     print(f"LANDED\t{branch}\t{base}\t{tw_base.run_git(base_tree, ['rev-parse', base]).stdout.strip()}")
+    tw_base.print_lines(_sync_submodules(base_tree))
 
     leftovers: list[tuple[str, str]] = []
     for path in branch_trees:

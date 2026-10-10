@@ -291,6 +291,129 @@ def test_land() -> None:
         check("ほかの枝の作業ツリーは残る", os.path.isdir(wt1) and "wt1-branch" in branches())
 
 
+_FILE_PROTOCOL = ("-c", "protocol.file.allow=always")
+_FILE_PROTOCOL_ENV = {
+    "GIT_CONFIG_COUNT": "1",
+    "GIT_CONFIG_KEY_0": "protocol.file.allow",
+    "GIT_CONFIG_VALUE_0": "always",
+}
+
+
+def _make_submodule_repo(tmp: str) -> tuple[str, str, str, str]:
+    """`(本体, 作業ツリー1, 作業ツリー2, サブモジュールの取り寄せ元)`。本体・両作業ツリーにサブモジュール `vendor/sub` が入っている。"""
+    main_path, wt1, wt2 = make_repo(tmp)
+    origin = os.path.join(tmp, "sub-origin")
+    os.makedirs(origin)
+    git(origin, "init", "-q", "-b", "main")
+    git(origin, "config", "user.email", "test@example.com")
+    git(origin, "config", "user.name", "test")
+    write(os.path.join(origin, "v.txt"), "1\n")
+    git(origin, "add", "v.txt")
+    git(origin, "commit", "-q", "-m", "v1")
+    git(main_path, *_FILE_PROTOCOL, "submodule", "add", "-q", origin, "vendor/sub")
+    git(main_path, "commit", "-q", "-m", "サブモジュールを足す")
+    for wt in (wt1, wt2):
+        git(wt, "merge", "-q", "--ff-only", "main")
+        git(wt, *_FILE_PROTOCOL, "submodule", "update", "--init", "-q")
+    return main_path, wt1, wt2, origin
+
+
+def _advance_submodule(origin: str, worktree: str, name: str) -> str:
+    """取り寄せ元に1コミット足し、作業ツリーのサブモジュールをそれへ進めたポインタのコミットを積む。新しいコミットを返す。"""
+    write(os.path.join(origin, "v.txt"), f"{name}\n")
+    git(origin, "commit", "-q", "-am", name)
+    new = git(origin, "rev-parse", "HEAD").stdout.strip()
+    sub = os.path.join(worktree, "vendor", "sub")
+    git(sub, *_FILE_PROTOCOL, "fetch", "-q", "origin")
+    git(sub, "checkout", "-q", new)
+    git(worktree, "add", "vendor/sub")
+    git(worktree, "commit", "-q", "-m", f"サブモジュールを {name} へ")
+    return new
+
+
+def test_ship_and_land_sync_submodules() -> None:
+    say("task.py ship / land: 合流のあと本体のサブモジュールを記録した版へ揃える")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2, origin = _make_submodule_repo(tmp)
+
+        def sub_head() -> str:
+            return git(os.path.join(main_path, "vendor", "sub"), "rev-parse", "HEAD").stdout.strip()
+
+        new = _advance_submodule(origin, wt1, "v2")
+        r = run_task(wt1, "ship", env=_FILE_PROTOCOL_ENV)
+        check("ship は SHIPPED(0)", r.returncode == 0 and r.stdout.startswith("SHIPPED\t"), r.stdout + r.stderr)
+        check("SUBMODULE_NOT_SYNCED は出ない", "SUBMODULE_NOT_SYNCED" not in r.stdout, r.stdout)
+        check("ship のあと本体の status が空", git(main_path, "status", "--porcelain").stdout == "")
+        check("本体のサブモジュールが記録した版", sub_head() == new)
+
+        git(wt2, "merge", "-q", "--ff-only", "main")
+        new = _advance_submodule(origin, wt2, "v3")
+        git(wt2, "submodule", "deinit", "-q", "-f", "vendor/sub")
+        r = run_task(main_path, "land", "wt2-branch", env=_FILE_PROTOCOL_ENV)
+        check("land は LANDED で始まる", r.stdout.startswith("LANDED\t"), r.stdout + r.stderr)
+        check("SUBMODULE_NOT_SYNCED は出ない（land）", "SUBMODULE_NOT_SYNCED" not in r.stdout, r.stdout)
+        check("land のあと本体の status が空", git(main_path, "status", "--porcelain").stdout == "")
+        check("land のあと本体のサブモジュールが記録した版", sub_head() == new)
+
+
+def test_ship_and_land_report_unsynced_submodule() -> None:
+    say("task.py ship / land: サブモジュールを揃えられなくても合流は変えず SUBMODULE_NOT_SYNCED で知らせる")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2, origin = _make_submodule_repo(tmp)
+        _advance_submodule(origin, wt1, "v2")
+        shutil.move(origin, origin + "-gone")
+
+        r = run_task(wt1, "ship", env=_FILE_PROTOCOL_ENV)
+        lines = r.stdout.splitlines()
+        check("ship は SHIPPED(0) のまま", r.returncode == 0 and lines[0].startswith("SHIPPED\t"), r.stdout + r.stderr)
+        check(
+            "SHIPPED の次に SUBMODULE_NOT_SYNCED（本体のパスと理由）",
+            len(lines) > 1 and lines[1].startswith(f"SUBMODULE_NOT_SYNCED\t{os.path.realpath(main_path)}\t"),
+            r.stdout,
+        )
+
+        shutil.move(origin + "-gone", origin)
+        git(wt2, "merge", "-q", "--ff-only", "main")
+        git(os.path.join(main_path, "vendor", "sub"), *_FILE_PROTOCOL, "fetch", "-q", "origin")
+        git(os.path.join(main_path, "vendor", "sub"), "checkout", "-q", git(wt1, "rev-parse", "HEAD:vendor/sub").stdout.strip())
+        _advance_submodule(origin, wt2, "v3")
+        git(wt2, "submodule", "deinit", "-q", "-f", "vendor/sub")
+        shutil.move(origin, origin + "-gone")
+        r = run_task(main_path, "land", "wt2-branch", env=_FILE_PROTOCOL_ENV)
+        lines = r.stdout.splitlines()
+        # サブモジュールを含む作業ツリーは git が消さないので、片付けの NOT_REMOVED(4) はこの足場の事情。
+        check("land は LANDED で始まる", lines[0].startswith("LANDED\t"), r.stdout + r.stderr)
+        check(
+            "LANDED の次に SUBMODULE_NOT_SYNCED（理由は fatal の行）",
+            len(lines) > 1 and lines[1].startswith("SUBMODULE_NOT_SYNCED\t") and "\tfatal:" in lines[1],
+            r.stdout,
+        )
+        check("main は枝の先端まで進んでいる", git(main_path, "merge-base", "--is-ancestor", "wt2-branch", "main").returncode == 0)
+
+
+def test_ship_without_gitmodules_prints_no_submodule_line() -> None:
+    say("task.py ship / land: .gitmodules が無いリポジトリでは出力が変わらない")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(tmp)
+        for wt, name in ((wt1, "a.txt"), (wt2, "b.txt")):
+            write(os.path.join(wt, name), "x\n")
+            git(wt, "add", name)
+            git(wt, "commit", "-q", "-m", name)
+        r = run_task(wt1, "ship")
+        check(
+            "ship は SHIPPED・BACKUP だけ",
+            r.returncode == 0 and [line.split("\t")[0] for line in r.stdout.splitlines()] == ["SHIPPED", "BACKUP"],
+            r.stdout + r.stderr,
+        )
+        git(wt2, "rebase", "-q", "main")
+        r = run_task(main_path, "land", "wt2-branch")
+        check(
+            "land は LANDED・REMOVED・DELETED だけ",
+            [line.split("\t")[0] for line in r.stdout.splitlines()] == ["LANDED", "REMOVED", "DELETED"],
+            r.stdout + r.stderr,
+        )
+
+
 def test_ship_skips_send_on_main_worktree() -> None:
     say("task.py ship: main の作業ツリーで起こしたときは送る段を飛ばす")
     with tempfile.TemporaryDirectory() as tmp:
@@ -566,5 +689,8 @@ TESTS = (
     test_ship_skips_send_on_main_worktree,
     test_ship_main_dirty_stops,
     test_land,
+    test_ship_and_land_sync_submodules,
+    test_ship_and_land_report_unsynced_submodule,
+    test_ship_without_gitmodules_prints_no_submodule_line,
     test_base_branch_resolution,
 )
