@@ -36,6 +36,7 @@ import beads  # noqa: E402
 import layout  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
+import tracker  # noqa: E402
 from selftest_body import task_body  # noqa: E402
 from selftest_support import beads_home, check, copy_beads, finish, git, local, run_parallel, say, select, write  # noqa: E402
 
@@ -461,6 +462,7 @@ class FakeGitHub:
         self.issues: dict[int, dict] = {}
         self.items: dict[str, dict] = {}  # 項目 ID → {"url", "status"}
         self.option_prefix = "O-"
+        self.status_writes = 0  # Status 欄を書いた回数
         self.clock_offset = 0  # 秒。GitHub 側の編集を後の時刻にする
         self.lock = threading.Lock()
         fake = self
@@ -572,6 +574,7 @@ class FakeGitHub:
             if item is None or not option.startswith(self.option_prefix):
                 return {"errors": [{"message": "Could not resolve to a node"}]}
             item["status"] = option[len(self.option_prefix):]
+            self.status_writes += 1
             return {"data": {"updateProjectV2ItemFieldValue": {"projectV2Item": {"id": v["item"]}}}}
         if "items(first" in query:
             nodes = [{"id": k, "content": {"url": i["url"]},
@@ -668,6 +671,46 @@ def test_tracker_github_bidirectional() -> None:
               and issue.assignee == "wt1" and issue.status == "in_progress", r.stdout + str(issue and issue.raw))
 
 
+def _kv(cwd: str) -> dict[str, str]:
+    return json.loads(bd(cwd, "kv", "list", "--json").stdout or "{}")
+
+
+def test_tracker_project_items_per_issue() -> None:
+    say("トラッカー github・Project の控えは課題ごとのキー（旧い1つの塊は最初の読み込みで移して消す）")
+    prefix, legacy_key = tracker.ITEMS_KEY_PREFIX, tracker.LEGACY_ITEMS_KEY
+    with _github() as (fake, _tmp, main_path, _wt1):
+        a, b = new(main_path, "控えを移す1"), new(main_path, "控えを移す2")
+        na, nb = _num(a), _num(b)
+        check("new のあと控えは課題ごとのキーにある", {f"{prefix}{na}", f"{prefix}{nb}"} <= set(_kv(main_path)), str(_kv(main_path)))
+        old = {k: json.loads(v) for k, v in _kv(main_path).items() if k.startswith(prefix)}
+        for k in old:
+            bd(main_path, "kv", "clear", k)
+        legacy = {f"https://github.com/o/r/issues/{int(k[len(prefix):])}": v for k, v in old.items()}
+        legacy.update({f"https://github.com/o/r/issues/{1000 + i}": {"item": f"PVTI_{1000 + i}", "status": "Todo"}
+                       for i in range(150)})
+        bd(main_path, "kv", "set", legacy_key, json.dumps(legacy))
+        r = run_task(main_path, "sync")
+        kv = _kv(main_path)
+        items = {k: v for k, v in kv.items() if k.startswith(prefix)}
+        check("旧い塊は課題ごとのキーへ移って消える", r.returncode == 0 and legacy_key not in kv
+              and len(items) == len(legacy), r.stdout + r.stderr + str(sorted(kv)))
+        check("移した値は課題の数に依らず小さい", max(len(v) for v in items.values()) < 100, str(max(items.values(), key=len)))
+        check("移した値は元のまま", json.loads(items[f"{prefix}{na}"]) == legacy[f"https://github.com/o/r/issues/{na}"])
+
+        fake.status_writes = 0
+        r = run_task(main_path, "sync")
+        check("移したあとの sync は同じ Status の課題へ触らない", r.returncode == 0 and fake.status_writes == 0,
+              f"{fake.status_writes}\n{r.stdout}{r.stderr}")
+
+        before = _kv(main_path)
+        bd(main_path, "update", beads.to_bd_id(a), "--status", "deferred")
+        r = run_task(main_path, "sync")
+        after = _kv(main_path)
+        changed = sorted(k for k in after if k.startswith(prefix) and before.get(k) != after[k])
+        check("Status が変わった課題だけ1キー書き換わる", fake.status_writes == 1 and fake.status_of(na) == "Pending"
+              and fake.status_of(nb) == "Todo" and changed == [f"{prefix}{na}"], f"{fake.status_writes} {changed}\n{r.stdout}{r.stderr}")
+
+
 def test_tracker_github_conflict() -> None:
     say("トラッカー github・issue_prefix gh（init.py が gh で作る・両側で変えたら Beads が勝つ）")
     with _github(prefix=None) as (fake, _tmp, main_path, _wt1):
@@ -744,6 +787,7 @@ def main() -> None:
         tests = (
             test_tracker_github_bidirectional,
             test_tracker_github_conflict,
+            test_tracker_project_items_per_issue,
             test_cycle_done_ship_and_dropped,
             test_commit_guard,
             test_claim_race_owner_and_release,

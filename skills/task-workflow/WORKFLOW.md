@@ -612,7 +612,9 @@ Beads の中は `proj-123`）も同じ ID として読む。読む形はトラ�
 **Status 欄の控え**（GraphQL の枠は1時間に5000点・アカウント単位で、点数は要求の上限で数えられる）:
 Project・Status 欄・選択肢の ID は `bd kv` の `task-workflow.project` に控え、控えで書いて落ちたら（欄や
 選択肢を作り直したとき）1回だけ読み直す。Issue ごとの項目 ID と最後に書いた Status は
-`task-workflow.project-items`（Issue の URL が鍵）に控え、Beads の状態から決まる Status が控えと同じ課題には
+`task-workflow.project-item.<Issue 番号>`（課題ごとの1キー。値は `{"item", "status"}`。1つの JSON にまとめると
+`bd kv` の1値の上限を超える）に控え、旧い1つの塊 `task-workflow.project-items` は最初の読み込みで課題ごとの
+キーへ移して消す。Beads の状態から決まる Status が控えと同じ課題には
 触らない。項目 ID が控えに無い課題は Issue の `projectItems(first: 10)` だけを引き、控えの無い課題が10件を
 超えるとき（最初の1回）は Project を `items(first: 100)` の `id`・`content.url`・`fieldValueByName("Status")`
 だけで一巡して控えを埋める。Issue の読み書きと取り込む番号を選ぶ一覧は REST で、GraphQL の枠を食わない。

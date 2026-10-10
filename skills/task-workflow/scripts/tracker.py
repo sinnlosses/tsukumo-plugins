@@ -46,7 +46,10 @@ JIRA_REF = re.compile(rf"^(?:\S*/browse/)?({layout.JIRA_ID_FRAGMENT})$")
 
 # `bd kv` の控え。値はどれも JSON。
 PROJECT_KEY = "task-workflow.project"  # {"project": "<owner>/<番号>", "id", "field", "options": {名前: ID}}
-ITEMS_KEY = "task-workflow.project-items"  # {Issue の URL: {"item": 項目 ID, "status": 最後に書いた名前}}
+# 課題ごとのキー `<これ><Issue 番号>`。値は {"item": 項目 ID, "status": 最後に書いた名前}。
+ITEMS_KEY_PREFIX = "task-workflow.project-item."
+# 全課題を1つの JSON に入れていた旧い控え。1値の上限を超えるので、最初の読み込みで課題ごとのキーへ移して消す。
+LEGACY_ITEMS_KEY = "task-workflow.project-items"
 SYNCED_KEY = "task-workflow.github-synced"  # {Issue 番号: その課題を最後に送った・取り込んだ時刻}（CONFLICT の判定）
 # 課題ごとのキー `<これ><Issue 番号>`。値は最後に届いた送りの直前に読んだその課題の着手の時刻
 # （`started_at`。着手中でなければ空）。この値は JSON でない。
@@ -98,7 +101,7 @@ class Session:
         self._repo: str | None = None
         self._project: dict | None = None
         self._items: dict | None = None
-        self._items_dirty = False
+        self._items_dirty: set[str] = set()
         self._synced: dict | None = None
 
     @property
@@ -357,7 +360,7 @@ class Session:
             item_id = self._find_item(url)
             self._set_field(self._project, item_id, want)
         items[url] = {"item": item_id, "status": want}
-        self._items_dirty = True
+        self._items_dirty.add(url)
 
     def _set_field(self, project: dict, item_id: str, want: str) -> None:
         option = project["options"].get(want)
@@ -388,20 +391,23 @@ class Session:
         """Project の項目を一巡して、項目 ID と今の Status を控える（要る欄だけを取る）。"""
         items = self._load_items()
         project = self._load_project()
+        prefix = f"https://github.com/{self._repository()}/issues/"
         after = None
         while True:
             data = self._graphql(PROJECT_ITEMS, {"project": project["id"], "after": after})
             page = (data.get("node") or {}).get("items") or {}
             for node in page.get("nodes") or []:
                 url = ((node or {}).get("content") or {}).get("url")
-                if url:
+                if url and url.startswith(prefix):
                     status = (node.get("fieldValueByName") or {}).get("name")
-                    items[url] = {"item": str(node["id"]), "status": status}
+                    fresh = {"item": str(node["id"]), "status": status}
+                    if items.get(url) != fresh:
+                        items[url] = fresh
+                        self._items_dirty.add(url)
             info = page.get("pageInfo") or {}
             if not info.get("hasNextPage"):
                 break
             after = info.get("endCursor")
-        self._items_dirty = True
 
     def _load_project(self) -> dict:
         if self._project is None:
@@ -432,9 +438,31 @@ class Session:
 
     def _load_items(self) -> dict:
         if self._items is None:
-            cached = _loads(beads.run(self.toplevel, ["kv", "get", ITEMS_KEY]).stdout)
-            self._items = cached if isinstance(cached, dict) else {}
+            listed = _loads(beads.run(self.toplevel, ["kv", "list", "--json"]).stdout)
+            listed = listed if isinstance(listed, dict) else {}
+            self._items = {}
+            for key, raw in listed.items():
+                suffix = key[len(ITEMS_KEY_PREFIX):]
+                value = _loads(raw) if isinstance(raw, str) else None
+                if key.startswith(ITEMS_KEY_PREFIX) and suffix.isdigit() and isinstance(value, dict):
+                    self._items[self._items_url(int(suffix))] = value
+            self._migrate_legacy_items(listed.get(LEGACY_ITEMS_KEY))
         return self._items
+
+    def _items_url(self, number: int) -> str:
+        return f"https://github.com/{self._repository_or_none()}/issues/{number}"
+
+    def _migrate_legacy_items(self, raw: object) -> None:
+        legacy = _loads(raw) if isinstance(raw, str) else None
+        if not isinstance(legacy, dict) or self._items is None or self._repository_or_none() is None:
+            return
+        for url, value in legacy.items():
+            n = _ref_number(url)
+            if n is not None and isinstance(value, dict) and self._items_url(n) == url and url not in self._items:
+                self._items[url] = value
+                self._items_dirty.add(url)
+        self._save()
+        beads.run_ok(self.toplevel, ["kv", "clear", LEGACY_ITEMS_KEY])
 
     # --- 課題ごとの同期の時刻（CONFLICT の判定） ---------------------------------------
 
@@ -493,9 +521,12 @@ class Session:
         }
 
     def _save(self) -> None:
-        if self._items_dirty and self._items is not None:
-            beads.run_ok(self.toplevel, ["kv", "set", ITEMS_KEY, json.dumps(self._items, ensure_ascii=False)])
-            self._items_dirty = False
+        items = self._items or {}
+        for url in sorted(self._items_dirty):
+            n = _ref_number(url)
+            if n is not None and url in items:
+                beads.run_ok(self.toplevel, ["kv", "set", f"{ITEMS_KEY_PREFIX}{n}", json.dumps(items[url], ensure_ascii=False)])
+        self._items_dirty = set()
 
     # --- 呼び出し ------------------------------------------------------------------
 
