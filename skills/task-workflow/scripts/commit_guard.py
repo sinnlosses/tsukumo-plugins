@@ -9,15 +9,17 @@ from __future__ import annotations
 
 import json
 import os
-import shlex
-from typing import IO
+import re
+from typing import IO, NamedTuple
 
 import agent_scope
 import ledger
 
 COMMIT_SUBCOMMANDS = ("commit", "merge", "pull", "cherry-pick", "revert", "am", "rebase")
 
-_PUNCTUATION = ";&|()\n"
+_OPERATOR_CHARS = ";&|()\n<>"
+_SHELL_KEYWORDS = ("do", "then", "else", "elif", "if", "while", "until", "!", "{")
+_HEREDOC = re.compile(r"<<(?!<)-?\s*(['\"]?)([A-Za-z_]\w*)\1")
 _GIT_OPTIONS_WITH_VALUE = ("-c", "--git-dir", "--work-tree", "--namespace")
 
 
@@ -62,35 +64,117 @@ def decide(payload: dict) -> str | None:
 
 def _git_commits(command: str, start: str) -> list[tuple[str, str]]:
     """`(作業先, サブコマンド)` の並び。コミットを作る git のサブコマンドだけ。割れなければ空。"""
-    try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=_PUNCTUATION)
-        lexer.whitespace = " \t\r"
-        lexer.whitespace_split = True
-        words = list(lexer)
-    except ValueError:
-        return []
     found: list[tuple[str, str]] = []
-    where = start
-    for simple in _split_commands(words):
-        if not simple:
-            continue
-        if simple[0] == "cd":
-            target = simple[1] if len(simple) > 1 else "-"
-            where = start if target == "-" else os.path.normpath(os.path.join(where, os.path.expanduser(target)))
-            continue
-        hit = _git_subcommand(simple, where)
+    for simple in _simple_commands(command, start):
+        hit = _git_subcommand([t.text for t in simple.words], simple.where)
         if hit is not None and hit[1] in COMMIT_SUBCOMMANDS:
             found.append(hit)
     return found
 
 
-def _split_commands(words: list[str]) -> list[list[str]]:
-    commands: list[list[str]] = [[]]
-    for w in words:
-        if w and all(c in _PUNCTUATION for c in w):
+class Token(NamedTuple):
+    text: str
+    op: bool
+
+
+class Simple(NamedTuple):
+    where: str
+    words: tuple[Token, ...]
+
+
+def _simple_commands(command: str, start: str) -> list[Simple]:
+    """単純コマンドと、`cd` を追った実効の作業先の並び。割れなければ空。リダイレクトの演算子と先の語は残す。"""
+    tokens = _tokens(_split_heredocs(command)[0])
+    if tokens is None:
+        return []
+    found: list[Simple] = []
+    where = start
+    for words in _split_commands(tokens):
+        while words and not words[0].op and words[0].text in _SHELL_KEYWORDS:
+            words = words[1:]
+        if not words:
+            continue
+        if words[0].text == "cd" and not words[0].op:
+            target = words[1].text if len(words) > 1 else "-"
+            where = start if target == "-" else os.path.normpath(os.path.join(where, os.path.expanduser(target)))
+            continue
+        found.append(Simple(where, tuple(words)))
+    return found
+
+
+def _split_heredocs(command: str) -> tuple[str, list[str]]:
+    """ヒアドキュメントの本文と終わりの語の行を除いたコマンドと、本文の並び。"""
+    lines = command.split("\n")
+    kept: list[str] = []
+    bodies: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        kept.append(line)
+        i += 1
+        for m in _HEREDOC.finditer(line):
+            body: list[str] = []
+            while i < len(lines) and lines[i].strip() != m.group(2):
+                body.append(lines[i])
+                i += 1
+            i += 1
+            bodies.append("\n".join(body))
+    return "\n".join(kept), bodies
+
+
+def _tokens(text: str) -> list[Token] | None:
+    """語と演算子（引用符の外の `;&|()<>` と改行の連なり）に割る。引用符が閉じなければ `None`。"""
+    tokens: list[Token] = []
+    buf = ""
+    in_word = False
+    quote = ""
+    i = 0
+    while i < len(text):
+        c = text[i]
+        if quote:
+            if c == quote:
+                quote = ""
+            elif c == "\\" and quote == '"' and text[i + 1 : i + 2] in ('"', "\\", "$", "`"):
+                buf += text[i + 1]
+                i += 1
+            else:
+                buf += c
+        elif c in "'\"":
+            quote = c
+            in_word = True
+        elif c == "\\" and i + 1 < len(text):
+            if text[i + 1] != "\n":
+                buf += text[i + 1]
+                in_word = True
+            i += 1
+        elif c in " \t\r" or c in _OPERATOR_CHARS:
+            if in_word:
+                tokens.append(Token(buf, False))
+                buf, in_word = "", False
+            if c in _OPERATOR_CHARS:
+                j = i
+                while j < len(text) and text[j] in _OPERATOR_CHARS:
+                    j += 1
+                tokens.append(Token(text[i:j], True))
+                i = j - 1
+        else:
+            buf += c
+            in_word = True
+        i += 1
+    if quote:
+        return None
+    if in_word:
+        tokens.append(Token(buf, False))
+    return tokens
+
+
+def _split_commands(tokens: list[Token]) -> list[list[Token]]:
+    commands: list[list[Token]] = [[]]
+    for t in tokens:
+        if t.op and "<" not in t.text and ">" not in t.text:
             commands.append([])
         else:
-            commands[-1].append(w)
+            commands[-1].append(t)
     return commands
 
 
