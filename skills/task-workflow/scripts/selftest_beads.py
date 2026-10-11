@@ -599,6 +599,7 @@ class FakeGitHub:
         self.fetched: list[int] = []  # Issue を1件ずつ GET で取った番号（`bd github pull` が取りに来た分）
         self.clock_offset = 0  # 秒。GitHub 側の編集を後の時刻にする
         self.delay = 0.0  # 秒。応答を遅らせる
+        self.delay_post_only = False  # 立てる POST の応答だけ遅らせる
         self.lock = threading.Lock()
         fake = self
 
@@ -619,7 +620,8 @@ class FakeGitHub:
                 body = json.loads(self.rfile.read(n).decode() or "null") if n else None
                 with fake.lock:
                     code, obj = fake.route(self.command, self.path, body)
-                time.sleep(fake.delay)
+                if not fake.delay_post_only or self.command == "POST":
+                    time.sleep(fake.delay)
                 self._reply(code, obj)
 
             do_GET = do_POST = do_PATCH = do_PUT = do_DELETE = _handle
@@ -654,9 +656,9 @@ class FakeGitHub:
             self.issues[number].update(fields)
             self.issues[number]["updated_at"] = self.now()
 
-    def open_issue(self, title: str, labels: list[str]) -> int:
+    def open_issue(self, title: str, labels: list[str], body: str = "外で立てた") -> int:
         with self.lock:
-            return self._create({"title": title, "body": "外で立てた", "labels": labels})["number"]
+            return self._create({"title": title, "body": body, "labels": labels})["number"]
 
     def _create(self, body: dict) -> dict:
         n = len(self.issues) + 1
@@ -840,6 +842,39 @@ def test_tracker_timeout() -> None:
         r = run_task(main_path, "sync")
         check("sync が打ち直して TRACKER OK", r.returncode == 0 and "TRACKER\tOK\tgithub" in r.stdout
               and "TRACKER\tFAILED" not in r.stdout, r.stdout + r.stderr)
+
+
+def test_tracker_register_timeout_no_duplicate() -> None:
+    say("トラッカー github・Issue を立てた直後に上限で落ちた仮の ID を sync が送り直しても Issue は1つ")
+    with _github() as (fake, _tmp, main_path, _wt1):
+        local.env[tracker.OP_TIMEOUT_ENV] = "2"
+        fake.delay = 5
+        fake.delay_post_only = True
+        a = new(main_path, "立てた直後に落ちる")
+        fake.delay = 0
+        check("前提: 落ちた register は仮の ID のまま返り、Issue は1つ立っている",
+              beads.is_provisional(beads.to_bd_id(a)) and len(fake.issues) == 1,
+              f"{a} {len(fake.issues)}")
+        r = run_task(main_path, "sync")
+        check("sync のあとも Issue は1つ", len(fake.issues) == 1, f"{len(fake.issues)} {r.stdout}{r.stderr}")
+        check("仮の ID は gh-1 へ付け替わる", beads.show(main_path, "gh-1") is not None
+              and not any(beads.is_provisional(i.bd_id) for i in beads.list_issues(main_path)), r.stdout)
+
+
+def test_tracker_pull_reports_duplicate() -> None:
+    say("トラッカー github・取り込んだ新しい Issue が既存の課題と題・本文が同じなら TRACKER INVALID")
+    with _github() as (fake, _tmp, main_path, _wt1):
+        a = new(main_path, "同じ題")
+        issue = beads.show(main_path, beads.to_bd_id(a))
+        body = str(issue.raw.get("description"))
+        fake.open_issue("同じ題", [], body=body + "\n")
+        r = run_task(main_path, "sync")
+        check("題・本文が同じなら INVALID の行", f"TRACKER\tINVALID\tGH-2\t{a} と重複している" in r.stdout,
+              r.stdout + r.stderr)
+        fake.open_issue("同じ題（別件）", [], body=body)
+        fake.open_issue("同じ題", [], body=body + "違う")
+        r = run_task(main_path, "sync")
+        check("題か本文が違うだけの Issue は重複とみなさない", "と重複している" not in r.stdout, r.stdout + r.stderr)
 
 
 def test_release_force_without_assignee() -> None:
@@ -1310,6 +1345,8 @@ def main() -> None:
             test_tracker_github_draft,
             test_tracker_sync_pushes_only_changed,
             test_tracker_timeout,
+            test_tracker_register_timeout_no_duplicate,
+            test_tracker_pull_reports_duplicate,
             test_tracker_project_items_per_issue,
             test_cycle_done_ship_and_dropped,
             test_commit_guard,

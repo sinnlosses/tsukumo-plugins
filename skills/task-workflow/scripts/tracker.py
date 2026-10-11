@@ -206,6 +206,7 @@ class Session:
             if not self.bidirectional:
                 self._bd_ok(["github", "sync", "--push-only"], "bd github sync --push-only")
             else:
+                self._adopt_existing([i.bd_id for i in self._issues() if beads.is_provisional(i.bd_id)])
                 listed = self._issues()
                 stale = {i.bd_id for i in listed if _after(i.raw.get("updated_at"), self._synced_at(i))}
                 if pull:
@@ -290,6 +291,11 @@ class Session:
         pulled_at = _now()
         self._bd_ok(["--actor", pull_actor, "github", "pull", *(str(n) for n in sorted(remote))], "bd github pull")
         new = _by_number(self._issues())
+        twins = [
+            (new[n].bd_id, twin.bd_id)
+            for n in sorted(remote)
+            if n in new and n not in old and (twin := _duplicate_of(new[n], self._issues())) is not None
+        ]
         # 別の作業ツリーの送りも見るので、この Session の控えではなく今の値を読む。
         pushed = self._load_pushed(fresh=True)
         legacy = self._load_synced()
@@ -334,7 +340,11 @@ class Session:
         if fixed:
             self._push(fixed)
         self._mark_synced([renamed.get(new[n].bd_id, new[n].bd_id) for n in remote if n in new])
-        return lines + rename_lines
+        duplicate_lines = [
+            f"TRACKER\tINVALID\t{beads.to_task_id(renamed.get(a, a))}\t{beads.to_task_id(renamed.get(b, b))} と重複している"
+            for a, b in twins
+        ]
+        return lines + rename_lines + duplicate_lines
 
     def _rename(self, bd_ids: list[str]) -> tuple[dict[str, str], list[str]]:
         """`external_ref` の番号と ID が違う課題を `gh-<番号>` へ付け替える。`{元: 先}` と出力の行を返す。"""
@@ -372,6 +382,12 @@ class Session:
             query = "state=open&per_page=100"
         else:
             query = "state=all&per_page=100&since=" + _format_time(seen - SEEN_MARGIN)
+        remote = self._rest_issues(query)
+        times = [t for t in (_parse_time(i.get("updated_at")) for i in remote.values()) if t is not None]
+        return remote, max(times) if times else None
+
+    def _rest_issues(self, query: str) -> dict[int, dict]:
+        """`repos/<repo>/issues?<query>` の Issue（PR を除く）を番号で引く。"""
         pages = self._gh_json(
             ["api", "--paginate", "--slurp", f"repos/{self._repository()}/issues?{query}"], "gh api issues"
         )
@@ -380,8 +396,7 @@ class Session:
             for item in page if isinstance(page, list) else []:
                 if isinstance(item, dict) and "pull_request" not in item and isinstance(item.get("number"), int):
                     remote[item["number"]] = item
-        times = [t for t in (_parse_time(i.get("updated_at")) for i in remote.values()) if t is not None]
-        return remote, max(times) if times else None
+        return remote
 
     # --- Project の Status 欄 --------------------------------------------------------
 
@@ -553,6 +568,8 @@ class Session:
 
     def _push(self, bd_ids: list[str]) -> None:
         """`bd github push` で送り、届いたら課題ごとに送った着手の時刻を `bd kv` へ書く（変わったものだけ）。"""
+        if self.bidirectional:
+            self._adopt_existing(bd_ids)
         sent = {i: _claim_started(self._issue(i, many=len(bd_ids) > 1)) for i in bd_ids}
         listed = {i.bd_id: i for i in self._listed or []}
         has_ref = all(i in listed and _ref_number(listed[i].external_ref) is not None for i in bd_ids)
@@ -566,6 +583,32 @@ class Session:
                 key = f"{PUSHED_KEY_PREFIX}{n}"
                 beads.run_ok(self.toplevel, ["kv", "set", key, sent[issue.bd_id]])
                 self._kv_all = {**self._kv_listing(), key: sent[issue.bd_id]}
+
+    def _adopt_existing(self, bd_ids: list[str]) -> None:
+        """番号の無い課題と題・本文が同じ Issue が既にあれば、その番号を `external_ref` に控える。
+
+        `bd github push` が Issue を立てた直後に上限で殺されると番号が Beads に書かれず、
+        そのまま送り直すともう1つ立つ。
+        """
+        pending = [i for i in self._issues() if i.bd_id in bd_ids and _ref_number(i.external_ref) is None]
+        if not pending:
+            return
+        taken = {n for i in self._issues() if (n := _ref_number(i.external_ref)) is not None}
+        found = self._rest_issues("state=all&per_page=100")
+        remote = [found[n] for n in sorted(found) if n not in taken]
+        for issue in pending:
+            created = _parse_time(issue.raw.get("created_at"))
+            for item in remote:
+                made = _parse_time(item.get("created_at"))
+                if (
+                    item.get("title") == issue.title
+                    and (item.get("body") or "").strip() == str(issue.raw.get("description") or "").strip()
+                    and item.get("html_url")
+                    and (created is None or made is None or made >= created - SYNC_SLACK)
+                ):
+                    self._write(["update", issue.bd_id, "--external-ref", item["html_url"]], check=True)
+                    remote.remove(item)
+                    break
 
     def _load_pushed(self, fresh: bool = False) -> dict[int, str]:
         """課題ごとの送りの印の値（`{Issue 番号: 送った着手の時刻}`。印の無い課題は入らない）。
@@ -791,6 +834,16 @@ def jira_rename(toplevel: str, bd_ids: list[str] | None = None) -> tuple[dict[st
 
 def _by_number(issues: list[beads.Issue]) -> dict[int, beads.Issue]:
     return {n: i for i in issues if (n := _ref_number(i.external_ref)) is not None}
+
+
+def _duplicate_of(issue: beads.Issue, others: list[beads.Issue]) -> beads.Issue | None:
+    """題と本文（前後の空白を除く）が同じ別の課題。"""
+    body = str(issue.raw.get("description") or "").strip()
+    return next(
+        (o for o in others if o.bd_id != issue.bd_id and o.title == issue.title
+         and str(o.raw.get("description") or "").strip() == body),
+        None,
+    )
 
 
 def _claim_restore_args(

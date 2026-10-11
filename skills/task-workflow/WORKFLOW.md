@@ -689,7 +689,10 @@ Project・Status 欄・選択肢の ID は `bd kv` の `task-workflow.project` �
   数字だけの hash になりうるので使わない）→ `bd github push <仮の ID>` → `external_ref` の末尾の番号 →
   `bd rename <仮の ID> gh-<番号>`（依存・comment・履歴ごと付け替わる）→ もう一度 `bd github push`（付け替えも
   Beads の更新なので、前回の同期の時刻を進めておく）。push で落ちたら仮の ID のまま
-  `TRACKER\tFAILED` を出し、`tw sync` が push と付け替えをやり直す
+  `TRACKER\tFAILED` を出し、`tw sync` が push と付け替えをやり直す。立てた直後に上限で落ちて番号が
+  Beads に無い仮の ID は、送り直す前に題・本文が同じ Issue があればその番号を `external_ref` に控えるだけにし
+  （Issue を2つ立てない）、取り込んだ新しい Issue が既存の課題と題・本文が同じなら
+  `TRACKER\tINVALID\t<取り込んだ課題>\t<既にある課題> と重複している` の行で知らせる（閉じるのは人）
 - **取り込み**: 取り込んだ課題の ID は `gh-<時刻>-1-<hash>` なので、`external_ref` の番号 `n` と ID が
   違う課題は `tw` が `bd rename` で `gh-<n>` にする（行き先が既にあれば付け替えず `INVALID` の行）。
   `difficulty`・`loopable` が無ければ振り分け前（上の「サイクルの各段で Beads に起きること」）
