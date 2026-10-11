@@ -190,6 +190,81 @@ def test_commit_guard_shell_edit() -> None:
         check("done のあとの書き換えは通る", run_guard(tmp, wt1, "echo x > f.txt") is None)
 
 
+@weight(6)
+def test_commit_guard_verify() -> None:
+    say("task.py commit-guard: 印が立って done 前の作業ツリーで、設定の検証コマンドの直打ちを拒む")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(tmp, verify="`./check.sh`", preship="`./ship-check.sh`")
+        commit_task(main_path, taskfile.Task("T-100", "拒む", "todo", "sonnet", "Y", (), BODY))
+        os.makedirs(os.path.join(wt1, "sub"), exist_ok=True)
+        run_task(wt1, "claim", "T-100")
+
+        reason = run_guard(tmp, wt1, "./check.sh")
+        check("理由にタスクIDと tw verify が入る",
+              reason is not None and "T-100" in reason and "tw verify" in reason, str(reason))
+        for command, where in (
+            ("./check.sh", wt1),
+            ("./check.sh --full", wt1),
+            ("FOO=1 ./check.sh", wt1),
+            ("command ./check.sh", wt1),
+            (f"cd {wt1} && ./check.sh", tmp),
+            (f"{wt1}/check.sh", os.path.join(wt1, "sub")),
+            ("../check.sh", os.path.join(wt1, "sub")),
+            ("./check.sh 2>&1 | tail", wt1),
+            ("./check.sh >/dev/null 2>&1", wt1),
+            ("git status && ./check.sh", wt1),
+            ("( ./check.sh )", wt1),
+            ("# note\n./check.sh", wt1),
+            ("if (( 1 )); then ./check.sh; fi", wt1),
+            ("./ship-check.sh", wt1),
+        ):
+            check(f"拒む: {command.splitlines()[-1]}", run_guard(tmp, where, command) is not None)
+        for command, where in (
+            ("tw verify", wt1),
+            ("tw verify T-100", wt1),
+            ("./check.sh path/to/one.test.ts", wt1),
+            ("python3 skills/task-workflow/scripts/selftest_task.py test_x", wt1),
+            ("bash ./check.sh", wt1),
+            ("echo ./check.sh", wt1),
+            ("git log -- ./check.sh", wt1),
+            ("ls ./check.sh", wt1),
+            ("./check-other.sh", wt1),
+            ("./check.sh", os.path.join(wt1, "sub")),
+            ("echo hi # ./check.sh", wt1),
+            ("(( n > 3 )) && echo ./check.sh", wt1),
+            ("if (( $# > 0 )); then echo y; fi", wt1),
+            ('cd "$TMPDIR" && ./check.sh', wt1),
+            ("./check.sh", wt2),
+            (f"cd {wt2} && ./check.sh", wt1),
+            ("./check.sh '閉じない", wt1),
+        ):
+            check(f"通す: {command.splitlines()[-1]}", run_guard(tmp, where, command) is None)
+
+        for text, command, refused in (
+            ('verify = "a && b"\n', "a", False),
+            ('verify = "なし"\n', "./check.sh", False),
+            ('verify = "pnpm run check"\n', "pnpm run check --full", True),
+            ('verify = "pnpm run check"\n', "pnpm run test", False),
+            ("verify = 壊れた\n", "./check.sh", False),
+        ):
+            write(os.path.join(wt1, ".tw", "config.toml"), text)
+            check(f"設定 {text.strip()} のとき {command} は{'拒む' if refused else '通す'}",
+                  (run_guard(tmp, wt1, command) is not None) == refused)
+
+        write(os.path.join(wt1, ".tw", "config.toml"), 'verify = "./check.sh"\n')
+        for agent_type, refused in ((None, False), ("tsukumo-workflow:no-delegate", True)):
+            payload = {"tool_name": "Bash", "tool_input": {"command": "./check.sh"}, "cwd": wt1}
+            if agent_type is not None:
+                payload["agent_type"] = agent_type
+            r = run_task(tmp, "commit-guard", "--agent-scoped", stdin=json.dumps(payload))
+            check(f"--agent-scoped の検証コマンドの拒否は agent_type={agent_type} で{'拒む' if refused else '通す'}",
+                  r.returncode == 0 and (r.stdout != "") == refused, r.stdout + r.stderr)
+
+        result_path = write(os.path.join(tmp, "result.md"), "結果\n")
+        run_task(wt1, "done", "T-100", "--result-file", result_path)
+        check("done のあとの検証コマンドは通る", run_guard(tmp, wt1, "./check.sh") is None)
+
+
 HOOKS_JSON = os.path.join(HERE, "..", "..", "..", "hooks", "hooks.json")
 
 
@@ -768,6 +843,7 @@ TESTS = (
     test_handback_guard_step,
     test_commit_guard,
     test_commit_guard_shell_edit,
+    test_commit_guard_verify,
     test_agent_scoped_guard,
     test_readonly_git,
     test_lap,

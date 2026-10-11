@@ -130,13 +130,11 @@ def _same_command(words: list[str], where: str, toplevel: str, configured: str) 
 
 
 def _same_program(word: str, where: str, configured: str, toplevel: str) -> bool:
-    if word == configured:
-        return True
     if "/" not in word and "/" not in configured:
-        return False
+        return word == configured
     a = _join(where, word)
     b = _join(toplevel, configured)
-    return a is not None and a == b
+    return a is not None and b is not None and os.path.realpath(a) == os.path.realpath(b)
 
 
 def _shell_writes(command: str, start: str) -> list[tuple[str, str]]:
