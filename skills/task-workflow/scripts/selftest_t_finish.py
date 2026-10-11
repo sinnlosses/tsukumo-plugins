@@ -115,6 +115,19 @@ def test_finish_prints_open_span() -> None:
         r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT)
         check("対が揃っていれば OPEN_SPAN は出ない", r.returncode == 0 and "OPEN_SPAN" not in r.stdout, r.stdout + r.stderr)
 
+    with tempfile.TemporaryDirectory() as tmp:
+        _main, wt1 = _claimed(tmp)
+        stages = ("delegate", "accept", "review", "retro", "land")
+        for stage in stages:
+            run_task(wt1, "lap", "T-100", stage, "start")
+        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT)
+        open_lines = [l for l in r.stdout.splitlines() if l.startswith("OPEN_SPAN")]
+        check(
+            "手順書の形（<段> start だけ打って end を打ち漏らす）は、どの段も OPEN_SPAN に出る",
+            r.returncode == 0 and open_lines == [f"OPEN_SPAN\tT-100\t{s}" for s in stages],
+            r.stdout + r.stderr,
+        )
+
 
 def test_finish_open_span_for_any_id_spelling() -> None:
     say("task.py finish: ID の書き方（表示・小文字・Beads）によらず、終わりの無い段を T-100 の OPEN_SPAN で出す")

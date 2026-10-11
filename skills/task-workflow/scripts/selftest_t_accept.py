@@ -98,6 +98,8 @@ def test_accept_records_accept_end() -> None:
         write(os.path.join(wt1, "code.py"), "x = 1\n")
         r = run_task(wt1, "accept", "T-100")
         check("REVIEW で返る回は end を残さない", "REVIEW\tcode\t1" in r.stdout and accept_ends(wt1) == [], r.stdout + r.stderr)
+        stage_edges = lambda stage: [e.get("edge") for e in flow_rows(wt1) if e["event"] == "lap" and e.get("stage") == stage]
+        check("tw accept が打つ accept・review は start として残る", stage_edges("accept") == ["start"] and stage_edges("review") == ["start"], repr(flow_rows(wt1)))
         r = run_task(wt1, "accept", "T-100", "--after-review")
         check("--after-review の終わりで end が1つ残る", r.returncode == 0 and len(accept_ends(wt1)) == 1, r.stdout + r.stderr)
         check("end の行は LAPPED として表に出さない", "LAPPED" not in r.stdout, r.stdout)
@@ -112,7 +114,7 @@ def test_accept_end_pairs_with_start_for_any_id_spelling() -> None:
             run_task(wt1, "verify")
             r = run_task(wt1, "accept", spelling)
             edges = [(e["task"], e.get("edge")) for e in flow_rows(wt1) if e["event"] == "lap" and e.get("stage") == "accept"]
-            check(f"{spelling}: start と end が T-100 に残る", r.returncode == 0 and edges == [("T-100", None), ("T-100", "end")], repr(edges) + r.stdout + r.stderr)
+            check(f"{spelling}: start と end が T-100 に残る", r.returncode == 0 and edges == [("T-100", "start"), ("T-100", "end")], repr(edges) + r.stdout + r.stderr)
 
 
 TESTS = (

@@ -4,7 +4,7 @@
 
 ## 2・3回目の受け入れ
 
-   2・3回目の直前は、今までどおり個別に `tw lap T-xxx review` を打ち、その時点の木を
+   2・3回目の直前は、今までどおり個別に `tw lap T-xxx review start` を打ち（判定の直後は `tw lap T-xxx review end`）、その時点の木を
    `python3 ${CLAUDE_SKILL_DIR}/scripts/review_snapshot.py` の出力（木の SHA）で控える。
 
    **同じ受け入れ役に `SendMessage` で続けさせる**。受け入れ役は前の回の指摘と目視の基準を持っているので、

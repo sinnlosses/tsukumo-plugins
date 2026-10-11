@@ -28,7 +28,7 @@ FORMAT_TAIL_LINES = 40
 
 def cmd_accept(toplevel: str, task_id: str, after_review: bool) -> None:
     if not after_review:
-        _run_part(lambda: tw_handback.cmd_lap(toplevel, task_id, "accept"))
+        _run_part(lambda: tw_handback.cmd_lap(toplevel, task_id, "accept", "start"))
         _run_part(lambda: tw_edit.cmd_plan_check(toplevel, task_id))
         if _review_gate(toplevel, task_id):
             return
@@ -63,7 +63,7 @@ def _review_gate(toplevel: str, task_id: str) -> bool:
     print(decided)
     if not decided.startswith("REVIEW"):
         return False
-    _run_part(lambda: tw_handback.cmd_lap(toplevel, task_id, "review"))
+    _run_part(lambda: tw_handback.cmd_lap(toplevel, task_id, "review", "start"))
     print(f"SNAPSHOT\t{_next_task_script(toplevel, 'review_snapshot.py')}")
     return True
 
