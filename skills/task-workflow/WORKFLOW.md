@@ -617,7 +617,7 @@ Beads の中は `proj-123`）も同じ ID として読む。読む形はトラ�
 
 | 方式 | すること | しないこと |
 | --- | --- | --- |
-| `github` | `issue_prefix` が `gh` なら双方向（下の「GitHub との双方向」）、`t` なら Beads から送るだけ。1件だけを触る操作（`new`・`claim`・`release`・`edit`・`adopt`・`done`）はその1件だけを `bd github push <ID>` で、`ship`・`sync` は全件を `bd github sync --push-only` で送る。そのあと Project の Status 欄を `gh api graphql` で書く（`deferred` → `Pending`、`open` → `Todo`、`in_progress` → `In progress`、閉じた → `Done`、`cancelled` → `Cancel`。Project に無い Issue は足す）。`bd` は Status 欄を触らない。token は `GITHUB_TOKEN` が無ければ `gh auth token` | 引数なしの `bd github sync`・`--pull-only`（`bd` の増分の取り込みは取りこぼす）。`gh project` のコマンド（`item-list` は入れ子の上限で1回約101点かかり、どれも持ち主の照会を足す）。Status 欄を読んで合わせる（人が Project で変えた Status は、次にその課題の Beads の状態が変わるまで戻らない） |
+| `github` | `issue_prefix` が `gh` なら双方向（下の「GitHub との双方向」）、`t` なら Beads から送るだけ。1件だけを触る操作（`new`・`claim`・`release`・`edit`・`adopt`・`done`）はその1件だけを `bd github push <ID>` で、`ship`・`sync` は、双方向なら変えた課題（控えが無いか `updated_at` が控えより新しい）だけを `bd github sync --push-only --issues <ID,…>` で送り（`bd` の `github.last_sync` が無いと全件が更新対象になり遅いため）、`t` なら全件を `bd github sync --push-only` で送る。そのあと Project の Status 欄を `gh api graphql` で書く（`deferred` → `Pending`、`open` → `Todo`、`in_progress` → `In progress`、閉じた → `Done`、`cancelled` → `Cancel`。Project に無い Issue は足す）。`bd` は Status 欄を触らない。token は `GITHUB_TOKEN` が無ければ `gh auth token` | 引数なしの `bd github sync`・`--pull-only`（`bd` の増分の取り込みは取りこぼす）。`gh project` のコマンド（`item-list` は入れ子の上限で1回約101点かかり、どれも持ち主の照会を足す）。Status 欄を読んで合わせる（人が Project で変えた Status は、次にその課題の Beads の状態が変わるまで戻らない） |
 | `jira` | `tw sync`（と各操作のあと）で `bd jira sync --pull` だけ。取り込んだ課題の ID は `issue_prefix` の hash（`t-aby`。数字だけにもなりうる）なので、`external_ref`（`https://<site>/browse/PROJ-123`）のキーと ID が違う振り分け前の課題を `bd rename` で `proj-123` にする（行き先が既にあれば付け替えず `TRACKER\tINVALID\t<ID>\t<行き先> が既にある（付け替えない）`。`bd rename` は接頭辞が `issue_prefix` と違っても通り、次の取り込みは `external_ref` で同じ課題に当てる）。ローカルで閉じた Jira の課題（`external_ref` あり）には label `jira:close` を付け、`status` の `jira_close` 行に出す。人が Jira で閉じたら `tw jira-closed T-xxx` で外す | Jira へ書く（`--push`・引数なしの `sync`）。状態は人が Jira で変える |
 | `なし` | 何もしない（`tw sync` は `NOTHING`） | ― |
 
@@ -679,8 +679,9 @@ Project・Status 欄・選択肢の ID は `bd kv` の `task-workflow.project` �
   閉じられたら見送りとして label `cancelled` を足し、`TRACKER\tCLOSED\tGH-<n>` の行を出す（着手中なら
   人に預ける）。GitHub で開き直したら `cancelled` と `ship:*` を外す
 - **`tw sync` の順**: 控える → 取り込む → 送りの印を読んで着手の印を戻し、付け替える（直したものを送る）→
-  push（`bd github sync --push-only`）→ 登録で落ちた仮の ID を付け替える → 送りの印と違う着手中の課題を
-  まとめて送り直し（1回の `bd github push <ID>…`。`--push-only` はどれを送ったかを教えない）、届いたら
+  push（取り込みの前に選んだ、控えが無いか `updated_at` が控えより新しい課題だけを
+  `bd github sync --push-only --issues <ID,…>` で。無ければ打たない）→ 登録で落ちた仮の ID を付け替える →
+  送りの印と違う着手中の課題をまとめて送り直し（1回の `bd github push <ID>…`）、届いたら
   その課題の送りの印を書く → Status 欄を書く
 
 **Jira の方式との違い**:

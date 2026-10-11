@@ -527,6 +527,7 @@ class FakeGitHub:
         self.items: dict[str, dict] = {}  # 項目 ID → {"url", "status"}
         self.option_prefix = "O-"
         self.status_writes = 0  # Status 欄を書いた回数
+        self.issue_patches: list[int] = []  # Issue を PATCH で更新した番号（順に）
         self.clock_offset = 0  # 秒。GitHub 側の編集を後の時刻にする
         self.delay = 0.0  # 秒。応答を遅らせる
         self.lock = threading.Lock()
@@ -605,6 +606,7 @@ class FakeGitHub:
             return 201, self.issue_json(self._create(body))
         if m and method == "PATCH":
             issue = self.issues[int(m.group(1))]
+            self.issue_patches.append(issue["number"])
             for k in ("title", "body", "state", "labels"):
                 if k in body:
                     issue[k] = body[k]
@@ -866,6 +868,27 @@ def test_tracker_project_items_per_issue() -> None:
               and fake.status_of(nb) == "Todo" and changed == [f"{prefix}{na}"], f"{fake.status_writes} {changed}\n{r.stdout}{r.stderr}")
 
 
+def test_tracker_sync_pushes_only_changed() -> None:
+    say("トラッカー github・sync は変えた課題だけを送り、変わりが無ければ送らない")
+    with _github() as (fake, _tmp, main_path, _wt1):
+        a, b = new(main_path, "変えない"), new(main_path, "変える")
+        na, nb = _num(a), _num(b)
+        r = run_task(main_path, "sync")
+        check("最初の sync は成功する", r.returncode == 0 and "TRACKER\tOK\tgithub" in r.stdout, r.stdout + r.stderr)
+        fake.issue_patches.clear()
+        r = run_task(main_path, "sync")
+        check("変わりが無ければ Issue を送らず pushed=0", r.returncode == 0 and "pushed=0\t" in r.stdout
+              and fake.issue_patches == [], f"{fake.issue_patches}\n{r.stdout}{r.stderr}")
+        time.sleep(1.1)
+        u = bd(main_path, "update", beads.to_bd_id(b), "--title", "Beads で直した題")
+        check("bd update", u.returncode == 0, u.stdout + u.stderr)
+        r = run_task(main_path, "sync")
+        check("変えた1件だけを送る", r.returncode == 0 and "pushed=1\t" in r.stdout
+              and set(fake.issue_patches) == {nb} and fake.issues[nb]["title"] == "Beads で直した題"
+              and fake.issues[na]["title"] == "変えない",
+              f"{fake.issue_patches}\n{r.stdout}{r.stderr}")
+
+
 def test_tracker_github_conflict() -> None:
     say("トラッカー github・issue_prefix gh（init.py が gh で作る・両側で変えたら Beads が勝つ）")
     with _github(prefix=None) as (fake, _tmp, main_path, _wt1):
@@ -942,6 +965,7 @@ def main() -> None:
         tests = (
             test_tracker_github_bidirectional,
             test_tracker_github_conflict,
+            test_tracker_sync_pushes_only_changed,
             test_tracker_timeout,
             test_tracker_project_items_per_issue,
             test_cycle_done_ship_and_dropped,

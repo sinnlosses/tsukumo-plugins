@@ -188,13 +188,27 @@ class Session:
         try:
             started = _now()
             newest = None
-            if pull and self.bidirectional:
-                remote, newest = self._rest_changed()
-                lines += self._pull(remote)
-            before = beads.list_issues(self.toplevel)
-            self._bd_ok(["github", "sync", "--push-only"], "bd github sync --push-only")
-            if self.bidirectional:
-                self._mark_synced([i.bd_id for i in before if _after(i.raw.get("updated_at"), self._synced_at(i))])
+            # 取り込みは送った時刻を進める（Beads が勝って飛ばした課題も）ので、送る課題は取り込みの前に選ぶ。
+            pushed_count = "all"
+            if not self.bidirectional:
+                self._bd_ok(["github", "sync", "--push-only"], "bd github sync --push-only")
+            else:
+                stale = {
+                    i.bd_id for i in beads.list_issues(self.toplevel)
+                    if _after(i.raw.get("updated_at"), self._synced_at(i))
+                }
+                if pull:
+                    remote, newest = self._rest_changed()
+                    lines += self._pull(remote)
+                before = beads.list_issues(self.toplevel)
+                changed_ids = [i.bd_id for i in before if i.bd_id in stale]
+                pushed_count = str(len(changed_ids))
+                if changed_ids:
+                    self._bd_ok(
+                        ["github", "sync", "--push-only", "--issues", ",".join(changed_ids)],
+                        "bd github sync --push-only",
+                    )
+                self._mark_synced(changed_ids)
                 renamed, renamed_lines = self._rename([i.bd_id for i in before if beads.is_provisional(i.bd_id)])
                 lines += renamed_lines
                 if renamed:
@@ -216,7 +230,7 @@ class Session:
             self._save()
         except _Failed as e:
             return lines + [f"TRACKER\tFAILED\tgithub\t{e}"]
-        return lines + [f"TRACKER\tOK\tgithub\tpushed=all\tstatus_changed={changed}"]
+        return lines + [f"TRACKER\tOK\tgithub\tpushed={pushed_count}\tstatus_changed={changed}"]
 
     # --- 取り込み ----------------------------------------------------------------
 
