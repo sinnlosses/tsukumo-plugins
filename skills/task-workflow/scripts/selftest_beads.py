@@ -741,6 +741,10 @@ else:
     sys.exit(1)
 """)
     os.chmod(os.path.join(bin_dir, "gh"), 0o755)
+    # `BD_COUNT_FILE` があるときだけ、`bd` の起動を1行ずつ控える。
+    write(os.path.join(bin_dir, "bd"),
+          f'#!/bin/sh\n[ -n "$BD_COUNT_FILE" ] && echo "$*" >> "$BD_COUNT_FILE"\nexec {shutil.which("bd")} "$@"\n')
+    os.chmod(os.path.join(bin_dir, "bd"), 0o755)
     return bin_dir
 
 
@@ -945,6 +949,28 @@ def test_tracker_sync_pushes_only_changed() -> None:
               f"{fake.issue_patches}\n{r.stdout}{r.stderr}")
 
 
+def test_tracker_sync_bd_calls() -> None:
+    say("トラッカー github・1回の sync の bd の起動は、課題8件で17回以下")
+    with _github() as (fake, tmp, main_path, _wt1):
+        ids = [new(main_path, f"課題{i}") for i in range(8)]
+        r = run_task(_wt1, "claim", ids[0])
+        check("claim", r.returncode == 0 and r.stdout.startswith("CLAIMED"), r.stdout + r.stderr)
+        counted = os.path.join(tmp, "bd-count.txt")
+        local.env = {**local.env, "BD_COUNT_FILE": counted}
+        # 8件とも取り込んで着手の印を戻す sync は、1件ごとの history と update が本物の仕事なので17回に収まらない。
+        for label, limit in (("変わりの無い sync", 17), ("8件とも GitHub で直した sync", 29)):
+            if label.startswith("8件"):
+                fake.clock_offset = 60
+                for task_id in ids:
+                    fake.edit(_num(task_id), body="GitHub で直した本文")
+            open(counted, "w").close()
+            r = run_task(main_path, "sync")
+            calls = open(counted).read().splitlines()
+            say(f"  {label}: bd {len(calls)} 回")
+            check(f"{label}は成功する", r.returncode == 0 and "TRACKER\tOK\tgithub" in r.stdout, r.stdout + r.stderr)
+            check(f"{label}の bd の起動は{limit}回以下（{len(calls)}回）", len(calls) <= limit, "\n".join(calls))
+
+
 def test_tracker_sync_skips_echo() -> None:
     say("トラッカー github・自分の送りの反響は取り込みに渡さず、あとから GitHub で直したものは渡す")
     with _github(prefix=None) as (fake, _tmp, main_path, _wt1):
@@ -1060,6 +1086,7 @@ def main() -> None:
         # 長いものから並列に乗せる（後ろに残ると全体がその分延びる）。
         tests = (
             test_tracker_github_bidirectional,
+            test_tracker_sync_bd_calls,
             test_tracker_sync_skips_echo,
             test_tracker_github_conflict,
             test_tracker_github_draft,
