@@ -68,16 +68,20 @@ def cmd_backup(toplevel: str) -> None:
         raise SystemExit(10)
 
 
+DIFFICULTY_LABEL = "difficulty:"
+LOOPABLE_LABEL = "loopable:"
+
+
 def cmd_migrate_attributes(toplevel: str) -> None:
     """label `difficulty:`・`loopable:` を metadata へ写して label を外す（打ち直しても結果は変わらない）。"""
     keys = (
-        (beads.DIFFICULTY_KEY, beads.DIFFICULTY_LABEL, taskfile.DIFFICULTY_VALUES),
-        (beads.LOOPABLE_KEY, beads.LOOPABLE_LABEL, taskfile.LOOPABLE_VALUES),
+        (beads.DIFFICULTY_KEY, DIFFICULTY_LABEL, taskfile.DIFFICULTY_VALUES),
+        (beads.LOOPABLE_KEY, LOOPABLE_LABEL, taskfile.LOOPABLE_VALUES),
     )
     migrated = 0
     invalid = 0
     for issue in beads.list_issues(toplevel):
-        if not any(l.startswith((beads.DIFFICULTY_LABEL, beads.LOOPABLE_LABEL)) for l in issue.labels):
+        if not any(l.startswith((DIFFICULTY_LABEL, LOOPABLE_LABEL)) for l in issue.labels):
             continue
         shown = beads.to_task_id(issue.bd_id)
         metadata = issue.raw.get("metadata")

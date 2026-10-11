@@ -695,9 +695,7 @@ def jira_rename(toplevel: str, bd_ids: list[str] | None = None) -> tuple[dict[st
         if target is None or target == issue.bd_id:
             continue
         if bd_ids is None:
-            if beads.attribute_values(issue, beads.DIFFICULTY_KEY, beads.DIFFICULTY_LABEL) or beads.attribute_values(
-                issue, beads.LOOPABLE_KEY, beads.LOOPABLE_LABEL
-            ):
+            if beads.attribute_values(issue, beads.DIFFICULTY_KEY) or beads.attribute_values(issue, beads.LOOPABLE_KEY):
                 continue
         elif issue.bd_id not in bd_ids:
             continue

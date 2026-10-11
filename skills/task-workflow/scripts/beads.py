@@ -17,7 +17,7 @@ Issue 番号（`gh-5` ↔ `GH-5`）、`t` なら `task` の採番（`t-123` ↔ 
 | `deferred`（切り替え前の独自の状態 `pending` も） | `hold` |
 | `in_progress` | `todo` ＋ 着手の印（assignee が作業ツリー名） |
 | `closed` | `done`（label `cancelled` があれば `dropped`） |
-| metadata `difficulty`・`loopable`（無ければ従来の label `difficulty:<値>`・`loopable:<Y/N>`） | `difficulty`・`loopable` |
+| metadata `difficulty`・`loopable` | `difficulty`・`loopable` |
 | label `direct:Y`（無ければ印なし） | `direct` |
 | `blocks` の依存 | `dependencies` |
 | `title` | `summary` |
@@ -53,8 +53,6 @@ HOLD_STATUSES = (HOLD_STATUS, LEGACY_HOLD_STATUS)
 CANCELLED_LABEL = "cancelled"
 DIFFICULTY_KEY = "difficulty"
 LOOPABLE_KEY = "loopable"
-DIFFICULTY_LABEL = "difficulty:"
-LOOPABLE_LABEL = "loopable:"
 DIRECT_LABEL = "direct:"
 DIRECT_ON = f"{DIRECT_LABEL}Y"
 # `task done` が立て、`task ship` が主ブランチへ送ったあとに閉じる印（done と dropped の2つ）。
@@ -335,14 +333,14 @@ def to_task(issue: Issue) -> tuple[taskfile.Task | None, str | None]:
     else:
         return None, f"Beads の状態 {issue.status!r} はこの運用に無い（open・{HOLD_STATUS}・in_progress・closed だけ）"
 
-    difficulty = attribute_values(issue, DIFFICULTY_KEY, DIFFICULTY_LABEL)
-    loopable = attribute_values(issue, LOOPABLE_KEY, LOOPABLE_LABEL)
+    difficulty = attribute_values(issue, DIFFICULTY_KEY)
+    loopable = attribute_values(issue, LOOPABLE_KEY)
     if not (is_numbered(issue.bd_id) or is_provisional(issue.bd_id)) or (not difficulty and not loopable):
         return None, None
     if len(difficulty) != 1 or difficulty[0] not in taskfile.DIFFICULTY_VALUES:
-        return None, "label difficulty:<haiku|sonnet|opus> がちょうど1つでない"
+        return None, "metadata difficulty が haiku|sonnet|opus の1つでない"
     if len(loopable) != 1 or loopable[0] not in taskfile.LOOPABLE_VALUES:
-        return None, "label loopable:<Y|N> がちょうど1つでない"
+        return None, "metadata loopable が Y|N の1つでない"
     direct = label_values(issue.labels, DIRECT_LABEL)
     if direct not in ([], ["Y"]):
         return None, "label direct: は direct:Y が1つだけ（印が無ければ置かない）"
@@ -357,12 +355,12 @@ def label_values(labels: tuple[str, ...], prefix: str) -> list[str]:
     return [l[len(prefix) :] for l in labels if l.startswith(prefix)]
 
 
-def attribute_values(issue: Issue, key: str, label_prefix: str) -> list[str]:
-    """属性の値。metadata の `key` があればそれだけ、無ければ従来の label（移行が済むまでの暫定）。"""
+def attribute_values(issue: Issue, key: str) -> list[str]:
+    """属性の値。metadata の `key` があればその1つ、無ければ空。"""
     metadata = issue.raw.get("metadata")
     if isinstance(metadata, dict) and metadata.get(key):
         return [str(metadata[key])]
-    return label_values(issue.labels, label_prefix)
+    return []
 
 
 def ship_mark(issue: Issue) -> str | None:

@@ -144,12 +144,7 @@ def cmd_adopt(toplevel: str, args: argparse.Namespace) -> None:
     parts = beads.split_body(body)
     cmd = ["update", new_id, "--body-file", "-", "--acceptance", parts.acceptance, "--notes", parts.notes]
     cmd += ["--set-metadata", f"{beads.PLAN_BASE_KEY}={plan_base}"]
-    cmd += [
-        x
-        for l in issue.labels
-        if l.startswith((beads.DIFFICULTY_LABEL, beads.LOOPABLE_LABEL, beads.DIRECT_LABEL))
-        for x in ("--remove-label", l)
-    ]
+    cmd += [x for l in issue.labels if l.startswith(beads.DIRECT_LABEL) for x in ("--remove-label", l)]
     cmd += ["--set-metadata", f"{beads.DIFFICULTY_KEY}={args.difficulty}", "--set-metadata", f"{beads.LOOPABLE_KEY}={args.loopable}"]
     if args.direct:
         cmd += ["--add-label", beads.DIRECT_ON]

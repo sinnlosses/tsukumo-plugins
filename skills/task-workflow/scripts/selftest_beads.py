@@ -185,7 +185,7 @@ def test_direct_mark() -> None:
 
 
 def test_difficulty_loopable_metadata() -> None:
-    say("difficulty・loopable: new・edit は metadata に書き、読みは metadata 優先で label に後退し、取り込みで消えたら戻す")
+    say("difficulty・loopable: new・edit は metadata に書き、読みは metadata だけで、取り込みで消えたら戻す")
     import tracker  # noqa: PLC0415
 
     def issue(status: str = "open", labels: tuple[str, ...] = (), metadata: dict | None = None) -> beads.Issue:
@@ -193,13 +193,13 @@ def test_difficulty_loopable_metadata() -> None:
 
     both = issue(labels=("difficulty:opus", "loopable:N"), metadata={"difficulty": "haiku", "loopable": "Y"})
     task, _ = beads.to_task(both)
-    check("metadata と label が両方あれば metadata が勝つ",
+    check("metadata と label が両方あっても metadata を読む",
           task is not None and (task.difficulty, task.loopable) == ("haiku", "Y"), str(task))
-    task, _ = beads.to_task(issue(labels=("difficulty:opus", "loopable:N")))
-    check("metadata が無ければ label を読む", task is not None and (task.difficulty, task.loopable) == ("opus", "N"), str(task))
-    task, _ = beads.to_task(issue(labels=("loopable:N",), metadata={"difficulty": "sonnet"}))
-    check("片方が metadata・片方が label でも読める",
-          task is not None and (task.difficulty, task.loopable) == ("sonnet", "N"), str(task))
+    check("label だけの課題は振り分け前（label は読まない）",
+          beads.to_task(issue(labels=("difficulty:opus", "loopable:N"))) == (None, None))
+    task, reason = beads.to_task(issue(labels=("loopable:N",), metadata={"difficulty": "sonnet"}))
+    check("片方だけ metadata で、もう片方が無ければ INVALID（label は読まない）",
+          task is None and reason is not None and "loopable" in reason, str(reason))
     task, reason = beads.to_task(issue(metadata={"difficulty": "gpt", "loopable": "Y"}))
     check("表に無い値は INVALID", task is None and reason is not None and "difficulty" in reason, str(reason))
     check("どちらも無ければ振り分け前", beads.to_task(issue()) == (None, None))
@@ -223,26 +223,24 @@ def test_difficulty_loopable_metadata() -> None:
         check("new は metadata に書き、label を付けない",
               created is not None and meta.get("difficulty") == "sonnet" and meta.get("loopable") == "Y"
               and not any(l.startswith(("difficulty:", "loopable:")) for l in created.labels), str(created))
-        bd(main_path, "update", beads.to_bd_id(task_id), "--add-label", "difficulty:opus")
         r = run_task(main_path, "edit", task_id, "--difficulty", "haiku", "--loopable", "N")
         edited = beads.show(main_path, beads.to_bd_id(task_id))
         meta = edited.raw.get("metadata") if edited is not None else {}
-        check("edit は metadata を書き換え、残った label を外す",
+        check("edit は metadata を書き換え、label を付けない",
               r.returncode == 0 and edited is not None and meta.get("difficulty") == "haiku"
-              and meta.get("loopable") == "N" and not any(l.startswith("difficulty:") for l in edited.labels),
+              and meta.get("loopable") == "N" and not any(l.startswith(("difficulty:", "loopable:")) for l in edited.labels),
               r.stdout + r.stderr + str(edited))
         shown = run_task(main_path, "show", task_id).stdout
         check("show は metadata から読む", "\ndifficulty: haiku\nloopable: N\n" in shown, shown)
 
-        r = bd(main_path, "create", "--id", "t-raw", "--title", "取り込み", "-l", "difficulty:opus,loopable:N",
-               "--silent")
-        check("振り分け前の課題（番号なし・古い label つき）を作れる", r.returncode == 0, r.stdout + r.stderr)
+        r = bd(main_path, "create", "--id", "t-raw", "--title", "取り込み", "-l", "mytag", "--silent")
+        check("振り分け前の課題（番号なし）を作れる", r.returncode == 0, r.stdout + r.stderr)
         r = run_task(main_path, "adopt", "T-RAW", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", "-",
                      stdin=PLANNED_BODY)
         adopted_id = r.stdout.strip().split("\t")[-1] if r.stdout.startswith("ADOPTED\t") else ""
         adopted = beads.show(main_path, beads.to_bd_id(adopted_id)) if adopted_id else None
         meta = adopted.raw.get("metadata") if adopted is not None else {}
-        check("adopt は metadata に2キーを書き、古い label を外す",
+        check("adopt は metadata に2キーを書き、label を付けない",
               adopted is not None and meta.get("difficulty") == "sonnet" and meta.get("loopable") == "Y"
               and not any(l.startswith(("difficulty:", "loopable:")) for l in adopted.labels),
               r.stdout + r.stderr + str(adopted))
