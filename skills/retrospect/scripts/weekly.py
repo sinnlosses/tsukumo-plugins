@@ -11,7 +11,8 @@
   `WORSE\t<名前>\t<今>\t<前>`。`WORSE` があれば、期間内に主ブランチへ入ったやり方の変更
   `CHANGE\t<project|skills>\t<短い SHA>\t<件名>`（プロジェクトは設定ファイル・`.claude/`・`docs/`
   （`docs/history/` を除く）を触ったコミット、skills はこのスクリプトのあるリポジトリ。各20件まで）
-- **段の所要時間**: `STAGE\t<段>\t<difficulty>\t<道>\t<件数>\t<中央値秒>\t<最大秒>`（道は `direct`・`normal`。`tw metrics --stages --days N` と同じ行）
+- **段の所要時間**: `STAGE\t<段>\t<difficulty>\t<道>\t<件数>\t<中央値秒>\t<最大秒>`（道は `direct`・`normal`。`tw metrics --stages --days N` と同じ行）。
+  終わりの無い段は `OPEN\t<段>\t<件数>`
 - **規則の棚卸し**: 設定の `hook_tally` のコマンドをリポジトリの根で `sh -c` で打った標準出力を
   そのまま。無い・落ちた・60秒で終わらないときは `-\t<理由>`
 - **ドラフトの行方**: `WINDOW`・`FATE\t<観点>\t<積んだ>\t<採用>\t<却下>\t<未決>\t<絞り中|->`・

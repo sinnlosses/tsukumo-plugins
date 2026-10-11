@@ -53,6 +53,14 @@ def ago(days: float) -> str:
     return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
 
 
+STARTED = datetime.now(timezone.utc)
+
+
+def after(days: float, seconds: int) -> str:
+    """`days` 日前から `seconds` 秒あとの時刻。呼ぶたびに今を取り直さないので、秒の差が揺れない。"""
+    return (STARTED - timedelta(days=days) + timedelta(seconds=seconds)).isoformat(timespec="seconds")
+
+
 def flow_row(at: str, event: str, task: str, **fields: object) -> str:
     return json.dumps({"t": at, "event": event, "task": task, "difficulty": "opus", **fields}) + "\n"
 
@@ -86,7 +94,17 @@ def test_weekly() -> None:
             + flow_row(ago(15), "done", "GH-20", dropped=False, reflection="none")
             + flow_row(ago(10), "ship", "GH-20", result="SHIPPED")
             + flow_row(ago(9), "ship", "GH-21", result="SHIPPED")
-            + flow_row(ago(2), "done", "GH-30", dropped=False, reflection="some"),
+            + flow_row(ago(2), "done", "GH-30", dropped=False, reflection="some")
+            # 合流・反映の対（GH-40）と、end の無い反映（GH-41）。NOTHING は shipped に数えない
+            + flow_row(after(8, 0), "claim", "GH-40", difficulty="sonnet")
+            + flow_row(after(8, 10), "lap", "GH-40", difficulty="sonnet", stage="land", edge="start")
+            + flow_row(after(8, 70), "lap", "GH-40", difficulty="sonnet", stage="land", edge="end")
+            + flow_row(after(8, 80), "lap", "GH-40", difficulty="sonnet", stage="sync", edge="start")
+            + flow_row(after(8, 120), "lap", "GH-40", difficulty="sonnet", stage="sync", edge="end")
+            + flow_row(after(8, 130), "ship", "GH-40", difficulty="sonnet", result="NOTHING")
+            + flow_row(after(8, 0), "claim", "GH-41", difficulty="sonnet")
+            + flow_row(after(8, 20), "lap", "GH-41", difficulty="sonnet", stage="sync", edge="start")
+            + flow_row(after(8, 50), "ship", "GH-41", difficulty="sonnet", result="NOTHING"),
         )
 
         r = weekly(d)
@@ -114,12 +132,16 @@ def test_weekly() -> None:
         r = weekly(d, "--days", "30")
         check("--days で期間を変えられる", lines_of("期間", r.stdout)[0].startswith("PERIOD\t30d\t"), r.stdout)
         check(
-            "段の所要時間に STAGE の行が出る",
+            "段の所要時間に STAGE の行が出て、合流・反映の段と OPEN の行も落とさない",
             lines_of("段の所要時間", r.stdout)
             == [
                 "STAGE\t計画\topus\tnormal\t1\t43200\t43200",
+                "STAGE\t計画\tsonnet\tnormal\t2\t15\t20",
                 "STAGE\t委譲\topus\tnormal\t1\t43200\t43200",
+                "STAGE\t合流\tsonnet\tnormal\t1\t60\t60",
                 "STAGE\t送り出し\topus\tnormal\t1\t432000\t432000",
+                "STAGE\t反映\tsonnet\tnormal\t1\t40\t40",
+                "OPEN\t反映\t1",
             ],
             r.stdout,
         )
