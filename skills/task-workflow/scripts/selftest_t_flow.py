@@ -360,7 +360,7 @@ def test_config_file_agents_md_and_conflict() -> None:
 
 def _make_config_doctor_repo(tmp: str, name: str, with_config: bool = True) -> str:
     """`task config-doctor`・`task config` のフィクスチャ用の最小リポジトリ（`.beads` 付き）。
-    `with_config` が偽なら `.tw/config.toml` を置かず、`develop/direction.md` と CLAUDE.md の旧い節だけを置く。"""
+    `with_config` が偽なら `.tw/config.toml` を置かず、CLAUDE.md の旧い節だけを置く。"""
     repo = os.path.join(tmp, name)
     os.makedirs(repo)
     git(repo, "init", "-q", "-b", "main")
@@ -368,10 +368,6 @@ def _make_config_doctor_repo(tmp: str, name: str, with_config: bool = True) -> s
     git(repo, "config", "user.name", "test")
     git(repo, "config", "beads.role", "maintainer")
     copy_beads(repo, beads.PREFIX_LOCAL)
-    write(
-        os.path.join(repo, ".tw" if with_config else "develop", "direction.md"),
-        "# 未対応の指示メモ\n\n## ユーザーから\n\n## エージェントのドラフト\n",
-    )
     write(os.path.join(repo, "docs", "history", "tasks.md"), "# 完了タスクのアーカイブ\n")
     if with_config:
         write(os.path.join(repo, ".tw", "config.toml"), 'verify = "なし"\nbranch = "既定"\n')

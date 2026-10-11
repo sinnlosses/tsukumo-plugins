@@ -89,8 +89,6 @@ def cmd_config(toplevel: str) -> None:
         if value is None:
             value = layout.NO_COMMAND if key in CONFIG_COMMAND_KEYS else "-"
         print(f"{key}\t{value}\t{'config' if key in config.written else 'default'}")
-    print(f"direction\t{layout.direction_path(toplevel)}")
-    print(f"draft\t{layout.draft_dir(toplevel)}")
 
 
 def cmd_show(toplevel: str, task_id: str) -> None:

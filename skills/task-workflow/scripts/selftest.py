@@ -74,27 +74,20 @@ def test_init() -> None:
             subprocess.run(["git", "init", "-q", "-b", "main"], check=True, capture_output=True)
             subprocess.run(["git", "config", "beads.role", "maintainer"], check=True, capture_output=True)
             r = run()
-            check(".tw/direction.md と .tw/.gitignore だけを作る",
-                  r.stdout.splitlines()[:2] == ["CREATED\t.tw/direction.md", "CREATED\t.tw/.gitignore"]
-                  and r.stdout.count("CREATED") == 2, r.stdout)
+            check(".tw/.gitignore だけを作る（direction.md は作らない）",
+                  r.stdout.splitlines()[:1] == ["CREATED\t.tw/.gitignore"]
+                  and r.stdout.count("CREATED") == 1 and not os.path.exists(".tw/direction.md"), r.stdout)
             check("develop/ は作らない", not os.path.exists("develop"))
             check(".tw/.gitignore は local/ だけを外す", open(".tw/.gitignore", encoding="utf-8").read() == "local/\n")
             check("設定が無ければ config MISSING", "config\tMISSING\t.tw/config.toml" in r.stdout, r.stdout)
             check("設定が無ければ .beads を作らない", not os.path.exists(".beads"), r.stdout)
 
-            created = open(".tw/direction.md", encoding="utf-8").read()
-            check(
-                "作った direction.md は「ユーザーから」の節だけを持ち、ドラフトの置き場を見出しに書く",
-                "## ユーザーから" in created and "## エージェントのドラフト" not in created and ".tw/draft/" in created,
-                created,
-            )
             check("draft/ は作らない", not os.path.exists(".tw/draft"))
 
             write(".tw/.gitignore", "local/\nx\n")
             r = run()
             check("2回目は上書きしない", "KEPT" in r.stdout and "CREATED" not in r.stdout
                   and open(".tw/.gitignore", encoding="utf-8").read() == "local/\nx\n", r.stdout)
-            check("まっさらなら OK", "OK: 未対応の指示は無い" in r.stdout, r.stdout)
 
             for old in ("*\n", "*\n!config.toml\n"):
                 write(".tw/.gitignore", old)
@@ -111,48 +104,22 @@ def test_init() -> None:
             write("develop/tasks.json", "[]\n")
             r = run()
             check("develop/direction.md・develop/tasks.json があっても止まらずに .tw/ を作る",
-                  r.returncode == 0 and "CREATED\t.tw/direction.md" in r.stdout
+                  r.returncode == 0 and "CREATED\t.tw/.gitignore" in r.stdout
                   and "OLD_LAYOUT" not in r.stdout and "LEGACY" not in r.stdout, r.stdout)
             check("develop/ には触らない", open("develop/direction.md", encoding="utf-8").read() == "# 未対応の指示メモ\n\nこれをやって\n")
             shutil.rmtree(".tw")
             shutil.rmtree("develop")
 
-            write(".tw/direction.md", "# 未対応の指示メモ\n\nこれをやって\n")
+            old_direction = "# 未対応の指示メモ\n\n## ユーザーから\nこれをやって\n"
+            write(".tw/direction.md", old_direction)
+            write(".tw/draft/2026-09-27-fix-a.md", "# a\n")
             r = run()
-            check("既にある .tw/direction.md は点検するだけで作り直さない",
-                  r.stdout.startswith("KEPT\t.tw/direction.md\t"), r.stdout)
-            check(
-                "節が無いファイルは全体を「ユーザーから」とみなして PENDING",
-                "PENDING:" in r.stdout and "ユーザーから1行" in r.stdout,
-                r.stdout,
-            )
-
-            write(".tw/direction.md", "# 未対応の指示メモ\n\n## ユーザーから\nこれをやって\n")
-            write(".tw/draft/2026-09-27-fix-a.md", "# a\n\n- 根拠: x\n- 出し先: y\n")
-            write(".tw/draft/2026-09-27-fix-b.md", "# b\n")
-            r = run()
-            check(
-                "ユーザーからは行数、ドラフトは draft/ のファイルの件数で数える",
-                "ユーザーから1行" in r.stdout and "エージェントのドラフト2件" in r.stdout and "旧ドラフト節" not in r.stdout,
-                r.stdout,
-            )
-
-            os.remove(".tw/draft/2026-09-27-fix-a.md")
-            os.remove(".tw/draft/2026-09-27-fix-b.md")
-            write(
-                ".tw/direction.md",
-                "# 未対応の指示メモ\n\n## ユーザーから\n\n"
-                "## エージェントのドラフト\n"
-                "### 開発フローとスキルの汎用化\n"
-                "開発フロー関連の改善についてのドラフト\n"
-                "複数行のドラフトです\n",
-            )
-            r = run()
-            check(
-                "旧いドラフトの節に行が残っていれば、移すよう促して PENDING",
-                "PENDING:" in r.stdout and "旧ドラフト節3行" in r.stdout and "エージェントのドラフト0件" in r.stdout,
-                r.stdout,
-            )
+            check("旧い .tw/direction.md・.tw/draft/ が残っていても読まず・数えず・消さない",
+                  r.returncode == 0 and "direction" not in r.stdout and "PENDING" not in r.stdout
+                  and open(".tw/direction.md", encoding="utf-8").read() == old_direction
+                  and os.path.exists(".tw/draft/2026-09-27-fix-a.md"), r.stdout)
+            shutil.rmtree(".tw/draft")
+            os.remove(".tw/direction.md")
 
             write(".tw/config.toml", 'format = "なし"\n')
             r = run()
