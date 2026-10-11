@@ -528,6 +528,7 @@ class FakeGitHub:
         self.option_prefix = "O-"
         self.status_writes = 0  # Status 欄を書いた回数
         self.clock_offset = 0  # 秒。GitHub 側の編集を後の時刻にする
+        self.delay = 0.0  # 秒。応答を遅らせる
         self.lock = threading.Lock()
         fake = self
 
@@ -548,6 +549,7 @@ class FakeGitHub:
                 body = json.loads(self.rfile.read(n).decode() or "null") if n else None
                 with fake.lock:
                     code, obj = fake.route(self.command, self.path, body)
+                time.sleep(fake.delay)
                 self._reply(code, obj)
 
             do_GET = do_POST = do_PATCH = do_PUT = do_DELETE = _handle
@@ -735,6 +737,27 @@ def test_tracker_github_bidirectional() -> None:
               and issue.assignee == "wt1" and issue.status == "in_progress", r.stdout + str(issue and issue.raw))
 
 
+def test_tracker_timeout() -> None:
+    say("トラッカー github・1件の操作は上限で打ち切って TRACKER FAILED にし、sync が打ち直す")
+    with _github() as (fake, _tmp, main_path, _wt1):
+        a = new(main_path, "遅れる反映")
+        local.env[tracker.OP_TIMEOUT_ENV] = "2"
+        fake.delay = 5
+        started = time.monotonic()
+        r = run_task(main_path, "edit", a, "--difficulty", "haiku")
+        elapsed = time.monotonic() - started
+        edited = beads.show(main_path, beads.to_bd_id(a))
+        meta = edited.raw.get("metadata") if edited is not None else {}
+        check("上限を超えたら TRACKER FAILED の行を出し、終了コードは0のまま", r.returncode == 0
+              and "TRACKER\tFAILED\tgithub" in r.stdout, r.stdout + r.stderr)
+        check("Beads の書き込みは残る", meta.get("difficulty") == "haiku", str(edited))
+        check("待ちは上限の数倍に延びない", elapsed < 12, f"{elapsed:.1f}秒")
+        fake.delay = 0
+        r = run_task(main_path, "sync")
+        check("sync が打ち直して TRACKER OK", r.returncode == 0 and "TRACKER\tOK\tgithub" in r.stdout
+              and "TRACKER\tFAILED" not in r.stdout, r.stdout + r.stderr)
+
+
 def _kv(cwd: str) -> dict[str, str]:
     return json.loads(bd(cwd, "kv", "list", "--json").stdout or "{}")
 
@@ -851,6 +874,7 @@ def main() -> None:
         tests = (
             test_tracker_github_bidirectional,
             test_tracker_github_conflict,
+            test_tracker_timeout,
             test_tracker_project_items_per_issue,
             test_cycle_done_ship_and_dropped,
             test_commit_guard,
