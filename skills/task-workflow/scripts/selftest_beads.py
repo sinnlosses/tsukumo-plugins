@@ -971,6 +971,41 @@ def test_tracker_sync_bd_calls() -> None:
             check(f"{label}の bd の起動は{limit}回以下（{len(calls)}回）", len(calls) <= limit, "\n".join(calls))
 
 
+def test_tracker_sync_lock_busy() -> None:
+    say("トラッカー github・重ねて打った sync は錠で1本にし、2本目は待たず BUSY で返る")
+    with _github() as (fake, _tmp, main_path, _wt1):
+        a = new(main_path, "錠を確かめる")
+        n = _num(a)
+        fake.clock_offset = 60
+        fake.edit(n, body="GitHub で直した本文")
+        lock = os.path.join(ledger.ledger_root(main_path), ledger.SYNC_LOCK_NAME)
+        fake.delay = 1.5
+        first = start_task(main_path, "sync")
+        deadline = time.monotonic() + 30
+        while not os.path.exists(lock) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        second = run_task(main_path, "sync")
+        check("1本目が走っている間の2本目は BUSY の行と終了コード5で返る", second.returncode == 5
+              and second.stdout.startswith("BUSY\tsync\t") and "TRACKER" not in second.stdout,
+              second.stdout + second.stderr)
+        out, err = first.communicate(timeout=120)
+        check("1本目の結果は変わらない（取り込みが済み、TRACKER OK）", first.returncode == 0
+              and "TRACKER\tOK\tgithub" in out, out + err)
+        issue = beads.show(main_path, beads.to_bd_id(a))
+        check("1本目が GitHub の本文を取り込んだ", issue is not None
+              and "GitHub で直した本文" in str(issue.raw.get("description")), str(issue and issue.raw))
+        check("終わったら錠は残らない", not os.path.exists(lock))
+        fake.delay = 0
+        third = run_task(main_path, "sync")
+        check("1本目が終わったあとの sync は通る", third.returncode == 0 and "TRACKER\tOK\tgithub" in third.stdout,
+              third.stdout + third.stderr)
+        with open(lock, "w", encoding="utf-8") as f:
+            f.write("999999\tx\ty")
+        stale = run_task(main_path, "sync")
+        check("持ち主のいない古い錠は壊さず、行に添えて BUSY で返る", stale.returncode == 5
+              and "古い錠" in stale.stdout and os.path.exists(lock), stale.stdout + stale.stderr)
+
+
 def test_tracker_sync_skips_echo() -> None:
     say("トラッカー github・自分の送りの反響は取り込みに渡さず、あとから GitHub で直したものは渡す")
     with _github(prefix=None) as (fake, _tmp, main_path, _wt1):
@@ -1087,6 +1122,7 @@ def main() -> None:
         tests = (
             test_tracker_github_bidirectional,
             test_tracker_sync_bd_calls,
+            test_tracker_sync_lock_busy,
             test_tracker_sync_skips_echo,
             test_tracker_github_conflict,
             test_tracker_github_draft,
