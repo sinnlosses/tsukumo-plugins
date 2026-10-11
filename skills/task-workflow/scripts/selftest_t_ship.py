@@ -169,6 +169,36 @@ def test_ship_nothing_records_ship_event() -> None:
         check("ship の出来事が result=NOTHING で1つ残る", ships == [("T-100", "NOTHING")], repr(ships))
 
 
+def test_ship_records_sync_span_before_ship() -> None:
+    say("task.py ship: SHIPPED でも NOTHING でも、sync の start・end のあとに ship が flow に残る")
+    spans = lambda wt: [
+        (e["event"], e.get("stage"), e.get("edge"), e.get("result"))
+        for e in flow_rows(wt)
+        if e["event"] == "ship" or (e["event"] == "lap" and e.get("stage") == "sync")
+    ]
+    expected = lambda result: [("lap", "sync", "start", None), ("lap", "sync", "end", None), ("ship", None, None, result)]
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
+        commit_task(main_path, taskfile.Task("T-100", "別のリポジトリが作業先", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        run_task(wt1, "done", "T-100", "--result-file", write(os.path.join(tmp, "result.md"), "検証OK\n"))
+        r = run_task(wt1, "ship")
+        check("NOTHING で返る", r.stdout.startswith("NOTHING\t"), r.stdout + r.stderr)
+        check("NOTHING: start → end → ship の順", spans(wt1) == expected("NOTHING"), repr(spans(wt1)))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
+        commit_task(main_path, taskfile.Task("T-100", "送る", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        write(os.path.join(wt1, "work.txt"), "x")
+        git(wt1, "add", "work.txt")
+        git(wt1, "commit", "-q", "-m", "work")
+        run_task(wt1, "done", "T-100", "--result-file", write(os.path.join(tmp, "result.md"), "検証OK\n"))
+        r = run_task(wt1, "ship")
+        check("SHIPPED で返る", r.stdout.startswith("SHIPPED\t"), r.stdout + r.stderr)
+        check("SHIPPED: start → end → ship の順", spans(wt1) == expected("SHIPPED"), repr(spans(wt1)))
+
+
 def test_ship_conflict_aborts_rebase() -> None:
     say("task.py ship: 衝突すればrebase --abortして止まる")
     with tempfile.TemporaryDirectory() as tmp:
@@ -769,6 +799,7 @@ TESTS = (
     test_ship_fast_forward,
     test_ship_stale_verify_owed_does_not_block_nothing_or_main_worktree,
     test_ship_nothing_records_ship_event,
+    test_ship_records_sync_span_before_ship,
     test_ship_conflict_aborts_rebase,
     test_ship_verify_failed_keeps_full_log_in_order,
     test_ship_skips_send_on_main_worktree,

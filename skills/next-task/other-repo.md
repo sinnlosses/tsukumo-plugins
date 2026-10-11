@@ -31,6 +31,11 @@
 
 ## 受け入れ（手順6）
 
+   **段の始まりと終わりを手で打つ**（`tw accept` を使わないので、`tw` は出さない。どれも着手した作業ツリーで、作業先の `cd` の外で打つ）:
+   - 頭（本体の汚れを見る前）に `tw lap T-xxx accept start`、検証が通った（`VERIFIED_SAME`、または打ち直した `tw verify` が通った）直後に `tw lap T-xxx accept end`
+   - 受け入れ役を起こす直前に `tw lap T-xxx review start`、判定を受けた直後に `tw lap T-xxx review end`（差し戻しのたびに対で打つ）
+   - 下の `tw land` の直前に `tw lap T-xxx land start`、`tw land` の出力を読んだ直後に `tw lap T-xxx land end`
+
    **最初に本体の汚れを見る**（`git diff` や `tw verify-check` より前）: `git -C <作業先の本体> status --short`
    を打ち、委譲の前の控えと比べる。
 

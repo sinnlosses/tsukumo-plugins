@@ -29,9 +29,9 @@ def cmd_ship(toplevel: str) -> None:
         # 4.4: 主ブランチを出している作業ツリーで起こしたときは送る段が無い。
         ledger.clear_verify_owed(cwd=toplevel)
         released, not_closed = _close_shipped(toplevel)
-        _record_shipped(toplevel, released)
+        after = _after_send(toplevel, released, "SHIPPED")
         print(f"SHIPPED\t{base}\t(送る段なし)\treleased={','.join(released) or '-'}")
-        tw_base.print_lines(not_closed + _after_send(toplevel))
+        tw_base.print_lines(not_closed + after)
         return
 
     ahead = tw_base.run_git(toplevel, ["rev-list", "--count", f"{base}..HEAD"])
@@ -39,9 +39,9 @@ def cmd_ship(toplevel: str) -> None:
     if ahead_count == 0:
         ledger.clear_verify_owed(cwd=toplevel)
         released, not_closed = _close_shipped(toplevel)
-        _record_shipped(toplevel, released, "NOTHING")
+        after = _after_send(toplevel, released, "NOTHING")
         print(f"NOTHING\t({base} に無いコミットが無い)")
-        tw_base.print_lines(not_closed + _after_send(toplevel))
+        tw_base.print_lines(not_closed + after)
         return
 
     worktrees = ledger.list_worktrees(cwd=toplevel)
@@ -99,7 +99,7 @@ def cmd_ship(toplevel: str) -> None:
         branch_note = _leave_feature_branch(toplevel, branch)
 
     released, not_closed = _close_shipped(toplevel)
-    _record_shipped(toplevel, released)
+    after = _after_send(toplevel, released, "SHIPPED")
     submodule_lines = _sync_submodules(base_worktree.path) if base_worktree is not None else []
     new_base = tw_base.run_git(toplevel, ["rev-parse", base]).stdout.strip()
     preship_note = ""
@@ -110,7 +110,7 @@ def cmd_ship(toplevel: str) -> None:
         f"\tverify={outcome.verify_state}{preship_note}\ttries={outcome.tries}\treleased={','.join(released) or '-'}"
         f"\t{branch_note}"
     )
-    tw_base.print_lines(submodule_lines + not_closed + _after_send(toplevel))
+    tw_base.print_lines(submodule_lines + not_closed + after)
 
 
 def _sync_submodules(base_tree: str) -> list[str]:
@@ -158,9 +158,18 @@ def _close_shipped(toplevel: str) -> tuple[list[str], list[str]]:
     return closed, not_closed
 
 
-def _after_send(toplevel: str) -> list[str]:
-    """`SHIPPED`・`NOTHING` の行のあとに足す行（トラッカー・バックアップ）。"""
-    return tracker.session(toplevel).sync_all(pull=False) + beads.backup(toplevel)
+def _after_send(toplevel: str, released: list[str], result: str) -> list[str]:
+    """`SHIPPED`・`NOTHING` の行のあとに足す行（トラッカー・バックアップ）。
+
+    `sync` の start・end のあとに `ship` を記録する（`tw metrics --stages` は `ship` までの出来事で区間を切る）。
+    """
+    for task_id in released:
+        tw_base.record(toplevel, "lap", task_id, stage="sync", edge="start")
+    lines = tracker.session(toplevel).sync_all(pull=False) + beads.backup(toplevel)
+    for task_id in released:
+        tw_base.record(toplevel, "lap", task_id, stage="sync", edge="end")
+    _record_shipped(toplevel, released, result)
+    return lines
 
 
 def _record_shipped(toplevel: str, released: list[str], result: str = "SHIPPED") -> None:
