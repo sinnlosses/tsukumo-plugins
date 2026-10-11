@@ -17,7 +17,7 @@
 | ## status と着手の印 | 遷移（ドラフトから `todo`・`hold` へ・却下）、依存の解決、取り残しの判定 |
 | ## summary（一行要約） | 一行に収める理由 |
 | ## difficulty とモデルの切り替え | 基準表、委譲の規則と、一致していても委譲する根拠の実測、委譲しない近道の基準の表 |
-| ## loopable（`/loop` に載せてよいか） | `Y`/`N` の基準、`hold` との違い |
+| ## loopable（`/loop` に載せてよいか） | `Y`/`N` の基準、決める前に止まる要因を洗い出す表と `tw ask-guard`、`hold` との違い |
 | ## 1サイクル | claim → やること → 作業 → 受け入れ → 振り返り → done → コミット → ship |
 | ## 送り出し | `ship` の送り方、検証コマンドを打つ時点、作業ブランチの後始末 |
 | ## 結果の書き方と知見の置き場 | `## 結果` に書くこと、`progress.md` をなくした後の置き場 |
@@ -38,7 +38,7 @@
 | `docs/history/retrospect.md` | 横断の振り返りの記録（1回ごとに先頭へ `## YYYY-MM-DD（開始日〜終了日）` の見出しを足す。`retrospect` の SKILL.md「週ごとに振り返る」）。`tw status` が見出しの日付から `retrospect_due` を決める |
 | `docs/history/tasks.md`・`docs/history/progress.md` | 旧形式の時代の履歴。**読むだけで書き足さない** |
 | 台帳 `$(git rev-parse --path-format=absolute --git-common-dir)/task-workflow/`（環境変数 `TW_STATE_DIR` があれば `$TW_STATE_DIR/<本体の作業ツリーの名前>-<共有の git dir の realpath の sha1 の先頭12桁>/`） | 着手から送り出しまでの出来事（`flow/<YYYY-MM>.jsonl`。1行1出来事で、時刻（UTC）・出来事・タスクID・`difficulty` と、`verify`・`ship` の結果の先頭語と `verify` の所要秒、`lap` の段の名前（`stage`）と段の端（`edge`。`start`／`end`）、`done` の `dropped` と振り返りが「兆候なし」か。出来事の一覧は「台帳に残る出来事」。会話・コマンド・パスは入れない。消えない）。コミットしない。全作業ツリーで1つ。`TW_STATE_DIR` を付けると、そのあとの記録はその下に書き、共有の git dir の台帳は読まない（写さない）。書けなければ標準エラーに1行出すだけで、元のサブコマンドの出力と終了コードは変わらない |
-| 作業ツリーの根の `.tw/local/task-open-claims/T-xxx` | `claim` から `done`・`release`・`ship` までの控え（中身は空）。`tw commit-guard`・`tw handback-guard` が読む。コミットしない。作業ツリーごと |
+| 作業ツリーの根の `.tw/local/task-open-claims/T-xxx` | `claim` から `done`・`release`・`ship` までの控え（中身は空）。`tw commit-guard`・`tw handback-guard`・`tw ask-guard` が読む。コミットしない。作業ツリーごと |
 | 作業ツリーの根の `.tw/local/` の `task-verify-stamp`・`task-pause-stamp`・`task-step-stamps/<ID>.<n>`・`task-ship-verify-owed`・`task-verify.log`・`task-ship-verify.log`・`task-verify.failed-<時刻>.log`・`task-ship-verify.failed-<時刻>.log` | `tw verify` が通った中身の鍵と、`tw pause`・`tw step` を打った時点の中身の鍵（どれも `HEAD` の SHA・作業ツリーの木の SHA〔`.tw/local/` を外す。`.tw/config.toml` は入れたまま〕・検証コマンドの3行。`task-step-stamps/` は段ごとに1つで、続けてタスクID・段の番号・種類〔`step`・`pause`〕の3行。木からはその段と並列の組になる段の触るファイルも外す）、`ship` の検証の借り、`verify`・`ship` の検証のログ（`task-verify.log` には整形の出力のあとに検証の出力が続く。通った回は上書き。落ちた回は `.failed-<時刻>.log` に写して種類ごとに直近3本を残す）。コミットしない。作業ツリーごと。`.tw/local/` は初めて書くときに `tw` が作り、中身 `*` の `.tw/local/.gitignore` を置く（`.tw/.gitignore`・利用者の `.gitignore`・`.git/info/exclude` には触らない）。読む順は `.tw/local/` → `.tw/` 直下（旧い置き場。上の控えの名前があるとき）→ 作業ツリー固有の git dir `$(git rev-parse --path-format=absolute --git-dir)`（最も古い置き場）で、書くのはいつも `.tw/local/`。`.tw/local/` があるかどうかが目印で、作るときに控えを名前ごとに `.tw/` 直下（無ければ git dir）から写し、`.tw/` 直下の検証のログも写して、旧い側を両方の置き場から消す |
 
 **台帳に残る出来事**（`flow/` の1行。どの行にも時刻・出来事・タスクID・`difficulty` が付く）:
@@ -346,6 +346,21 @@ Beads の label・各スキルの本文は触らない）:
 迷ったら聞く。聞けない状況（無人のセッション）のときだけ `N`。`/loop` の `/next-task` は `N` を
 選ばず、ユーザーが直接呼んだときは選んでよい。
 
+**決める前に止まる要因を洗い出す**: `Y` は「実行中に利用者の手が要って止まらない」約束なので、
+`loopable` を決める前に本文を次の表に当て、行ごとに解くか `N` にする:
+
+| 実行中に止まる要因 | どうするか |
+| --- | --- |
+| 利用者への質問が要る判断が残る | 聞いて `## 決まっていること` に焼けば `Y` |
+| 対話的な検証が要る | 解けない → `N` |
+| 承認の範囲外の外部への反映・破壊的な操作・グローバル設定の書き換え | 承認の範囲を本文に書けば `Y` |
+| 作業の途中で人の手が要る（`### 人がやること` のうち検証より前に要るもの） | 解けない → `N`（`ship` のあとでよいものは `Y` のまま `## 結果` に残す） |
+| ツールの許可確認 | タスクの性質でなく、セッションの許可モードで決まるので `loopable` の判断に入れない |
+
+取りこぼしは hook（`tw ask-guard`）が実行中の `AskUserQuestion` で捕まえる。着手の控えのタスクが `Y` なら
+質問を拒み、`N` に直して `## 注意` に理由を書き、`tw release` で止めさせる（振り返りの `tw lap T-xxx retro` のあとの質問は通す）。
+`report` の `favor`・許可確認・道具を呼ばずにターンを終える止まり方は捕まえないので、この表で先に防ぐ。
+
 **`hold` との違い**: `N` は「人がいれば誰でも進められる」、`hold` は「人が決めるまで誰も進められない」
 （決まっていない判断そのものが待っている）。`hold` は `/loop` の `/next-task` が選ばない。ユーザーが
 直接呼んだときは選んでよいが、判断は**委譲せずメインで** `AskUserQuestion` で聞き、答えを
@@ -522,6 +537,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | `step T-xxx <n>` | 自分の着手の印のタスクの `## やること` の段 `n` を済ませた印として、いまの中身の鍵（`verify` と同じ取り方から、段 `n` と並列の組になる段の触るファイルも外す）とタスクID・段の番号を `.tw/local/task-step-stamps/<ID>.<n>` に控え（段ごとに1つで、ほかの段の控えを上書きしない。着手中でないタスクの控えは消す）、`flow/` に `step` を1行足す。`pause` と同じく、作業先の作業ツリーがあればそこにもその中身の鍵で控える（作業先の作業ツリーでは打たず、着手した作業ツリーで打つ）。`handback-guard` は、そのタスクの段の控えのどれかが同じ外し方で取ったいまの中身と同じで、段がいまの計画の最後より前なら、`plan-check` が通っている限り検証が欠けていても返却を通す（最後でない段を済ませた委譲先が、返す直前に打つ）。段の読めない計画・1〜段の数の外の番号は終了コード2。最後の段は控えずに `LAST_STEP`（終了コード4。`tw verify` を通して返す） | `STEPPED\tT-xxx\t<n>/<段の数>\t<木の SHA>`・`LAST_STEP\tT-xxx\t<n>/<段の数>\t<次の一手>`・`NOT_OWNER` |
 | `lap T-xxx <段> [start\|end]` | 自分の着手の印のタスクの `/next-task` の段の頭を、`flow/` に `{"event":"lap","stage":"<段>"}` の1行として足す（メインが打つ。第3引数を付けると `"edge":"start"`／`"end"` も入り、段の所要時間は同じ段の `end − start`。省くと `edge` の欄は書かず、旧い呼び方のまま、その出来事から同じタスクの次の出来事までの差。第3引数が `start`・`end` のどちらでもなければ終了コード2）。`<段>` は `direct`（委譲しない近道でメインが直し始めた）・`delegate`（委譲を投げた）・`accept`（最後の段の返りを受けて受け入れに入った）・`review`（受け入れ役を起こした。差し戻しのあとも打つ）・`retro`（振り返りに入った）・`land`（別のリポジトリへの合流。台帳は着手側と作業先で別なので `tw land` は記録せず、着手した作業ツリーでメインが `start`／`end` を打つ）・`sync`（`tw ship` のあとのトラッカー反映とバックアップ）。ほかの段は終了コード2。着手の印が無ければ記録しない。記録に失敗しても終了コードは 0 | `LAPPED\tT-xxx\t<段>`（第3引数を付けたときは末尾に `\t<start|end>`）・`NOT_CLAIMED\tT-xxx` |
 | `handback-guard [--agent-scoped]` | Claude Code の hook（`agents/no-delegate.md` の frontmatter の `Stop`（委譲先では `SubagentStop` として効く）と、`SubagentHandback` の `PreToolUse`。plugin では `hooks/hooks.json` の `SubagentStop` と `PreToolUse`）から呼ばれる。`--agent-scoped` の扱いは `commit-guard` と同じ。入力の `cwd` の作業ツリーに `.tw/local/task-open-claims/` の控え（`commit-guard` と同じ読む順。`verify`・`step`・`pause` の控えも同じ）があり、控えのタスクのどれかに作業（`claim` した時点の `HEAD` より後のコミットか、タスク自身のファイル以外の変更）があって、`plan-check` が `PLAN_FIRST`・`PLAN_REGISTERED` でないか、`verify-check` が `VERIFIED_SAME`・`NOTHING` でなく `step` の控えも効かず、`pause` の控え（段の印の `pause` を含む）もいまの中身と違えば拒む。段の印はどれか1つが効けば通すので、並列の段の担当が `tw step` を打ち忘れて返しても、ほかの並列の段の効いている印で通る（担当を見分けないため。メインが返却の1行目と差分で受け入れる）。タスクの `### 作業先` が別のリポジトリなら、枝の名前がタスクIDの小文字の作業ツリーにも同じ判定を当てる（作業は主ブランチとの分かれ目より後のコミットか変更で、`verify-check`・`step`・`pause` の控えはその作業ツリーのもの。作業先に `.tw/config.toml` を置けば、`.beads` が無くても作業先の作業ツリーで `tw verify` が打てて控えが効く。作業先の作業ツリーで `tw verify` が設定の判定（`MISSING`・`INVALID`）で打てないとき、または設定に検証コマンドが無いときは、`verify-check` を `NOTHING` と同じに扱って通す）。`bd` を呼ぶ | 拒むときだけ JSON 1行（`SubagentStop` は `{"decision":"block","reason":…}`、`PreToolUse` は deny。理由は欠けた `plan-check`・`verify-check` の行と次の一手。作業先の作業ツリーの行にはそのパスを添える）。通すとき・ほかのイベントやツールには何も出さない |
+| `ask-guard` | Claude Code の `PreToolUse` hook（plugin の `hooks/hooks.json` の matcher `AskUserQuestion`。`"${CLAUDE_PLUGIN_ROOT}/bin/tw"` の絶対パスで呼ぶ）から呼ばれる。`--agent-scoped` を持たず、`agent_type` を見ないので主のセッションにも委譲先にも掛かる。`install.sh` のリンクだけで入れたときは `hooks/hooks.json` が読まれないので掛からない。入力の `tool_name` が `AskUserQuestion` で、`cwd` の作業ツリーに `.tw/local/task-open-claims/` の控え（`commit-guard` と同じ読む順）があり、控えのタスクのどれかが `loopable: Y` で、台帳の `flow/` にそのタスクの最後の `claim` より後の `lap`（段 `retro`）が無ければ拒む（振り返りで利用者に採否を聞くのは通す）。`tw` にも `bd` にも書かない（`bd` は読む） | 拒むときだけ PreToolUse の deny の JSON 1行（理由はタスクIDと次の一手: `tw edit T-xxx --loopable N`・`## 注意` に理由を1行足す `tw edit T-xxx --section 注意 --body-file -`・`tw release T-xxx`、作業ツリーに作業が残っていなければ `/loop` は次の1件へ、残っていれば人に預けて終える）。通すとき・ほかのツールには何も出さない |
 
 | 終了コード | 先頭語 | 意味 | スキルがすること |
 | --- | --- | --- | --- |
@@ -558,7 +574,7 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
 
 **`config-doctor` だけは終了コード1の意味が違う**（「直すものがある」。環境の故障ではない）。検査の最悪値を返し、`INVALID` があれば3、直すものがあれば1、全部OKで0。点検のコマンドなので、1で止まっても報告するだけでよい。
 
-**`commit-guard`・`handback-guard` は Claude Code の hook の取り決めに従う**: 出力は TSV でなく JSON で、終了コードはいつも0。
+**`commit-guard`・`handback-guard`・`ask-guard` は Claude Code の hook の取り決めに従う**: 出力は TSV でなく JSON で、終了コードはいつも0。
 読めない入力も何も出さずに通す。タスク運用を始めていないリポジトリ・git の外でも打てる。
 
 

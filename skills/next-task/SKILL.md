@@ -40,6 +40,8 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
    `/loop` からは選ばない。** ユーザーが直接呼んだときは、ユーザーが ID か「hold を」と指したとき、
    または `READY` が無いときに、依存がすべて解決済み（正典「status と着手の印」）の `HOLD` を選んでよい
    （選んだら手順3aへ）。頼み文に ID があれば（「タスク GH-123 を進めて」の形も含む）、`READY` から選ばずにその ID を対象にする。候補が無ければ `${CLAUDE_SKILL_DIR}/no-candidate.md` を読んで従う。
+   `loopable: Y` で着手したあと利用者に聞く必要が出たら、`AskUserQuestion` は hook（`tw ask-guard`）に拒まれる。
+   理由の文に従って `N` に直し、`## 注意` に理由を書いて `tw release` で止める。
 
 3a. **`HOLD` を決める**（手順3で `HOLD` を選んだときだけ。**委譲せずメインで行う**）:
    `${CLAUDE_SKILL_DIR}/hold.md` を読んで従い、終わったら手順4へ進む。
@@ -320,7 +322,9 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
 
 **`/loop` の続行判断**（報告ではなく、会話に残ったツールの結果で決める）: `tw ship` が `SHIPPED`・`NOTHING` 以外、または手順8より前で終了したなら続行しない。`SHIPPED`・`NOTHING` なら送ったあとに `tw status` を
 取り直し、`着手可否` が `READY` かつ `loopable` が `Y` の行があれば
-続行し、無ければ続行しない。
+続行し、無ければ続行しない。例外は `tw ask-guard` に拒まれて `tw release` したときで、作業ツリーに作業
+（`claim` した時点より後のコミットか変更）が無ければ、`tw status` を取り直して同じ条件で続行を決める
+（作業が残っていれば次の `claim` が `DIRTY` で止まるので続行しない）。
 
 続行するときは、ツール一覧に文脈を空にして依頼を送り直すツールがあれば、`context_size.py` を打たず、
 次の1件に着手せず、`/loop /next-task` を渡して呼び、`/loop` を止めてターンを終える
