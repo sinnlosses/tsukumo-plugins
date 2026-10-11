@@ -1,6 +1,6 @@
 ---
 name: setup-tasks
-description: "タスク運用に要る .tw/ （direction.md・.gitignore）をプロジェクトに用意し、検証コマンドを確かめて .tw/config.toml に書く。ユーザーが「タスク運用を始めたい」「.tw/ を用意して」「このプロジェクトでもタスク管理を使いたい」と言ったとき、/next-task・/plan-tasks・/list-tasks が MISSING を返したときに使う。既にあるファイルは上書きしない。タスクの置き場の .beads も用意する。"
+description: "タスク運用に要る .tw/ （.gitignore）をプロジェクトに用意し、検証コマンドを確かめて .tw/config.toml に書く。ユーザーが「タスク運用を始めたい」「.tw/ を用意して」「このプロジェクトでもタスク管理を使いたい」と言ったとき、/next-task・/plan-tasks・/list-tasks が MISSING を返したときに使う。既にあるファイルは上書きしない。タスクの置き場の .beads も用意する。"
 ---
 
 `/next-task` `/plan-tasks` `/list-tasks` が読む**プロジェクト側のファイルを用意する**。置き場と役割は
@@ -24,9 +24,9 @@ description: "タスク運用に要る .tw/ （direction.md・.gitignore）を�
 
    | 行 | 意味 |
    | --- | --- |
-   | `CREATED` | `.tw/direction.md`・`.tw/.gitignore` を作った |
-   | `KEPT` + `OK:` | 既にあり、筋が通っている。触っていない |
-   | `KEPT` + `PENDING:` | セットアップとしては完了。未タスク化の指示が残っているので `/plan-tasks` が先と報告する |
+   | `CREATED` | `.tw/.gitignore` を作った |
+   | `KEPT` | `.tw/.gitignore` が既にあり、触っていない |
+   | `UPDATED` | 旧い形の `.tw/.gitignore` を `local/` に書き換えた |
    | `config\tOK` | `.tw/config.toml` があり読める。手順2を飛ばす |
    | `config\tMISSING` | `.tw/config.toml` が無い（か `verify` が無い）。手順2で書く |
    | `config\tINVALID` | 設定が読めない。理由をユーザーに見せ、どう直すかを聞いてから直す |
@@ -34,7 +34,7 @@ description: "タスク運用に要る .tw/ （direction.md・.gitignore）を�
    | `NOT_MAIN_WORKTREE`（終了コード4） | `.beads` は主ブランチを出している作業ツリー（本体）の根に置く。パスの作業ツリーで打ち直すよう案内する |
    | `FAILED\tbd init`（終了コード1） | `bd` が無いか `bd init` が失敗した。行を添えて、`bd`（Beads）と Dolt を入れるよう案内して終了する |
 
-   `.tw/draft/`（ドラフトの旧い置き場）は作らない。ドラフトは `tw new --draft` で Beads に積む。`docs/history/` も掘らない。
+   ドラフトは `tw new --draft` で Beads に積むので置き場は作らない。`docs/history/` も掘らない。
 
 2. **`.tw/config.toml` を書く**（`config\tMISSING` のときだけ）。聞くのは検証コマンドだけ。**推測で書かない**:
 
@@ -72,7 +72,7 @@ description: "タスク運用に要る .tw/ （direction.md・.gitignore）を�
 
 5. **報告する**: 作ったファイル、`.tw/config.toml` に書いた値（と、そのコマンドが実際に通ったこと）、
    点検で見つかった問題。最後に次の一歩を1行:
-   やりたいことを `.tw/direction.md` の `## ユーザーから` に書くか `/plan-tasks <パス>` でファイルを渡すと、タスクになる。
+   やりたいことを `/plan-tasks` に会話で頼むか、`/plan-tasks <パス>` でファイルを渡すと、タスクになる。
 
 ## やらないこと
 

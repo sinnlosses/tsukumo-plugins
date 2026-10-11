@@ -12,7 +12,7 @@ from selftest_support import check, git, refuse_direct_run, say, weight, write  
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
-from selftest_fixtures import BODY, DRAFT_REL, commit_task, make_repo, readonly_git, run_handback_guard, run_task  # noqa: E402
+from selftest_fixtures import BODY, commit_task, make_repo, readonly_git, run_handback_guard, run_task  # noqa: E402
 
 
 @weight(3)
@@ -140,9 +140,6 @@ def test_verify_stamp() -> None:
 
         write(os.path.join(wt1, "ignored", "cache.bin"), "x\n")
         check("gitignore の対象を足しても鍵は変わらない", verify_check() == f"VERIFIED_SAME\t{tree}")
-        draft = write(os.path.join(wt1, DRAFT_REL, "x.md"), "- **x**\n")
-        check(".tw/draft/ のファイルを足しても鍵は変わらない", verify_check() == f"VERIFIED_SAME\t{tree}")
-        os.remove(draft)
 
         cases = (
             ("追跡中のファイルの変更", "shared.txt", "line1\nline2\nline3\n"),
@@ -490,18 +487,6 @@ def test_ship_skips_preship_verify_when_stamp_matches() -> None:
               and "rebased=no" in r.stdout, r.stdout + r.stderr)
         check("送る前の検証コマンドは verify の1回だけ", _preship_count(tmp) == 1, str(_preship_count(tmp)))
         check("検証コマンドは打たれない", _verify_count(tmp) == 0, str(_verify_count(tmp)))
-
-    with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1 = prepare(tmp)
-        write(os.path.join(wt1, "work.txt"), "x\n")
-        run_task(wt1, "verify")
-        write(os.path.join(wt1, DRAFT_REL, "x.md"), "- **x**\n")
-        r = run_task(wt1, "done", "T-120", "--result-file", "-", stdin="- 振り返り: 兆候なし\n")
-        check("done が通る", r.returncode == 0 and r.stdout.startswith("DONE\t"), r.stdout + r.stderr)
-        r = _commit_work_and_ship(wt1, "work.txt", f"{DRAFT_REL}/x.md")
-        check("verify のあとのドラフトを done のあとに一緒にコミットしても preship=skipped",
-              r.returncode == 0 and r.stdout.startswith("SHIPPED\t") and "preship=skipped" in r.stdout, r.stdout + r.stderr)
-        check("ドラフトと done の回も送る前の検証コマンドは verify の1回だけ", _preship_count(tmp) == 1, str(_preship_count(tmp)))
 
     with tempfile.TemporaryDirectory() as tmp:
         _main, wt1 = prepare(tmp)

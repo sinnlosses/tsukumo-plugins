@@ -31,9 +31,6 @@ BODY = task_body()
 # 登録の既定の本文。`make_repo` が主ブランチに置く `shared.txt` を名指す。
 PLANNED_BODY = task_body([("書く", "x")], ["shared.txt"])
 
-DRAFT_REL = ".tw/draft"
-
-
 def run_task(
     cwd: str, *args: str, stdin: str | None = None, env: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess:
@@ -81,10 +78,6 @@ def make_repo(
     git(main_path, "config", "user.name", "test")
     git(main_path, "config", "beads.role", "maintainer")
     copy_beads(main_path, beads.PREFIX_LOCAL)
-    write(
-        os.path.join(main_path, ".tw", "direction.md"),
-        "# 未対応の指示メモ\n\n## ユーザーから\n\n## エージェントのドラフト\n",
-    )
     write(os.path.join(main_path, "docs", "history", "tasks.md"), "# 完了タスクのアーカイブ\n")
     toml = f"verify = {_toml_value(verify or 'なし')}\n"
     if format_command is not None:

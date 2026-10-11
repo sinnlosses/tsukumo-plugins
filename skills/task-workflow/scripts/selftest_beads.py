@@ -338,7 +338,6 @@ def test_missing_config_ignores_old_layout() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, _ = make_repo(tmp)
         os.remove(os.path.join(wt1, ".tw", "config.toml"))
-        write(os.path.join(wt1, "develop", "direction.md"), "# 未対応の指示メモ\n\n## ユーザーから\n")
         write(os.path.join(wt1, "develop", "tasks.json"), "[]\n")
         write(os.path.join(wt1, "CLAUDE.md"), "# x\n\n## タスク運用\n\n- 検証コマンド: なし\n- タスクの置き場: beads\n")
         for command in ("status", "config", "verify"):

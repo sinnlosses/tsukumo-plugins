@@ -481,8 +481,8 @@ def test_direct_mark() -> None:
 
 
 @weight(2)
-def test_root_setting() -> None:
-    say("task.py: config.toml の root に置き場が従い、置けない root は INVALID")
+def test_root_ignored() -> None:
+    say("task.py: config.toml に旧い root が書いてあっても拒まず無視する")
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, _wt2 = make_repo(tmp)
         config = os.path.join(main_path, ".tw", "config.toml")
@@ -493,34 +493,24 @@ def test_root_setting() -> None:
         commit_task(main_path, taskfile.Task("T-100", "根の下", "todo", "sonnet", "Y", (), BODY))
 
         lines = run_task(wt1, "config").stdout.splitlines()
-        check("config が根の下の置き場を出す",
-              {"root\twork/tw\tconfig", "direction\twork/tw/direction.md", "draft\twork/tw/draft"}
-              <= set(lines), "\n".join(lines))
+        check("config が root・direction・draft の行を出さない",
+              lines[:1] == ["CONFIG\t.tw/config.toml"]
+              and not any(l.split("\t")[0] in ("root", "direction", "draft") for l in lines), "\n".join(lines))
         r = run_task(wt1, "status")
         check("status がタスクを読む", any(l.startswith("T-100\ttodo") for l in r.stdout.splitlines()),
               r.stdout + r.stderr)
-
-        write(os.path.join(wt1, "work.txt"), "x\n")
-        run_task(wt1, "verify")
-        before = run_task(wt1, "verify-check").stdout.strip()
-        write(os.path.join(wt1, "work", "tw", "draft", "x.md"), "- **x**\n")
-        check("根の下の draft/ を足しても鍵は変わらない",
-              before.startswith("VERIFIED_SAME\t") and run_task(wt1, "verify-check").stdout.strip() == before, before)
-        os.remove(os.path.join(wt1, "work", "tw", "draft", "x.md"))
-        os.remove(os.path.join(wt1, "work.txt"))
 
         r = run_task(wt1, "claim", "T-100")
         check("claim が通る", r.returncode == 0, r.stdout + r.stderr)
         r = run_task(wt1, "done", "T-100", "--result-file", "-", stdin="- 振り返り: 兆候なし\n")
         check("done が通る", r.returncode == 0 and r.stdout.startswith("DONE\tT-100\t"), r.stdout + r.stderr)
-        check("タスクファイルの置き場は作られない", not os.path.exists(os.path.join(wt1, ".tw", "task"))
-              and not os.path.exists(os.path.join(wt1, "work", "tw", "task")))
 
-        for bad in ("../x", "a/../../x", "/x", ".", "./", ".git", ".git/hooks", ".tw/local", ".tw/local/x"):
-            write(config, f'verify = "なし"\nroot = "{bad}"\n')
+        for odd in ("../x", "/x", ".", ".git", ".tw/local"):
+            write(config, f'verify = "なし"\nroot = "{odd}"\n')
             r = run_task(main_path, "config")
-            check(f"root = {bad!r} は INVALID（終了コード3）",
-                  r.returncode == 3 and r.stdout.startswith("INVALID\t.tw/config.toml:2:"), r.stdout + r.stderr)
+            check(f"root = {odd!r} でも拒まず、root の行を出さない",
+                  r.returncode == 0 and not any(l.startswith("root\t") for l in r.stdout.splitlines()),
+                  r.stdout + r.stderr)
 
 
 def test_draft_to_todo() -> None:
@@ -574,7 +564,7 @@ TESTS = (
     test_edit_and_plan_check,
     test_edit_deps,
     test_edit_section,
-    test_root_setting,
+    test_root_ignored,
     test_direct_mark,
 )
 

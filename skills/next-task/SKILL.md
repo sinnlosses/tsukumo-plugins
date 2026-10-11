@@ -17,7 +17,6 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
 `T-xxx` とコミットの件名の `T-xxx:` をそう読み替える）。
 以下の**検証コマンド**は `verify` の行、**整形コマンド**は `format` の行の値に読み替える。`verify` が `なし` なら打たず、`## 完了条件`
 だけで受け入れを判定してその旨を報告に書く。`format` が `なし` なら整形は打たない。
-指示の置き場は `direction` の行のパスで、下の `.tw/…` はその例。
 出力が `MISSING` の行か、`tw config` を打てない旨（git の外など）なら、`/setup-tasks` を案内して終了する。
 
 ## 手順
@@ -29,13 +28,6 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
 1. **見渡す**: `tw status`（手順8のあとに取り直した `tw status` が同じ会話に残っていて、その後に状態を変える `tw` を打っていなければ打ち直さない。トラッカーが `jira`・`github` なら、先に `tw sync` で取り込む。
    `TRACKER\tFAILED` は報告に添えて先へ進む）。終了コードが 6 `MISSING`・1・3 なら、
    `${CLAUDE_SKILL_DIR}/start-stopped.md` の「手順1の表」に従って終了する。
-
-   あわせて `direction` の行のファイル（例 `.tw/direction.md`）の `## ユーザーから` の行数を見る（手順3で使う。報告には写さない。
-   節見出しの無い古いファイルは全体を `## ユーザーから` とみなす）:
-
-   ```bash
-   awk '/^## ユーザーから/{f=1;next} /^## /{f=0} f' "$(tw config | awk -F'\t' '$1=="direction"{print $2}')" | grep -cv '^\s*$'
-   ```
 
 1a. **週ごとの振り返り**: `tw status` の `---` の後ろに `retrospect_due` の行があれば、
    `${CLAUDE_SKILL_DIR}/weekly-retrospect.md` を読んで従う。行が無ければ何もしない
@@ -325,12 +317,12 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
    ツールで続けるときも1行: 「文脈を空にして続ける」
 
 書かないもの: 結論と重なる「完了したタスク」の行、
-`tw status` の件数、`direction` の行のファイルの行数、`stale` の行
+`tw status` の件数、`stale` の行
 （これらは `tw status` を打てば人も見られる）。
 
 **`/loop` の続行判断**（報告ではなく、会話に残ったツールの結果で決める）: `tw ship` が `SHIPPED`・`NOTHING` 以外、または手順8より前で終了したなら続行しない。`SHIPPED`・`NOTHING` なら送ったあとに `tw status` を
-取り直し、`着手可否` が `READY` かつ `loopable` が `Y` の行があるか、`## ユーザーから` に中身があれば
-続行し、どちらも無ければ続行しない。
+取り直し、`着手可否` が `READY` かつ `loopable` が `Y` の行があれば
+続行し、無ければ続行しない。
 
 続行するときは、ツール一覧に文脈を空にして依頼を送り直すツールがあれば、`context_size.py` を打たず、
 次の1件に着手せず、`/loop /next-task` を渡して呼び、`/loop` を止めてターンを終える

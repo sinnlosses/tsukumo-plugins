@@ -43,7 +43,7 @@ tsukumo のワークフローの契約に型の合う1つの例だが、tsukumo 
 - `bd`（Beads）と Dolt（タスクの置き場。`tw` は `bd` が無いと動かない）。
   トラッカーが `github` なら `gh` も要る（`skills/task-workflow/WORKFLOW.md`「Beads とトラッカー」）
 
-使うプロジェクトの側は、`.tw/direction.md` と、検証コマンドを書いた `.tw/config.toml` を置く。用意するのは `/setup-tasks`。
+使うプロジェクトの側は、検証コマンドを書いた `.tw/config.toml` を置く。用意するのは `/setup-tasks`。
 
 ## あれば使う外のスキル
 

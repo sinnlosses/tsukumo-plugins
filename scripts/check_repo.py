@@ -321,7 +321,7 @@ def check_python_syntax(names: list[str]) -> None:
                     fail(f"{os.path.relpath(p, ROOT)}: 構文エラー（{e}）")
 
 
-# T-018: 履歴の置き場・指示メモの見出し・IDの形は skills/task-workflow/scripts/layout.py に
+# T-018: 履歴の置き場・IDの形は skills/task-workflow/scripts/layout.py に
 # 1箇所だけ書き、読む側は直書きしない（正典は task-workflow の WORKFLOW.md「ファイル配置と
 # 設定ファイル（AGENTS.md → CLAUDE.md の順）」）。ここでは layout.py 自身は対象から外し、
 # 読む側のファイルだけを見る。
@@ -348,8 +348,6 @@ _LAYOUT_PATHS = {
     "docs/history/tasks.md",
 }
 _LAYOUT_STRINGS = _LAYOUT_PATHS | {
-    "## ユーザーから",
-    "## エージェントのドラフト",
     "feature/",
     r"T-\d{3,}",
     r"^T-\d{3,}$",

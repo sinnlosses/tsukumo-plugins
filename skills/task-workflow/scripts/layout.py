@@ -11,22 +11,16 @@
 from __future__ import annotations
 
 import os
-import posixpath
 import re
 from dataclasses import dataclass
 
-# 設定・作業ツリーごとの控えの置き場（`root` によらない）
+# 設定・作業ツリーごとの控えの置き場
 TW_DIR = ".tw"
 LOCAL_DIR = ".tw/local"
 TW_GITIGNORE_PATH = ".tw/.gitignore"
 TW_GITIGNORE = "local/\n"
 # `.tw/` 直下の控えを git の外に置いていたころの `.tw/.gitignore`
 OLD_TW_GITIGNORES = ("*", "*\n", "*\n!config.toml", "*\n!config.toml\n")
-
-# <根>/direction.md の節（正典「指示メモ」）
-SECTION_USER = "## ユーザーから"
-# ドラフトを direction.md に積んでいたころの節。移し忘れを数えるためだけに残す。
-LEGACY_SECTION_DRAFT = "## エージェントのドラフト"
 
 # docs/history/tasks.md（旧形式の履歴・採番の下限。正典5.3）
 HISTORY_TASKS_PATH = "docs/history/tasks.md"
@@ -61,7 +55,6 @@ TRACKER_VALUES = ("なし", "github", "jira")
 BRANCH_VALUES = ("既定", "作業ブランチを切る", "切らない")
 DEFAULT_BRANCH = "既定"
 NO_COMMAND = "なし"
-DEFAULT_ROOT = ".tw"
 
 CONFIG_KEYS = (
     "verify",
@@ -74,8 +67,9 @@ CONFIG_KEYS = (
     "github_project",
     "backup",
     "hook_tally",
-    "root",
 )
+# 置き場の根を選んでいたころのキー。書いてあっても読み捨てる。
+IGNORED_KEYS = ("root",)
 GITHUB_PROJECT_PATTERN = re.compile(r"([^/\s]+)/(\d+)")
 
 
@@ -101,7 +95,6 @@ class Config:
     github_project: str | None = None
     backup: str | None = None
     hook_tally: str | None = None
-    root: str = DEFAULT_ROOT
     written: frozenset = frozenset()
 
     @property
@@ -133,14 +126,6 @@ def read_config(toplevel: str) -> Config:
     return config
 
 
-def direction_path(toplevel: str) -> str:
-    return posixpath.join(read_config(toplevel).root, "direction.md")
-
-
-def draft_dir(toplevel: str) -> str:
-    return posixpath.join(read_config(toplevel).root, "draft")
-
-
 def _mtime(path: str) -> tuple[int, int] | None:
     try:
         st = os.stat(path)
@@ -164,12 +149,14 @@ def parse_config_text(text: str, label: str) -> list[tuple[int, str, str]]:
         if m is None:
             raise ConfigError(f"{label}:{lineno}: `key = \"値\"` の形でない: {line}")
         key, rest = m.group(1), m.group(2)
-        if key not in CONFIG_KEYS:
+        if key not in CONFIG_KEYS and key not in IGNORED_KEYS:
             raise ConfigError(f"{label}:{lineno}: 知らないキー {key!r}")
         if key in seen:
             raise ConfigError(f"{label}:{lineno}: キー {key!r} が {seen[key]} 行目にもある")
         seen[key] = lineno
-        entries.append((lineno, key, _parse_string(rest, f"{label}:{lineno}")))
+        value = _parse_string(rest, f"{label}:{lineno}")
+        if key not in IGNORED_KEYS:
+            entries.append((lineno, key, value))
     return entries
 
 
@@ -218,23 +205,7 @@ def _config_from_values(source: str, entries: list[tuple[int, str, str]]) -> Con
             raise ConfigError(
                 f"{source}:{lines[key]}: {key} の値 {values[key]!r} が {' / '.join(vocabulary)} のどれでもない"
             )
-    if "root" in values:
-        values["root"] = _check_root(values["root"] or "", f"{source}:{lines['root']}")
     return build_config(source, values)
-
-
-def _check_root(value: str, where: str) -> str:
-    if value.startswith("/") or os.path.isabs(value):
-        raise ConfigError(f"{where}: root はリポジトリの根からの相対パス: {value}")
-    if ".." in value.split("/"):
-        raise ConfigError(f"{where}: root に .. を含められない: {value}")
-    root = posixpath.normpath(value)
-    if root == ".":
-        raise ConfigError(f"{where}: root にリポジトリの根そのものは使えない: {value}")
-    for reserved in (".git", LOCAL_DIR):
-        if root == reserved or root.startswith(reserved + "/"):
-            raise ConfigError(f"{where}: root に {reserved} とその下は使えない: {value}")
-    return root
 
 
 def build_config(source: str | None, values: dict[str, str | None]) -> Config:
@@ -251,7 +222,6 @@ def build_config(source: str | None, values: dict[str, str | None]) -> Config:
         github_project=values.get("github_project"),
         backup=values.get("backup"),
         hook_tally=values.get("hook_tally"),
-        root=values.get("root") or defaults.root,
         written=frozenset(values),
     )
     if config.github_project is not None and config.project_owner_number is None:

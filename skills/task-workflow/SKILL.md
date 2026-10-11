@@ -9,7 +9,7 @@ user-invocable: false
 | やりたいこと | スキル |
 | --- | --- |
 | 未着手タスクを1件進める | `/next-task` |
-| 指示メモをタスクに分解する | `/plan-tasks` |
+| 指示をタスクに分解する | `/plan-tasks` |
 | 一覧を見る（読み取り専用） | `/list-tasks` |
 | プロジェクトにタスク運用を用意する | `/setup-tasks` |
 

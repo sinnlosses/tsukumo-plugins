@@ -140,7 +140,7 @@ python3 ${CLAUDE_SKILL_DIR}/../retrospect/scripts/material.py . T-XXX --gate --f
 **ドラフトに積む**（手順5で積むと決まったものだけ）:
 
 1件ごとに `tw new --draft` でドラフトの課題を1つ作る（作業ツリーのファイルは足さない。
-`task-workflow` の `WORKFLOW.md`「指示メモ」）。`--difficulty`・`--loopable` は見立てで付ける
+`task-workflow` の `WORKFLOW.md`「ドラフトの課題」）。`--difficulty`・`--loopable` は見立てで付ける
 （承認して計画するときに直す）:
 
 ```bash
@@ -161,8 +161,7 @@ EOF
 ファイルの置き場所の規則。節「改善の7観点」の「コーディング規約」）。規約・手順の文書に足すのは、
 どの検査にも置き換えられない判断ものだけ。
 
-`direction` の行のファイル（例 `.tw/direction.md`）の `## ユーザーから` には書かない（あそこはユーザーの入口）。ここに積んだ
-ものは、ユーザーの承認を得てから `/plan-tasks` が `todo` に進める（`task-workflow` の `WORKFLOW.md`「指示メモ」）。
+ここに積んだものは、ユーザーの承認を得てから `/plan-tasks` が `todo` に進める（`task-workflow` の `WORKFLOW.md`「ドラフトの課題」）。
 
 `## 結果` には `- 振り返り: <当たった材料・観点>（ドラフト N件: <積んだ ID, …>）` を足す（物差しで落とした・利用者が
 1件も採らなかったら `0件`）。

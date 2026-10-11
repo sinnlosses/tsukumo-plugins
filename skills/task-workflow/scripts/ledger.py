@@ -365,9 +365,8 @@ def content_key(verify_command: str, cwd: str | None = None, excluded: tuple[str
 
 
 def content_tree(toplevel: str, excluded: tuple[str, ...] = ()) -> str:
-    """鍵に取る木の SHA。`worktree_tree` の木から `<根>/draft/`・`.tw/local/` と `excluded` を外す。`.git` に書かない。"""
-    places = (layout.draft_dir(toplevel), layout.LOCAL_DIR)
-    return worktree_tree(toplevel, objects_in_repo=False, excluded=(*places, *excluded))
+    """鍵に取る木の SHA。`worktree_tree` の木から `.tw/local/` と `excluded` を外す。`.git` に書かない。"""
+    return worktree_tree(toplevel, objects_in_repo=False, excluded=(layout.LOCAL_DIR, *excluded))
 
 
 def scratch_object_env(toplevel: str, scratch_dir: str) -> dict[str, str]:
