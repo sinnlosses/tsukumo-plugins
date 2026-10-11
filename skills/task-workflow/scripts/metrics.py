@@ -154,6 +154,23 @@ def _closing_edge(run: list[Event], start: Event, after: int) -> Event | None:
     )
 
 
+def open_stages(events: list[Event], task_id: str) -> list[str]:
+    """そのタスクの最後の `claim` 以降で、`edge: start` の `lap` に `edge: end` が続かない段（出現順、重複なし）。"""
+    own = [e for e in events if e.task == task_id]
+    claims = [i for i, e in enumerate(own) if e.kind == "claim"]
+    if not claims:
+        return []
+    run = own[claims[-1] :]
+    stages: list[str] = []
+    for i, e in enumerate(run):
+        if e.kind != "lap" or e.fields.get("edge") != "start":
+            continue
+        stage = str(e.fields.get("stage"))
+        if _closing_edge(run, e, i + 1) is None and stage not in stages:
+            stages.append(stage)
+    return stages
+
+
 def stage_durations(
     events: list[Event], days: int
 ) -> tuple[dict[tuple[str, str, str], list[float]], dict[str, int]]:

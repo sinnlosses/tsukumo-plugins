@@ -96,7 +96,27 @@ def test_finish_stops_on_commits_since_claim() -> None:
         )
 
 
+def test_finish_prints_open_span() -> None:
+    say("task.py finish: end の無い start の段を OPEN_SPAN で出し、終了コードは変えない。対が揃えば出さない")
+    with tempfile.TemporaryDirectory() as tmp:
+        _main, wt1 = _claimed(tmp)
+        run_task(wt1, "lap", "T-100", "delegate", "start")
+        run_task(wt1, "lap", "T-100", "review", "start")
+        run_task(wt1, "lap", "T-100", "review", "end")
+        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT)
+        open_lines = [l for l in r.stdout.splitlines() if l.startswith("OPEN_SPAN")]
+        check("閉じていない delegate だけ OPEN_SPAN に出て終了コード0", r.returncode == 0 and open_lines == ["OPEN_SPAN\tT-100\tdelegate"], r.stdout + r.stderr)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        _main, wt1 = _claimed(tmp)
+        run_task(wt1, "lap", "T-100", "delegate", "start")
+        run_task(wt1, "lap", "T-100", "delegate", "end")
+        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT)
+        check("対が揃っていれば OPEN_SPAN は出ない", r.returncode == 0 and "OPEN_SPAN" not in r.stdout, r.stdout + r.stderr)
+
+
 TESTS = (
+    test_finish_prints_open_span,
     test_finish_stops_on_commits_since_claim,
     test_finish_bundles_done_commit_ship,
     test_finish_stops_on_stop_lines,

@@ -502,7 +502,26 @@ def test_config_command() -> None:
               r.stdout + r.stderr)
 
 
+def test_open_stages() -> None:
+    say("metrics.open_stages: start だけの段を返し、対の揃った段と前の claim の run は数えない")
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    row = lambda sec, kind, **f: metrics.Event(t0 + timedelta(seconds=sec), kind, "T-100", {"event": kind, **f})
+    events = [
+        row(0, "claim"),
+        row(1, "lap", stage="review", edge="start"),
+        row(2, "claim"),
+        row(3, "lap", stage="delegate", edge="start"),
+        row(4, "lap", stage="accept", edge="start"),
+        row(5, "lap", stage="accept", edge="end"),
+        row(6, "lap", stage="delegate", edge="start"),
+        row(7, "lap", stage="sync"),
+    ]
+    check("delegate だけが1回返る", metrics.open_stages(events, "T-100") == ["delegate"], repr(metrics.open_stages(events, "T-100")))
+    check("別のタスクは空", metrics.open_stages(events, "T-999") == [])
+
+
 TESTS = (
+    test_open_stages,
     test_flow_records_and_metrics,
     test_config_file_agents_md_and_conflict,
     test_retrospect_due,

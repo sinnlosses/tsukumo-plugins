@@ -160,7 +160,7 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
 
 6. **受け入れる**: 作業ツリーを直し始める前に、委譲先の最後の段（`段 N/N`）の hand-back が届いていることを
    確かめる（並列の段の担当を起こしたときは、どの担当も最後に渡した段を返していることを確かめる）。
-   確かめた直後に、作業ツリーを cwd にした残りのプロセスが無いかを `ps` で見て（あれば止める）、`tw accept T-xxx` を打つ（下の表）。
+   確かめた直後に `tw lap T-xxx delegate end` を打ち、作業ツリーを cwd にした残りのプロセスが無いかを `ps` で見て（あれば止める）、`tw accept T-xxx` を打つ（下の表）。
    届いていなければ `TaskStop` か `SendMessage` で止めてから触る。報告をそのまま信用しない。
 
    **目視待ちの報告が来たとき**（描画を変えるタスクで、委譲先が組み立てた直後に返したもの。完了の
@@ -179,8 +179,8 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
 
    | 出力 | すること |
    | --- | --- |
-   | 最後が `SNAPSHOT\t<木の SHA>`（その前に `REVIEW\topus`・`REVIEW\tcode\t<数>`） | レビューが要る。`lap review` は打ってあり、木の SHA が1回目の控え。下の受け入れ役を起こす。直しのあとは `tw accept T-xxx --after-review` |
-   | 最後が `tw verify-check` の行（その前に `SKIP\tdocs-only`・`NOTHING`、設定に `format` があれば `FORMATTED`） | レビューは要らない。下の受け入れ役を `SKIP`・`NOTHING` の依頼（目視と材料だけ）で起こす |
+   | 最後が `SNAPSHOT\t<木の SHA>`（その前に `REVIEW\topus`・`REVIEW\tcode\t<数>`） | レビューが要る。`lap review`（start）は打ってあり、木の SHA が1回目の控え。下の受け入れ役を起こす。判定を受けた直後に `tw lap T-xxx review end` を打つ（差し戻しで受け入れ役を起こし直すたびに、起こす直前の `tw lap T-xxx review` と判定直後の `review end` を対で打つ）。直しのあとは `tw accept T-xxx --after-review`（終わりで `accept` の end を `tw` が出す） |
+   | 最後が `tw verify-check` の行（その前に `SKIP\tdocs-only`・`NOTHING`、設定に `format` があれば `FORMATTED`） | レビューは要らない（`accept` の end は `tw` が出した）。下の受け入れ役を `SKIP`・`NOTHING` の依頼（目視と材料だけ）で起こす |
    | `FORMAT_FAILED\t<コマンド>` | 整形が落ちた。続く末尾の行を読んで直し、`tw accept T-xxx --after-review` を打ち直す |
    | `MISSING`・`INVALID` | review_needed.py が見つからない・失敗した。行を添えて人に預けて終了する |
 
@@ -246,7 +246,7 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
    手順7の `tw finish` の出力に（`tw done` の行として） `COMMITS_SINCE_CLAIM` の行が出たら（`tw finish` は終了コード12で止まる）、
    `${CLAUDE_SKILL_DIR}/commits-since-claim.md` を読んで扱ってから先へ進む。
 
-6a. **振り返る**（`/loop` から回っているときも。委譲せずメインで行う）: 頭に `tw lap T-xxx retro` を打ち、
+6a. **振り返る**（`/loop` から回っているときも。委譲せずメインで行う）: 頭に `tw lap T-xxx retro` を打ち（振り返りを終えて手順7の `tw finish` を打つ直前に `tw lap T-xxx retro end`）、
    受け入れ役の最後の返却の `- 材料: friction=… reverify=… fixes=… human=… review=…` の5つの値を、
    `python3 ${CLAUDE_SKILL_DIR}/../retrospect/scripts/material.py . T-xxx --gate --friction … --reverify … --fixes … --human … --review …` にそのまま渡す
    （決め方は `acceptor-brief.md` の「振り返りの材料」。`human` は手順6で依頼に添えたメモの数が返る。
@@ -291,6 +291,8 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
    以降を打たない。`DONE` の次に `COMMITS_SINCE_CLAIM` が続いたら、`tw finish` はそこで（`tw done` は済んだまま）
    コミットも `tw ship` も打たず終了コード12で止まる。`${CLAUDE_SKILL_DIR}/commits-since-claim.md` に従って判断し、
    個別の `git add`・`git commit`・`tw ship` で続ける（`tw finish`・`tw done` は打ち直さない。`## 結果` が二重になる）。
+   `tw finish` は終わりに、`start` だけで `end` の無い段を `OPEN_SPAN\tT-xxx\t<段>` の行で出す（出力のみ。終了コードは変わらない）。
+   手順の打ち漏れの印なので、完了報告に写す。`sync` の start・end は `tw finish`／`tw ship` が自分で出す。
 
 8. **送ったあとを読む**: 手順7の `tw finish`（`COMMITS_SINCE_CLAIM` で止まったあとは個別の `tw ship`）の出力の最後の行（`tw ship` の判定）で分ける。
 
