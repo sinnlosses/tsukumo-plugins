@@ -582,6 +582,7 @@ class FakeGitHub:
         self.items: dict[str, dict] = {}  # 項目 ID → {"url", "status"}
         self.option_prefix = "O-"
         self.status_writes = 0  # Status 欄を書いた回数
+        self.issue_patches: list[int] = []  # Issue を PATCH で更新した番号（順に）
         self.clock_offset = 0  # 秒。GitHub 側の編集を後の時刻にする
         self.delay = 0.0  # 秒。応答を遅らせる
         self.lock = threading.Lock()
@@ -660,6 +661,7 @@ class FakeGitHub:
             return 201, self.issue_json(self._create(body))
         if m and method == "PATCH":
             issue = self.issues[int(m.group(1))]
+            self.issue_patches.append(issue["number"])
             for k in ("title", "body", "state", "labels"):
                 if k in body:
                     issue[k] = body[k]
@@ -813,6 +815,74 @@ def test_tracker_timeout() -> None:
               and "TRACKER\tFAILED" not in r.stdout, r.stdout + r.stderr)
 
 
+def test_release_force_without_assignee() -> None:
+    say("release --force: 担当者の消えた in_progress の着手の印を外せる")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp)
+        a = new(main_path, "担当者が消えた")
+        bd_id = beads.to_bd_id(a)
+        bd(main_path, "update", bd_id, "--status", "in_progress", "--add-label", beads.SHIP_LABELS["done"])
+        stuck = beads.show(main_path, bd_id)
+        check("前提: assignee 無しの in_progress", stuck is not None and stuck.status == "in_progress"
+              and not stuck.assignee, str(stuck and stuck.raw))
+        r = run_task(wt1, "release", a)
+        check("--force 無しは NOT_OWNER（挙動は変えない）", r.returncode == 4 and r.stdout.startswith("NOT_OWNER"), r.stdout)
+        r = run_task(wt1, "release", a, "--force")
+        freed = beads.show(main_path, bd_id)
+        check("--force は RELEASED で status が open に戻る", r.returncode == 0 and r.stdout.startswith("RELEASED")
+              and freed is not None and freed.status == "open" and not freed.assignee, r.stdout + r.stderr)
+        check("ship の label も残らない", freed is not None
+              and not any(l in beads.SHIP_LABELS.values() for l in freed.labels), str(freed and freed.labels))
+        r = run_task(wt1, "release", a, "--force")
+        check("もう一度は NOT_CLAIMED", r.returncode == 0 and r.stdout.startswith("NOT_CLAIMED"), r.stdout)
+
+
+def _status_labels(fake: "FakeGitHub", n: int) -> list[str]:
+    return [l for l in fake.issues[n]["labels"] if l.startswith("status::")]
+
+
+def test_release_force_clears_github_label() -> None:
+    say("release --force: GitHub の label status::in_progress も残らず、取り込みで戻らない")
+    with _github() as (fake, _tmp, main_path, wt1):
+        a = new(main_path, "label が残る")
+        n, bd_id = _num(a), beads.to_bd_id(a)
+        bd(main_path, "update", bd_id, "--status", "in_progress")
+        r = run_task(main_path, "sync")
+        check("前提: GitHub に status::in_progress が付く", r.returncode == 0
+              and "status::in_progress" in _status_labels(fake, n), r.stdout + repr(fake.issues[n]["labels"]))
+        r = run_task(wt1, "release", a, "--force")
+        check("RELEASED と TRACKER OK", r.returncode == 0 and r.stdout.startswith("RELEASED")
+              and "TRACKER\tOK\tgithub" in r.stdout, r.stdout + r.stderr)
+        check("GitHub の status::in_progress が外れる", "status::in_progress" not in _status_labels(fake, n),
+              repr(fake.issues[n]["labels"]))
+        r = run_task(main_path, "sync")
+        again = beads.show(main_path, bd_id)
+        check("sync のあとも open のまま", r.returncode == 0 and again is not None and again.status == "open",
+              r.stdout + str(again and again.status))
+
+
+def test_release_force_deadline_then_sync() -> None:
+    say("release --force: 送りが上限切れでも、sync が label を外し open のまま")
+    with _github() as (fake, _tmp, main_path, wt1):
+        a = new(main_path, "送りが切れる")
+        n, bd_id = _num(a), beads.to_bd_id(a)
+        bd(main_path, "update", bd_id, "--status", "in_progress")
+        r = run_task(main_path, "sync")
+        check("前提: GitHub に status::in_progress が付く", r.returncode == 0
+              and "status::in_progress" in _status_labels(fake, n), r.stdout + repr(fake.issues[n]["labels"]))
+        local.env[tracker.OP_TIMEOUT_ENV] = "2"
+        fake.delay = 5
+        r = run_task(wt1, "release", a, "--force")
+        check("RELEASED と TRACKER FAILED", r.returncode == 0 and r.stdout.startswith("RELEASED")
+              and "TRACKER\tFAILED\tgithub" in r.stdout, r.stdout + r.stderr)
+        fake.delay = 0
+        r = run_task(main_path, "sync")
+        again = beads.show(main_path, bd_id)
+        check("sync が label を外す", r.returncode == 0 and "status::in_progress" not in _status_labels(fake, n),
+              r.stdout + repr(fake.issues[n]["labels"]))
+        check("Beads は open のまま", again is not None and again.status == "open", str(again and again.status))
+
+
 def _kv(cwd: str) -> dict[str, str]:
     return json.loads(bd(cwd, "kv", "list", "--json").stdout or "{}")
 
@@ -851,6 +921,27 @@ def test_tracker_project_items_per_issue() -> None:
         changed = sorted(k for k in after if k.startswith(prefix) and before.get(k) != after[k])
         check("Status が変わった課題だけ1キー書き換わる", fake.status_writes == 1 and fake.status_of(na) == "Pending"
               and fake.status_of(nb) == "Todo" and changed == [f"{prefix}{na}"], f"{fake.status_writes} {changed}\n{r.stdout}{r.stderr}")
+
+
+def test_tracker_sync_pushes_only_changed() -> None:
+    say("トラッカー github・sync は変えた課題だけを送り、変わりが無ければ送らない")
+    with _github() as (fake, _tmp, main_path, _wt1):
+        a, b = new(main_path, "変えない"), new(main_path, "変える")
+        na, nb = _num(a), _num(b)
+        r = run_task(main_path, "sync")
+        check("最初の sync は成功する", r.returncode == 0 and "TRACKER\tOK\tgithub" in r.stdout, r.stdout + r.stderr)
+        fake.issue_patches.clear()
+        r = run_task(main_path, "sync")
+        check("変わりが無ければ Issue を送らず pushed=0", r.returncode == 0 and "pushed=0\t" in r.stdout
+              and fake.issue_patches == [], f"{fake.issue_patches}\n{r.stdout}{r.stderr}")
+        time.sleep(1.1)
+        u = bd(main_path, "update", beads.to_bd_id(b), "--title", "Beads で直した題")
+        check("bd update", u.returncode == 0, u.stdout + u.stderr)
+        r = run_task(main_path, "sync")
+        check("変えた1件だけを送る", r.returncode == 0 and "pushed=1\t" in r.stdout
+              and set(fake.issue_patches) == {nb} and fake.issues[nb]["title"] == "Beads で直した題"
+              and fake.issues[na]["title"] == "変えない",
+              f"{fake.issue_patches}\n{r.stdout}{r.stderr}")
 
 
 def test_tracker_github_conflict() -> None:
@@ -929,11 +1020,15 @@ def main() -> None:
         tests = (
             test_tracker_github_bidirectional,
             test_tracker_github_conflict,
+            test_tracker_sync_pushes_only_changed,
             test_tracker_timeout,
             test_tracker_project_items_per_issue,
             test_cycle_done_ship_and_dropped,
             test_commit_guard,
             test_claim_race_owner_and_release,
+            test_release_force_without_assignee,
+            test_release_force_clears_github_label,
+            test_release_force_deadline_then_sync,
             test_handback_guard,
             test_setup_and_config_doctor,
             test_backup,
