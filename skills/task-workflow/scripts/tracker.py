@@ -44,6 +44,12 @@ ISSUE_NUMBER = re.compile(r"^(?:gh-|#)?(\d+)$")
 GH_ID = re.compile(r"^gh-(\d+)$")
 JIRA_REF = re.compile(rf"^(?:\S*/browse/)?({layout.JIRA_ID_FRAGMENT})$")
 
+# 1件の操作（before・after・register）の始めから数えた反映の上限（秒）。
+# bd の内側の再試行は外から切れないので、時間で打ち切る。
+OP_TIMEOUT = 25.0
+OP_TIMEOUT_ENV = "TASK_WORKFLOW_TRACKER_TIMEOUT"
+TIMED_OUT = 124
+
 # `bd kv` の控え。値はどれも JSON。
 PROJECT_KEY = "task-workflow.project"  # {"project": "<owner>/<番号>", "id", "field", "options": {名前: ID}}
 # 課題ごとのキー `<これ><Issue 番号>`。値は {"item": 項目 ID, "status": 最後に書いた名前}。
@@ -103,6 +109,7 @@ class Session:
         self._items: dict | None = None
         self._items_dirty: set[str] = set()
         self._synced: dict | None = None
+        self._deadline: float | None = None
 
     @property
     def bidirectional(self) -> bool:
@@ -117,6 +124,7 @@ class Session:
 
     def before(self, bd_ids: list[str]) -> list[str]:
         """操作の前に、触る課題を GitHub から取り込む（双方向のときだけ）。"""
+        self._deadline = time.monotonic() + _op_timeout()
         numbers = [int(m.group(1)) for m in (GH_ID.match(i) for i in bd_ids) if m]
         if not self.bidirectional or not numbers:
             return []
@@ -129,6 +137,7 @@ class Session:
 
     def after(self, bd_ids: list[str]) -> list[str]:
         """操作のあと、触った課題だけを送って Status 欄を書く。"""
+        self._deadline = time.monotonic() + _op_timeout()
         if self.tracker.kind == "jira":
             return _jira_pull(self.toplevel)
         if self.tracker.kind != "github":
@@ -149,6 +158,7 @@ class Session:
 
         落ちたら仮の ID のまま返す（`task sync` が送り直して付け替える）。
         """
+        self._deadline = time.monotonic() + _op_timeout()
         try:
             self._push([provisional])
             renamed, lines = self._rename([provisional])
@@ -174,6 +184,7 @@ class Session:
             return _jira_pull(self.toplevel) if pull else []
         if self.tracker.kind != "github":
             return []
+        self._deadline = None
         lines: list[str] = []
         try:
             started = _now()
@@ -534,12 +545,12 @@ class Session:
         if self._env is None:
             env = os.environ.copy()
             if not env.get("GITHUB_TOKEN"):
-                token = _gh(self.toplevel, ["auth", "token"])
+                token = _gh(self.toplevel, ["auth", "token"], self._remaining())
                 if token.returncode != 0 or not token.stdout.strip():
                     raise _Failed(f"gh auth token: {_tail(token)}")
                 env["GITHUB_TOKEN"] = token.stdout.strip()
             self._env = env
-        r = _bd(self.toplevel, [*args, "--json"], self._env)
+        r = _bd(self.toplevel, [*args, "--json"], self._env, self._remaining())
         if r.returncode != 0:
             raise _Failed(f"{label}: {_tail(r)}")
         # `bd github` は GitHub に届かなくても終了コード0で、失敗は `stats.errors` と `warnings`（`--json` を
@@ -555,6 +566,14 @@ class Session:
             raise _Failed(f"{label}: {failed[0].replace(chr(9), ' ')[:300]}")
         return r.stdout
 
+    def _remaining(self) -> float | None:
+        if self._deadline is None:
+            return None
+        left = self._deadline - time.monotonic()
+        if left <= 0:
+            raise _Failed("トラッカーへの反映が上限の秒数を超えた")
+        return left
+
     def _repository_or_none(self) -> str | None:
         if self._repo is None:
             self._repo = _default_repo(self.toplevel) or ""
@@ -567,7 +586,7 @@ class Session:
         return repo
 
     def _gh_json(self, args: list[str], label: str):
-        r = _gh(self.toplevel, args)
+        r = _gh(self.toplevel, args, self._remaining())
         if r.returncode != 0:
             raise _Failed(f"{label}: {_tail(r)}")
         try:
@@ -809,19 +828,31 @@ def _loads(text: str):
         return None
 
 
-def _bd(toplevel: str, args: list[str], env: dict[str, str]) -> subprocess.CompletedProcess:
+def _op_timeout() -> float:
+    try:
+        value = float(os.environ.get(OP_TIMEOUT_ENV, ""))
+    except ValueError:
+        return OP_TIMEOUT
+    return value if value > 0 else OP_TIMEOUT
+
+
+def _bd(toplevel: str, args: list[str], env: dict[str, str], timeout: float | None = None) -> subprocess.CompletedProcess:
     beads.forget_reads()
     try:
-        return subprocess.run([beads.BD, *args], cwd=toplevel, capture_output=True, text=True, env=env)
+        return subprocess.run([beads.BD, *args], cwd=toplevel, capture_output=True, text=True, env=env, timeout=timeout)
     except FileNotFoundError as e:
         return subprocess.CompletedProcess(args, 127, "", str(e))
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(args, TIMED_OUT, "", f"{timeout:.0f} 秒の上限を超えた")
 
 
-def _gh(toplevel: str, args: list[str]) -> subprocess.CompletedProcess:
+def _gh(toplevel: str, args: list[str], timeout: float | None = None) -> subprocess.CompletedProcess:
     try:
-        return subprocess.run(["gh", *args], cwd=toplevel, capture_output=True, text=True)
+        return subprocess.run(["gh", *args], cwd=toplevel, capture_output=True, text=True, timeout=timeout)
     except FileNotFoundError as e:
         return subprocess.CompletedProcess(args, 127, "", str(e))
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(args, TIMED_OUT, "", f"{timeout:.0f} 秒の上限を超えた")
 
 
 def _tail(r: subprocess.CompletedProcess) -> str:
