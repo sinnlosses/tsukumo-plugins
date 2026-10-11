@@ -51,8 +51,16 @@ def cmd_config_doctor(toplevel: str) -> None:
         raise SystemExit(exit_code)
 
 
+BUSY_EXIT = 5
+
+
 def cmd_sync(toplevel: str) -> None:
-    lines = tracker.session(toplevel).sync_all(pull=True)
+    try:
+        with ledger.sync_lock(toplevel):
+            lines = tracker.session(toplevel).sync_all(pull=True)
+    except ledger.SyncBusy as e:
+        print(f"BUSY\tsync\t{e}")
+        raise SystemExit(BUSY_EXIT)
     if not lines:
         print("NOTHING\t(トラッカーなし)")
         return

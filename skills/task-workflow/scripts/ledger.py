@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import hashlib
 import json
@@ -14,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -551,6 +553,54 @@ def record_event(
             f.write(line)
     except (OSError, GitCommandError) as e:
         print(f"flow: 記録を書けなかった（{type(e).__name__}）", file=sys.stderr)
+
+
+# --- sync の錠（台帳に1つ。作業ツリーをまたいで `tw sync` を1本にする）------------
+
+SYNC_LOCK_NAME = "sync.lock"
+
+
+class SyncBusy(RuntimeError):
+    """別の `tw sync` が錠を持っている。文面は `BUSY` の行の持ち主の情報（古い錠なら、その旨を添える）。"""
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+@contextlib.contextmanager
+def sync_lock(cwd: str | None = None) -> Iterator[None]:
+    """`tw sync` の錠（台帳の `sync.lock`。作成に失敗した側が負け）。待たずに `SyncBusy` を上げる。
+    持ち主のプロセスが消えた古い錠は壊さず、`SyncBusy` の文面に添えて人に預ける。"""
+    root = ledger_root(cwd)
+    os.makedirs(root, exist_ok=True)
+    path = os.path.join(root, SYNC_LOCK_NAME)
+    owner = f"{os.getpid()}\t{git_toplevel(cwd)}\t{now_iso()}"
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        try:
+            with open(path, encoding="utf-8") as f:
+                held = f.read().strip()
+        except OSError:
+            held = "(読めない)"
+        pid_text = held.split("\t", 1)[0]
+        stale = pid_text.isdigit() and not _pid_alive(int(pid_text))
+        note = f"\t古い錠（持ち主のプロセスが無い。確かめて {path} を消す）" if stale else ""
+        raise SyncBusy(f"{held}{note}") from None
+    try:
+        os.write(fd, owner.encode())
+        os.close(fd)
+        yield
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(path)
 
 
 # --- open-claim（`claim` から `done` までの作業ツリー固有の控え）------------

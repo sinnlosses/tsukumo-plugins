@@ -518,7 +518,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | `show T-xxx` | タスク1件を front matter と本文の形で出す（読むだけ。「タスクの本文」）。枠の7節を空でもこの順に出す | 本文。無ければ `NOT_READY` |
 | `edit T-xxx [--body-file <path\|->] [--section <節名>] [--after-work] [--change-frame] [--summary …] [--difficulty …] [--loopable Y\|N] [--status todo\|hold] [--add-deps T-001,…] [--remove-deps T-001,…] [--direct Y\|N]` | 本文と属性と依存を直す（`--difficulty`・`--loopable` は metadata を書き換える。コミットも `ship` も要らない。`## 完了条件`・`## やること` はそれぞれの欄へ分けて入れ、版は `bd history` に残る。`## 結果` は拒む）。`--status` は着手前（`open`・`deferred`）だけ。ドラフトに `--status todo\|hold` を打つと、書いたあとの本文（同じ呼び出しの `--body-file` を当てたもの）を `new` と同じ検査（`hold` なら `--hold` の検査）にかけ、通らなければ何も書かずに `NOT_READY\tT-xxx\tDRAFT\t<理由>`（終了コード4）。通れば状態と印 `draft` の取り外しを同じ `bd update` で書き、`## やること` に中身があれば `new` と同じく `task_plan_base` を控える。ドラフトの本文の編集は「タスクの本文」のドラフトの緩い検査で見る。`--direct Y\|N`（`--body-file` が無くてもよい）は label `direct:Y` を付け外しする。`Y` で基準を外れれば何も書かずに終了コード2。印のあるタスクの本文か `--difficulty` を変えて基準を外れたら、書き込んで印を外し、`EDITED`（と `PLAN_AFTER_WORK`）の次に `DIRECT_OFF\tT-xxx\t<理由>` を出す。`--add-deps`・`--remove-deps`（`--body-file` が無くてもよく、その場合は本文に触れない）は Beads の依存を `bd dep add`・`bd dep remove` で1辺ずつ直す（`bd` の循環検査の前に `tw` が先に拒む）。削除してから追加し、すでにある依存の追加は通る。自分自身・Beads に無い ID・循環になる辺・形の違う ID・依存にない ID の削除・追加と削除に同じ ID は、何も書かずに終了コード2。以下は本文について。本文を丸ごと書き換える。`--section` を付けると、その節の中身だけを渡した中身に置き換え、ほかの節は1バイトも変えない（節名は `やること`・`## やること` のどちらでも受ける。枠に無い見出し・渡した中身に行頭の `## ` の行があれば、書き込まずに終了コード2。置き換えた全文に下の検査が効く）。渡した本文の `## 目的・背景`・`## 完了条件` がいまの本文と違えば、書き込まずに `FRAME_CHANGED\tT-xxx\t<違う節>` で止まる（終了コード4。行末の空白と空行の数の差は違いに数えない。いまの本文に節が無いもの・中身が空か「なし」のものは比べない）。変えてよいときだけ `--change-frame` を付けて打ち直す。ほかの節だけの書き換えは今までどおり通る。`claim` の後に、着手の印の持ち主が `## やること` に初めて中身を入れたとき、その時点で作業が始まっていたか（`claim` した時点の `HEAD` より後のコミットか、渡した本文のファイル以外の変更があるか）を1回だけ metadata `task_plan` に残す（値は `first`／`after-work`）。`after-work` になるときは書き込まずに `WORK_BEFORE_PLAN\tT-xxx\t<次の一手>` で止まる（終了コード4）。`--after-work` を付けると書き込んで `after-work` を残し、`EDITED` の次に `PLAN_AFTER_WORK\tT-xxx\t作業の後に書いた` の行を足す（作業が始まっていなければ `--after-work` は何も変えず `first`）。front matter 付きの本文は拒む（終了コード2。除いて渡す） | `EDITED`（`PLAN_AFTER_WORK`・`DIRECT_OFF` が続くことがある）・`NOT_READY`・`WORK_BEFORE_PLAN`・`FRAME_CHANGED` |
 | `adopt <ID> --difficulty … --loopable … [--summary …] [--direct] --body-file …` | 振り分け前の課題（「Beads とトラッカー」）に metadata `difficulty`・`loopable` と本文を付ける（`jira` はキーの無い課題に番号も）。本文の検査は `new` と同じで `## やること` の中身が要り（`--hold` は無い）、`notes` に入れて metadata `task_plan_base` を控える。`--direct` は label `direct:Y` を付け、基準を外れれば `new` と同じく終了コード2 | `ADOPTED\t<元のID>\t<ID>` |
-| `sync` | トラッカーと同期する（`github` は双方向、`jira` は取り込み、打ち直しも兼ねる） | `TRACKER\tOK\|FAILED\t…`・`NOTHING` |
+| `sync` | トラッカーと同期する（`github` は双方向、`jira` は取り込み、打ち直しも兼ねる） | `TRACKER\tOK\|FAILED\t…`・`NOTHING`・`BUSY\tsync\t<持ち主の情報>`（別の `tw sync` が走っている。終了コード5） |
 | `backup` | Beads のバックアップを取る | `BACKUP\tOK\|FAILED\t<置き場>` |
 | `migrate-attributes` | 1回きりの移行。全課題（閉じたものを含む）の label `difficulty:`・`loopable:` を metadata `difficulty`・`loopable` へ写して label を外す（metadata が既にあれば metadata を勝たせて label だけ外す。ほかの label は触らない。打ち直しても結果は変わらない）。値が表に無い・片方しか決まらない課題は移さず `INVALID` の行に出す | `MIGRATED\tT-xxx`・`INVALID\tT-xxx\t<理由>`・`MIGRATED_TOTAL\t<件数>\tINVALID\t<件数>`（`INVALID` があれば終了コード3） |
 | `jira-closed T-xxx…` | `jira:close` を外す | `CLEARED` |
@@ -543,6 +543,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | 2 | （stderr） | 渡した引数・本文の誤り | 直して打ち直す |
 | 3 | `INVALID` | データの不備（読めない課題〔label の語彙の外など〕、設定が読めない、主ブランチが決まらない、`--check` の重複、トラッカーの付け替え先が既にある） | 理由をそのまま報告して止まる。**直しに行かない** |
 | 4 | `TAKEN`・`NOT_READY`・`DIRTY`・`MAIN_DIRTY`・`UNSHIPPED`・`LOCKED`・`NOT_OWNER`・`WORK_BEFORE_PLAN`・`FRAME_CHANGED`・`LAST_STEP`・`NOT_LANDED`・`NOT_REMOVED` | いまの状態では進めない | 各スキルの表のとおり（別の1件を選ぶか止まる） |
+| 5 | `BUSY`（`sync` だけ） | 別の `tw sync` が台帳の錠を持っている（待たずに返った。何も書き換えていない）。持ち主のプロセスが無い古い錠なら、行にその旨が添えてある | 少し置いて打ち直す。古い錠の注記があれば、行を添えて人に預ける（錠のファイルは人が確かめて消す） |
 | 6 | `MISSING`・`MISSING\t<.beads のパス>` | タスク運用を始めていない（`.tw/config.toml` が無い）／設定はあるのに `.beads` が無い | `/setup-tasks` を案内して止まる |
 | 7 | `CONFLICT` | `ship` の rebase が衝突した（`--abort` 済み）か、`verify` の主ブランチの取り込みが衝突した（何も書き換えていない） | 衝突したファイルを添えて人に預ける。`verify` の衝突を解いたあとは `tw verify` を打ち直す |
 | 8 | `VERIFY_FAILED` | 付け替えのあとの検証が落ちた（送っていない）。行は `VERIFY_FAILED\t<コマンド>\t<ログのパス>` で、続けて出力の末尾40行。ログは stdout と stderr を出た順に残した全文で、落ちた回のものを時刻つきの別名（`task-ship-verify.failed-<時刻>.log`）に写したもの。打ち直しても上書きされない | ログを読み、落ちた箇所を添えて人に預ける |
@@ -731,6 +732,7 @@ Project・Status 欄・選択肢の ID は `bd kv` の `task-workflow.project` �
   `bd github sync --push-only --issues <ID,…>` で。無ければ打たない）→ 登録で落ちた仮の ID を付け替える →
   送りの印と違う着手中の課題をまとめて送り直し（1回の `bd github push <ID>…`）、届いたら
   その課題の送りの印を書く → Status 欄を書く
+- **重ねて打った `tw sync` は錠で1本にする**: 台帳の `sync.lock` を持つ1本だけが走り、後から来た `tw sync` は待たず `BUSY\tsync\t<持ち主の情報>` を出して終了コード5で返る（持ち主のプロセスが無い古い錠は壊さず、行に添えて人に預ける）。ほかのコマンド末尾の取り込み・送りは錠に包まない
 
 **Jira の方式との違い**:
 
