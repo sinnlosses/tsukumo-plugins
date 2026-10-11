@@ -104,6 +104,10 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
         r = beads.run(toplevel, cmd, tw_base.actor(toplevel), stdin)
         if r.returncode != 0:
             raise beads.BeadsError(f"bd update が失敗: {(r.stderr or r.stdout).strip()}")
+        if issue.status == "in_progress" and issue.assignee == tw_base.actor(toplevel) and "--set-metadata" in cmd:
+            edited = beads.show(toplevel, bd_id)
+            if edited is not None:
+                beads.write_claim_snapshot(toplevel, edited)
     for edge in dep_edges:
         r = beads.run(toplevel, edge, tw_base.actor(toplevel))
         if r.returncode != 0:
@@ -118,7 +122,7 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
 def cmd_plan_check(toplevel: str, task_id: str) -> None:
     bd_id = tw_base.bd_task_id(task_id)
     shown = beads.to_task_id(bd_id)
-    issue = beads.show(toplevel, bd_id)
+    issue = beads.show(toplevel, bd_id) if tw_base.owns(toplevel, shown) else None
     if issue is None or issue.status != "in_progress" or issue.assignee != tw_base.actor(toplevel):
         print(f"NOT_OWNER\t{shown}")
         raise SystemExit(4)

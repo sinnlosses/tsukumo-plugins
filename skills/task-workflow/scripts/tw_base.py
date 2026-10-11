@@ -13,6 +13,7 @@ import beads
 import layout
 import ledger
 import taskfile
+import tracker
 
 
 def format_refusal(toplevel: str) -> tuple[str, int] | None:
@@ -113,13 +114,27 @@ def claimed_here(toplevel: str) -> list[str]:
         return []
 
 
+def owns(toplevel: str, shown: str) -> bool:
+    """この作業ツリーが `shown`（表示のタスクID）の着手の印を持つか。
+
+    持たなければ、取り込みが消したまま残った印を控えから戻して見直す（`tracker.restore_claims`。
+    戻した行は stdout の1行目を読む呼び手を崩さないよう stderr へ出す）。
+    """
+    if shown in claimed_here(toplevel):
+        return True
+    lines = tracker.restore_claims(toplevel, [beads.to_bd_id(shown)], actor(toplevel))
+    for line in lines:
+        print(line, file=sys.stderr)
+    return bool(lines) and shown in claimed_here(toplevel)
+
+
 def require_claimed(toplevel: str, task_id: str) -> None:
     """引数で渡されたタスクIDが、この作業ツリーの着手の印と一致するか確かめる。違えば `NOT_OWNER`（終了コード4）。"""
     if not beads.is_initialized(toplevel):
         print("usage: この作業ツリーには着手の印が無い。タスクIDを付けずに打つ", file=sys.stderr)
         raise SystemExit(2)
     shown = beads.to_task_id(bd_task_id(task_id))
-    if shown not in claimed_here(toplevel):
+    if not owns(toplevel, shown):
         print(f"NOT_OWNER\t{shown}")
         raise SystemExit(4)
 

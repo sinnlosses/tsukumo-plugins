@@ -90,6 +90,16 @@ def session(toplevel: str) -> "Session":
     return Session(toplevel, read_tracker(toplevel))
 
 
+def restore_claims(toplevel: str, bd_ids: list[str], actor: str) -> list[str]:
+    """着手の印の控え（`beads.write_claim_snapshot`）から、取り込みが消したまま残った着手の印を Beads へ戻し、出力の行を返す。
+
+    取り込みの無い（双方向でない）ときは何もしない。GitHub には触らない（戻した課題は次の送りで送られる）。
+    """
+    if not session(toplevel).bidirectional:
+        return []
+    return _restore_from_snapshots(toplevel, beads.read_kv(toplevel), bd_ids, actor)[0]
+
+
 class _Failed(RuntimeError):
     """トラッカーに届かなかった（`TRACKER\\tFAILED` の行にする）。"""
 
@@ -193,8 +203,10 @@ class Session:
             if not self.bidirectional:
                 self._bd_ok(["github", "sync", "--push-only"], "bd github sync --push-only")
             else:
+                # 戻した課題は Beads で変えたものになるので、下の送りで送られ、取り込みでは Beads が勝つ。
+                lines += _restore_from_snapshots(self.toplevel, beads.read_kv(self.toplevel), None, self._actor)[0]
                 listed = beads.list_issues(self.toplevel)
-                stale = {i.bd_id for i in listed if _after(i.raw.get("updated_at"), self._synced_at(i))}
+                stale ={i.bd_id for i in listed if _after(i.raw.get("updated_at"), self._synced_at(i))}
                 if pull:
                     remote, newest = self._rest_changed()
                     lines += self._pull(self._without_echo(remote, listed))
@@ -274,9 +286,8 @@ class Session:
         self._bd_ok(["--actor", pull_actor, "github", "pull", *(str(n) for n in sorted(remote))], "bd github pull")
         new = _by_number(beads.list_issues(self.toplevel))
         # 別の作業ツリーの送りも見るので、この Session の控えではなく今の値を読む。
-        pushed = self._load_pushed()
-        legacy = _loads(beads.run(self.toplevel, ["kv", "get", SYNCED_KEY]).stdout)
-        legacy = legacy if isinstance(legacy, dict) else {}
+        listed = beads.read_kv(self.toplevel)
+        pushed, legacy = _pushed_of(listed), _synced_of(listed)
         fixed: list[str] = []
         for n in sorted(remote):
             issue, was = new.get(n), old.get(n)
@@ -310,6 +321,12 @@ class Session:
                         self._actor,
                     )
                     fixed.append(issue.bd_id)
+        # 前の取り込みが戻す前に止まっていれば、取り込みの直前の版も空なので、控えから戻す。
+        restore_lines, restored = _restore_from_snapshots(
+            self.toplevel, listed, [new[n].bd_id for n in remote if n in new], self._actor
+        )
+        lines += restore_lines
+        fixed += restored
         renamed, rename_lines = self._rename([new[n].bd_id for n in remote if n in new])
         # 取り込みのあとの直し（assignee・label・付け替え）は Beads の更新なので、ここで送って `bd` の前回の
         # 同期の時刻を進める（進めないと、次の取り込みがこの課題を飛ばして GitHub での変更を送り返す）。
@@ -549,13 +566,7 @@ class Session:
 
     def _load_pushed(self) -> dict[int, str]:
         """課題ごとの送りの印の今の値（`{Issue 番号: 送った着手の時刻}`。印の無い課題は入らない）。"""
-        listed = _loads(beads.run(self.toplevel, ["kv", "list", "--json"]).stdout)
-        if not isinstance(listed, dict):
-            return {}
-        return {
-            int(k[len(PUSHED_KEY_PREFIX):]): v for k, v in listed.items()
-            if k.startswith(PUSHED_KEY_PREFIX) and k[len(PUSHED_KEY_PREFIX):].isdigit() and isinstance(v, str)
-        }
+        return _pushed_of(beads.read_kv(self.toplevel))
 
     def _save(self) -> None:
         items = self._items or {}
@@ -747,7 +758,7 @@ def _claim_restore_args(
     GitHub で手放された着手（担当者が付いた、または着手を送ったあとで label `status::in_progress` が
     外れて `open` に戻った）は戻さない。着手を送る前の GitHub の版で `open` に戻ったものは戻す。
     """
-    had, has = _marks(was), _marks(issue)
+    had, has = beads.mark_values(was), beads.mark_values(issue)
     if issue.status == "closed":
         return [
             x
@@ -783,11 +794,62 @@ def _claim_started(issue: beads.Issue | None) -> str:
     return issue.started_at or ""
 
 
-def _marks(issue: beads.Issue) -> dict[str, str]:
-    metadata = issue.raw.get("metadata")
-    if not isinstance(metadata, dict):
-        return {}
-    return {k: str(metadata[k]) for k in beads.MARK_KEYS if metadata.get(k)}
+def _restore_from_snapshots(
+    toplevel: str, listed: dict, bd_ids: list[str] | None, actor: str
+) -> tuple[list[str], list[str]]:
+    """`restore_claims` の中身。`listed` は `beads.read_kv` の結果（控え・送りの印・同期の時刻を読む）。
+
+    戻すかの判定は `_claim_restore_args` に控えの版を渡して決める。担当者を戻さない（閉じた・GitHub で
+    手放された・別の作業ツリーが取った）課題は、metadata だけを戻さず、控えを消す。戻したら控えを今の版で書き直す
+    （戻しで `started_at` が変わると、送りの印との比べが狂う）。
+    """
+    snapshots = beads.claim_snapshots(listed)
+    wanted = [i for i in snapshots if bd_ids is None or i in bd_ids]
+    if not wanted:
+        return [], []
+    pushed, synced = _pushed_of(listed), _synced_of(listed)
+    current = {i.bd_id: i for i in beads.list_issues(toplevel)}
+    lines: list[str] = []
+    restored: list[str] = []
+    for bd_id in wanted:
+        was, issue = snapshots[bd_id], current.get(bd_id)
+        if issue is None:
+            beads.clear_claim_snapshot(toplevel, bd_id)
+            continue
+        n = _ref_number(issue.external_ref)
+        args = _claim_restore_args(
+            was, issue, pushed.get(n) if n is not None else None,
+            _parse_time(synced.get(str(n))) if n is not None else None,
+        )
+        holds = issue.status == "in_progress" and issue.assignee == was.assignee
+        if not holds and "--assignee" not in args:
+            beads.clear_claim_snapshot(toplevel, bd_id)
+            continue
+        if not args:
+            continue
+        r = beads.run(toplevel, ["update", bd_id, *args], actor)
+        if r.returncode != 0:
+            lines.append(f"TRACKER\tFAILED\tgithub\t{beads.to_task_id(bd_id)} の着手の印を控えから戻せない: {_tail(r)}")
+            continue
+        again = beads.show(toplevel, bd_id)
+        if again is not None:
+            beads.write_claim_snapshot(toplevel, again)
+        lines.append(f"TRACKER\tRESTORED\t{beads.to_task_id(bd_id)}")
+        restored.append(bd_id)
+    return lines, restored
+
+
+def _pushed_of(listed: dict) -> dict[int, str]:
+    return {
+        int(k[len(PUSHED_KEY_PREFIX):]): v for k, v in listed.items()
+        if k.startswith(PUSHED_KEY_PREFIX) and k[len(PUSHED_KEY_PREFIX):].isdigit() and isinstance(v, str)
+    }
+
+
+def _synced_of(listed: dict) -> dict:
+    raw = listed.get(SYNCED_KEY)
+    value = _loads(raw) if isinstance(raw, str) else None
+    return value if isinstance(value, dict) else {}
 
 
 def _ref_number(external_ref: str | None) -> int | None:

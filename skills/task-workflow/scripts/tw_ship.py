@@ -152,6 +152,7 @@ def _close_shipped(toplevel: str) -> tuple[list[str], list[str]]:
         if issue.external_ref and tracker.read_tracker(toplevel).kind == "jira":
             update += ["--add-label", beads.JIRA_CLOSE_LABEL]
         beads.run_ok(toplevel, update, actor)
+        beads.clear_claim_snapshot(toplevel, issue.bd_id)
         ledger.clear_open_claim(beads.to_task_id(issue.bd_id), cwd=toplevel)
         closed.append(beads.to_task_id(issue.bd_id))
     return closed, not_closed

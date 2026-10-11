@@ -91,6 +91,10 @@ def rows(out: str) -> dict[str, list[str]]:
     return table
 
 
+def claim_snapshots(cwd: str) -> dict[str, beads.Issue]:
+    return beads.claim_snapshots(beads.read_kv(cwd))
+
+
 def tail_line(out: str, key: str) -> str:
     return next((l for l in out.splitlines() if l.startswith(key + "\t")), "")
 
@@ -424,6 +428,10 @@ def test_claim_race_owner_and_release() -> None:
               and issue.assignee == os.path.basename(winner)
               and (issue.raw.get("metadata") or {}).get(beads.CLAIM_BRANCH_KEY) == os.path.basename(winner),
               str(issue and issue.raw))
+        kept = claim_snapshots(main_path).get(beads.to_bd_id(a))
+        check("claim は着手の印を bd kv へ控える", kept is not None and issue is not None
+              and kept.assignee == issue.assignee and kept.started_at == issue.started_at
+              and beads.mark_values(kept) == beads.mark_values(issue), str(kept and kept.raw))
 
         r = run_task(loser, "done", a, "--result-file", "-", stdin="x\n")
         check("他人の印の done は NOT_OWNER（終了コード4）", r.returncode == 4 and r.stdout.startswith("NOT_OWNER"), r.stdout)
@@ -436,6 +444,7 @@ def test_claim_race_owner_and_release() -> None:
         check("hold は claim できない（NOT_READY）", r.returncode == 4 and r.stdout.startswith("NOT_READY"), r.stdout)
         r = run_task(loser, "release", a, "--force")
         check("--force の release は RELEASED", r.returncode == 0 and r.stdout.startswith("RELEASED"), r.stdout)
+        check("release は控えを消す", beads.to_bd_id(a) not in claim_snapshots(main_path), r.stdout)
         r = run_task(loser, "release", a)
         check("印の無い release は NOT_CLAIMED（終了コード0）", r.returncode == 0 and r.stdout.startswith("NOT_CLAIMED"), r.stdout)
         write(os.path.join(loser, "dirty.txt"), "x\n")
@@ -529,7 +538,12 @@ def test_cycle_done_ship_and_dropped() -> None:
         issue = beads.show(main_path, beads.to_bd_id(a))
         check("## やること は notes へ", issue is not None and issue.raw.get("notes") == "### 1. 書く", str(issue and issue.raw))
 
+        check("claim のあとは控えがある", beads.to_bd_id(a) in claim_snapshots(main_path), "")
         work_and_done(wt1, a)
+        check("done は控えを消す", beads.to_bd_id(a) not in claim_snapshots(main_path), "")
+        done_issue = beads.show(main_path, beads.to_bd_id(a))
+        if done_issue is not None:
+            beads.write_claim_snapshot(main_path, done_issue)
         flow = ledger.flow_dir(ledger.ledger_root(cwd=main_path))
         events = [json.loads(l) for f in sorted(os.listdir(flow)) for l in open(os.path.join(flow, f), encoding="utf-8")]
         check("claim・done の記録に difficulty が入る", {(e["event"], e["difficulty"]) for e in events if e["task"] == a}
@@ -541,6 +555,8 @@ def test_cycle_done_ship_and_dropped() -> None:
         first = r.stdout.splitlines()[0] if r.stdout else ""
         check("ship は SHIPPED で閉じた ID を released に出す", r.returncode == 0 and first.startswith("SHIPPED")
               and f"released={a}" in first, r.stdout + r.stderr)
+        check("ship は閉じた課題の控えを消す（done のあとに書き戻された控えも）",
+              beads.to_bd_id(a) not in claim_snapshots(main_path), r.stdout)
         check("claim した枝（wt1）へ戻って feature 枝を消す", "branch=wt1" in first
               and git(wt1, "branch", "--list", f"feature/{a}").stdout.strip() == "", first)
         check("ship のあとにバックアップを取る", any(l.startswith("BACKUP\tOK") for l in r.stdout.splitlines()), r.stdout)
@@ -622,16 +638,19 @@ class FakeGitHub:
 
     def issue_json(self, i: dict) -> dict:
         n = i["number"]
+        login = i.get("assignee")
+        user = {"login": login, "id": 5000 + n} if login else None
         return {
             "id": 1000 + n, "node_id": f"I_{n}", "number": n, "title": i["title"], "body": i["body"],
-            "state": i["state"], "labels": [{"name": l} for l in i["labels"]], "assignees": [], "assignee": None,
+            "state": i["state"], "labels": [{"name": l} for l in i["labels"]],
+            "assignees": [user] if user else [], "assignee": user,
             "created_at": i["created_at"], "updated_at": i["updated_at"], "closed_at": None,
             "html_url": f"https://github.com/o/r/issues/{n}", "url": f"{self.url}/repos/o/r/issues/{n}",
             "user": {"login": "someone"},
         }
 
     def edit(self, number: int, **fields) -> None:
-        """人が GitHub で Issue を直した（題・本文・state・labels）。"""
+        """人が GitHub で Issue を直した（題・本文・state・labels・担当者の login の assignee）。"""
         with self.lock:
             self.issues[number].update(fields)
             self.issues[number]["updated_at"] = self.now()
@@ -884,6 +903,137 @@ def test_release_force_deadline_then_sync() -> None:
         check("Beads は open のまま", again is not None and again.status == "open", str(again and again.status))
 
 
+KILL_AFTER_PULL_ENV = "SELFTEST_KILL_AFTER_PULL"
+
+
+def _arm_kill_after_pull(tmp: str) -> None:
+    """PATH の先頭に、`bd github pull` が返った直後に呼び手（`task.py`）へ SIGTERM を打つ包みの `bd` を置く。
+    打つのは `_killed_sync` の間（`KILL_AFTER_PULL_ENV` があるとき）だけ。"""
+    real = shutil.which("bd", path=local.env["PATH"])
+    bin_dir = os.path.join(tmp, "killbin")
+    write(os.path.join(bin_dir, "bd"), f"""#!{sys.executable}
+import os, signal, subprocess, sys
+r = subprocess.run([{real!r}, *sys.argv[1:]])
+if os.environ.get({KILL_AFTER_PULL_ENV!r}) and "github" in sys.argv and "pull" in sys.argv:
+    os.kill(os.getppid(), signal.SIGTERM)
+sys.exit(r.returncode)
+""")
+    os.chmod(os.path.join(bin_dir, "bd"), 0o755)
+    local.env["PATH"] = bin_dir + os.pathsep + local.env["PATH"]
+
+
+def _killed_sync(cwd: str) -> subprocess.CompletedProcess:
+    local.env[KILL_AFTER_PULL_ENV] = "1"
+    try:
+        return run_task(cwd, "sync")
+    finally:
+        del local.env[KILL_AFTER_PULL_ENV]
+
+
+def _claim_and_push(fake: "FakeGitHub", main_path: str, wt: str, summary: str) -> tuple[str, str, int]:
+    """`wt` が着手して本体の sync で送り、GitHub の側の更新時刻を先へずらす。`(タスクID, Beads ID, Issue 番号)`。"""
+    a = new(main_path, summary)
+    r = run_task(wt, "claim", a)
+    if r.returncode != 0:
+        raise RuntimeError(f"claim 失敗: {r.stdout}{r.stderr}")
+    run_task(main_path, "sync")
+    fake.clock_offset = 60
+    return a, beads.to_bd_id(a), _num(a)
+
+
+def test_claim_restored_after_killed_sync() -> None:
+    say("着手の印の控え: sync が bd github pull の直後に止まっても、次の plan-check・sync・edit が控えから戻す")
+    with _github() as (fake, tmp, main_path, wt1):
+        _arm_kill_after_pull(tmp)
+        a, bd_id, n = _claim_and_push(fake, main_path, wt1, "取り込みで消える")
+        marks = beads.mark_values(beads.show(main_path, bd_id))
+        nexts = (("plan-check", wt1, ("plan-check", a)), ("sync", main_path, ("sync",)),
+                 ("edit の before", wt1, ("edit", a, "--loopable", "Y")))
+        for label, where, args in nexts:
+            # 前の回に戻した版は Beads の側が新しく、送るまでは取り込みが飛ばすので、先に送っておく。
+            run_task(main_path, "sync")
+            fake.edit(n, body=f"{label} の前に GitHub で直した")
+            r = _killed_sync(main_path)
+            lost = beads.show(main_path, bd_id)
+            check(f"前提（{label}）: 止めた sync が担当者と印を空にしたまま残す", r.returncode != 0 and lost is not None
+                  and not lost.assignee and not beads.mark_values(lost), r.stdout + str(lost and lost.raw))
+            r = run_task(where, *args)
+            got = beads.show(main_path, bd_id)
+            check(f"{label} が assignee と MARK_KEYS を戻し、TRACKER RESTORED を出す", r.returncode == 0
+                  and f"TRACKER\tRESTORED\t{a}" in r.stdout + r.stderr and got is not None
+                  and got.status == "in_progress" and got.assignee == "wt1" and beads.mark_values(got) == marks,
+                  r.stdout + r.stderr + str(got and got.raw))
+        r = run_task(wt1, "plan-check", a)
+        check("戻したあとは plan-check が戻さずに通る", r.returncode == 0 and "RESTORED" not in r.stdout + r.stderr,
+              r.stdout + r.stderr)
+
+
+def test_claim_not_restored_when_released_on_github() -> None:
+    say("着手の印の控え: GitHub で手放された着手（担当者が付いた・label が外れた）は控えがあっても戻さない")
+    with _github() as (fake, tmp, main_path, wt1):
+        _arm_kill_after_pull(tmp)
+        a, a_id, na = _claim_and_push(fake, main_path, wt1, "label を外される")
+        b, b_id, nb = _claim_and_push(fake, main_path, wt1, "担当者を付けられる")
+        fake.edit(na, labels=[l for l in fake.issues[na]["labels"] if l != "status::in_progress"])
+        fake.edit(nb, assignee="someone")
+        _killed_sync(main_path)
+        for task_id in (a, b):
+            r = run_task(wt1, "plan-check", task_id)
+            check(f"{task_id}: plan-check は戻さず NOT_OWNER", r.returncode == 4 and r.stdout.startswith("NOT_OWNER")
+                  and "RESTORED" not in r.stdout + r.stderr, r.stdout + r.stderr)
+        check("手放された課題の控えは消える", not {a_id, b_id} & set(claim_snapshots(main_path)), str(claim_snapshots(main_path)))
+        r = run_task(main_path, "sync")
+        got_a, got_b = beads.show(main_path, a_id), beads.show(main_path, b_id)
+        check("sync も戻さない（label を外された課題は open・担当者を付けられた課題は wt1 でない）", "RESTORED" not in r.stdout
+              and got_a is not None and got_a.status == "open" and got_b is not None and got_b.assignee != "wt1",
+              r.stdout + str(got_a and got_a.raw) + str(got_b and got_b.raw))
+
+
+def test_claim_not_restored_after_release_done_ship() -> None:
+    say("着手の印の控え: release・done・ship で手放した課題は、取り込みが止まっても控えから戻らない")
+    with _github() as (fake, tmp, main_path, wt1):
+        _arm_kill_after_pull(tmp)
+        wt2 = os.path.join(tmp, "wt2")
+        a, a_id, na = _claim_and_push(fake, main_path, wt1, "release する")
+        r = run_task(wt1, "release", a)
+        check("前提: release", r.stdout.startswith("RELEASED"), r.stdout + r.stderr)
+        b, b_id, nb = _claim_and_push(fake, main_path, wt1, "done する")
+        work_and_done(wt1, b)
+        c, c_id, nc = _claim_and_push(fake, main_path, wt2, "ship する")
+        work_and_done(wt2, c)
+        r = run_task(wt2, "ship")
+        check("前提: ship", r.returncode == 0 and r.stdout.startswith("SHIPPED"), r.stdout + r.stderr)
+        check("控えは3つとも無い", not {a_id, b_id, c_id} & set(claim_snapshots(main_path)), str(claim_snapshots(main_path)))
+        for n in (na, nb, nc):
+            fake.edit(n, body="手放したあとに GitHub で直した")
+        _killed_sync(main_path)
+        for task_id, where in ((a, wt1), (b, wt1), (c, wt2)):
+            r = run_task(where, "plan-check", task_id)
+            check(f"{task_id}: plan-check は控えから戻さない", r.returncode == 4 and "RESTORED" not in r.stdout + r.stderr,
+                  r.stdout + r.stderr)
+        r = run_task(main_path, "sync")
+        got_a, got_c = beads.show(main_path, a_id), beads.show(main_path, c_id)
+        check("sync も戻さない（release は open・ship は closed のまま）", "RESTORED" not in r.stdout
+              and got_a is not None and got_a.status == "open" and got_c is not None and got_c.status == "closed",
+              r.stdout + str(got_a and got_a.raw) + str(got_c and got_c.raw))
+
+
+def test_claim_kept_through_concurrent_syncs() -> None:
+    say("着手の印: 2本・3本を同時に打つ sync で消えない")
+    with _github() as (fake, tmp, main_path, wt1):
+        wt2 = os.path.join(tmp, "wt2")
+        a, bd_id, n = _claim_and_push(fake, main_path, wt1, "同時の sync")
+        marks = beads.mark_values(beads.show(main_path, bd_id))
+        for trees in ((main_path, wt2), (main_path, wt1, wt2)):
+            fake.edit(n, body=f"{len(trees)}本の前に GitHub で直した")
+            procs = [start_task(w, "sync") for w in trees]
+            outs = [p.communicate()[0] for p in procs]
+            got = beads.show(main_path, bd_id)
+            check(f"{len(trees)}本の同時の sync のあとも assignee と MARK_KEYS が残る", got is not None
+                  and got.status == "in_progress" and got.assignee == "wt1" and beads.mark_values(got) == marks,
+                  repr(outs) + str(got and got.raw))
+
+
 def _kv(cwd: str) -> dict[str, str]:
     return json.loads(bd(cwd, "kv", "list", "--json").stdout or "{}")
 
@@ -1059,6 +1209,10 @@ def main() -> None:
     with beads_home((beads.PREFIX_LOCAL, beads.PREFIX_GITHUB)):
         # 長いものから並列に乗せる（後ろに残ると全体がその分延びる）。
         tests = (
+            test_claim_not_restored_after_release_done_ship,
+            test_claim_restored_after_killed_sync,
+            test_claim_not_restored_when_released_on_github,
+            test_claim_kept_through_concurrent_syncs,
             test_tracker_github_bidirectional,
             test_tracker_sync_skips_echo,
             test_tracker_github_conflict,

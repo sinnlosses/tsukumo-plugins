@@ -62,7 +62,7 @@ def cmd_step(toplevel: str, task_id: str, step: str) -> None:
 def _owned_step(toplevel: str, task_id: str, step: str) -> tuple[str, tuple[taskfile.PlanStep, ...], int]:
     """`(表示のタスクID, 段, 段の番号)`。自分の着手でなければ `NOT_OWNER`（終了コード4）、段が読めないか番号が段の外なら終了コード2。"""
     shown = beads.to_task_id(beads.to_bd_id(task_id))
-    if shown not in tw_base.claimed_here(toplevel):
+    if not tw_base.owns(toplevel, shown):
         print(f"NOT_OWNER\t{shown}")
         raise SystemExit(4)
     specs, error = taskfile.plan_step_specs(_claimed_plan_body(toplevel, shown))
