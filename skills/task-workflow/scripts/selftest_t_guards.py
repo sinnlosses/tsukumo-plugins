@@ -95,6 +95,51 @@ def test_commit_guard() -> None:
         check("release のあとは通る", run_guard(tmp, wt2, "git commit -m x") is None)
 
 
+def run_ask_guard(tmp: str, where: str, tool: str = "AskUserQuestion", extra: dict | None = None) -> str | None:
+    """`tw ask-guard` を git の外（`tmp`）から打つ。拒んだら理由、通したら `None`（落ちたら例外）。"""
+    payload = json.dumps({"tool_name": tool, "tool_input": {}, "cwd": where, **(extra or {})})
+    r = run_task(tmp, "ask-guard", stdin=payload)
+    if r.returncode != 0:
+        raise RuntimeError(f"ask-guard が {r.returncode} で終わった: {r.stderr}")
+    if r.stdout == "":
+        return None
+    out = json.loads(r.stdout)["hookSpecificOutput"]
+    assert out["permissionDecision"] == "deny"
+    return out["permissionDecisionReason"]
+
+
+@weight(6)
+def test_ask_guard() -> None:
+    say("task.py ask-guard: loopable: Y の着手の控えがある作業ツリーで AskUserQuestion を拒む")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(tmp)
+        commit_task(main_path, taskfile.Task("T-100", "聞かない", "todo", "sonnet", "Y", (), BODY))
+        commit_task(main_path, taskfile.Task("T-101", "聞いてよい", "todo", "sonnet", "N", (), BODY))
+
+        check("claim の前は通る", run_ask_guard(tmp, wt1) is None)
+        run_task(wt1, "claim", "T-100")
+        reason = run_ask_guard(tmp, wt1)
+        check("loopable: Y の控えの作業ツリーは理由つきで拒む",
+              reason is not None and "T-100" in reason and "tw edit T-100 --loopable N" in reason
+              and "tw release T-100" in reason,
+              str(reason))
+        check("agent_type が no-delegate でも拒む",
+              run_ask_guard(tmp, wt1, extra={"agent_type": "no-delegate"}) is not None)
+        for tool in ("Bash", "mcp__tsukumo__speak"):
+            check(f"ほかのツール（{tool}）は通す", run_ask_guard(tmp, wt1, tool) is None)
+        check("控えの無い作業ツリーは通す", run_ask_guard(tmp, wt2) is None)
+        r = run_task(tmp, "ask-guard", stdin="not json")
+        check("読めない入力は何も出さずに通す", r.returncode == 0 and r.stdout == "", r.stdout + r.stderr)
+
+        run_task(wt1, "lap", "T-100", "retro")
+        check("振り返りの lap のあとは通す", run_ask_guard(tmp, wt1) is None)
+        run_task(wt1, "release", "T-100")
+        check("release のあとは通す", run_ask_guard(tmp, wt1) is None)
+
+        run_task(wt2, "claim", "T-101")
+        check("loopable: N の控えは通す", run_ask_guard(tmp, wt2) is None)
+
+
 @weight(6)
 def test_commit_guard_shell_edit() -> None:
     say("task.py commit-guard: 印が立って done 前の作業ツリーで、シェルからのファイルの書き換えを拒む")
@@ -842,6 +887,7 @@ TESTS = (
     test_handback_guard_parallel_steps,
     test_handback_guard_step,
     test_commit_guard,
+    test_ask_guard,
     test_commit_guard_shell_edit,
     test_commit_guard_verify,
     test_agent_scoped_guard,

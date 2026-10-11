@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Beads に置いたタスクの運用を操作する入口コマンド。
 
-使い方: tw <status|new|claim|release|done|ship|finish|land|config|config-doctor|show|edit|plan-check|verify|verify-check|accept|pause|step|lap|metrics|adopt|sync|backup|migrate-attributes|jira-closed|commit-guard|handback-guard> ...
+使い方: tw <status|new|claim|release|done|ship|finish|land|config|config-doctor|show|edit|plan-check|verify|verify-check|accept|pause|step|lap|metrics|adopt|sync|backup|migrate-attributes|jira-closed|commit-guard|handback-guard|ask-guard> ...
 
 `install.sh` が PATH 上に張る `tw` と、plugin の `bin/tw` から呼ぶ。`commit-guard`・`handback-guard` の
 `--agent-scoped` は plugin の `hooks/hooks.json` が付け、`agent_type` の末尾が `no-delegate` のときだけ関門を掛ける。
+`ask-guard` は `--agent-scoped` を持たず、主のセッションにも委譲先にも掛かる。
 スキル側の呼び方の正典は task-workflow の WORKFLOW.md「`tw` コマンドの参照」。
 
 出力は常に stdout（先頭語で種類を判定する TSV）、stderr は使い方の誤りだけ、
@@ -18,6 +19,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+import ask_guard
 import beads
 import commit_guard
 import handback_guard
@@ -108,6 +110,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_step.add_argument("task_id")
     p_step.add_argument("step")
     sub.add_parser("handback-guard").add_argument("--agent-scoped", dest="agent_scoped", action="store_true")
+    sub.add_parser("ask-guard")
 
     p_edit = sub.add_parser("edit")
     p_edit.add_argument("task_id")
@@ -149,6 +152,9 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.command == "handback-guard":
         handback_guard.run(sys.stdin, sys.stdout, tw_handback.handback_refusal, args.agent_scoped)
+        return
+    if args.command == "ask-guard":
+        ask_guard.run(sys.stdin, sys.stdout)
         return
 
     try:
