@@ -1,7 +1,7 @@
 """`tw commit-guard`: Claude Code の PreToolUse hook の入力（stdin の JSON）を読み、次の2つの実効の作業先に、
 `done` 前の着手の控え（`ledger.open_claims`）があれば拒む。
 コミットを作る git のサブコマンドと、シェルでのファイルの書き換え（`sed -i`・`perl -i`・`>`・`>>`・`tee`・
-python の書き込み）。判定しきれない書き方は通す。
+python の書き込み）と、設定の `verify`・`verify_before_ship` と同じコマンドの直打ち。判定しきれない書き方は通す。
 
 拒むときだけ stdout に deny の JSON を1行出す。通すときは何も出さない。終了コードはいつも0
 （hook の取り決め。`tw` の「stdout は先頭語の TSV」の例外）。
@@ -16,6 +16,7 @@ import subprocess
 from typing import IO, NamedTuple
 
 import agent_scope
+import layout
 import ledger
 
 COMMIT_SUBCOMMANDS = ("commit", "merge", "pull", "cherry-pick", "revert", "am", "rebase")
@@ -76,7 +77,66 @@ def decide(payload: dict) -> str | None:
                 f"着手の印（{','.join(claims)}）が立っていて tw done の前の作業ツリー（{where}）では "
                 f"{how} でファイルを書き換えない。Edit・Write で書く（作業ツリーの外のログへの出力は通る）"
             )
+    for where, configured in _verify_commands(command, start):
+        claims = _open_claims_at(where)
+        if claims:
+            return (
+                f"着手の印（{','.join(claims)}）が立っていて tw done の前の作業ツリー（{where}）では "
+                f"検証コマンド（{configured}）を直に打たない。`tw verify` で打つ（対象を絞った単体テストの実行は打てる）"
+            )
     return None
+
+
+def _verify_commands(command: str, start: str) -> list[tuple[str, str]]:
+    """`(作業先, 設定の検証コマンド)` の並び。設定の `verify`・`verify_before_ship` と同じコマンドだけ。"""
+    found: list[tuple[str, str]] = []
+    configs: dict[str, tuple[str, list[str]]] = {}
+    for simple in _simple_commands(command, start):
+        where = simple.where
+        if where is None or not os.path.isdir(where):
+            continue
+        args, _targets = _split_redirects(simple.words)
+        while args and (args[0] in ("env", "command") or _is_assignment(args[0])):
+            args = args[1:]
+        if not args:
+            continue
+        if where not in configs:
+            try:
+                top = ledger.git_toplevel(where)
+                config = layout.read_config(top)
+            except (ledger.GitCommandError, layout.ConfigError):
+                configs[where] = ("", [])
+            else:
+                configs[where] = (top, [c for c in (config.verify, config.verify_before_ship) if c is not None])
+        top, commands = configs[where]
+        for configured in commands:
+            if _same_command(args, where, top, configured):
+                found.append((where, configured))
+    return found
+
+
+def _same_command(words: list[str], where: str, toplevel: str, configured: str) -> bool:
+    """`words` が設定のコマンドと同じか。設定のコマンドが単純コマンド1つのときだけ判定し、続く語は旗だけなら同じとする。"""
+    tokens = _tokens(configured)
+    if not tokens or any(t.op for t in tokens):
+        return False
+    cw = [t.text for t in tokens]
+    return (
+        len(words) >= len(cw)
+        and words[1 : len(cw)] == cw[1:]
+        and _same_program(words[0], where, cw[0], toplevel)
+        and all(w.startswith("-") for w in words[len(cw) :])
+    )
+
+
+def _same_program(word: str, where: str, configured: str, toplevel: str) -> bool:
+    if word == configured:
+        return True
+    if "/" not in word and "/" not in configured:
+        return False
+    a = _join(where, word)
+    b = _join(toplevel, configured)
+    return a is not None and a == b
 
 
 def _shell_writes(command: str, start: str) -> list[tuple[str, str]]:
