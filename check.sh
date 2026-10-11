@@ -8,6 +8,7 @@
 # 構文とリポジトリの整合は、いつも流す。check.sh 自身が変わったときは全段を流す。
 # `--full` のとき、main の上にいるとき、detached HEAD のとき、差分が取れないときも全段を流す。
 # `--plan` は段を流さず、流す段（== 見出し ==）と飛ばす段だけを出す。
+# 自己テストは一時ディレクトリを RAM ディスクに置く（作れなければ今の場所）。
 #
 # 1. 構文: install.sh・uninstall.sh・scripts/links.sh（いつも）
 # 2. install.sh・uninstall.sh の自己テスト
