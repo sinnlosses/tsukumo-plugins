@@ -677,7 +677,32 @@ def test_content_key_scheme_roundtrip() -> None:
         check("段の控えは scheme 行の追加で壊れない", ledger.read_step_stamps(cwd=wt1) == [stamp])
 
 
+@weight(5)
+def test_verify_check_reports_scheme() -> None:
+    say("task.py verify-check: 控えた tw の版（scheme）だけが違えば NOT_VERIFIED scheme とこの tw のパス。同じ版なら従来どおり")
+    with tempfile.TemporaryDirectory() as tmp:
+        _main, wt1, _wt2 = make_repo(tmp, branch="切らない", verify="`true`")
+        r = run_task(wt1, "verify")
+        check("verify が通る", r.stdout.startswith("VERIFIED\t"), r.stdout + r.stderr)
+        tree = r.stdout.split("\t")[1]
+        check("同じ版なら VERIFIED_SAME", run_task(wt1, "verify-check").stdout.strip() == f"VERIFIED_SAME\t{tree}")
+        path = os.path.join(ledger.worktree_state_dir(wt1), ledger.VERIFY_STAMP_FILE_NAME)
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().splitlines()
+        write(path, "\n".join([*lines[:-1], "scheme:other"]) + "\n")
+        out = run_task(wt1, "verify-check").stdout.strip().split("\t")
+        check("scheme だけ違えば NOT_VERIFIED scheme と tw のパス", out[:2] == ["NOT_VERIFIED", "scheme"]
+              and len(out) == 3 and out[2].endswith("tw_verify.py"), str(out))
+        write(path, "\n".join(lines[:-1]) + "\n")
+        out = run_task(wt1, "verify-check").stdout.strip().split("\t")
+        check("scheme 行の無い古い控えも scheme", out[:2] == ["NOT_VERIFIED", "scheme"], str(out))
+        write(os.path.join(wt1, "work.txt"), "x\n")
+        write(path, "\n".join(lines) + "\n")
+        check("版が同じで中身だけ違えば content", run_task(wt1, "verify-check").stdout.strip() == "NOT_VERIFIED\tcontent")
+
+
 TESTS = (
+    test_verify_check_reports_scheme,
     test_content_key_scheme_roundtrip,
     test_ship_skips_preship_verify_when_stamp_matches,
     test_verify_stamp,

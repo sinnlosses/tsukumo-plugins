@@ -439,6 +439,13 @@ def test_handback_guard() -> None:
         r = run_task(wt1, "verify")
         check("plan-check が PLAN_FIRST で tw verify が通れば通す",
               r.returncode == 0 and run_handback_guard(tmp, wt1) is None, r.stdout + r.stderr)
+        stamp_path = os.path.join(ledger.worktree_state_dir(wt1), ledger.VERIFY_STAMP_FILE_NAME)
+        with open(stamp_path, encoding="utf-8") as f:
+            stamp_lines = f.read().splitlines()
+        write(stamp_path, "\n".join([*stamp_lines[:-1], "scheme:other"]) + "\n")
+        reason = _block_reason(run_handback_guard(tmp, wt1))
+        check("別の版の tw が控えていれば block し、理由に scheme", "NOT_VERIFIED\tscheme" in reason, reason)
+        write(stamp_path, "\n".join(stamp_lines) + "\n")
         write(os.path.join(wt1, "work.txt"), "y\n")
         check("検証のあとに中身を変えると block（NOT_VERIFIED content）",
               "NOT_VERIFIED\tcontent" in _block_reason(run_handback_guard(tmp, wt1)))

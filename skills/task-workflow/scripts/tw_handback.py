@@ -197,6 +197,8 @@ def _handback_gaps(toplevel: str, task_id: str) -> list[str]:
             continue
         verify_line = _tree_verify_line(tree)
         if verify_line.split("\t")[0] not in HANDBACK_VERIFY_OK:
+            if verify_line.startswith("NOT_VERIFIED\tscheme"):
+                verify_line += "（別の版の tw が控えた。クローンと取り込みの版を揃えてから tw verify を打ち直す）"
             gaps.append(verify_line if tree == toplevel else f"{verify_line}（{tree}）")
     return gaps
 

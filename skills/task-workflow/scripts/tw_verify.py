@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 
@@ -100,7 +101,15 @@ def cmd_verify_check(toplevel: str) -> None:
     if now == stamp:
         print(f"VERIFIED_SAME\t{now.tree}")
         return
-    reason = "command" if now.verify_command != stamp.verify_command else "head" if now.head != stamp.head else "content"
+    if now.verify_command != stamp.verify_command:
+        reason = "command"
+    elif now.head != stamp.head:
+        reason = "head"
+    elif now.scheme != stamp.scheme:
+        print(f"NOT_VERIFIED\tscheme\t{os.path.realpath(__file__)}")
+        return
+    else:
+        reason = "content"
     print(f"NOT_VERIFIED\t{reason}")
 
 
