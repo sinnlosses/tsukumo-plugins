@@ -43,6 +43,8 @@ def is_resolved(dep_id: str, tasks: dict[str, taskfile.Task]) -> bool:
 def readiness(task: taskfile.Task, tasks: dict[str, taskfile.Task], claims: set[str]) -> str:
     if task.status == "hold":
         return "HOLD"
+    if task.status == "draft":
+        return "DRAFT"
     if task.status != "todo":
         return "-"
     if task.id in claims:

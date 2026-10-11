@@ -11,7 +11,7 @@ import beads  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
-from selftest_fixtures import BODY, PLANNED_BODY, body_file, commit_task, issue_json, make_repo, run_task, shown, start_task, unset_metadata  # noqa: E402
+from selftest_fixtures import BODY, PLANNED_BODY, body_file, commit_task, issue_count, issue_json, make_repo, run_task, shown, start_task, unset_metadata  # noqa: E402
 
 
 def test_taskfile_body() -> None:
@@ -384,6 +384,78 @@ def test_done_commits_since_claim() -> None:
         )
 
 
+DRAFT_BODY = "## 目的・背景\n\n振り返りで見つけた改善\n"
+
+
+def test_draft_register_and_refuse_claim() -> None:
+    say("task.py new --draft（目的・背景だけで積み、一覧は DRAFT、着手は拒む）")
+    with tempfile.TemporaryDirectory() as tmp:
+        _main_path, wt1, _wt2 = make_repo(tmp)
+
+        def new_draft(*extra: str, body: str = DRAFT_BODY) -> subprocess.CompletedProcess:
+            return run_task(
+                wt1, "new", "--summary", "ドラフト", "--difficulty", "sonnet", "--loopable", "Y", *extra,
+                "--body-file", "-", stdin=body,
+            )
+
+        r = new_draft("--draft")
+        check("目的・背景だけの --draft は CREATED", r.returncode == 0 and r.stdout.startswith("CREATED\t"), r.stdout + r.stderr)
+        task_id = r.stdout.split("\t")[1]
+        written = shown(wt1, task_id)
+        check(
+            "show は status: draft で枠の7節を出す",
+            "\nstatus: draft\n" in written and all(f"\n{h}" in written for h in taskfile.SECTION_HEADINGS),
+            written,
+        )
+
+        r = run_task(wt1, "status")
+        row = next((l.split("\t") for l in r.stdout.splitlines() if l.startswith(f"{task_id}\t")), [])
+        check("status の行は draft・DRAFT", row[1:2] == ["draft"] and row[5:6] == ["DRAFT"], r.stdout)
+        check("counts に draft=1、ready に数えない", "\tdraft=1" in r.stdout and "\nready\t0\n" in r.stdout, r.stdout)
+        r = run_task(wt1, "status", "--check")
+        check("status --check は OK", r.returncode == 0 and r.stdout.strip() == "OK", r.stdout + r.stderr)
+        ready = subprocess.run(["bd", "ready", "--json"], cwd=wt1, capture_output=True, text=True)
+        check("bd ready に出ない", ready.returncode == 0 and beads.to_bd_id(task_id) not in ready.stdout, ready.stdout + ready.stderr)
+
+        r = run_task(wt1, "claim", task_id)
+        check("claim は NOT_READY DRAFT", r.returncode == 4 and r.stdout.strip() == f"NOT_READY\t{task_id}\tDRAFT", r.stdout + r.stderr)
+
+        before = issue_count(wt1)
+        for label, extra, body in (
+            ("--draft --hold", ("--draft", "--hold"), DRAFT_BODY),
+            ("--draft --direct", ("--draft", "--direct"), DRAFT_BODY),
+            ("目的・背景が空の --draft", ("--draft",), "## 目的・背景\n\nなし\n"),
+            ("枠の順でない --draft", ("--draft",), "## 完了条件\n\nx\n\n## 目的・背景\n\nx\n"),
+        ):
+            r = new_draft(*extra, body=body)
+            check(f"{label} は終了コード2", r.returncode == 2 and r.stdout == "", r.stdout + r.stderr)
+        check("拒んだ登録は課題を作らない", issue_count(wt1) == before)
+
+
+def test_draft_dropped() -> None:
+    say("task.py done --dropped（ドラフトを着手せずにその場で閉じる）")
+    with tempfile.TemporaryDirectory() as tmp:
+        _main_path, wt1, _wt2 = make_repo(tmp)
+        r = run_task(wt1, "new", "--summary", "却下するドラフト", "--difficulty", "haiku", "--loopable", "Y", "--draft",
+                     "--body-file", "-", stdin=DRAFT_BODY)
+        task_id = r.stdout.split("\t")[1] if r.stdout.startswith("CREATED\t") else ""
+        check("ドラフトを積む", task_id != "", r.stdout + r.stderr)
+
+        r = run_task(wt1, "done", task_id, "--result-file", "-", stdin="やる\n")
+        check("--dropped なしの done は NOT_READY DRAFT", r.returncode == 4
+              and r.stdout.strip() == f"NOT_READY\t{task_id}\tDRAFT", r.stdout + r.stderr)
+
+        r = run_task(wt1, "done", task_id, "--dropped", "--result-file", "-", stdin="見送る: 別のタスクで足りる\n")
+        issue = issue_json(wt1, task_id)
+        check("--dropped はその場で閉じて DONE", r.returncode == 0
+              and r.stdout.strip() == f"DONE\t{task_id}\tbeads:{beads.to_bd_id(task_id)}\tドラフトを閉じた"
+              and issue.get("status") == "closed" and beads.CANCELLED_LABEL in (issue.get("labels") or []),
+              r.stdout + r.stderr + str(issue))
+        r = run_task(wt1, "status", "--all")
+        check("status --all で dropped", any(l.startswith(f"{task_id}\tdropped\t") for l in r.stdout.splitlines()), r.stdout)
+        check("show に ## 結果 の却下の理由", "## 結果\n\n見送る: 別のタスクで足りる" in shown(wt1, task_id))
+
+
 def test_part_direct_run_refused() -> None:
     say("selftest_t_*.py を直に打ったときの案内（部品を glob で全部引く）")
     here = os.path.dirname(os.path.abspath(__file__))
@@ -404,6 +476,8 @@ TESTS = (
     test_done_single_worktree,
     test_claim_and_release_single_worktree,
     test_new_and_status_single_worktree,
+    test_draft_register_and_refuse_claim,
+    test_draft_dropped,
     test_claim_race,
     test_new_parallel_no_collision,
     test_new_avoids_history_ids,

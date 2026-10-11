@@ -837,6 +837,26 @@ def test_tracker_github_conflict() -> None:
               and fake.issues[n]["title"] == "Beads で直した題", r.stdout + repr(fake.issues[n]))
 
 
+def test_tracker_github_draft() -> None:
+    say("トラッカー github・ドラフトは Status が Pending で、GitHub で直したあとの取り込みでもドラフトのまま")
+    with _github() as (fake, _tmp, main_path, _wt1):
+        a = new(main_path, "ドラフト", "--draft", body="## 目的・背景\n\n直したい改善\n")
+        n, bd_id = _num(a), beads.to_bd_id(a)
+        check("ドラフトの Status は Pending", fake.status_of(n) == "Pending", repr(fake.items))
+        check("GitHub では label status::deferred", "status::deferred" in fake.issues[n]["labels"], repr(fake.issues[n]))
+        time.sleep(1.1)
+        fake.clock_offset = 60
+        fake.edit(n, body="GitHub で直した本文")
+        r = run_task(main_path, "sync")
+        issue = beads.show(main_path, bd_id)
+        meta = issue.raw.get("metadata") if issue is not None else None
+        check("取り込みのあとも deferred で metadata draft が戻る", issue is not None and issue.status == "deferred"
+              and isinstance(meta, dict) and meta.get(beads.DRAFT_KEY) == beads.DRAFT_ON
+              and "GitHub で直した本文" in str(issue.raw.get("description")), r.stdout + r.stderr + str(issue and issue.raw))
+        check("status は DRAFT のまま", rows(run_task(main_path, "status").stdout).get(a, [""] * 8)[5] == "DRAFT")
+        check("Status は Pending のまま", fake.status_of(n) == "Pending", repr(fake.items))
+
+
 def test_backup() -> None:
     say("バックアップ（git の外の決まった場所）")
     with tempfile.TemporaryDirectory() as tmp:
@@ -897,6 +917,7 @@ def main() -> None:
         tests = (
             test_tracker_github_bidirectional,
             test_tracker_github_conflict,
+            test_tracker_github_draft,
             test_tracker_sync_pushes_only_changed,
             test_tracker_timeout,
             test_tracker_project_items_per_issue,

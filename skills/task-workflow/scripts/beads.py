@@ -15,6 +15,7 @@ Issue 番号（`gh-5` ↔ `GH-5`）、`t` なら `task` の採番（`t-123` ↔ 
 | --- | --- |
 | `open` | `todo` |
 | `deferred`（切り替え前の独自の状態 `pending` も） | `hold` |
+| `open`・`deferred` ＋ metadata `draft`（値 `Y`） | `draft` |
 | `in_progress` | `todo` ＋ 着手の印（assignee が作業ツリー名） |
 | `closed` | `done`（label `cancelled` があれば `dropped`） |
 | metadata `difficulty`・`loopable`（無ければ従来の label `difficulty:<値>`・`loopable:<Y/N>`） | `difficulty`・`loopable` |
@@ -53,6 +54,9 @@ HOLD_STATUSES = (HOLD_STATUS, LEGACY_HOLD_STATUS)
 CANCELLED_LABEL = "cancelled"
 DIFFICULTY_KEY = "difficulty"
 LOOPABLE_KEY = "loopable"
+# ドラフトの印（`tw new --draft` が `deferred` の課題に付ける metadata）。
+DRAFT_KEY = "draft"
+DRAFT_ON = "Y"
 DIFFICULTY_LABEL = "difficulty:"
 LOOPABLE_LABEL = "loopable:"
 DIRECT_LABEL = "direct:"
@@ -72,7 +76,7 @@ PLAN_BASE_KEY = "task_plan_base"
 # 登録時の計画を判定した、着手時の主ブランチの先端。
 PLAN_TIP_KEY = "task_plan_tip"
 # この運用が metadata に置く印（GitHub には載らないので、取り込みで消えたら戻す）。
-MARK_KEYS = (CLAIM_BRANCH_KEY, CLAIM_HEAD_KEY, PLAN_KEY, PLAN_BASE_KEY, PLAN_TIP_KEY, DIFFICULTY_KEY, LOOPABLE_KEY)
+MARK_KEYS = (CLAIM_BRANCH_KEY, CLAIM_HEAD_KEY, PLAN_KEY, PLAN_BASE_KEY, PLAN_TIP_KEY, DIFFICULTY_KEY, LOOPABLE_KEY, DRAFT_KEY)
 RESULT_HEADING = taskfile.RESULT_HEADING
 
 # 本文の節のうち、`description` 以外へ入るもの。
@@ -328,6 +332,8 @@ def to_task(issue: Issue) -> tuple[taskfile.Task | None, str | None]:
     """`(Task, None)`・`(None, INVALID の理由)`・`(None, None)`（振り分け前＝`adopt` 待ち）。"""
     if issue.status == "closed":
         status = "dropped" if CANCELLED_LABEL in issue.labels else "done"
+    elif is_draft(issue):
+        status = "draft"
     elif issue.status in ("open", "in_progress"):
         status = "todo"
     elif issue.status in HOLD_STATUSES:
@@ -351,6 +357,16 @@ def to_task(issue: Issue) -> tuple[taskfile.Task | None, str | None]:
         return None, "title が空か改行を含む"
     deps = tuple(to_task_id(d) for d in issue.dependencies)
     return taskfile.Task(to_task_id(issue.bd_id), summary, status, difficulty[0], loopable[0], deps, "", "Y" if direct else "N"), None
+
+
+def is_draft(issue: Issue) -> bool:
+    """着手前（`open`・`deferred`）でドラフトの印があるか。`in_progress`・`closed` では印を見ない。"""
+    metadata = issue.raw.get("metadata")
+    return (
+        issue.status in ("open", *HOLD_STATUSES)
+        and isinstance(metadata, dict)
+        and str(metadata.get(DRAFT_KEY) or "") == DRAFT_ON
+    )
 
 
 def label_values(labels: tuple[str, ...], prefix: str) -> list[str]:
@@ -477,10 +493,10 @@ def format_bd_id(number: int) -> str:
 
 
 def workflow_state(issue: Issue) -> str:
-    """`hold`・`open`・`in_progress`・`done`・`cancelled` のどれか（Project の Status 欄の対応に使う）。"""
+    """`hold`・`open`・`in_progress`・`done`・`cancelled` のどれか（Project の Status 欄の対応に使う）。ドラフトは `hold`。"""
     if issue.status == "closed":
         return "cancelled" if CANCELLED_LABEL in issue.labels else "done"
-    if issue.status in HOLD_STATUSES:
+    if issue.status in HOLD_STATUSES or is_draft(issue):
         return "hold"
     return issue.status
 

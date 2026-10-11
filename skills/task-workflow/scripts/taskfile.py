@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-STATUS_VALUES = ("todo", "hold", "done", "dropped")
+STATUS_VALUES = ("todo", "hold", "done", "dropped", "draft")
 DIFFICULTY_VALUES = ("haiku", "sonnet", "opus")
 LOOPABLE_VALUES = ("Y", "N")
 
@@ -92,9 +92,18 @@ def validate_new_body(body: str, hold: bool) -> str | None:
     return plan_steps(body)[1] or plan_files(body)[1] or plan_work_repo(body)[1]
 
 
-def validate_edited_body(old_body: str, new_body: str) -> str | None:
-    """`task edit` の本文検査。枠の検査に加え、`## やること` を変えて中身があるなら段の形を求める。"""
-    error = validate_body(new_body)
+def validate_draft_body(body: str) -> str | None:
+    """`tw new --draft` の本文検査。見出しは枠の節を枠の順に欠けてよく、中身が要るのは `## 目的・背景` だけ。
+    `## やること` に中身があれば `validate_new_body` と同じ計画の検査をかける。問題が無ければ `None`。"""
+    error = validate_body(body, draft=True)
+    if error is not None or not has_plan(body):
+        return error
+    return plan_steps(body)[1] or plan_files(body)[1] or plan_work_repo(body)[1]
+
+
+def validate_edited_body(old_body: str, new_body: str, draft: bool = False) -> str | None:
+    """`task edit` の本文検査。枠の検査（`draft` はドラフトの緩い枠）に加え、`## やること` を変えて中身があるなら段の形を求める。"""
+    error = validate_body(new_body, draft)
     if error is not None or not has_plan(new_body) or not plan_changed(old_body, new_body):
         return error
     return plan_steps(new_body)[1]
@@ -355,10 +364,11 @@ def direct_refusal(difficulty: str, body: str) -> str | None:
 _PLAN_FILE_LINE = re.compile(r"^- `([^`]+)`.*$")
 
 
-def validate_body(body: str) -> str | None:
+def validate_body(body: str, draft: bool = False) -> str | None:
     """本文が枠（`SECTION_HEADINGS` をこの順に1つずつ）に沿っているか。`## 結果` は枠の外で拒む。
 
     見出しは行頭の `## ` だけを数える（本文の説明文で節名に言及するのは許す）。
+    `draft` なら節は枠の順のまま欠けてよく、中身が要るのは `## 目的・背景` だけ。
     """
     preamble, sections = _frame_sections(body)
     if body.startswith("---"):
@@ -368,10 +378,12 @@ def validate_body(body: str) -> str | None:
     headings = tuple(h for h, _ in sections)
     if RESULT_HEADING in headings:
         return f"{RESULT_HEADING} は tw done が書く（本文に入れない）"
-    if headings != SECTION_HEADINGS:
+    expected = tuple(h for h in SECTION_HEADINGS if h in headings) if draft else SECTION_HEADINGS
+    if headings != expected:
         return "本文の見出しが枠と違う（この順に1つずつ置く）: " + "、".join(SECTION_HEADINGS)
     contents = dict(sections)
-    blank = [h for h in FILLED_SECTIONS if is_blank(contents[h])]
+    filled = (PURPOSE_HEADING,) if draft else FILLED_SECTIONS
+    blank = [h for h in filled if is_blank(contents.get(h, ""))]
     if blank:
         return f"空・「{EMPTY_MARK}」にできない節: " + "、".join(blank)
     return None
@@ -410,11 +422,13 @@ def plan_changed(old_body: str, new_body: str) -> bool:
 def changed_frame_sections(old_body: str, new_body: str) -> list[str]:
     """`## 目的・背景`・`## 完了条件` のうち、中身が `old_body` と違う節の見出し。
 
-    行末の空白と連続する空行の数は無視する。`old_body` に節が無いときは比べない。
+    行末の空白と連続する空行の数は無視する。`old_body` に節が無いか、中身が空か「なし」のときは比べない。
     """
     old = dict(_frame_sections(old_body)[1])
     new = dict(_frame_sections(new_body)[1])
-    return [h for h in FILLED_SECTIONS if h in old and _squeeze(old[h]) != _squeeze(new.get(h, ""))]
+    return [
+        h for h in FILLED_SECTIONS if h in old and not is_blank(old[h]) and _squeeze(old[h]) != _squeeze(new.get(h, ""))
+    ]
 
 
 def _squeeze(content: str) -> str:

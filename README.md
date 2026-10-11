@@ -67,9 +67,9 @@ tsukumo のワークフローの契約に型の合う1つの例だが、tsukumo 
 全7スキル。`skills/` にあるものが全てで、この一覧がその索引。
 
 - 自作（6件）: `task-workflow`（運用の正典・参照専用）、`setup-tasks` `plan-tasks` `next-task` `list-tasks`、
-  `retrospect`（`/next-task` の中で1件ごと・7日おきに振り返り、改善候補をドラフトに積む。正典・参照専用）
+  `retrospect`（`/next-task` の中で1件ごと・7日おきに振り返り、改善候補をドラフトの課題〔`tw new --draft`〕として積む。正典・参照専用）
 - [mattpocock/skills](https://github.com/mattpocock/skills) を日本語化したもの（1件）: `retro`
-  （改善の7観点の一覧を `retrospect` へ移してそこを指し、選ばれた改善案をドラフトの置き場に積む）
+  （改善の7観点の一覧を `retrospect` へ移してそこを指し、選ばれた改善案をドラフトの課題として積む）
 
 どれも `sinnlosses/claude-skills` で育ったもので、そこから切り出した（下の「決めたこと」の2）。
 

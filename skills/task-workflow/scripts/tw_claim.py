@@ -38,7 +38,7 @@ def cmd_claim(toplevel: str, task_id: str) -> None:
     if issue.status == "in_progress":
         _print_taken(shown, issue)
     if task.status != "todo":
-        print(f"NOT_READY\t{shown}\t{task.status}")
+        print(f"NOT_READY\t{shown}\t{'DRAFT' if task.status == 'draft' else task.status}")
         raise SystemExit(4)
     blocked = [beads.to_task_id(d) for d in issue.dependencies if not _resolved(toplevel, d)]
     if blocked:
@@ -118,6 +118,14 @@ def cmd_done(toplevel: str, task_id: str, dropped: bool, result_path: str) -> No
     trk = tracker.session(toplevel)
     pulled = trk.before([bd_id])
     issue = beads.show(toplevel, bd_id)
+    if issue is not None and beads.is_draft(issue):
+        if not dropped:
+            print(f"NOT_READY\t{shown}\tDRAFT")
+            tw_base.print_lines(pulled)
+            raise SystemExit(4)
+        _close_draft(toplevel, shown, issue, result)
+        tw_base.print_lines(pulled + trk.after([bd_id]))
+        return
     if issue is None or issue.status != "in_progress" or issue.assignee != actor:
         print(f"NOT_OWNER\t{shown}")
         tw_base.print_lines(pulled)
@@ -135,6 +143,16 @@ def cmd_done(toplevel: str, task_id: str, dropped: bool, result_path: str) -> No
     head = metadata.get(beads.CLAIM_HEAD_KEY) if isinstance(metadata, dict) else None
     _print_commits_since_claim(toplevel, shown, head)
     tw_base.print_lines(pulled + trk.after([bd_id]))
+
+
+def _close_draft(toplevel: str, shown: str, issue: beads.Issue, result: str) -> None:
+    """却下したドラフトを、着手の印なしでその場で閉じる（`## 結果` の comment・label `cancelled`・`bd close`）。"""
+    actor = tw_base.actor(toplevel)
+    bd_id = issue.bd_id
+    beads.run_ok(toplevel, ["comment", bd_id, "--stdin"], actor, f"{beads.RESULT_HEADING}\n\n{result}\n")
+    beads.run_ok(toplevel, ["update", bd_id, "--add-label", beads.CANCELLED_LABEL], actor)
+    beads.run_ok(toplevel, ["close", bd_id], actor)
+    print(f"DONE\t{shown}\tbeads:{bd_id}\tドラフトを閉じた")
 
 
 def _claim_preflight(toplevel: str) -> tuple[str, str]:

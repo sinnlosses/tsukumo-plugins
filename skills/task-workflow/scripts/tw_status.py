@@ -163,7 +163,7 @@ def _print_status_table(
     long_ids = [
         tid
         for tid in sorted(tasks, key=sort_key)
-        if tasks[tid].status in ("todo", "hold") and display_width(tasks[tid].summary) > LONG_SUMMARY_WIDTH
+        if tasks[tid].status in ("todo", "hold", "draft") and display_width(tasks[tid].summary) > LONG_SUMMARY_WIDTH
     ]
     print(f"long_summary\t{len(long_ids)}\t" + (",".join(long_ids) or "-"))
 

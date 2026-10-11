@@ -53,6 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_new.add_argument("--loopable", required=True, choices=taskfile.LOOPABLE_VALUES)
     p_new.add_argument("--deps", default="")
     p_new.add_argument("--hold", action="store_true")
+    p_new.add_argument("--draft", action="store_true")
     p_new.add_argument("--direct", action="store_true")
     p_new.add_argument("--body-file", required=True)
 

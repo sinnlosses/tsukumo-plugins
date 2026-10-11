@@ -26,14 +26,17 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
         if not layout.ANY_ID_PATTERN.match(d):
             print(f"usage: --deps の {d!r} が T-999・GH-5・PROJ-123 の形式でない", file=sys.stderr)
             raise SystemExit(2)
+    if args.draft and (args.hold or args.direct):
+        print("usage: --draft は --hold・--direct と一緒に使えない", file=sys.stderr)
+        raise SystemExit(2)
     body = tw_base.read_body(args.body_file)
-    error = taskfile.validate_new_body(body, args.hold)
+    error = taskfile.validate_draft_body(body) if args.draft else taskfile.validate_new_body(body, args.hold)
     if error is not None:
         print(f"usage: {error}", file=sys.stderr)
         raise SystemExit(2)
     if args.direct:
         tw_plan.refuse_direct(args.difficulty, body)
-    plan_base = tw_plan.registered_plan_base(toplevel, body) if taskfile.has_plan(body) else None
+    plan_base = tw_plan.registered_plan_base(toplevel, body) if taskfile.has_plan(body) and not args.draft else None
 
     snap = tw_base.beads_snapshot(toplevel)
     missing = [d for d in deps if d not in snap.issues]
@@ -46,6 +49,8 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
     metadata = {beads.DIFFICULTY_KEY: args.difficulty, beads.LOOPABLE_KEY: args.loopable}
     if plan_base is not None:
         metadata[beads.PLAN_BASE_KEY] = plan_base
+    if args.draft:
+        metadata[beads.DRAFT_KEY] = beads.DRAFT_ON
 
     def create_cmd(bd_id: str) -> list[str]:
         cmd = ["create", "--id", bd_id, "--title", summary, "--body-file", "-", "--metadata", json.dumps(metadata), "--silent"]
@@ -55,7 +60,7 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
             cmd += ["--acceptance", parts.acceptance]
         if parts.notes:
             cmd += ["--notes", parts.notes]
-        if args.hold:
+        if args.hold or args.draft:
             cmd += ["-s", beads.HOLD_STATUS]
         if deps:
             cmd += ["--deps", ",".join(beads.to_bd_id(d) for d in deps)]

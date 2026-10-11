@@ -523,7 +523,53 @@ def test_root_setting() -> None:
                   r.returncode == 3 and r.stdout.startswith("INVALID\t.tw/config.toml:2:"), r.stdout + r.stderr)
 
 
+def test_draft_to_todo() -> None:
+    say("task.py edit: ドラフトは完了条件とやることが書けたときだけ todo に進め、登録時の計画として控える")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
+        r = run_task(main_path, "new", "--summary", "ドラフト", "--difficulty", "sonnet", "--loopable", "Y", "--draft",
+                     "--body-file", "-", stdin="## 目的・背景\n\n直したい改善\n")
+        draft = r.stdout.split("\t")[1] if r.stdout.startswith("CREATED\t") else ""
+        check("ドラフトを積む", draft != "", r.stdout + r.stderr)
+
+        def edit(*args: str, stdin: str | None = None) -> subprocess.CompletedProcess:
+            return run_task(main_path, "edit", draft, *args, stdin=stdin)
+
+        def still_draft() -> bool:
+            return "\nstatus: draft\n" in shown(main_path, draft) and metadata(main_path, draft).get(beads.DRAFT_KEY) == beads.DRAFT_ON
+
+        r = edit("--status", "todo")
+        check("完了条件もやることも無いドラフトの --status todo は NOT_READY DRAFT（終了コード4）で変わらない",
+              r.returncode == 4 and r.stdout.startswith(f"NOT_READY\t{draft}\tDRAFT\t") and still_draft(), r.stdout + r.stderr)
+        planned = task_body([("書く", "x")], ["shared.txt"])
+        plan = planned.split(f"{taskfile.PLAN_HEADING}\n", 1)[1].split(f"\n{taskfile.ACCEPTANCE_HEADING}\n", 1)[0]
+        r = edit("--section", "やること", "--body-file", "-", stdin=plan.replace("### 1.", "### 2."))
+        check("段の形の違うやることは終了コード2", r.returncode == 2 and still_draft(), r.stdout + r.stderr)
+        r = edit("--section", "やること", "--body-file", "-", stdin=plan)
+        check("完了条件が空のままでもやることを書ける", r.returncode == 0 and r.stdout.startswith(f"EDITED\t{draft}")
+              and still_draft(), r.stdout + r.stderr)
+        r = edit("--status", "todo")
+        check("完了条件が空なら --status todo は NOT_READY DRAFT", r.returncode == 4
+              and r.stdout.startswith(f"NOT_READY\t{draft}\tDRAFT\t") and still_draft(), r.stdout + r.stderr)
+        r = edit("--section", "完了条件", "--body-file", "-", stdin="- 通る\n")
+        check("空の完了条件を初めて書くのは FRAME_CHANGED にならない", r.returncode == 0
+              and r.stdout.startswith(f"EDITED\t{draft}"), r.stdout + r.stderr)
+
+        head = git(main_path, "rev-parse", "main").stdout.strip()
+        r = edit("--status", "todo")
+        row = next((l.split("\t") for l in run_task(main_path, "status").stdout.splitlines() if l.startswith(f"{draft}\t")), [])
+        meta = metadata(main_path, draft)
+        check("書けたドラフトは todo・READY になり、印が消えて計画の SHA を控える", r.returncode == 0
+              and row[1:2] == ["todo"] and row[5:6] == ["READY"] and beads.DRAFT_KEY not in meta
+              and meta.get(beads.PLAN_BASE_KEY) == head, r.stdout + r.stderr + str(row) + str(meta))
+        r = run_task(wt1, "claim", draft)
+        r2 = run_task(wt1, "plan-check", draft)
+        check("todo にしたドラフトを着手でき、計画は PLAN_REGISTERED", r.stdout.startswith(f"CLAIMED\t{draft}")
+              and r2.stdout.strip() == f"PLAN_REGISTERED\t{draft}\t{head}", r.stdout + r.stderr + r2.stdout + r2.stderr)
+
+
 TESTS = (
+    test_draft_to_todo,
     test_registered_plan,
     test_edit_and_plan_check,
     test_edit_deps,

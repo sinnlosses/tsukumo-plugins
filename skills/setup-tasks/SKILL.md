@@ -34,7 +34,7 @@ description: "タスク運用に要る .tw/ （direction.md・.gitignore）を�
    | `NOT_MAIN_WORKTREE`（終了コード4） | `.beads` は主ブランチを出している作業ツリー（本体）の根に置く。パスの作業ツリーで打ち直すよう案内する |
    | `FAILED\tbd init`（終了コード1） | `bd` が無いか `bd init` が失敗した。行を添えて、`bd`（Beads）と Dolt を入れるよう案内して終了する |
 
-   `.tw/draft/` は最初のドラフトが作る（空のディレクトリは git に載らない）。`docs/history/` も掘らない。
+   `.tw/draft/`（ドラフトの旧い置き場）は作らない。ドラフトは `tw new --draft` で Beads に積む。`docs/history/` も掘らない。
 
 2. **`.tw/config.toml` を書く**（`config\tMISSING` のときだけ）。聞くのは検証コマンドだけ。**推測で書かない**:
 

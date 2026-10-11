@@ -58,7 +58,7 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
             print("usage: --body-file の中身が空（空白だけ）。書き換えない", file=sys.stderr)
             raise SystemExit(2)
         body = _section_body(args, current, given)
-        error = taskfile.validate_edited_body(current, body)
+        error = taskfile.validate_edited_body(current, body, draft=beads.is_draft(issue))
         if error is not None:
             print(f"usage: {error}", file=sys.stderr)
             raise SystemExit(2)
@@ -102,6 +102,8 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
             print(f"NOT_READY\t{shown}\t{issue.status}（todo↔hold は着手前だけ）")
             raise SystemExit(4)
         cmd += ["--status", "open" if args.status == "todo" else beads.HOLD_STATUS]
+        if beads.is_draft(issue):
+            cmd += _draft_promotion_args(toplevel, shown, body, args.status)
     if len(cmd) > 2:
         r = beads.run(toplevel, cmd, tw_base.actor(toplevel), stdin)
         if r.returncode != 0:
@@ -130,6 +132,19 @@ def cmd_plan_check(toplevel: str, task_id: str) -> None:
     plan_base = metadata.get(beads.PLAN_BASE_KEY) or None
     stale = tw_plan.registered_plan_changes(toplevel, plan_base, metadata.get(beads.PLAN_TIP_KEY) or None, plan_body)
     _print_plan_check(shown, plan_body, metadata.get(beads.PLAN_KEY) or None, plan_base, stale)
+
+
+def _draft_promotion_args(toplevel: str, shown: str, body: str, status: str) -> list[str]:
+    """ドラフトを `todo`・`hold` へ進める `bd update` の引数。本文が `tw new`（`hold` なら `--hold`）の検査を通らなければ
+    何も書かずに `NOT_READY\\t<ID>\\tDRAFT\\t<理由>`（終了コード4）。"""
+    error = taskfile.validate_new_body(body, hold=status == "hold")
+    if error is not None:
+        print(f"NOT_READY\t{shown}\tDRAFT\t{error}")
+        raise SystemExit(4)
+    args = ["--unset-metadata", beads.DRAFT_KEY]
+    if taskfile.has_plan(body):
+        args += ["--set-metadata", f"{beads.PLAN_BASE_KEY}={tw_plan.registered_plan_base(toplevel, body)}"]
+    return args
 
 
 def _parse_dep_list(raw: str | None, pattern: re.Pattern[str], flag: str, form: str) -> tuple[str, ...]:
