@@ -1,5 +1,7 @@
-"""`tw commit-guard`: Claude Code の PreToolUse hook の入力（stdin の JSON）を読み、コミットを作る git の
-サブコマンドの実効の作業先に、`done` 前の着手の控え（`ledger.open_claims`）があれば拒む。
+"""`tw commit-guard`: Claude Code の PreToolUse hook の入力（stdin の JSON）を読み、次の2つの実効の作業先に、
+`done` 前の着手の控え（`ledger.open_claims`）があれば拒む。
+コミットを作る git のサブコマンドと、シェルでのファイルの書き換え（`sed -i`・`perl -i`・`>`・`>>`・`tee`・
+python の書き込み）。判定しきれない書き方は通す。
 
 拒むときだけ stdout に deny の JSON を1行出す。通すときは何も出さない。終了コードはいつも0
 （hook の取り決め。`tw` の「stdout は先頭語の TSV」の例外）。
@@ -10,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 from typing import IO, NamedTuple
 
 import agent_scope
@@ -20,7 +23,14 @@ COMMIT_SUBCOMMANDS = ("commit", "merge", "pull", "cherry-pick", "revert", "am", 
 _OPERATOR_CHARS = ";&|()\n<>"
 _SHELL_KEYWORDS = ("do", "then", "else", "elif", "if", "while", "until", "!", "{")
 _HEREDOC = re.compile(r"<<(?!<)-?\s*(['\"]?)([A-Za-z_]\w*)\1")
-_GIT_OPTIONS_WITH_VALUE = ("-c", "--git-dir", "--work-tree", "--namespace")
+_WRITE_OPERATORS = (">", ">>", ">|", "&>", "&>>")
+_IN_PLACE = re.compile(r"^-[nEszrupal]*i[^A-Za-z]*$")
+_PYTHON = re.compile(r"^python[\d.]*$")
+_PY_WRITE = re.compile(
+    r"open\([^)]*,\s*(?:mode\s*=\s*)?['\"][rbt]*[wax+][rbtwax+]*['\"]|\.write_text\(|\.write_bytes\("
+)
+_PY_OUTSIDE = re.compile(r"['\"](?:/tmp|/private|/var|/dev|~)|tempfile")
+_GIT_OPTIONS_WITH_VALUE =("-c", "--git-dir", "--work-tree", "--namespace")
 
 
 def run(stdin: IO[str], stdout: IO[str], agent_scoped: bool = False) -> None:
@@ -59,7 +69,126 @@ def decide(payload: dict) -> str | None:
                 f"着手の印（{','.join(claims)}）が立っていて tw done の前の作業ツリー（{where}）では "
                 f"git {subcommand} を拒む。コミットせず、変更は作業ツリーに残したまま報告で返す"
             )
+    for path, how in _shell_writes(command, start):
+        where, claims = _claims_for_write(path)
+        if claims:
+            return (
+                f"着手の印（{','.join(claims)}）が立っていて tw done の前の作業ツリー（{where}）では "
+                f"{how} でファイルを書き換えない。Edit・Write で書く（作業ツリーの外のログへの出力は通る）"
+            )
     return None
+
+
+def _shell_writes(command: str, start: str) -> list[tuple[str, str]]:
+    """`(書き先のパス〔python は作業先のディレクトリ〕, 書き方の名前)` の並び。見えたものだけで、判定しきれないものは含めない。"""
+    bodies = _split_heredocs(command)[1]
+    found: list[tuple[str, str]] = []
+    for simple in _simple_commands(command, start):
+        args, targets = _split_redirects(simple.words)
+        for target in targets:
+            path = _resolve(simple.where, target)
+            if path is not None:
+                found.append((path, f"リダイレクト（> {target}）"))
+        while args and (args[0] in ("env", "command") or _is_assignment(args[0])):
+            args = args[1:]
+        if not args:
+            continue
+        name = os.path.basename(args[0])
+        rest = args[1:]
+        if name in ("sed", "gsed", "perl"):
+            if any(_IN_PLACE.match(a) or a.startswith("--in-place") for a in rest):
+                found.extend((p, f"{name} -i") for p in _resolved(simple.where, _file_arguments(rest)))
+        elif name == "tee":
+            found.extend((p, "tee") for p in _resolved(simple.where, [a for a in rest if a and not a.startswith("-")]))
+        elif _PYTHON.match(name) and _python_writes(rest, bodies):
+            found.append((simple.where, f"{name} の書き込み"))
+    return found
+
+
+def _split_redirects(words: tuple[Token, ...]) -> tuple[list[str], list[str]]:
+    """リダイレクトを除いた語と、`>` 系の書き先の語。"""
+    args: list[str] = []
+    targets: list[str] = []
+    i = 0
+    while i < len(words):
+        t = words[i]
+        following = words[i + 1] if i + 1 < len(words) else None
+        if t.op and ("<" in t.text or ">" in t.text):
+            has_target = following is not None and not following.op
+            if t.text in _WRITE_OPERATORS and has_target and following is not None:
+                targets.append(following.text)
+            i += 2 if has_target else 1
+        elif not t.op and t.text.isdigit() and following is not None and following.op and (
+            "<" in following.text or ">" in following.text
+        ):
+            i += 1
+        elif t.op:
+            i += 1
+        else:
+            args.append(t.text)
+            i += 1
+    return args, targets
+
+
+def _file_arguments(args: list[str]) -> list[str]:
+    """`sed`・`perl` の引数のうち、書き換えられるファイル。"""
+    files: list[str] = []
+    script_given = False
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in ("-e", "-f"):
+            script_given = True
+            i += 2
+            continue
+        if a == "" or (a.startswith("-") and a != "-"):
+            i += 1
+            continue
+        files.append(a)
+        i += 1
+    return files if script_given else files[1:]
+
+
+def _resolved(where: str, words: list[str]) -> list[str]:
+    return [p for p in (_resolve(where, w) for w in words) if p is not None]
+
+
+def _resolve(where: str, word: str) -> str | None:
+    """絶対パス。変数・コマンド置換・グロブを含むなど決められなければ `None`。"""
+    if not word or any(c in word for c in "$`*?[") or word.startswith("/dev/") or word == "-":
+        return None
+    return os.path.normpath(os.path.join(where, os.path.expanduser(word)))
+
+
+def _python_writes(args: list[str], bodies: list[str]) -> bool:
+    if "-c" in args and args.index("-c") + 1 < len(args):
+        source = args[args.index("-c") + 1]
+    elif all(a.startswith("-") for a in args) or args == ["-"]:
+        source = "\n".join(bodies)
+    else:
+        return False
+    return _PY_WRITE.search(source) is not None and _PY_OUTSIDE.search(source) is None
+
+
+def _claims_for_write(path: str) -> tuple[str, list[str]]:
+    """書き先を含む作業ツリーの `(ディレクトリ, 着手の控え)`。無視されるパスと、控えの無い所は控え無し。"""
+    directory = path if os.path.isdir(path) else os.path.dirname(path)
+    while directory != os.path.dirname(directory) and not os.path.isdir(directory):
+        directory = os.path.dirname(directory)
+    claims = _open_claims_at(directory)
+    if claims and not os.path.isdir(path) and _is_ignored(path, directory):
+        return directory, []
+    return directory, claims
+
+
+def _is_ignored(path: str, directory: str) -> bool:
+    try:
+        r = subprocess.run(
+            ["git", "check-ignore", "-q", "--", path], cwd=directory, capture_output=True, check=False
+        )
+    except OSError:
+        return False
+    return r.returncode == 0
 
 
 def _git_commits(command: str, start: str) -> list[tuple[str, str]]:
