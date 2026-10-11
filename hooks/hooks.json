@@ -12,6 +12,12 @@
         "hooks": [
           { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/tw\" handback-guard --agent-scoped 2>/dev/null || true" }
         ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/tw\" ask-guard 2>/dev/null || true" }
+        ]
       }
     ],
     "SubagentStop": [

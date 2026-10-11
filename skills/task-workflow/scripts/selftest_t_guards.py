@@ -343,15 +343,26 @@ def test_agent_scoped_guard() -> None:
                 check(f"{subcommand} {' '.join(flags)} agent_type={agent_type} は{'拒む' if refused else '通す'}",
                       r.returncode == 0 and (r.stdout != "") == refused, r.stdout + r.stderr)
 
-        hooks = _plugin_hook_commands()
+        all_hooks = _plugin_hook_commands()
+        hooks = [h for h in all_hooks if " ask-guard" not in h]
+        ask_hooks = [h for h in all_hooks if " ask-guard" in h]
         check("hooks/hooks.json は --agent-scoped 付きで ${CLAUDE_PLUGIN_ROOT}/bin/tw を呼ぶ hook を3つ持つ",
               len(hooks) == 3 and all(
                   h.startswith('"${CLAUDE_PLUGIN_ROOT}/bin/tw" ') and " --agent-scoped " in h for h in hooks),
-              str(hooks))
+              str(all_hooks))
+        check("hooks/hooks.json は --agent-scoped なしで ${CLAUDE_PLUGIN_ROOT}/bin/tw ask-guard を呼ぶ hook を1つ持つ",
+              len(ask_hooks) == 1 and ask_hooks[0].startswith('"${CLAUDE_PLUGIN_ROOT}/bin/tw" ask-guard ')
+              and "--agent-scoped" not in ask_hooks[0],
+              str(all_hooks))
         env = {
             **hook_env(tmp, f"{os.path.dirname(sys.executable)}:/usr/bin:/bin"),
             "CLAUDE_PLUGIN_ROOT": os.path.abspath(os.path.join(HERE, "..", "..", "..")),
         }
+        for hook in ask_hooks:
+            payload = {"tool_name": "AskUserQuestion", "tool_input": {}, "cwd": wt1}
+            r = subprocess.run(["sh", "-c", hook], input=json.dumps(payload), capture_output=True, text=True, env=env)
+            check(f"hooks.json の {hook} は agent_type が無くても loopable: Y の控えで拒む",
+                  r.returncode == 0 and '"deny"' in r.stdout, r.stdout + r.stderr)
         for hook in hooks:
             fields = commit if "commit-guard" in hook else stop
             for agent_type, refused in (("tsukumo-workflow:no-delegate", True), (None, False)):
