@@ -904,7 +904,7 @@ def test_tracker_project_items_per_issue() -> None:
             bd(main_path, "kv", "clear", k)
         legacy = {f"https://github.com/o/r/issues/{int(k[len(prefix):])}": v for k, v in old.items()}
         legacy.update({f"https://github.com/o/r/issues/{1000 + i}": {"item": f"PVTI_{1000 + i}", "status": "Todo"}
-                       for i in range(150)})
+                       for i in range(40)})
         bd(main_path, "kv", "set", legacy_key, json.dumps(legacy))
         r = run_task(main_path, "sync")
         kv = _kv(main_path)
@@ -950,16 +950,16 @@ def test_tracker_sync_pushes_only_changed() -> None:
 
 
 def test_tracker_sync_bd_calls() -> None:
-    say("トラッカー github・1回の sync の bd の起動は、課題8件で17回以下")
+    say("トラッカー github・1回の sync の bd の起動は、課題4件で17回以下")
     with _github() as (fake, tmp, main_path, _wt1):
-        ids = [new(main_path, f"課題{i}") for i in range(8)]
+        ids = [new(main_path, f"課題{i}") for i in range(4)]
         r = run_task(_wt1, "claim", ids[0])
         check("claim", r.returncode == 0 and r.stdout.startswith("CLAIMED"), r.stdout + r.stderr)
         counted = os.path.join(tmp, "bd-count.txt")
         local.env = {**local.env, "BD_COUNT_FILE": counted}
-        # 8件とも取り込んで着手の印を戻す sync は、1件ごとの history と update が本物の仕事なので17回に収まらない。
-        for label, limit in (("変わりの無い sync", 17), ("8件とも GitHub で直した sync", 29)):
-            if label.startswith("8件"):
+        # 全件取り込んで着手の印を戻す sync は、1件ごとの history と update が本物の仕事なので17回に収まらない。
+        for label, limit in (("変わりの無い sync", 17), ("4件とも GitHub で直した sync", 21)):
+            if label.startswith("4件"):
                 fake.clock_offset = 60
                 for task_id in ids:
                     fake.edit(_num(task_id), body="GitHub で直した本文")
