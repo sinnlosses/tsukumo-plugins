@@ -594,7 +594,12 @@ class Session:
         if not pending:
             return
         taken = {n for i in self._issues() if (n := _ref_number(i.external_ref)) is not None}
-        found = self._rest_issues("state=all&per_page=100")
+        # 照らす Issue は作成が課題の作成 - SYNC_SLACK 以後なので、更新もそれ以後。読めない課題があれば全件。
+        starts = [_parse_time(i.raw.get("created_at")) for i in pending]
+        query = "state=all&per_page=100"
+        if all(t is not None for t in starts):
+            query += "&since=" + _format_time(min(starts) - SYNC_SLACK)
+        found = self._rest_issues(query)
         remote = [found[n] for n in sorted(found) if n not in taken]
         for issue in pending:
             created = _parse_time(issue.raw.get("created_at"))

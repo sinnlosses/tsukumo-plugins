@@ -597,6 +597,7 @@ class FakeGitHub:
         self.status_writes = 0  # Status 欄を書いた回数
         self.issue_patches: list[int] = []  # Issue を PATCH で更新した番号（順に）
         self.fetched: list[int] = []  # Issue を1件ずつ GET で取った番号（`bd github pull` が取りに来た分）
+        self.listed: list[list[int]] = []  # Issue の一覧 GET が返した番号（呼び出しごと）
         self.clock_offset = 0  # 秒。GitHub 側の編集を後の時刻にする
         self.delay = 0.0  # 秒。応答を遅らせる
         self.delay_post_only = False  # 立てる POST の応答だけ遅らせる
@@ -695,6 +696,7 @@ class FakeGitHub:
             state, since = (q.get("state") or ["open"])[0], (q.get("since") or [""])[0]
             found = [i for i in self.issues.values() if (state == "all" or i["state"] == state)
                      and (not since or i["updated_at"] >= since)]
+            self.listed.append([i["number"] for i in found])
             return 200, [self.issue_json(i) for i in found]
         return 404, {"message": f"fake: {method} {u.path}"}
 
@@ -847,17 +849,25 @@ def test_tracker_timeout() -> None:
 def test_tracker_register_timeout_no_duplicate() -> None:
     say("トラッカー github・Issue を立てた直後に上限で落ちた仮の ID を sync が送り直しても Issue は1つ")
     with _github() as (fake, _tmp, main_path, _wt1):
+        fake.clock_offset = -3600
+        old = fake.open_issue("ずっと前からある Issue", [])
+        fake.clock_offset = 0
         local.env[tracker.OP_TIMEOUT_ENV] = "2"
         fake.delay = 5
         fake.delay_post_only = True
+        fake.listed.clear()
         a = new(main_path, "立てた直後に落ちる")
         fake.delay = 0
-        check("前提: 落ちた register は仮の ID のまま返り、Issue は1つ立っている",
-              beads.is_provisional(beads.to_bd_id(a)) and len(fake.issues) == 1,
+        check("前提: 落ちた register は仮の ID のまま返り、Issue は古いものと合わせて2つ",
+              beads.is_provisional(beads.to_bd_id(a)) and len(fake.issues) == 2,
               f"{a} {len(fake.issues)}")
+        check("register の拾い探しは古い Issue を取りに行かない",
+              bool(fake.listed) and all(old not in got for got in fake.listed), repr(fake.listed))
+        fake.listed.clear()
         r = run_task(main_path, "sync")
-        check("sync のあとも Issue は1つ", len(fake.issues) == 1, f"{len(fake.issues)} {r.stdout}{r.stderr}")
-        check("仮の ID は gh-1 へ付け替わる", beads.show(main_path, "gh-1") is not None
+        check("sync のあとも立てた Issue は1つ（合わせて2つ）", len(fake.issues) == 2, f"{len(fake.issues)} {r.stdout}{r.stderr}")
+        check("sync の拾い探しも古い Issue を取りに行かない", old not in fake.listed[0], repr(fake.listed))
+        check("仮の ID は gh-2 へ付け替わる", beads.show(main_path, "gh-2") is not None
               and not any(beads.is_provisional(i.bd_id) for i in beads.list_issues(main_path)), r.stdout)
 
 
