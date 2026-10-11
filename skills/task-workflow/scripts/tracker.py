@@ -108,7 +108,6 @@ class Session:
         self._items: dict | None = None
         self._items_dirty: set[str] = set()
         self._synced: dict | None = None
-        # 課題の一覧と `bd kv list` の読み済みの値。自分の書き込み（`_changed`・`_kv_listing`）で作り直す。
         self._listed: list[beads.Issue] | None = None
         self._kv_all: dict | None = None
         self._deadline: float | None = None
