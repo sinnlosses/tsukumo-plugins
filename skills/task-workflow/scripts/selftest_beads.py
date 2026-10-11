@@ -804,6 +804,28 @@ def test_release_force_clears_github_label() -> None:
               r.stdout + str(again and again.status))
 
 
+def test_release_force_deadline_then_sync() -> None:
+    say("release --force: 送りが上限切れでも、sync が label を外し open のまま")
+    with _github() as (fake, _tmp, main_path, wt1):
+        a = new(main_path, "送りが切れる")
+        n, bd_id = _num(a), beads.to_bd_id(a)
+        bd(main_path, "update", bd_id, "--status", "in_progress")
+        r = run_task(main_path, "sync")
+        check("前提: GitHub に status::in_progress が付く", r.returncode == 0
+              and "status::in_progress" in _status_labels(fake, n), r.stdout + repr(fake.issues[n]["labels"]))
+        local.env[tracker.OP_TIMEOUT_ENV] = "2"
+        fake.delay = 5
+        r = run_task(wt1, "release", a, "--force")
+        check("RELEASED と TRACKER FAILED", r.returncode == 0 and r.stdout.startswith("RELEASED")
+              and "TRACKER\tFAILED\tgithub" in r.stdout, r.stdout + r.stderr)
+        fake.delay = 0
+        r = run_task(main_path, "sync")
+        again = beads.show(main_path, bd_id)
+        check("sync が label を外す", r.returncode == 0 and "status::in_progress" not in _status_labels(fake, n),
+              r.stdout + repr(fake.issues[n]["labels"]))
+        check("Beads は open のまま", again is not None and again.status == "open", str(again and again.status))
+
+
 def _kv(cwd: str) -> dict[str, str]:
     return json.loads(bd(cwd, "kv", "list", "--json").stdout or "{}")
 
@@ -927,6 +949,7 @@ def main() -> None:
             test_claim_race_owner_and_release,
             test_release_force_without_assignee,
             test_release_force_clears_github_label,
+            test_release_force_deadline_then_sync,
             test_handback_guard,
             test_setup_and_config_doctor,
             test_backup,
