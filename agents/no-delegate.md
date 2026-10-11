@@ -1,6 +1,6 @@
 ---
 name: no-delegate
-description: "調べもの・コード検索・複数手順の実行を行う汎用エージェント。`general-purpose` と同じ道具を持つが `Agent` ツールを持たないため、これ自身は別のサブエージェント（fork を含む）を立てられない。委譲を1段で止めたい場面（例: `/next-task` からの委譲）で `general-purpose` の代わりに使う。着手の印が立った作業ツリーでのコミットとシェルでのファイルの書き換えは hook（`tw commit-guard`）が、計画か検証（途中の段では `tw step` の印）が欠けたままの返却は hook（`tw handback-guard`）が拒む。"
+description: "調べもの・コード検索・複数手順の実行を行う汎用エージェント。`general-purpose` と同じ道具を持つが `Agent` ツールを持たないため、これ自身は別のサブエージェント（fork を含む）を立てられない。委譲を1段で止めたい場面（例: `/next-task` からの委譲）で `general-purpose` の代わりに使う。着手の印が立った作業ツリーでのコミットとシェルでのファイルの書き換えと設定の検証コマンドの直打ちは hook（`tw commit-guard`）が、計画か検証（途中の段では `tw step` の印）が欠けたままの返却は hook（`tw handback-guard`）が拒む。"
 disallowedTools: Agent
 hooks:
   PreToolUse:
@@ -24,6 +24,9 @@ hooks:
 
 ファイルの作成・書き換えは `Edit`・`Write` で行い、シェル（python・sed・heredoc のリダイレクト）で書かない。
 着手の印が立った作業ツリーでシェルから書き換えると hook（`tw commit-guard`）が拒む。拒まれたら回避せず `Edit`・`Write` で書く。
+
+設定の検証コマンド（`./check.sh` など）は直に打たず `tw verify` で打つ。着手の印が立った作業ツリーで
+直に打つと hook（`tw commit-guard`）が拒む。対象を絞った単体テストの実行は打ってよい。
 
 着手の印（`tw claim`）が立って `tw done` をまだ打っていない作業ツリーで、`git commit` などコミットを
 作る git のサブコマンドを打つと hook（`tw commit-guard`）が拒む。拒まれたら回避せず、コミットせずに
