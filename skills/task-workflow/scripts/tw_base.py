@@ -98,7 +98,8 @@ def _task_difficulty(toplevel: str, task_id: str, issue: beads.Issue | None = No
 def record(
     toplevel: str, event: str, task_id: str, issue: beads.Issue | None = None, **fields: str | int | bool
 ) -> None:
-    ledger.record_event(toplevel, event, task_id, _task_difficulty(toplevel, task_id, issue), **fields)
+    shown = beads.to_task_id(beads.to_bd_id(task_id))
+    ledger.record_event(toplevel, event, shown, _task_difficulty(toplevel, task_id, issue), **fields)
 
 
 def claimed_here(toplevel: str) -> list[str]:
