@@ -171,6 +171,61 @@ def open_stages(events: list[Event], task_id: str) -> list[str]:
     return stages
 
 
+def _run_spans(run: list[Event]) -> tuple[list[tuple[str, str, datetime, datetime, float]], list[str]]:
+    """`run`（1回の着手以降の出来事）から `(段, difficulty, 始め, 終わり, 所要秒)` の並びと、終わりの無い `start` の段名の並びを拾う。
+
+    最後の出来事は次の出来事が無いので拾わない。
+    """
+    spans: list[tuple[str, str, datetime, datetime, float]] = []
+    opens: list[str] = []
+    verifying = _verify_spans(run)
+    for i, e in enumerate(run[:-1]):
+        stage = _stage_of(e)
+        if stage is None:
+            continue
+        edge = e.fields.get("edge") if e.kind == "lap" else None
+        if edge == "end":
+            continue
+        if edge == "start":
+            closing = _closing_edge(run, e, i + 1)
+            if closing is None:
+                opens.append(stage)
+                continue
+            begin, end = e.at, closing.at
+            seconds = (end - begin).total_seconds()
+        elif e.kind == "verify":
+            recorded = e.fields.get("seconds")
+            if not isinstance(recorded, (int, float)):
+                continue
+            begin, end = e.at - timedelta(seconds=recorded), e.at
+            seconds = recorded
+        else:
+            begin = e.at
+            following = next((n.at for n in run[i + 1 :] if n.kind != "verify"), None)
+            if following is None:
+                continue
+            end = following
+            seconds = (end - begin).total_seconds() - _overlap_seconds(verifying, begin, end)
+        spans.append((stage, str(e.fields.get("difficulty", "?")), begin, end, float(seconds)))
+    return spans, opens
+
+
+def task_stage_spans(
+    events: list[Event], task_id: str
+) -> tuple[list[tuple[str, datetime, datetime]], list[str], datetime, datetime] | None:
+    """そのタスクの最後の `claim` 以降の `(段, 始め, 終わり)` の並び・終わりの無い段名の並び・着手の時刻・最後の出来事の時刻。`claim` が無ければ `None`。
+
+    `ship` 前でも使える。最後の出来事の所要は拾わない。
+    """
+    own = [e for e in events if e.task == task_id]
+    claims = [i for i, e in enumerate(own) if e.kind == "claim"]
+    if not claims:
+        return None
+    run = own[claims[-1] :]
+    spans, opens = _run_spans(run)
+    return [(stage, begin, end) for stage, _d, begin, end, _s in spans], opens, run[0].at, run[-1].at
+
+
 def stage_durations(
     events: list[Event], days: int
 ) -> tuple[dict[tuple[str, str, str], list[float]], dict[str, int]]:
@@ -195,28 +250,11 @@ def stage_durations(
             continue
         run = [e for e in own[claims[-1] :] if e.kind != "ship" or e is ship]
         route = _route(run)
-        verifying = _verify_spans(run)
-        for i, e in enumerate(run[:-1]):
-            stage = _stage_of(e)
-            if stage is None:
-                continue
-            edge = e.fields.get("edge") if e.kind == "lap" else None
-            if edge == "end":
-                continue
-            if edge == "start":
-                closing = _closing_edge(run, e, i + 1)
-                if closing is None:
-                    opens[stage] = opens.get(stage, 0) + 1
-                    continue
-                seconds = (closing.at - e.at).total_seconds()
-            elif e.kind == "verify":
-                seconds = e.fields.get("seconds")
-                if not isinstance(seconds, (int, float)):
-                    continue
-            else:
-                end = next(n.at for n in run[i + 1 :] if n.kind != "verify")
-                seconds = (end - e.at).total_seconds() - _overlap_seconds(verifying, e.at, end)
-            durations.setdefault((stage, str(e.fields.get("difficulty", "?")), route), []).append(float(seconds))
+        spans, run_opens = _run_spans(run)
+        for stage, difficulty, _begin, _end, seconds in spans:
+            durations.setdefault((stage, difficulty, route), []).append(seconds)
+        for stage in run_opens:
+            opens[stage] = opens.get(stage, 0) + 1
     return durations, opens
 
 

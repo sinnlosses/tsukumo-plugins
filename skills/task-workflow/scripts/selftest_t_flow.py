@@ -529,8 +529,35 @@ def test_open_stages() -> None:
     check("別のタスクは空", metrics.open_stages(events, "T-999") == [])
 
 
+def test_task_stage_spans() -> None:
+    say("metrics.task_stage_spans: ship 前でも最後の claim 以降の区間・終わりの無い段・着手と最後の出来事の時刻を返す")
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    at = lambda sec: t0 + timedelta(seconds=sec)
+    row = lambda sec, kind, **f: metrics.Event(at(sec), kind, "T-100", {"event": kind, **f})
+    events = [
+        row(0, "claim"),
+        row(1, "lap", stage="review", edge="start"),
+        row(2, "claim"),
+        row(3, "lap", stage="delegate", edge="start"),
+        row(4, "lap", stage="accept", edge="start"),
+        row(5, "lap", stage="accept", edge="end"),
+        row(6, "lap", stage="delegate", edge="end"),
+        row(7, "lap", stage="sync", edge="start"),
+        row(8, "done"),
+    ]
+    got = metrics.task_stage_spans(events, "T-100")
+    check("claim の無いタスクは None", metrics.task_stage_spans(events, "T-999") is None)
+    check("最後の claim 以降の区間（edge の対と claim から次の出来事まで）が返る",
+          got is not None and sorted(got[0], key=lambda s: (s[1], s[0])) == [
+              ("計画", at(2), at(3)), ("委譲", at(3), at(6)), ("受け入れ", at(4), at(5))
+          ], repr(got))
+    check("終わりの無い段名・着手の時刻・最後の出来事の時刻が返る",
+          got is not None and got[1:] == (["反映"], at(2), at(8)), repr(got))
+
+
 TESTS = (
     test_open_stages,
+    test_task_stage_spans,
     test_flow_records_and_metrics,
     test_config_file_agents_md_and_conflict,
     test_retrospect_due,
