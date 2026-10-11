@@ -5,11 +5,11 @@
        material.py <リポジトリの根> <T-XXX> --gate --friction none|some|missing
            --reverify N --fixes N --human N --review skip|clean|found
 
-出すのは4つ（`--signals` のときは「手数」だけ。`/next-task` の中の1件ごとの振り返りが、
+出すのは5つ（`--signals` のときは「手数」だけ。`/next-task` の中の1件ごとの振り返りが、
 材料を観点に当てるときに、当たりの目安を数だけで見るのに使う。本文と diff はメインが受け入れで読み終えている）。
 
 `--gate` のときは判定だけを出す。5つの答えと手数の当たりの目安のどれにも当たらなければ `QUIET` の1行、
-当たれば当たった材料ごとに `SIGNAL\t<材料>\t<値>` を並べ、続けて「手数」を出す。5つの答え:
+当たれば当たった材料ごとに `SIGNAL\t<材料>\t<値>` を並べ、続けて「手数」と「ドラフトの行方」を出す。5つの答え:
 
 - `--friction`: 委譲先の friction log が全部「なし」（`none`）／行がある（`some`）／書いていない返却がある（`missing`）
 - `--reverify`: 検証を打ち直した回数
@@ -24,6 +24,7 @@
   `docs/history/progress.md` の該当の小節
 - **コミット**: 件名とファイルごとの増減（`--diff` を付けたときだけ中身も）
 - **手数**: サブエージェントのトランスクリプトから取った**数だけ**
+- **ドラフトの行方**: 観点ごとに積んだドラフトの採用・却下・未決の数と絞り中（`draft_fate.py`）
 
 **会話の中身は1文字も出さない。** トランスクリプトから読むのはツール名・ファイルパス・
 コマンドの先頭2語・件数・時刻に限る（CLAUDE.md「会話内容の扱い」）。本文を出したい誘惑が
@@ -39,6 +40,7 @@ import os
 import re
 import subprocess
 import sys
+from datetime import datetime, timezone
 
 _TASK_WORKFLOW_SCRIPTS = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "task-workflow", "scripts")
@@ -47,6 +49,7 @@ if _TASK_WORKFLOW_SCRIPTS not in sys.path:
     sys.path.insert(0, _TASK_WORKFLOW_SCRIPTS)
 
 import beads  # noqa: E402
+import draft_fate  # noqa: E402
 import layout  # noqa: E402
 import transcript  # noqa: E402
 
@@ -81,6 +84,8 @@ def main() -> None:
 
     section("手数（トランスクリプトから取った数だけ）")
     print_signals(root, task_id)
+
+    draft_fate.print_section(root, datetime.now(timezone.utc))
 
     if not revs:
         print()
@@ -351,6 +356,7 @@ def print_gate(root: str, task_id: str, gate: dict[str, str]) -> None:
         print(f"SIGNAL\t{name}\t{value}")
     section("手数（トランスクリプトから取った数だけ）")
     print_signals(root, task_id, read)
+    draft_fate.print_section(root, datetime.now(timezone.utc))
 
 
 # ---- 共通 ---------------------------------------------------------------------

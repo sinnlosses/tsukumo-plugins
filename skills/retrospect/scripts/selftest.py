@@ -98,10 +98,13 @@ def test_weekly() -> None:
         check("記録が無ければ期間は7日で last=-", lines_of("期間", out) == [f"PERIOD\t7d\t{(today - timedelta(days=7)).isoformat()}\t{today.isoformat()}\tlast=-"], out)
         headings = [l for l in out.splitlines() if l.startswith("===== ")]
         check(
-            "節は期間・流れの数・段の所要時間・規則の棚卸しの4つだけ",
-            headings == ["===== 期間 =====", "===== 流れの数 =====", "===== 段の所要時間 =====", "===== 規則の棚卸し ====="],
+            "節は期間・流れの数・段の所要時間・規則の棚卸し・ドラフトの行方の5つだけ",
+            headings == ["===== 期間 =====", "===== 流れの数 =====", "===== 段の所要時間 =====", "===== 規則の棚卸し =====",
+                         "===== ドラフトの行方（直近28日） ====="],
             "\n".join(headings),
         )
+        fate = lines_of("ドラフトの行方（直近28日）", out)
+        check("Beads の無いリポジトリではドラフトの行方は - の1行", len(fate) == 1 and fate[0].startswith("-\t"), out)
         flow = lines_of("流れの数", out)
         check("悪くなった数に WORSE", "WORSE\tshipped\t0\t2" in flow, "\n".join(flow))
         check("WORSE があれば期間内のやり方の変更を CHANGE で並べる", any(l.startswith("CHANGE\tproject\t") and l.endswith("\tやり方を変える") for l in flow), "\n".join(flow))
@@ -346,11 +349,98 @@ def test_task_material() -> None:
         check("bd が無くても落ちずにアーカイブから出す", r.returncode == 0 and "古い本文" in lines_of("タスク", r.stdout), r.stdout + r.stderr)
 
 
+def test_draft_fate() -> None:
+    print("draft_fate（ドラフトの行方の表と絞り）")
+    sys.path.insert(0, HERE)
+    import draft_fate
+    from draft_fate import beads
+
+    now = datetime(2026, 10, 12, tzinfo=timezone.utc)
+
+    def issue(status: str, metadata: dict, days: float = 1, labels: tuple[str, ...] = (), description: str = "") -> beads.Issue:
+        created = (now - timedelta(days=days)).isoformat(timespec="seconds").replace("+00:00", "Z")
+        return beads.Issue("t-001", "題", status, labels, (), None, None, None,
+                           {"metadata": metadata, "created_at": created, "description": description})
+
+    pointed = "## 目的・背景\n\n- 観点: 黄 道案内\n"
+    rows = draft_fate.tally([
+        issue("closed", {"from_draft": "道案内"}),
+        issue("closed", {"from_draft": "道案内"}),
+        issue("closed", {"draft": "Y"}, labels=("cancelled",), description=pointed),
+        issue("closed", {"from_draft": "道案内"}, labels=("cancelled",)),
+        issue("deferred", {"draft": "Y"}, description=pointed),
+        issue("open", {"from_draft": "道案内"}),
+        issue("closed", {"from_draft": "道案内"}, days=29),
+        issue("closed", {"difficulty": "opus"}),
+        issue("deferred", {"draft": "Y"}, description="## 目的・背景\n\n直したい改善\n"),
+        issue("in_progress", {"from_draft": "機械の検査"}),
+    ], now)
+    check(
+        "観点ごとに 積んだ・採用・却下・未決 を数え、期間の外とドラフトでない課題は数えない",
+        [(r.viewpoint, r.stacked, r.adopted, r.dropped, r.pending) for r in rows]
+        == [("不明", 1, 0, 0, 1), ("機械の検査", 1, 0, 0, 1), ("道案内", 6, 2, 2, 2)],
+        repr(rows),
+    )
+    for adopted, dropped, expected in ((2, 3, True), (3, 3, False), (0, 2, False)):
+        got = draft_fate.Row("道案内", adopted + dropped, adopted, dropped, 0).throttled
+        check(f"採用{adopted}・却下{dropped} の絞り中は {expected}", got == expected)
+
+    if shutil.which("bd") is None:
+        check("bd が PATH にある（ドラフトの行方は Beads から読む）", False)
+        return
+    with tempfile.TemporaryDirectory() as d:
+        home = os.path.join(d, "home")
+        write(os.path.join(home, ".config", "bd", "config.yaml"), "metrics:\n    disabled: true\n    notice_shown: true\nno-git-ops: true\n")
+        env = {
+            **os.environ,
+            "HOME": home,
+            "XDG_CONFIG_HOME": os.path.join(home, ".config"),
+            "XDG_DATA_HOME": os.path.join(home, ".local", "share"),
+            "CLAUDE_CONFIG_DIR": os.path.join(d, "cfg"),
+        }
+        env.pop("BEADS_ACTOR", None)
+        env.pop("GITHUB_TOKEN", None)
+        root = os.path.join(d, "repo")
+        os.makedirs(root)
+        git(root, "init", "-q", "-b", "main")
+        git(root, "config", "beads.role", "maintainer")
+
+        def bd(*args: str, stdin: str | None = None) -> None:
+            subprocess.run(["bd", *args], cwd=root, env=env, input=stdin, check=True, capture_output=True, text=True)
+
+        bd("init", "--stealth", "-p", "t", "--non-interactive", "--skip-hooks", "--quiet")
+        for n in range(1, 4):
+            bd("create", "--id", f"t-00{n}", "--title", "却下", "--body-file", "-", "--silent",
+               "--metadata", '{"difficulty": "sonnet", "loopable": "Y", "draft": "Y"}', stdin=pointed)
+            bd("update", f"t-00{n}", "--add-label", "cancelled")
+            bd("close", f"t-00{n}")
+        bd("create", "--id", "t-004", "--title", "採用", "--body-file", "-", "--silent",
+           "--metadata", '{"difficulty": "sonnet", "loopable": "Y", "from_draft": "機械の検査"}', stdin="## 目的・背景\n\nx\n")
+        bd("close", "t-004")
+
+        def run(script: str, *args: str) -> subprocess.CompletedProcess:
+            return subprocess.run([sys.executable, os.path.join(HERE, script), root, *args], capture_output=True, text=True, env=env)
+
+        quiet = ["--friction", "none", "--reverify", "0", "--fixes", "0", "--human", "0", "--review", "skip"]
+        r = run("material.py", "T-004", "--gate", *quiet)
+        check("QUIET のときはドラフトの行方を出さない", r.stdout == "QUIET\n", r.stdout + r.stderr)
+        r = run("material.py", "T-004", "--gate", *["some" if a == "none" else a for a in quiet])
+        fate = lines_of("ドラフトの行方（直近28日）", r.stdout)
+        check("SIGNAL のときは行方の表を出し、却下3・採用0の観点は絞り中",
+              fate[:1] and fate[0].startswith("WINDOW\t28d\t")
+              and "FATE\t道案内\t3\t0\t3\t0\t絞り中" in fate and "FATE\t機械の検査\t1\t1\t0\t0\t-" in fate,
+              r.stdout + r.stderr)
+        r = run("weekly.py")
+        check("weekly の行方の節に合計と絞り中の観点の TOTAL の行",
+              "TOTAL\t4\t1\t3\t0\t道案内" in lines_of("ドラフトの行方（直近28日）", r.stdout), r.stdout + r.stderr)
+
+
 def main() -> None:
     test_weekly()
     test_slow_calls()
     test_gate()
     test_task_material()
+    test_draft_fate()
     print()
     if failures:
         print(f"FAILED {len(failures)}件: " + ", ".join(failures))

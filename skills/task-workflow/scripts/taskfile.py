@@ -413,10 +413,7 @@ def has_plan(body: str) -> bool:
 
 
 def draft_viewpoint(body: str) -> str | None:
-    """`## 目的・背景` の最初の `- 観点:` の行の観点（先頭の色 `赤`・`黄` を落とす）。行が無い・空なら None。
-
-    行の形は retrospect の SKILL.md「ドラフトに積む」と WORKFLOW.md「ドラフトの課題」。
-    """
+    """`## 目的・背景` の最初の `- 観点:` の行の観点（先頭の色 `赤`・`黄` を落とす）。行が無い・空なら None。"""
     purpose = dict(_frame_sections(body)[1]).get(PURPOSE_HEADING, "")
     for line in purpose.split("\n"):
         m = _VIEWPOINT_LINE.match(line.strip())

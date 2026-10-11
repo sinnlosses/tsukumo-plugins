@@ -14,6 +14,8 @@
 - **段の所要時間**: `STAGE\t<段>\t<difficulty>\t<道>\t<件数>\t<中央値秒>\t<最大秒>`（道は `direct`・`normal`。`tw metrics --stages --days N` と同じ行）
 - **規則の棚卸し**: 設定の `hook_tally` のコマンドをリポジトリの根で `sh -c` で打った標準出力を
   そのまま。無い・落ちた・60秒で終わらないときは `-\t<理由>`
+- **ドラフトの行方**: `WINDOW`・`FATE\t<観点>\t<積んだ>\t<採用>\t<却下>\t<未決>\t<絞り中|->`・
+  `TOTAL\t<積んだ>\t<採用>\t<却下>\t<未決>\t<絞り中の観点|なし>`（期間は上の期間によらず `draft_fate.WINDOW_DAYS`）
 
 材料が無い節は `EMPTY`（読めたが該当なし）・`-\t<理由>` を出す。
 会話の中身は読まない（読むのは記録・台帳・設定ファイル・コミットの件名だけ）。
@@ -34,6 +36,7 @@ if _TASK_WORKFLOW_SCRIPTS not in sys.path:
     sys.path.insert(0, _TASK_WORKFLOW_SCRIPTS)
 
 import cross_review  # noqa: E402
+import draft_fate  # noqa: E402
 import layout  # noqa: E402
 import ledger  # noqa: E402
 import metrics  # noqa: E402
@@ -65,6 +68,8 @@ def main() -> None:
 
     section("規則の棚卸し")
     print_hook_tally(root)
+
+    draft_fate.print_section(root, now)
 
 
 def parse_args(argv: list[str]) -> tuple[str, int | None]:
