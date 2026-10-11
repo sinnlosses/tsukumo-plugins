@@ -345,22 +345,27 @@ def read_stages(root: str, task_id: str) -> StageTimes | str | None:
         return None
     spans, opens, began, last = found
     total = round((last - began).total_seconds())
-    by_stage: dict[str, float] = {}
+    by_stage: dict[str, list[tuple[datetime, datetime]]] = {}
     for stage, start, end in spans:
-        by_stage[stage] = by_stage.get(stage, 0.0) + (end - start).total_seconds()
-    covered = 0.0
-    reach = began
-    for start, end in sorted((max(s, began), min(e, last)) for _stage, s, e in spans):
-        lower = max(start, reach)
-        if end > lower:
-            covered += (end - lower).total_seconds()
-        reach = max(reach, end)
+        by_stage.setdefault(stage, []).append((start, end))
     return StageTimes(
         total=total,
-        seconds={s: round(by_stage[s]) for s in metrics.STAGE_ORDER if s in by_stage},
+        seconds={s: round(union_seconds(by_stage[s], began, last)) for s in metrics.STAGE_ORDER if s in by_stage},
         opens=list(dict.fromkeys(opens)),
-        gap=max(0, total - round(covered)),
+        gap=max(0, total - round(union_seconds([(s, e) for _stage, s, e in spans], began, last))),
     )
+
+
+def union_seconds(intervals: list[tuple[datetime, datetime]], lower: datetime, upper: datetime) -> float:
+    """区間を `[lower, upper]` に切り詰めた和集合の秒（重なった時間を2回数えない）。"""
+    covered = 0.0
+    reach = lower
+    for start, end in sorted((max(s, lower), min(e, upper)) for s, e in intervals):
+        begin = max(start, reach)
+        if end > begin:
+            covered += (end - begin).total_seconds()
+        reach = max(reach, end)
+    return covered
 
 
 def stage_percent(seconds: int, total: int) -> int:

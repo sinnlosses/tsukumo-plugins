@@ -348,7 +348,18 @@ def test_stage_signals() -> None:
             # どれにも当たらない
             + flow_row(at(0), "claim", "GH-54") + lap("GH-54", 10, "delegate", "start") + lap("GH-54", 70, "delegate", "end")
             + lap("GH-54", 70, "accept", "start") + lap("GH-54", 130, "accept", "end")
-            + lap("GH-54", 130, "retro", "start") + lap("GH-54", 190, "retro", "end") + flow_row(at(200), "done", "GH-54"),
+            + lap("GH-54", 130, "retro", "start") + lap("GH-54", 190, "retro", "end") + flow_row(at(200), "done", "GH-54")
+            # edge の対の中に step と verify が入る
+            + flow_row(at(0), "claim", "GH-55") + lap("GH-55", 10, "delegate", "start") + flow_row(at(80), "step", "GH-55")
+            + flow_row(at(90), "verify", "GH-55", result="VERIFIED", seconds=30) + lap("GH-55", 100, "delegate", "end")
+            + lap("GH-55", 100, "accept", "start") + lap("GH-55", 190, "accept", "end") + flow_row(at(200), "done", "GH-55")
+            # step が続き、verify が step の区間に入る
+            + flow_row(at(0), "claim", "GH-56") + flow_row(at(10), "step", "GH-56") + flow_row(at(30), "step", "GH-56")
+            + flow_row(at(50), "verify", "GH-56", result="VERIFIED", seconds=10) + lap("GH-56", 80, "accept", "start")
+            + lap("GH-56", 100, "accept", "end") + flow_row(at(110), "done", "GH-56")
+            # 同じ段の edge の対が重なる
+            + flow_row(at(0), "claim", "GH-57") + lap("GH-57", 10, "delegate", "start") + lap("GH-57", 30, "delegate", "start")
+            + lap("GH-57", 70, "delegate", "end") + lap("GH-57", 100, "delegate", "end") + flow_row(at(110), "done", "GH-57"),
         )
 
         def material(task_id: str, *args: str) -> subprocess.CompletedProcess:
@@ -388,6 +399,18 @@ def test_stage_signals() -> None:
 
         r = gate("GH-54")
         check("どれにも当たらなければ QUIET", r.stdout == "QUIET\n", r.stdout + r.stderr)
+
+        for task, expected, label in (
+            ("GH-55", ["TOTAL\t200", "STAGE\t委譲\t90\t45%", "STAGE\t検証\t30\t15%"],
+             "edge の対の中の step と verify は委譲を重ねて数えない（実際の委譲は90秒）"),
+            ("GH-56", ["TOTAL\t110", "STAGE\t委譲\t60\t55%", "STAGE\t検証\t10\t9%"],
+             "続く step の区間から verify の秒を引く"),
+            ("GH-57", ["TOTAL\t110", "STAGE\t委譲\t60\t55%"],
+             "重なった同じ段の edge の対は和集合の秒で数える"),
+        ):
+            r = material(task)
+            got = lines_of("段の所要時間（flow/ から取った秒）", r.stdout)
+            check(label, all(l in got for l in expected), "\n".join(got))
 
         r = material("GH-51", "--signals")
         check("--signals は手数だけで段の所要時間の節を出さない", title not in r.stdout, r.stdout)

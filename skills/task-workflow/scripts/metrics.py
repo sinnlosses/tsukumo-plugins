@@ -215,6 +215,7 @@ def task_stage_spans(
 ) -> tuple[list[tuple[str, datetime, datetime]], list[str], datetime, datetime] | None:
     """そのタスクの最後の `claim` 以降の `(段, 始め, 終わり)` の並び・終わりの無い段名の並び・着手の時刻・最後の出来事の時刻。`claim` が無ければ `None`。
 
+    `edge` の対でない区間は `stage_durations` と同じく `verify` の区間を除いた断片に割る。同じ段の区間は重なりうる。
     `ship` 前でも使える。最後の出来事の所要は拾わない。
     """
     own = [e for e in events if e.task == task_id]
@@ -223,7 +224,22 @@ def task_stage_spans(
         return None
     run = own[claims[-1] :]
     spans, opens = _run_spans(run)
-    return [(stage, begin, end) for stage, _d, begin, end, _s in spans], opens, run[0].at, run[-1].at
+    verifying = _verify_spans(run)
+    pieces: list[tuple[str, datetime, datetime]] = []
+    for stage, _difficulty, begin, end, seconds in spans:
+        if seconds == (end - begin).total_seconds():
+            pieces.append((stage, begin, end))
+            continue
+        cursor = begin
+        for v_start, v_end in verifying:
+            if v_end <= cursor or v_start >= end:
+                continue
+            if v_start > cursor:
+                pieces.append((stage, cursor, v_start))
+            cursor = max(cursor, v_end)
+        if cursor < end:
+            pieces.append((stage, cursor, end))
+    return pieces, opens, run[0].at, run[-1].at
 
 
 def stage_durations(
