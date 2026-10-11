@@ -13,6 +13,7 @@
 - スキル同士の相互参照が、実在するスキルか `OPTIONAL_SKILLS`（あれば使う外のスキル）を指していること
 - スクリプトのパスが `${CLAUDE_SKILL_DIR}` 形で書かれ、実在するファイルを指していること
   （`OPTIONAL_SKILLS` の中を指すものは除く）
+- 各 SKILL.md の `!` 埋め込み（インラインとフェンス）が `|| true`・`|| :`・`; true` で終わること
 - 同梱スクリプトが構文として読めること
 - `.claude-plugin/plugin.json` の `name` が `tsukumo-workflow` であること、`bin/tw` が実行でき `task.py` を
   呼ぶこと、`hooks/hooks.json` が `--agent-scoped` 付きで `${CLAUDE_PLUGIN_ROOT}/bin/tw` を呼ぶ hook 3つを持つこと
@@ -190,6 +191,40 @@ def check_script_paths(names: list[str]) -> None:
                     fail(f"{os.path.relpath(md, ROOT)}: {bad} は ${{CLAUDE_SKILL_DIR}} で書く")
             if re.search(r"python3 [^\n`]*/Users/", body):
                 fail(f"{os.path.relpath(md, ROOT)}: スクリプトの実行に絶対パスを埋めている")
+
+
+EMBED_INLINE = re.compile(r"(?<![\w`])!`([^`\n]+)`")
+EMBED_TAILS = ("|| true", "|| :", "; true")
+
+
+def check_shell_embeds(names: list[str]) -> None:
+    """SKILL.md の `!` 埋め込みは、非0で抜けるとスキルの読み込みが失敗する。"""
+
+    def check(rel: str, line_no: int, command: str) -> None:
+        if not command.strip().endswith(EMBED_TAILS):
+            fail(f"{rel}:{line_no}: ! 埋め込みが終了コードを潰していない（末尾に || true）")
+
+    for n in names:
+        path = os.path.join(SKILLS, n, "SKILL.md")
+        if not os.path.exists(path):
+            continue
+        rel = os.path.relpath(path, ROOT)
+        fence_start = 0
+        fence_last = ""
+        for i, line in enumerate(read(path).splitlines(), 1):
+            if fence_start:
+                if line.startswith("```"):
+                    check(rel, fence_start, fence_last)
+                    fence_start = 0
+                elif line.strip():
+                    fence_last = line
+            elif line.startswith("```!"):
+                fence_start, fence_last = i, ""
+            else:
+                for m in EMBED_INLINE.finditer(line):
+                    check(rel, i, m.group(1))
+        if fence_start:
+            fail(f"{rel}:{fence_start}: ```! のフェンスが閉じていない")
 
 
 TW_TARGET = os.path.join(SKILLS, "task-workflow", "scripts", "task.py")
@@ -519,6 +554,7 @@ def main() -> None:
     check_frontmatter(names)
     check_readme_index(names)
     check_script_paths(names)
+    check_shell_embeds(names)
     check_tw_entry(names)
     check_plugin()
     check_cross_references(names)
