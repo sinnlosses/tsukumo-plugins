@@ -193,13 +193,11 @@ class Session:
             if not self.bidirectional:
                 self._bd_ok(["github", "sync", "--push-only"], "bd github sync --push-only")
             else:
-                stale = {
-                    i.bd_id for i in beads.list_issues(self.toplevel)
-                    if _after(i.raw.get("updated_at"), self._synced_at(i))
-                }
+                listed = beads.list_issues(self.toplevel)
+                stale = {i.bd_id for i in listed if _after(i.raw.get("updated_at"), self._synced_at(i))}
                 if pull:
                     remote, newest = self._rest_changed()
-                    lines += self._pull(remote)
+                    lines += self._pull(self._without_echo(remote, listed))
                 before = beads.list_issues(self.toplevel)
                 changed_ids = [i.bd_id for i in before if i.bd_id in stale]
                 pushed_count = str(len(changed_ids))
@@ -233,6 +231,21 @@ class Session:
         return lines + [f"TRACKER\tOK\tgithub\tpushed={pushed_count}\tstatus_changed={changed}"]
 
     # --- 取り込み ----------------------------------------------------------------
+
+    def _without_echo(self, remote: dict[int, dict], issues: list[beads.Issue]) -> dict[int, dict]:
+        """自分の送りで `updated_at` が進んだだけの Issue（送った時刻 + `SYNC_SLACK` 以前の更新）を落とす。
+
+        控えの無い課題・Beads に無い Issue・更新時刻を読めない Issue は落とさない。
+        """
+        local = _by_number(issues)
+        kept: dict[int, dict] = {}
+        for n, item in remote.items():
+            issue = local.get(n)
+            since = self._synced_at(issue) if issue is not None else None
+            updated = item.get("updated_at")
+            if since is None or _parse_time(updated) is None or _after(updated, since + SYNC_SLACK):
+                kept[n] = item
+        return kept
 
     def _pull(self, remote: dict[int, dict]) -> list[str]:
         """番号を選んで取り込み、着手の印を戻し、GitHub で閉じた・開き直した課題を片付ける。

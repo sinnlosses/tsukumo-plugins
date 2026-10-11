@@ -678,7 +678,9 @@ Project・Status 欄・選択肢の ID は `bd kv` の `task-workflow.project` �
   更新された Issue だけを読むので、その間の GitHub での変更と、立てた直後の Issue を取りこぼす。
   `tw sync` は GitHub の一覧（REST の `repos/<repo>/issues?state=all&since=…`）で見た最後の更新時刻を
   自分で覚え（`bd kv` の `task-workflow.github-seen`。無ければ開いている全件）、その1時間前より後に
-  更新された Issue（立てた直後の Issue が一覧に遅れて出る分をさかのぼる）を番号で `bd github pull <番号>…` する
+  更新された Issue（立てた直後の Issue が一覧に遅れて出る分をさかのぼる）を番号で `bd github pull <番号>…` する。
+  自分の送りの反響（課題ごとの送った時刻 + 10 秒以内の GitHub 側の更新）は取り込みに渡さない
+  （送った時刻の控えが無い課題は渡す）
 - **登録**（`tw new`）: `bd create --id gh-new-<作業ツリーの名前>-<時刻>`（仮の ID。`bd` の採番は
   数字だけの hash になりうるので使わない）→ `bd github push <仮の ID>` → `external_ref` の末尾の番号 →
   `bd rename <仮の ID> gh-<番号>`（依存・comment・履歴ごと付け替わる）→ もう一度 `bd github push`（付け替えも
@@ -715,7 +717,7 @@ Project・Status 欄・選択肢の ID は `bd kv` の `task-workflow.project` �
 - **GitHub で閉じる**: 取り込むと Beads でも閉じ、依存が解ける。`ship:*` の無い課題が GitHub で
   閉じられたら見送りとして label `cancelled` を足し、`TRACKER\tCLOSED\tGH-<n>` の行を出す（着手中なら
   人に預ける）。GitHub で開き直したら `cancelled` と `ship:*` を外す
-- **`tw sync` の順**: 控える → 取り込む → 送りの印を読んで着手の印を戻し、付け替える（直したものを送る）→
+- **`tw sync` の順**: 控える → 取り込む（反響を除く）→ 送りの印を読んで着手の印を戻し、付け替える（直したものを送る）→
   push（取り込みの前に選んだ、控えが無いか `updated_at` が控えより新しい課題だけを
   `bd github sync --push-only --issues <ID,…>` で。無ければ打たない）→ 登録で落ちた仮の ID を付け替える →
   送りの印と違う着手中の課題をまとめて送り直し（1回の `bd github push <ID>…`）、届いたら

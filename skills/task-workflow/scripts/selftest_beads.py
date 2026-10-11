@@ -581,6 +581,7 @@ class FakeGitHub:
         self.option_prefix = "O-"
         self.status_writes = 0  # Status 欄を書いた回数
         self.issue_patches: list[int] = []  # Issue を PATCH で更新した番号（順に）
+        self.fetched: list[int] = []  # Issue を1件ずつ GET で取った番号（`bd github pull` が取りに来た分）
         self.clock_offset = 0  # 秒。GitHub 側の編集を後の時刻にする
         self.delay = 0.0  # 秒。応答を遅らせる
         self.lock = threading.Lock()
@@ -666,6 +667,7 @@ class FakeGitHub:
             issue["updated_at"] = self.now()
             return 200, self.issue_json(issue)
         if m and method == "GET":
+            self.fetched.append(int(m.group(1)))
             issue = self.issues.get(int(m.group(1)))
             return (200, self.issue_json(issue)) if issue else (404, {"message": "Not Found"})
         if u.path == "/repos/o/r/issues" and method == "GET":
@@ -782,6 +784,7 @@ def test_tracker_github_bidirectional() -> None:
         n, bd_id = _num(a), beads.to_bd_id(a)
         r = run_task(wt1, "claim", a)
         check("claim", r.returncode == 0 and r.stdout.startswith("CLAIMED"), r.stdout + r.stderr)
+        fake.clock_offset = 60
         fake.edit(n, body="GitHub で直した本文")
         r = run_task(main_path, "sync")
         check("sync が GitHub で立てた Issue を取り込み、番号の ID へ付け替えて振り分け前にする", r.returncode == 0
@@ -942,6 +945,26 @@ def test_tracker_sync_pushes_only_changed() -> None:
               f"{fake.issue_patches}\n{r.stdout}{r.stderr}")
 
 
+def test_tracker_sync_skips_echo() -> None:
+    say("トラッカー github・自分の送りの反響は取り込みに渡さず、あとから GitHub で直したものは渡す")
+    with _github(prefix=None) as (fake, _tmp, main_path, _wt1):
+        a = new(main_path, "反響を確かめる")
+        n = _num(a)
+        r = run_task(main_path, "sync")
+        check("最初の sync は成功する", r.returncode == 0, r.stdout + r.stderr)
+        fake.fetched.clear()
+        r = run_task(main_path, "sync")
+        check("自分の送りで更新時刻が進んだだけの Issue は取りに行かない", r.returncode == 0 and n not in fake.fetched,
+              f"{fake.fetched}\n{r.stdout}{r.stderr}")
+        fake.clock_offset = 60
+        fake.edit(n, body="あとから GitHub で直した")
+        fake.fetched.clear()
+        r = run_task(main_path, "sync")
+        issue = beads.show(main_path, beads.to_bd_id(a))
+        check("送った時刻より後に GitHub で直した Issue は取り込む", n in fake.fetched and issue is not None
+              and "あとから GitHub で直した" in str(issue.raw.get("description")), f"{fake.fetched}\n{r.stdout}{r.stderr}")
+
+
 def test_tracker_github_conflict() -> None:
     say("トラッカー github・issue_prefix gh（init.py が gh で作る・両側で変えたら Beads が勝つ）")
     with _github(prefix=None) as (fake, _tmp, main_path, _wt1):
@@ -1037,6 +1060,7 @@ def main() -> None:
         # 長いものから並列に乗せる（後ろに残ると全体がその分延びる）。
         tests = (
             test_tracker_github_bidirectional,
+            test_tracker_sync_skips_echo,
             test_tracker_github_conflict,
             test_tracker_github_draft,
             test_tracker_sync_pushes_only_changed,
