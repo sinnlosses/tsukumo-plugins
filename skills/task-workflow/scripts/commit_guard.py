@@ -100,7 +100,7 @@ def _shell_writes(command: str, start: str) -> list[tuple[str, str]]:
                 found.extend((p, f"{name} -i") for p in _resolved(simple.where, _file_arguments(rest)))
         elif name == "tee":
             found.extend((p, "tee") for p in _resolved(simple.where, [a for a in rest if a and not a.startswith("-")]))
-        elif _PYTHON.match(name) and _python_writes(rest, bodies):
+        elif simple.where is not None and _PYTHON.match(name) and _python_writes(rest, bodies):
             found.append((simple.where, f"{name} の書き込み"))
     return found
 
@@ -149,15 +149,23 @@ def _file_arguments(args: list[str]) -> list[str]:
     return files if script_given else files[1:]
 
 
-def _resolved(where: str, words: list[str]) -> list[str]:
+def _resolved(where: str | None, words: list[str]) -> list[str]:
     return [p for p in (_resolve(where, w) for w in words) if p is not None]
 
 
-def _resolve(where: str, word: str) -> str | None:
+def _resolve(where: str | None, word: str) -> str | None:
     """絶対パス。変数・コマンド置換・グロブを含むなど決められなければ `None`。"""
     if not word or any(c in word for c in "$`*?[") or word.startswith("/dev/") or word == "-":
         return None
-    return os.path.normpath(os.path.join(where, os.path.expanduser(word)))
+    return _join(where, word)
+
+
+def _join(where: str | None, word: str) -> str | None:
+    """`where` からの相対を絶対パスにする。`where` が不明で相対なら `None`。"""
+    expanded = os.path.expanduser(word)
+    if os.path.isabs(expanded):
+        return os.path.normpath(expanded)
+    return None if where is None else os.path.normpath(os.path.join(where, expanded))
 
 
 def _python_writes(args: list[str], bodies: list[str]) -> bool:
@@ -207,13 +215,14 @@ class Token(NamedTuple):
 
 
 class Simple(NamedTuple):
-    where: str
+    where: str | None
     words: tuple[Token, ...]
 
 
 def _simple_commands(command: str, start: str) -> list[Simple]:
     """単純コマンドと、`cd` を追った実効の作業先の並び。割れなければ空。リダイレクトの演算子と先の語は残す。
-作業先が変数やコマンド置換で決まる `cd` のあとのコマンドは、作業先が分からないので含めない。"""
+作業先が変数やコマンド置換で決まる `cd` のあとのコマンドは作業先が `None` で、絶対パスで指し直すもの
+（`git -C <絶対パス>`・絶対パスの書き先）だけが判定の対象になる。"""
     tokens = _tokens(_split_heredocs(command)[0])
     if tokens is None:
         return []
@@ -233,8 +242,7 @@ def _simple_commands(command: str, start: str) -> list[Simple]:
             elif where is not None or os.path.isabs(os.path.expanduser(target)):
                 where = os.path.normpath(os.path.join(where or "", os.path.expanduser(target)))
             continue
-        if where is not None:
-            found.append(Simple(where, tuple(words)))
+        found.append(Simple(where, tuple(words)))
     return found
 
 
@@ -337,7 +345,7 @@ def _split_commands(tokens: list[Token]) -> list[list[Token]]:
     return commands
 
 
-def _git_subcommand(simple: list[str], where: str) -> tuple[str, str] | None:
+def _git_subcommand(simple: list[str], where: str | None) -> tuple[str, str] | None:
     i = 0
     while i < len(simple) and (simple[i] in ("env", "command") or _is_assignment(simple[i])):
         i += 1
@@ -347,13 +355,13 @@ def _git_subcommand(simple: list[str], where: str) -> tuple[str, str] | None:
     while i < len(simple) and simple[i].startswith("-"):
         option = simple[i]
         if option == "-C" and i + 1 < len(simple):
-            where = os.path.normpath(os.path.join(where, os.path.expanduser(simple[i + 1])))
+            where = _join(where, simple[i + 1])
             i += 2
         elif option in _GIT_OPTIONS_WITH_VALUE:
             i += 2
         else:
             i += 1
-    if i >= len(simple):
+    if i >= len(simple) or where is None:
         return None
     return where, simple[i]
 

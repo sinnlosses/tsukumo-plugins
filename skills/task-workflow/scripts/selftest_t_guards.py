@@ -116,6 +116,8 @@ def test_commit_guard_shell_edit() -> None:
             ("sed -i '' s/a/b/ f.txt", wt1),
             ("sed -ni 1p f.txt", wt1),
             ("sed -i.bak s/a/b/ f.txt", wt1),
+            (f'cd "$X" && git -C {wt1} commit -m x', tmp),
+            (f'cd "$X" && echo x > {wt1}/f.txt', tmp),
             ("perl -pi.bak -e s/a/b/ f.txt", wt1),
             ("# it's done\ngit commit -m x", wt1),
             ("sed --in-place -e s/a/b/ f.txt", wt1),
