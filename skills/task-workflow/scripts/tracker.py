@@ -45,7 +45,6 @@ GH_ID = re.compile(r"^gh-(\d+)$")
 JIRA_REF = re.compile(rf"^(?:\S*/browse/)?({layout.JIRA_ID_FRAGMENT})$")
 
 # 1件の操作（before・after・register）の始めから数えた反映の上限（秒）。
-# bd の内側の再試行は外から切れないので、時間で打ち切る。
 OP_TIMEOUT = 25.0
 OP_TIMEOUT_ENV = "TASK_WORKFLOW_TRACKER_TIMEOUT"
 TIMED_OUT = 124
