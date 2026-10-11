@@ -296,6 +296,81 @@ def test_gate() -> None:
         check("値が違えば終了コード2", r.returncode == 2, r.stdout + r.stderr)
 
 
+def test_stage_signals() -> None:
+    print("material.py の段の所要時間（SIGNAL と節）")
+    quiet = {"--friction": "none", "--reverify": "0", "--fixes": "0", "--human": "0", "--review": "skip"}
+    base = datetime.now(timezone.utc) - timedelta(hours=1)
+
+    def at(sec: int) -> str:
+        return (base + timedelta(seconds=sec)).isoformat(timespec="seconds")
+
+    def lap(task: str, sec: int, stage: str, edge: str) -> str:
+        return flow_row(at(sec), "lap", task, stage=stage, edge=edge)
+
+    with tempfile.TemporaryDirectory() as d:
+        root = os.path.join(d, "repo")
+        os.makedirs(root)
+        git(root, "init", "-q", "-b", "main")
+        env = {**os.environ, "CLAUDE_CONFIG_DIR": os.path.join(d, "cfg")}
+        write(
+            os.path.join(root, ".git", "task-workflow", "flow", "2026-10.jsonl"),
+            # 半分ちょうど（委譲 100/200）
+            flow_row(at(0), "claim", "GH-51") + lap("GH-51", 10, "delegate", "start") + lap("GH-51", 110, "delegate", "end")
+            + lap("GH-51", 110, "accept", "start") + lap("GH-51", 190, "accept", "end") + flow_row(at(200), "done", "GH-51")
+            # end の無い start
+            + flow_row(at(0), "claim", "GH-52") + lap("GH-52", 10, "delegate", "start") + lap("GH-52", 100, "delegate", "end")
+            + lap("GH-52", 110, "review", "start") + flow_row(at(200), "done", "GH-52")
+            # 段のあいだの空き（45%）
+            + flow_row(at(0), "claim", "GH-53") + lap("GH-53", 10, "delegate", "start") + lap("GH-53", 60, "delegate", "end")
+            + lap("GH-53", 100, "accept", "start") + lap("GH-53", 150, "accept", "end") + flow_row(at(200), "done", "GH-53")
+            # どれにも当たらない
+            + flow_row(at(0), "claim", "GH-54") + lap("GH-54", 10, "delegate", "start") + lap("GH-54", 70, "delegate", "end")
+            + lap("GH-54", 70, "accept", "start") + lap("GH-54", 130, "accept", "end")
+            + lap("GH-54", 130, "retro", "start") + lap("GH-54", 190, "retro", "end") + flow_row(at(200), "done", "GH-54"),
+        )
+
+        def material(task_id: str, *args: str) -> subprocess.CompletedProcess:
+            return subprocess.run(
+                [sys.executable, os.path.join(HERE, "material.py"), root, task_id, *args],
+                capture_output=True, text=True, env=env,
+            )
+
+        def gate(task_id: str) -> subprocess.CompletedProcess:
+            return material(task_id, "--gate", *[a for kv in quiet.items() for a in kv])
+
+        title = "===== 段の所要時間（flow/ から取った秒） ====="
+        r = gate("GH-50")
+        check("flow にそのタスクの claim が無ければ QUIET", r.stdout == "QUIET\n", r.stdout + r.stderr)
+        r = material("GH-50")
+        check("claim が無ければ全体の出力で段の所要時間の節は EMPTY", lines_of("段の所要時間（flow/ から取った秒）", r.stdout) == ["EMPTY"], r.stdout + r.stderr)
+
+        r = gate("GH-51")
+        lines = r.stdout.splitlines()
+        check("段が半分ちょうどなら SIGNAL を出す", "SIGNAL\t段の所要時間\t委譲 50%" in lines and "QUIET" not in lines, r.stdout + r.stderr)
+        check("受け入れ 40% は SIGNAL にしない", not any(l.startswith("SIGNAL\t段の所要時間\t受け入れ") for l in lines), r.stdout)
+        heads = [l for l in lines if l.startswith("===== ")]
+        check(
+            "当たったときの節の並びは 手数 → 段の所要時間 → ドラフトの行方",
+            len(heads) == 3 and heads[0].startswith("===== 手数") and heads[1] == title and heads[2].startswith("===== ドラフトの行方"),
+            "\n".join(heads),
+        )
+        stages = lines_of("段の所要時間（flow/ から取った秒）", r.stdout)
+        check("節に TOTAL・STAGE・GAP の行が出る", stages[0] == "TOTAL\t200" and "STAGE\t委譲\t100\t50%" in stages and "GAP\t10\t5%" in stages, "\n".join(stages))
+
+        r = gate("GH-52")
+        lines = r.stdout.splitlines()
+        check("end の無い start は OPEN の SIGNAL と節の OPEN の行", "SIGNAL\t段の所要時間\tOPEN レビュー" in lines and "OPEN\tレビュー" in lines, r.stdout + r.stderr)
+
+        r = gate("GH-53")
+        check("段のあいだの空きが2割以上なら SIGNAL", "SIGNAL\t段の所要時間\t段の空き 45%" in r.stdout.splitlines(), r.stdout + r.stderr)
+
+        r = gate("GH-54")
+        check("どれにも当たらなければ QUIET", r.stdout == "QUIET\n", r.stdout + r.stderr)
+
+        r = material("GH-51", "--signals")
+        check("--signals は手数だけで段の所要時間の節を出さない", title not in r.stdout, r.stdout)
+
+
 def test_task_material() -> None:
     print("material.py のタスクと登録からの差分（Beads の課題・Beads に無い古いタスク）")
     if shutil.which("bd") is None:
@@ -439,6 +514,7 @@ def main() -> None:
     test_weekly()
     test_slow_calls()
     test_gate()
+    test_stage_signals()
     test_task_material()
     test_draft_fate()
     print()

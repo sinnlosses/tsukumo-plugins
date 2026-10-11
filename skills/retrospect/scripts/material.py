@@ -5,11 +5,12 @@
        material.py <リポジトリの根> <T-XXX> --gate --friction none|some|missing
            --reverify N --fixes N --human N --review skip|clean|found
 
-出すのは5つ（`--signals` のときは「手数」だけ。`/next-task` の中の1件ごとの振り返りが、
+出すのは6つ（`--signals` のときは「手数」だけ。`/next-task` の中の1件ごとの振り返りが、
 材料を観点に当てるときに、当たりの目安を数だけで見るのに使う。本文と diff はメインが受け入れで読み終えている）。
 
 `--gate` のときは判定だけを出す。5つの答えと手数の当たりの目安のどれにも当たらなければ `QUIET` の1行、
-当たれば当たった材料ごとに `SIGNAL\t<材料>\t<値>` を並べ、続けて「手数」と「ドラフトの行方」を出す。5つの答え:
+当たれば当たった材料ごとに `SIGNAL\t<材料>\t<値>` を並べ、続けて「手数」と「段の所要時間」と「ドラフトの行方」を出す。段の所要時間の `SIGNAL` は、
+1つの段が着手から最後の出来事までの50%以上・終わりの無い段がある・段のあいだの空きが20%以上のとき。5つの答え:
 
 - `--friction`: 委譲先の friction log が全部「なし」（`none`）／行がある（`some`）／書いていない返却がある（`missing`）
 - `--reverify`: 検証を打ち直した回数
@@ -24,6 +25,7 @@
   `docs/history/progress.md` の該当の小節
 - **コミット**: 件名とファイルごとの増減（`--diff` を付けたときだけ中身も）
 - **手数**: サブエージェントのトランスクリプトから取った**数だけ**
+- **段の所要時間**: `flow/` から取った、そのタスクの段ごとの秒と割合・終わりの無い段・段のあいだの空き（`metrics.py`）
 - **ドラフトの行方**: 観点ごとに積んだドラフトの採用・却下・未決の数と絞り中（`draft_fate.py`）
 
 **会話の中身は1文字も出さない。** トランスクリプトから読むのはツール名・ファイルパス・
@@ -40,6 +42,7 @@ import os
 import re
 import subprocess
 import sys
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 _TASK_WORKFLOW_SCRIPTS = os.path.normpath(
@@ -51,6 +54,8 @@ if _TASK_WORKFLOW_SCRIPTS not in sys.path:
 import beads  # noqa: E402
 import draft_fate  # noqa: E402
 import layout  # noqa: E402
+import ledger  # noqa: E402
+import metrics  # noqa: E402
 import transcript  # noqa: E402
 
 DEFAULT_DIFF_BYTES = 40000
@@ -84,6 +89,8 @@ def main() -> None:
 
     section("手数（トランスクリプトから取った数だけ）")
     print_signals(root, task_id)
+
+    print_stages(read_stages(root, task_id))
 
     draft_fate.print_section(root, datetime.now(timezone.utc))
 
@@ -313,8 +320,88 @@ def verify_heads(root: str) -> list[str]:
     return heads
 
 
+STAGE_SHARE_PERCENT = 50
+STAGE_GAP_PERCENT = 20
+
+
+@dataclass(frozen=True)
+class StageTimes:
+    """`seconds` は段名 → 秒（`metrics.STAGE_ORDER` の順）。`gap` は区間に覆われない秒。"""
+
+    total: int
+    seconds: dict[str, int]
+    opens: list[str]
+    gap: int
+
+
+def read_stages(root: str, task_id: str) -> StageTimes | str | None:
+    """台帳から段ごとの秒を取る。読めなければ理由の文字列、そのタスクの `claim` が無ければ `None`。"""
+    try:
+        events, _ = metrics.read_events(ledger.ledger_root(cwd=root))
+    except (ledger.GitCommandError, OSError):
+        return "台帳が読めない（git のリポジトリでない）"
+    found = metrics.task_stage_spans(events, task_id)
+    if found is None:
+        return None
+    spans, opens, began, last = found
+    total = round((last - began).total_seconds())
+    by_stage: dict[str, float] = {}
+    for stage, start, end in spans:
+        by_stage[stage] = by_stage.get(stage, 0.0) + (end - start).total_seconds()
+    covered = 0.0
+    reach = began
+    for start, end in sorted((max(s, began), min(e, last)) for _stage, s, e in spans):
+        lower = max(start, reach)
+        if end > lower:
+            covered += (end - lower).total_seconds()
+        reach = max(reach, end)
+    return StageTimes(
+        total=total,
+        seconds={s: round(by_stage[s]) for s in metrics.STAGE_ORDER if s in by_stage},
+        opens=list(dict.fromkeys(opens)),
+        gap=max(0, total - round(covered)),
+    )
+
+
+def stage_percent(seconds: int, total: int) -> int:
+    return round(100 * seconds / total)
+
+
+def print_stages(stages: StageTimes | str | None) -> None:
+    section("段の所要時間（flow/ から取った秒）")
+    if stages is None:
+        print("EMPTY")
+        return
+    if isinstance(stages, str):
+        print(f"-\t{stages}")
+        return
+    print(f"TOTAL\t{stages.total}")
+    if stages.total > 0:
+        for stage, seconds in stages.seconds.items():
+            print(f"STAGE\t{stage}\t{seconds}\t{stage_percent(seconds, stages.total)}%")
+        if stages.gap > 0:
+            print(f"GAP\t{stages.gap}\t{stage_percent(stages.gap, stages.total)}%")
+    for stage in stages.opens:
+        print(f"OPEN\t{stage}")
+
+
+def stage_signals(stages: StageTimes | str | None) -> list[tuple[str, str]]:
+    if not isinstance(stages, StageTimes):
+        return []
+    hits = [("段の所要時間", f"OPEN {stage}") for stage in stages.opens]
+    if stages.total > 0:
+        hits += [
+            ("段の所要時間", f"{stage} {stage_percent(seconds, stages.total)}%")
+            for stage, seconds in stages.seconds.items()
+            if seconds * 100 >= STAGE_SHARE_PERCENT * stages.total
+        ]
+        if stages.gap * 100 >= STAGE_GAP_PERCENT * stages.total:
+            hits.append(("段の所要時間", f"段の空き {stage_percent(stages.gap, stages.total)}%"))
+    return hits
+
+
 def gate_signals(
-    root: str, gate: dict[str, str], read: list[tuple[str, dict | None]]
+    root: str, gate: dict[str, str], read: list[tuple[str, dict | None]], stages: StageTimes | str | None
 ) -> list[tuple[str, str]]:
     hits: list[tuple[str, str]] = []
     if gate["--friction"] != "none":
@@ -343,12 +430,13 @@ def gate_signals(
         for name, desc, secs in stats["slow_calls"]:
             if secs >= SLOW_SECONDS:
                 hits.append(("時間の偏り", f"{(name + ' ' + desc).strip()} {secs:.0f}秒"))
-    return hits
+    return hits + stage_signals(stages)
 
 
 def print_gate(root: str, task_id: str, gate: dict[str, str]) -> None:
     read = read_all_signals(root, task_id)
-    hits = gate_signals(root, gate, read)
+    stages = read_stages(root, task_id)
+    hits = gate_signals(root, gate, read, stages)
     if not hits:
         print("QUIET")
         return
@@ -356,6 +444,7 @@ def print_gate(root: str, task_id: str, gate: dict[str, str]) -> None:
         print(f"SIGNAL\t{name}\t{value}")
     section("手数（トランスクリプトから取った数だけ）")
     print_signals(root, task_id, read)
+    print_stages(stages)
     draft_fate.print_section(root, datetime.now(timezone.utc))
 
 
