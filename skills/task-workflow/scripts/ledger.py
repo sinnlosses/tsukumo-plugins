@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import errno
 import hashlib
+import inspect
 import json
 import os
 import shutil
@@ -355,13 +356,14 @@ class ContentKey:
     head: str
     tree: str
     verify_command: str
+    scheme: str
 
 
 def content_key(verify_command: str, cwd: str | None = None, excluded: tuple[str, ...] = ()) -> ContentKey:
     """いまの作業ツリーの中身の鍵。`excluded` のパスも木から外す。"""
     toplevel = git_toplevel(cwd)
     head = head_sha_or_none(toplevel) or "-"
-    return ContentKey(head, content_tree(toplevel, excluded), verify_command)
+    return ContentKey(head, content_tree(toplevel, excluded), verify_command, CONTENT_SCHEME)
 
 
 def content_tree(toplevel: str, excluded: tuple[str, ...] = ()) -> str:
@@ -411,6 +413,16 @@ def worktree_tree(
             if r.returncode != 0:
                 raise GitCommandError(f"git {' '.join(args)} が失敗（{r.returncode}）: {r.stderr.strip()}")
         return r.stdout.strip()
+
+
+def _content_scheme() -> str:
+    """鍵の取り方の版の目印。`content_tree`・`worktree_tree` のソースと `layout.LOCAL_DIR` から機械で取る。"""
+    source = inspect.getsource(content_tree) + inspect.getsource(worktree_tree) + layout.LOCAL_DIR
+    return hashlib.sha1(source.encode("utf-8")).hexdigest()[:12]
+
+
+CONTENT_SCHEME = _content_scheme()
+SCHEME_LINE_PREFIX = "scheme:"
 
 
 def verify_log_path(cwd: str | None = None) -> str:
@@ -512,7 +524,7 @@ def remove_step_stamps(task_ids: list[str], cwd: str | None = None) -> None:
 def _write_key(path: str, key: ContentKey, extra: tuple[str, ...] = ()) -> None:
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        f.write("".join(f"{line}\n" for line in (key.head, key.tree, key.verify_command, *extra)))
+        f.write("".join(f"{line}\n" for line in (key.head, key.tree, key.verify_command, *extra, SCHEME_LINE_PREFIX + key.scheme)))
     os.replace(tmp, path)
 
 
@@ -523,7 +535,9 @@ def _read_key(path: str) -> ContentKey | None:
         lines = f.read().split("\n")
     if len(lines) < 3:
         return None
-    return ContentKey(lines[0], lines[1], lines[2])
+    last = next((line for line in reversed(lines) if line), "")
+    scheme = last.removeprefix(SCHEME_LINE_PREFIX) if last.startswith(SCHEME_LINE_PREFIX) else ""
+    return ContentKey(lines[0], lines[1], lines[2], scheme)
 
 
 # --- flow（着手・検証・送り出し・完了の出来事。月ごとの JSONL）-------------

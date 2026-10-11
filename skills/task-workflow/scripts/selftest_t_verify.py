@@ -655,7 +655,30 @@ def test_verify_check_passes_base_with_preship() -> None:
         check("取り込みが衝突すれば NOT_VERIFIED base", r.stdout.strip() == "NOT_VERIFIED\tbase", r.stdout)
 
 
+@weight(3)
+def test_content_key_scheme_roundtrip() -> None:
+    say("ledger: 中身の鍵の scheme を控えに書いて読み直せる。scheme 行の無い古い控えは scheme が空で、段の控えも壊れない")
+    with tempfile.TemporaryDirectory() as tmp:
+        _main, wt1, _wt2 = make_repo(tmp, branch="切らない", verify="`true`")
+        key = ledger.content_key("true", cwd=wt1)
+        check("鍵は scheme を持つ", key.scheme == ledger.CONTENT_SCHEME and len(key.scheme) == 12, key.scheme)
+        ledger.write_verify_stamp(key, cwd=wt1)
+        check("書いて読み直した鍵が等しい", ledger.read_verify_stamp(cwd=wt1) == key)
+        path = os.path.join(ledger.worktree_state_dir(wt1), ledger.VERIFY_STAMP_FILE_NAME)
+        with open(path, encoding="utf-8") as f:
+            check("控えの最後の行が scheme:<値>", f.read().splitlines()[-1] == f"scheme:{key.scheme}")
+        write(path, f"{key.head}\n{key.tree}\n{key.verify_command}\n")
+        old = ledger.read_verify_stamp(cwd=wt1)
+        check("scheme 行の無い古い控えは読めて scheme が空", old is not None and old.scheme == ""
+              and (old.head, old.tree, old.verify_command) == (key.head, key.tree, key.verify_command))
+        check("scheme が違う鍵は等しくない", old != key)
+        stamp = ledger.StepStamp(key, "T-100", 2, "pause")
+        ledger.write_step_stamp(stamp, cwd=wt1)
+        check("段の控えは scheme 行の追加で壊れない", ledger.read_step_stamps(cwd=wt1) == [stamp])
+
+
 TESTS = (
+    test_content_key_scheme_roundtrip,
     test_ship_skips_preship_verify_when_stamp_matches,
     test_verify_stamp,
     test_verify_without_ledger,
