@@ -24,7 +24,7 @@ _OPERATOR_CHARS = ";&|()\n<>"
 _SHELL_KEYWORDS = ("do", "then", "else", "elif", "if", "while", "until", "!", "{")
 _HEREDOC = re.compile(r"<<(?!<)-?\s*(['\"]?)([A-Za-z_]\w*)\1")
 _WRITE_OPERATORS = (">", ">>", ">|", "&>", "&>>")
-_IN_PLACE = re.compile(r"^-[nEszrupal]*i[^A-Za-z]*$")
+_IN_PLACE = re.compile(r"^-[nEszrupal]*i")
 _PYTHON = re.compile(r"^python[\d.]*$")
 _PY_WRITE = re.compile(
     r"open\([^)]*,\s*(?:mode\s*=\s*)?['\"][rbt]*[wax+][rbtwax+]*['\"]|\.write_text\(|\.write_bytes\("
@@ -212,12 +212,13 @@ class Simple(NamedTuple):
 
 
 def _simple_commands(command: str, start: str) -> list[Simple]:
-    """単純コマンドと、`cd` を追った実効の作業先の並び。割れなければ空。リダイレクトの演算子と先の語は残す。"""
+    """単純コマンドと、`cd` を追った実効の作業先の並び。割れなければ空。リダイレクトの演算子と先の語は残す。
+作業先が変数やコマンド置換で決まる `cd` のあとのコマンドは、作業先が分からないので含めない。"""
     tokens = _tokens(_split_heredocs(command)[0])
     if tokens is None:
         return []
     found: list[Simple] = []
-    where = start
+    where: str | None = start
     for words in _split_commands(tokens):
         while words and not words[0].op and words[0].text in _SHELL_KEYWORDS:
             words = words[1:]
@@ -225,9 +226,15 @@ def _simple_commands(command: str, start: str) -> list[Simple]:
             continue
         if words[0].text == "cd" and not words[0].op:
             target = words[1].text if len(words) > 1 else "-"
-            where = start if target == "-" else os.path.normpath(os.path.join(where, os.path.expanduser(target)))
+            if target == "-":
+                where = start
+            elif "$" in target or "`" in target:
+                where = None
+            elif where is not None or os.path.isabs(os.path.expanduser(target)):
+                where = os.path.normpath(os.path.join(where or "", os.path.expanduser(target)))
             continue
-        found.append(Simple(where, tuple(words)))
+        if where is not None:
+            found.append(Simple(where, tuple(words)))
     return found
 
 
@@ -249,6 +256,19 @@ def _split_heredocs(command: str) -> tuple[str, list[str]]:
             i += 1
             bodies.append("\n".join(body))
     return "\n".join(kept), bodies
+
+
+def _arithmetic_end(text: str, start: int) -> int | None:
+    """`((` で始まる算術式の閉じ `))` の直後の位置。閉じなければ `None`。"""
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == "(":
+            depth += 1
+        elif text[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return i + 1 if text[i - 1] == ")" else None
+    return None
 
 
 def _tokens(text: str) -> list[Token] | None:
@@ -276,6 +296,16 @@ def _tokens(text: str) -> list[Token] | None:
                 buf += text[i + 1]
                 in_word = True
             i += 1
+        elif c == "#" and not in_word:
+            end = text.find("\n", i)
+            i = len(text) if end < 0 else end - 1
+        elif text.startswith("((", i) and _arithmetic_end(text, i) is not None:
+            if in_word:
+                tokens.append(Token(buf, False))
+                buf, in_word = "", False
+            end = _arithmetic_end(text, i) or i
+            tokens.append(Token(text[i:end], False))
+            i = end - 1
         elif c in " \t\r" or c in _OPERATOR_CHARS:
             if in_word:
                 tokens.append(Token(buf, False))
