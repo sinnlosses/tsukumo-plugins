@@ -7,7 +7,7 @@ import tempfile
 from selftest_support import check, git, refuse_direct_run, say, weight, write  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
-from selftest_fixtures import BODY, _claim_work_and_done, body_file, commit_task, make_repo, run_task  # noqa: E402
+from selftest_fixtures import BODY, _claim_work_and_done, body_file, commit_task, flow_rows, make_repo, run_task  # noqa: E402
 
 
 def _no_merge_commits(repo: str, base: str = "main") -> str:
@@ -153,6 +153,20 @@ def test_ship_stale_verify_owed_does_not_block_nothing_or_main_worktree() -> Non
             r2.stdout + r2.stderr,
         )
         check("古い印は消える", not ledger.is_verify_owed(cwd=main_path))
+
+
+def test_ship_nothing_records_ship_event() -> None:
+    say("task.py ship: 送るものが無い（NOTHING）ときも、着手の印を持っていたタスクの ship を result=NOTHING で flow に残す")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
+        commit_task(main_path, taskfile.Task("T-100", "別のリポジトリが作業先", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        result_path = write(os.path.join(tmp, "result.md"), "検証OK\n")
+        run_task(wt1, "done", "T-100", "--result-file", result_path)
+        r = run_task(wt1, "ship")
+        check("NOTHING で返る", r.returncode == 0 and r.stdout.startswith("NOTHING\t"), r.stdout + r.stderr)
+        ships = [(e["task"], e["result"]) for e in flow_rows(wt1) if e["event"] == "ship"]
+        check("ship の出来事が result=NOTHING で1つ残る", ships == [("T-100", "NOTHING")], repr(ships))
 
 
 def test_ship_conflict_aborts_rebase() -> None:
@@ -754,6 +768,7 @@ TESTS = (
     test_branch_setting_reads_leading_word,
     test_ship_fast_forward,
     test_ship_stale_verify_owed_does_not_block_nothing_or_main_worktree,
+    test_ship_nothing_records_ship_event,
     test_ship_conflict_aborts_rebase,
     test_ship_verify_failed_keeps_full_log_in_order,
     test_ship_skips_send_on_main_worktree,

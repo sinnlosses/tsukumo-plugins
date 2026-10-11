@@ -91,19 +91,27 @@ def _write_step_stamps(
     return key
 
 
-LAP_STAGES = ("direct", "delegate", "accept", "review", "retro")
+LAP_STAGES = ("direct", "delegate", "accept", "review", "retro", "land", "sync")
+LAP_EDGES = ("start", "end")
 
 
-def cmd_lap(toplevel: str, task_id: str, stage: str) -> None:
+def cmd_lap(toplevel: str, task_id: str, stage: str, edge: str | None = None) -> None:
     if stage not in LAP_STAGES:
         print(f"usage: 段 {stage!r} が {'・'.join(LAP_STAGES)} のどれでもない", file=sys.stderr)
+        raise SystemExit(2)
+    if edge is not None and edge not in LAP_EDGES:
+        print(f"usage: 端 {edge!r} が {'・'.join(LAP_EDGES)} のどちらでもない", file=sys.stderr)
         raise SystemExit(2)
     shown = beads.to_task_id(beads.to_bd_id(task_id))
     if shown not in tw_base.claimed_here(toplevel):
         print(f"NOT_CLAIMED\t{shown}")
         return
-    tw_base.record(toplevel, "lap", shown, stage=stage)
-    print(f"LAPPED\t{shown}\t{stage}")
+    if edge is None:
+        tw_base.record(toplevel, "lap", shown, stage=stage)
+        print(f"LAPPED\t{shown}\t{stage}")
+        return
+    tw_base.record(toplevel, "lap", shown, stage=stage, edge=edge)
+    print(f"LAPPED\t{shown}\t{stage}\t{edge}")
 
 
 def _task_trees(toplevel: str, task_id: str) -> list[str]:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Beads に置いたタスクの運用を操作する入口コマンド。
 
-使い方: tw <status|new|claim|release|done|ship|finish|land|config|config-doctor|show|edit|plan-check|verify|verify-check|accept|pause|step|lap|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard> ...
+使い方: tw <status|new|claim|release|done|ship|finish|land|config|config-doctor|show|edit|plan-check|verify|verify-check|accept|pause|step|lap|metrics|adopt|sync|backup|migrate-attributes|jira-closed|commit-guard|handback-guard> ...
 
 `install.sh` が PATH 上に張る `tw` と、plugin の `bin/tw` から呼ぶ。`commit-guard`・`handback-guard` の
 `--agent-scoped` は plugin の `hooks/hooks.json` が付け、`agent_type` の末尾が `no-delegate` のときだけ関門を掛ける。
@@ -96,6 +96,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_lap = sub.add_parser("lap")
     p_lap.add_argument("task_id")
     p_lap.add_argument("stage")
+    p_lap.add_argument("edge", nargs="?", default=None)
     p_metrics = sub.add_parser("metrics")
     p_metrics.add_argument("--days", type=int, default=metrics.DAYS_DEFAULT)
     p_metrics.add_argument("--stages", action="store_true")
@@ -132,6 +133,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("sync")
     sub.add_parser("backup")
+    sub.add_parser("migrate-attributes")
 
     p_jira_closed = sub.add_parser("jira-closed")
     p_jira_closed.add_argument("task_ids", nargs="+")
@@ -229,7 +231,7 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
         elif args.command == "step":
             tw_handback.cmd_step(toplevel, args.task_id, args.step)
         elif args.command == "lap":
-            tw_handback.cmd_lap(toplevel, args.task_id, args.stage)
+            tw_handback.cmd_lap(toplevel, args.task_id, args.stage, args.edge)
         elif args.command == "metrics":
             (metrics.cmd_metrics_stages if args.stages else metrics.cmd_metrics)(toplevel, args.days)
         elif args.command == "adopt":
@@ -238,6 +240,8 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
             tw_maint.cmd_sync(toplevel)
         elif args.command == "backup":
             tw_maint.cmd_backup(toplevel)
+        elif args.command == "migrate-attributes":
+            tw_maint.cmd_migrate_attributes(toplevel)
         elif args.command == "jira-closed":
             tw_maint.cmd_jira_closed(toplevel, args.task_ids)
     except beads.BeadsError as e:

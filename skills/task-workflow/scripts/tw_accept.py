@@ -70,7 +70,7 @@ def _review_gate(toplevel: str, task_id: str) -> bool:
 def _difficulty(issue: beads.Issue | None) -> str:
     if issue is None:
         return "sonnet"
-    values = beads.attribute_values(issue, beads.DIFFICULTY_KEY, beads.DIFFICULTY_LABEL)
+    values = beads.attribute_values(issue, beads.DIFFICULTY_KEY)
     return values[0] if len(values) == 1 else "sonnet"
 
 

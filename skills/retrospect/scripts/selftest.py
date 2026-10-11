@@ -320,7 +320,7 @@ def test_task_material() -> None:
             subprocess.run(["bd", *args], cwd=root, env=env, input=stdin, check=True, capture_output=True, text=True)
 
         bd("init", "--stealth", "-p", "t", "--non-interactive", "--skip-hooks", "--quiet")
-        bd("create", "--id", "t-001", "--title", "材料", "--body-file", "-", "-l", "difficulty:sonnet,loopable:Y", "--silent",
+        bd("create", "--id", "t-001", "--title", "材料", "--body-file", "-", "--metadata", '{"difficulty": "sonnet", "loopable": "Y"}', "--silent",
            stdin="## 目的・背景\n\n登録時の目的\n")
         bd("update", "t-001", "--description", "## 目的・背景\n\n書き直した目的\n")
         write(os.path.join(root, "docs", "history", "tasks.md"), "# 履歴\n\n## T-002 古いもの\n\n古い本文\n")

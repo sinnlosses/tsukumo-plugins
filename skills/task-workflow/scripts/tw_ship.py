@@ -38,7 +38,8 @@ def cmd_ship(toplevel: str) -> None:
     ahead_count = int(ahead.stdout.strip()) if ahead.returncode == 0 and ahead.stdout.strip().isdigit() else 0
     if ahead_count == 0:
         ledger.clear_verify_owed(cwd=toplevel)
-        _released, not_closed = _close_shipped(toplevel)
+        released, not_closed = _close_shipped(toplevel)
+        _record_shipped(toplevel, released, "NOTHING")
         print(f"NOTHING\t({base} に無いコミットが無い)")
         tw_base.print_lines(not_closed + _after_send(toplevel))
         return
@@ -161,9 +162,9 @@ def _after_send(toplevel: str) -> list[str]:
     return tracker.session(toplevel).sync_all(pull=False) + beads.backup(toplevel)
 
 
-def _record_shipped(toplevel: str, released: list[str]) -> None:
+def _record_shipped(toplevel: str, released: list[str], result: str = "SHIPPED") -> None:
     for task_id in released:
-        tw_base.record(toplevel, "ship", task_id, result="SHIPPED")
+        tw_base.record(toplevel, "ship", task_id, result=result)
 
 
 def cmd_land(toplevel: str, branch: str) -> None:

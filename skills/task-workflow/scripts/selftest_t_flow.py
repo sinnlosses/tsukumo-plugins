@@ -221,9 +221,67 @@ def test_metrics_stages_parallel_steps() -> None:
         row(400, "verify", result="VERIFIED", seconds=50), row(410, "lap", stage="accept"),
         row(500, "done"), row(510, "ship", result="SHIPPED"),
     ]
-    delegated = metrics.stage_durations(events, 1)[("委譲", "opus", "normal")]
+    delegated = metrics.stage_durations(events, 1)[0][("委譲", "opus", "normal")]
     check("委譲の時間の和は lap delegate から受け入れまでの壁時計から検証の秒を引いたもので、段1（190秒）と段2（200秒）の和を超えない",
           sum(delegated) == 410 - 10 - 50, repr(delegated))
+
+
+def test_metrics_stages_edge() -> None:
+    say("task.py metrics --stages: edge 付きの lap は end − start、旧い行は今まで通り、end の無い start は OPEN、NOTHING のタスクも出る")
+    with tempfile.TemporaryDirectory() as tmp:
+        _main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
+        d = ledger.flow_dir(ledger.ledger_root(cwd=wt1))
+        base = datetime.now(timezone.utc) - timedelta(hours=2)
+        row = lambda task, sec, ev, **kw: json.dumps(
+            {"t": (base + timedelta(seconds=sec)).isoformat(timespec="seconds"), "event": ev, "task": task, "difficulty": "sonnet", **kw}
+        )
+        lines = [
+            row("T-080", 0, "claim"),
+            row("T-080", 10, "lap", stage="delegate", edge="start"),
+            row("T-080", 100, "verify", result="VERIFIED", seconds=30),
+            row("T-080", 310, "lap", stage="delegate", edge="end"),
+            row("T-080", 320, "lap", stage="review", edge="start"),
+            row("T-080", 400, "done"),
+            row("T-080", 410, "ship", result="NOTHING"),
+            row("T-081", 0, "claim"), row("T-081", 50, "lap", stage="delegate"), row("T-081", 150, "lap", stage="accept"),
+            row("T-081", 200, "done"), row("T-081", 210, "ship", result="SHIPPED"),
+            row("T-082", 0, "claim"), row("T-082", 20, "lap", stage="land", edge="start"),
+            row("T-082", 80, "lap", stage="land", edge="end"), row("T-082", 90, "done"),
+            row("T-082", 100, "lap", stage="sync", edge="start"), row("T-082", 160, "lap", stage="sync", edge="end"),
+            row("T-082", 170, "ship", result="NOTHING"),
+        ]
+        write(os.path.join(d, "2000-01.jsonl"), "\n".join(lines) + "\n")
+        r = run_task(wt1, "metrics", "--stages")
+        got = {tuple(l.split("\t")) for l in r.stdout.splitlines()}
+        check("委譲は edge 付き（T-080: end − start の300秒。検証の秒は引かない。NOTHING のタスク）と旧い行（T-081: 100秒）の2件",
+              ("STAGE", "委譲", "sonnet", "normal", "2", "200", "300") in got, r.stdout + r.stderr)
+        check("edge の無い旧い lap は今の規則で出る（accept のみ 受け入れ 50秒）",
+              ("STAGE", "受け入れ", "sonnet", "normal", "1", "50", "50") in got, r.stdout)
+        check("合流・反映の段が出る（NOTHING のタスク）",
+              ("STAGE", "合流", "sonnet", "normal", "1", "60", "60") in got and ("STAGE", "反映", "sonnet", "normal", "1", "60", "60") in got,
+              r.stdout)
+        check("end の無い start は STAGE に入れず OPEN の行で数え、STAGE の行のあとに出る",
+              ("OPEN", "レビュー", "1") in got and not any(t[:2] == ("STAGE", "レビュー") for t in got)
+              and r.stdout.splitlines()[-1] == "OPEN\tレビュー\t1", r.stdout)
+        r = run_task(wt1, "metrics")
+        check("shipped の数は SHIPPED だけ（NOTHING を入れない）",
+              any(l.split("\t")[:2] == ["shipped", "1"] for l in r.stdout.splitlines()), r.stdout)
+
+
+def test_lap_edge() -> None:
+    say("task.py lap: 第3引数 start|end は edge 欄に残り、省くと欄を書かず、不正なら終了コード2")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
+        commit_task(main_path, taskfile.Task("T-100", "段", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        r = run_task(wt1, "lap", "T-100", "land", "end")
+        check("land end は LAPPED", r.returncode == 0 and r.stdout.strip() == "LAPPED\tT-100\tland\tend", r.stdout + r.stderr)
+        run_task(wt1, "lap", "T-100", "sync")
+        r = run_task(wt1, "lap", "T-100", "land", "bogus")
+        check("不正な第3引数は終了コード2", r.returncode == 2, r.stdout + r.stderr)
+        laps = [e for e in flow_rows(wt1) if e["event"] == "lap"]
+        check("edge は与えた行だけに残り、不正な呼び出しは記録しない",
+              [(e["stage"], e.get("edge")) for e in laps] == [("land", "end"), ("sync", None)], repr(laps))
 
 
 def test_retrospect_due() -> None:
@@ -452,6 +510,8 @@ TESTS = (
     test_config_command,
     test_metrics_stages,
     test_metrics_stages_parallel_steps,
+    test_metrics_stages_edge,
+    test_lap_edge,
 )
 
 

@@ -25,9 +25,9 @@ HIGHER_IS_WORSE = (
     "reclaim",
 )
 LOWER_IS_WORSE = ("shipped", "reflection_none_ratio")
-STAGE_ORDER = ("計画", "直し", "委譲", "検証", "受け入れ", "レビュー", "振り返り", "送り出し")
+STAGE_ORDER = ("計画", "直し", "委譲", "検証", "受け入れ", "レビュー", "振り返り", "合流", "送り出し", "反映")
 ROUTES = ("direct", "normal")
-LAP_STAGE_NAMES = {"direct": "直し", "delegate": "委譲", "accept": "受け入れ", "review": "レビュー", "retro": "振り返り"}
+LAP_STAGE_NAMES = {"direct": "直し", "delegate": "委譲", "accept": "受け入れ", "review": "レビュー", "retro": "振り返り", "land": "合流", "sync": "反映"}
 KIND_STAGE_NAMES = {"claim": "計画", "step": "委譲", "verify": "検証", "done": "送り出し"}
 
 
@@ -146,16 +146,31 @@ def _overlap_seconds(spans: list[tuple[datetime, datetime]], start: datetime, en
     return sum(max(0.0, (min(end, e) - max(start, s)).total_seconds()) for s, e in spans)
 
 
-def stage_durations(events: list[Event], days: int) -> dict[tuple[str, str, str], list[float]]:
-    """直近 days 日に送り出したタスクごとに、`(段, difficulty, 道)` → 所要秒の並び。
+def _closing_edge(run: list[Event], start: Event, after: int) -> Event | None:
+    """`start` と同じ段の、`run[after:]` にある最初の `edge: end` の `lap`。"""
+    return next(
+        (n for n in run[after:] if n.kind == "lap" and n.fields.get("edge") == "end" and n.fields.get("stage") == start.fields.get("stage")),
+        None,
+    )
 
-    `verify` は記録された所要秒で、区間は `[記録の時刻 − 所要秒, 記録の時刻]`。ほかの段の所要時間は、
-    その出来事から同じタスクの次の `verify` でない出来事までの差から、`verify` の区間と重なった秒を引いたもの。
+
+def stage_durations(
+    events: list[Event], days: int
+) -> tuple[dict[tuple[str, str, str], list[float]], dict[str, int]]:
+    """`((段, difficulty, 道) → 所要秒の並び, 段 → 終わりの無い start の数)`。対象は直近 days 日に `ship` が `SHIPPED` か `NOTHING` のタスク。
+
+    `verify` は記録された所要秒で、区間は `[記録の時刻 − 所要秒, 記録の時刻]`。`edge: start` の `lap` は同じ段の `edge: end` までの差。
+    ほかの段の所要時間は、その出来事から同じタスクの次の `verify` でない出来事までの差から、`verify` の区間と重なった秒を引いたもの。
     """
     now = datetime.now(timezone.utc)
     start = now - timedelta(days=days)
     durations: dict[tuple[str, str, str], list[float]] = {}
-    shipped = [e for e in events if e.kind == "ship" and e.fields.get("result") == "SHIPPED" and start <= e.at <= now]
+    opens: dict[str, int] = {}
+    shipped = [
+        e
+        for e in events
+        if e.kind == "ship" and e.fields.get("result") in ("SHIPPED", "NOTHING") and start <= e.at <= now
+    ]
     for ship in shipped:
         own = [e for e in events if e.task == ship.task and e.at <= ship.at]
         claims = [i for i, e in enumerate(own) if e.kind == "claim"]
@@ -168,7 +183,16 @@ def stage_durations(events: list[Event], days: int) -> dict[tuple[str, str, str]
             stage = _stage_of(e)
             if stage is None:
                 continue
-            if e.kind == "verify":
+            edge = e.fields.get("edge") if e.kind == "lap" else None
+            if edge == "end":
+                continue
+            if edge == "start":
+                closing = _closing_edge(run, e, i + 1)
+                if closing is None:
+                    opens[stage] = opens.get(stage, 0) + 1
+                    continue
+                seconds = (closing.at - e.at).total_seconds()
+            elif e.kind == "verify":
                 seconds = e.fields.get("seconds")
                 if not isinstance(seconds, (int, float)):
                     continue
@@ -176,17 +200,19 @@ def stage_durations(events: list[Event], days: int) -> dict[tuple[str, str, str]
                 end = next(n.at for n in run[i + 1 :] if n.kind != "verify")
                 seconds = (end - e.at).total_seconds() - _overlap_seconds(verifying, e.at, end)
             durations.setdefault((stage, str(e.fields.get("difficulty", "?")), route), []).append(float(seconds))
-    return durations
+    return durations, opens
 
 
 def stage_lines(events: list[Event], days: int) -> list[str]:
-    durations = stage_durations(events, days)
-    return [
+    durations, opens = stage_durations(events, days)
+    stage_rows = [
         f"STAGE\t{stage}\t{difficulty}\t{route}\t{len(values)}\t{round(statistics.median(values))}\t{round(max(values))}"
         for (stage, difficulty, route), values in sorted(
             durations.items(), key=lambda kv: (STAGE_ORDER.index(kv[0][0]), kv[0][1], ROUTES.index(kv[0][2]))
         )
     ]
+    open_rows = [f"OPEN\t{stage}\t{opens[stage]}" for stage in STAGE_ORDER if stage in opens]
+    return stage_rows + open_rows
 
 
 def columns(events: list[Event], days: int) -> tuple[dict[str, str], dict[str, str]]:

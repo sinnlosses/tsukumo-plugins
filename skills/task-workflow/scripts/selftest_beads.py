@@ -185,7 +185,7 @@ def test_direct_mark() -> None:
 
 
 def test_difficulty_loopable_metadata() -> None:
-    say("difficulty・loopable: new・edit は metadata に書き、読みは metadata 優先で label に後退し、取り込みで消えたら戻す")
+    say("difficulty・loopable: new・edit は metadata に書き、読みは metadata だけで、取り込みで消えたら戻す")
     import tracker  # noqa: PLC0415
 
     def issue(status: str = "open", labels: tuple[str, ...] = (), metadata: dict | None = None) -> beads.Issue:
@@ -193,13 +193,13 @@ def test_difficulty_loopable_metadata() -> None:
 
     both = issue(labels=("difficulty:opus", "loopable:N"), metadata={"difficulty": "haiku", "loopable": "Y"})
     task, _ = beads.to_task(both)
-    check("metadata と label が両方あれば metadata が勝つ",
+    check("metadata と label が両方あっても metadata を読む",
           task is not None and (task.difficulty, task.loopable) == ("haiku", "Y"), str(task))
-    task, _ = beads.to_task(issue(labels=("difficulty:opus", "loopable:N")))
-    check("metadata が無ければ label を読む", task is not None and (task.difficulty, task.loopable) == ("opus", "N"), str(task))
-    task, _ = beads.to_task(issue(labels=("loopable:N",), metadata={"difficulty": "sonnet"}))
-    check("片方が metadata・片方が label でも読める",
-          task is not None and (task.difficulty, task.loopable) == ("sonnet", "N"), str(task))
+    check("label だけの課題は振り分け前（label は読まない）",
+          beads.to_task(issue(labels=("difficulty:opus", "loopable:N"))) == (None, None))
+    task, reason = beads.to_task(issue(labels=("loopable:N",), metadata={"difficulty": "sonnet"}))
+    check("片方だけ metadata で、もう片方が無ければ INVALID（label は読まない）",
+          task is None and reason is not None and "loopable" in reason, str(reason))
     task, reason = beads.to_task(issue(metadata={"difficulty": "gpt", "loopable": "Y"}))
     check("表に無い値は INVALID", task is None and reason is not None and "difficulty" in reason, str(reason))
     check("どちらも無ければ振り分け前", beads.to_task(issue()) == (None, None))
@@ -223,29 +223,82 @@ def test_difficulty_loopable_metadata() -> None:
         check("new は metadata に書き、label を付けない",
               created is not None and meta.get("difficulty") == "sonnet" and meta.get("loopable") == "Y"
               and not any(l.startswith(("difficulty:", "loopable:")) for l in created.labels), str(created))
-        bd(main_path, "update", beads.to_bd_id(task_id), "--add-label", "difficulty:opus")
         r = run_task(main_path, "edit", task_id, "--difficulty", "haiku", "--loopable", "N")
         edited = beads.show(main_path, beads.to_bd_id(task_id))
         meta = edited.raw.get("metadata") if edited is not None else {}
-        check("edit は metadata を書き換え、残った label を外す",
+        check("edit は metadata を書き換え、label を付けない",
               r.returncode == 0 and edited is not None and meta.get("difficulty") == "haiku"
-              and meta.get("loopable") == "N" and not any(l.startswith("difficulty:") for l in edited.labels),
+              and meta.get("loopable") == "N" and not any(l.startswith(("difficulty:", "loopable:")) for l in edited.labels),
               r.stdout + r.stderr + str(edited))
         shown = run_task(main_path, "show", task_id).stdout
         check("show は metadata から読む", "\ndifficulty: haiku\nloopable: N\n" in shown, shown)
 
-        r = bd(main_path, "create", "--id", "t-raw", "--title", "取り込み", "-l", "difficulty:opus,loopable:N",
-               "--silent")
-        check("振り分け前の課題（番号なし・古い label つき）を作れる", r.returncode == 0, r.stdout + r.stderr)
+        r = bd(main_path, "create", "--id", "t-raw", "--title", "取り込み", "-l", "mytag", "--silent")
+        check("振り分け前の課題（番号なし）を作れる", r.returncode == 0, r.stdout + r.stderr)
         r = run_task(main_path, "adopt", "T-RAW", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", "-",
                      stdin=PLANNED_BODY)
         adopted_id = r.stdout.strip().split("\t")[-1] if r.stdout.startswith("ADOPTED\t") else ""
         adopted = beads.show(main_path, beads.to_bd_id(adopted_id)) if adopted_id else None
         meta = adopted.raw.get("metadata") if adopted is not None else {}
-        check("adopt は metadata に2キーを書き、古い label を外す",
+        check("adopt は metadata に2キーを書き、label を付けない",
               adopted is not None and meta.get("difficulty") == "sonnet" and meta.get("loopable") == "Y"
               and not any(l.startswith(("difficulty:", "loopable:")) for l in adopted.labels),
               r.stdout + r.stderr + str(adopted))
+
+
+def test_migrate_attributes() -> None:
+    say("migrate-attributes: label の difficulty・loopable を metadata へ写して外し、打ち直しても変わらない")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, _, _ = make_repo(tmp)
+
+        def create(bd_id: str, labels: str) -> None:
+            r = bd(main_path, "create", "--id", bd_id, "--title", f"課題{bd_id}", "-l", labels, "-d", "本文")
+            check(f"{bd_id} を作れる", r.returncode == 0, r.stdout + r.stderr)
+
+        def state(bd_id: str) -> tuple[dict, list[str]]:
+            issue = beads.show(main_path, bd_id)
+            assert issue is not None
+            meta = issue.raw.get("metadata")
+            return (meta if isinstance(meta, dict) else {}), sorted(issue.labels)
+
+        create("t-801", "difficulty:opus,loopable:N,direct:Y,mytag")
+        create("t-802", "difficulty:opus,loopable:N,ship:done")
+        bd(main_path, "close", "t-802")
+        create("t-803", "difficulty:opus,loopable:N")
+        bd(main_path, "update", "t-803", "--set-metadata", "difficulty=haiku", "--set-metadata", "loopable=Y")
+        create("t-804", "difficulty:gpt,loopable:N")
+        create("t-805", "difficulty:sonnet")
+        create("t-806", "mytag")
+        before_bad = (state("t-804"), state("t-805"), state("t-806"))
+
+        r = run_task(main_path, "migrate-attributes")
+        check("INVALID があれば終了コード3", r.returncode == 3, r.stdout + r.stderr)
+        meta, labels = state("t-801")
+        check("label だけの課題は metadata へ移り、direct:Y と自由タグは残る",
+              meta.get("difficulty") == "opus" and meta.get("loopable") == "N" and labels == ["direct:Y", "mytag"],
+              str((meta, labels)))
+        meta, labels = state("t-802")
+        check("閉じた課題も移り、ship:done は残る",
+              meta.get("difficulty") == "opus" and meta.get("loopable") == "N" and labels == ["ship:done"],
+              str((meta, labels)))
+        meta, labels = state("t-803")
+        check("metadata が既にあれば metadata のまま label だけ外す",
+              meta.get("difficulty") == "haiku" and meta.get("loopable") == "Y" and labels == [], str((meta, labels)))
+        check("値が不正・片方だけ・属性なしの課題は変わらない",
+              (state("t-804"), state("t-805"), state("t-806")) == before_bad, r.stdout)
+        check("INVALID の行に2件が出る（ほかは出ない）",
+              "INVALID\tT-804\t" in r.stdout and "INVALID\tT-805\t" in r.stdout and "T-806" not in r.stdout
+              and "MIGRATED_TOTAL\t3\tINVALID\t2" in r.stdout, r.stdout)
+        check("移した3件が MIGRATED の行に出る",
+              all(f"MIGRATED\tT-{n}\n" in r.stdout for n in (801, 802, 803)), r.stdout)
+        shown_now = run_task(main_path, "show", "T-801").stdout
+        check("移したあとの show は metadata の値を読む", "\ndifficulty: opus\nloopable: N\n" in shown_now, shown_now)
+
+        after_first = [state(f"t-80{n}") for n in (1, 2, 3)]
+        r = run_task(main_path, "migrate-attributes")
+        check("打ち直すと移す課題が 0 で、移した課題は変わらない",
+              "MIGRATED_TOTAL\t0\tINVALID\t2" in r.stdout and [state(f"t-80{n}") for n in (1, 2, 3)] == after_first,
+              r.stdout + r.stderr)
 
 
 def test_setup_and_config_doctor() -> None:
@@ -760,6 +813,74 @@ def test_tracker_timeout() -> None:
               and "TRACKER\tFAILED" not in r.stdout, r.stdout + r.stderr)
 
 
+def test_release_force_without_assignee() -> None:
+    say("release --force: 担当者の消えた in_progress の着手の印を外せる")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp)
+        a = new(main_path, "担当者が消えた")
+        bd_id = beads.to_bd_id(a)
+        bd(main_path, "update", bd_id, "--status", "in_progress", "--add-label", beads.SHIP_LABELS["done"])
+        stuck = beads.show(main_path, bd_id)
+        check("前提: assignee 無しの in_progress", stuck is not None and stuck.status == "in_progress"
+              and not stuck.assignee, str(stuck and stuck.raw))
+        r = run_task(wt1, "release", a)
+        check("--force 無しは NOT_OWNER（挙動は変えない）", r.returncode == 4 and r.stdout.startswith("NOT_OWNER"), r.stdout)
+        r = run_task(wt1, "release", a, "--force")
+        freed = beads.show(main_path, bd_id)
+        check("--force は RELEASED で status が open に戻る", r.returncode == 0 and r.stdout.startswith("RELEASED")
+              and freed is not None and freed.status == "open" and not freed.assignee, r.stdout + r.stderr)
+        check("ship の label も残らない", freed is not None
+              and not any(l in beads.SHIP_LABELS.values() for l in freed.labels), str(freed and freed.labels))
+        r = run_task(wt1, "release", a, "--force")
+        check("もう一度は NOT_CLAIMED", r.returncode == 0 and r.stdout.startswith("NOT_CLAIMED"), r.stdout)
+
+
+def _status_labels(fake: "FakeGitHub", n: int) -> list[str]:
+    return [l for l in fake.issues[n]["labels"] if l.startswith("status::")]
+
+
+def test_release_force_clears_github_label() -> None:
+    say("release --force: GitHub の label status::in_progress も残らず、取り込みで戻らない")
+    with _github() as (fake, _tmp, main_path, wt1):
+        a = new(main_path, "label が残る")
+        n, bd_id = _num(a), beads.to_bd_id(a)
+        bd(main_path, "update", bd_id, "--status", "in_progress")
+        r = run_task(main_path, "sync")
+        check("前提: GitHub に status::in_progress が付く", r.returncode == 0
+              and "status::in_progress" in _status_labels(fake, n), r.stdout + repr(fake.issues[n]["labels"]))
+        r = run_task(wt1, "release", a, "--force")
+        check("RELEASED と TRACKER OK", r.returncode == 0 and r.stdout.startswith("RELEASED")
+              and "TRACKER\tOK\tgithub" in r.stdout, r.stdout + r.stderr)
+        check("GitHub の status::in_progress が外れる", "status::in_progress" not in _status_labels(fake, n),
+              repr(fake.issues[n]["labels"]))
+        r = run_task(main_path, "sync")
+        again = beads.show(main_path, bd_id)
+        check("sync のあとも open のまま", r.returncode == 0 and again is not None and again.status == "open",
+              r.stdout + str(again and again.status))
+
+
+def test_release_force_deadline_then_sync() -> None:
+    say("release --force: 送りが上限切れでも、sync が label を外し open のまま")
+    with _github() as (fake, _tmp, main_path, wt1):
+        a = new(main_path, "送りが切れる")
+        n, bd_id = _num(a), beads.to_bd_id(a)
+        bd(main_path, "update", bd_id, "--status", "in_progress")
+        r = run_task(main_path, "sync")
+        check("前提: GitHub に status::in_progress が付く", r.returncode == 0
+              and "status::in_progress" in _status_labels(fake, n), r.stdout + repr(fake.issues[n]["labels"]))
+        local.env[tracker.OP_TIMEOUT_ENV] = "2"
+        fake.delay = 5
+        r = run_task(wt1, "release", a, "--force")
+        check("RELEASED と TRACKER FAILED", r.returncode == 0 and r.stdout.startswith("RELEASED")
+              and "TRACKER\tFAILED\tgithub" in r.stdout, r.stdout + r.stderr)
+        fake.delay = 0
+        r = run_task(main_path, "sync")
+        again = beads.show(main_path, bd_id)
+        check("sync が label を外す", r.returncode == 0 and "status::in_progress" not in _status_labels(fake, n),
+              r.stdout + repr(fake.issues[n]["labels"]))
+        check("Beads は open のまま", again is not None and again.status == "open", str(again and again.status))
+
+
 def _kv(cwd: str) -> dict[str, str]:
     return json.loads(bd(cwd, "kv", "list", "--json").stdout or "{}")
 
@@ -924,11 +1045,15 @@ def main() -> None:
             test_cycle_done_ship_and_dropped,
             test_commit_guard,
             test_claim_race_owner_and_release,
+            test_release_force_without_assignee,
+            test_release_force_clears_github_label,
+            test_release_force_deadline_then_sync,
             test_handback_guard,
             test_setup_and_config_doctor,
             test_backup,
             test_direct_mark,
             test_difficulty_loopable_metadata,
+            test_migrate_attributes,
             test_missing_config_ignores_old_layout,
             test_store_default_is_beads,
             test_store_files_is_invalid,

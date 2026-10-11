@@ -95,7 +95,10 @@ def cmd_release(toplevel: str, task_id: str, force: bool) -> None:
     if not force and issue.assignee != actor:
         print(f"NOT_OWNER\t{shown}")
         raise SystemExit(4)
-    beads.run_ok(toplevel, ["unclaim", bd_id] + (["--force"] if force else []), actor)
+    if force and not issue.assignee:
+        beads.run_ok(toplevel, ["update", bd_id, "--status", "open"], actor)
+    else:
+        beads.run_ok(toplevel, ["unclaim", bd_id] + (["--force"] if force else []), actor)
     marks = [v for v in beads.SHIP_LABELS.values() if v in issue.labels]
     if marks:
         beads.run_ok(toplevel, ["update", bd_id] + [x for m in marks for x in ("--remove-label", m)], actor)
