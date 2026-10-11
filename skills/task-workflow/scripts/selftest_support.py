@@ -38,7 +38,7 @@ def beads_home(prefixes: tuple[str, ...]) -> Iterator[str]:
     keys = ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "BEADS_ACTOR", "GITHUB_TOKEN")
     saved = {k: os.environ.get(k) for k in keys}
     try:
-        with tempfile.TemporaryDirectory() as home:
+        with _ram_disk(), tempfile.TemporaryDirectory() as home:
             write(os.path.join(home, ".config", "bd", "config.yaml"), _BD_CONFIG)
             os.environ["HOME"] = home
             os.environ["XDG_CONFIG_HOME"] = os.path.join(home, ".config")
@@ -56,6 +56,54 @@ def beads_home(prefixes: tuple[str, ...]) -> Iterator[str]:
                 os.environ[k] = v
     local.lines = []
     check("利用者の ~/.config/bd/config.yaml に触れていない", _stat(real_config) == before, real_config)
+
+
+_RAM_DISK_SECTORS = 1048576  # 512MB
+
+
+@contextlib.contextmanager
+def _ram_disk() -> Iterator[None]:
+    """macOS で RAM ディスクを作り、`TMPDIR` と `tempfile.tempdir` をそこへ向ける。
+
+    bd は1回ごとに APFS の書き込みを待つので、一時ディレクトリを RAM に置くと数倍速い。
+    作れないとき（macOS 以外・コマンドが無い・どれかが失敗）は何もせず今の一時ディレクトリで続ける。
+    抜けるとき（例外のときも）マウントとデバイスを外し、向け先を戻す。
+    """
+    device = ""
+    mount_point = ""
+    mounted = False
+    saved_tmpdir = os.environ.get("TMPDIR")
+    saved_tempdir = tempfile.tempdir
+    try:
+        if sys.platform == "darwin" and all(shutil.which(c) for c in ("hdiutil", "newfs_hfs", "mount", "umount")):
+            device = _run_quiet(["hdiutil", "attach", "-nomount", f"ram://{_RAM_DISK_SECTORS}"]).strip()
+            mount_point = tempfile.mkdtemp(prefix="tw-selftest-ram-")
+            _run_quiet(["newfs_hfs", "-v", "twselftest", device])
+            _run_quiet(["mount", "-t", "hfs", device, mount_point])
+            mounted = True
+            os.environ["TMPDIR"] = mount_point
+            tempfile.tempdir = mount_point
+    except (OSError, subprocess.SubprocessError):
+        pass
+    try:
+        yield
+    finally:
+        if saved_tmpdir is None:
+            os.environ.pop("TMPDIR", None)
+        else:
+            os.environ["TMPDIR"] = saved_tmpdir
+        tempfile.tempdir = saved_tempdir
+        if mounted:
+            subprocess.run(["umount", "-f", mount_point], capture_output=True)
+        if device:
+            subprocess.run(["hdiutil", "detach", "-force", device], capture_output=True)
+        if mount_point:
+            with contextlib.suppress(OSError):
+                os.rmdir(mount_point)
+
+
+def _run_quiet(cmd: list[str]) -> str:
+    return subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=60).stdout
 
 
 def copy_beads(repo: str, prefix: str) -> None:
