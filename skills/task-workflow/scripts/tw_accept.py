@@ -34,7 +34,7 @@ def cmd_accept(toplevel: str, task_id: str, after_review: bool) -> None:
             return
     _format(toplevel)
     _run_part(lambda: tw_verify.cmd_verify_check(toplevel))
-    tw_base.record(toplevel, "lap", task_id, stage="accept", edge="end")
+    tw_base.record(toplevel, "lap", beads.to_task_id(beads.to_bd_id(task_id)), stage="accept", edge="end")
 
 
 def _run_part(part: Callable[[], None]) -> None:

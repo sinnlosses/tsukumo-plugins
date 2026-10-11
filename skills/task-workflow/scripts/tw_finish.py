@@ -10,6 +10,7 @@ import contextlib
 import io
 import sys
 
+import beads
 import ledger
 import metrics
 import tw_base
@@ -26,9 +27,10 @@ def cmd_finish(
         raise SystemExit(STRAY_COMMITS_EXIT)
     _commit(toplevel, message, files)
     tw_ship.cmd_ship(toplevel)
+    shown = beads.to_task_id(beads.to_bd_id(task_id))
     events, _ = metrics.read_events(ledger.ledger_root(cwd=toplevel))
-    for stage in metrics.open_stages(events, task_id):
-        print(f"OPEN_SPAN\t{task_id}\t{stage}")
+    for stage in metrics.open_stages(events, shown):
+        print(f"OPEN_SPAN\t{shown}\t{stage}")
 
 
 def _done_found_stray_commits(toplevel: str, task_id: str, dropped: bool, result_path: str) -> bool:

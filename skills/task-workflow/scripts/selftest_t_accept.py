@@ -4,6 +4,7 @@ import os
 import tempfile
 
 from selftest_support import check, refuse_direct_run, say, write  # noqa: E402
+import beads  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_fixtures import PLANNED_BODY, commit_task, flow_rows, make_repo, run_task  # noqa: E402
 
@@ -102,7 +103,20 @@ def test_accept_records_accept_end() -> None:
         check("end の行は LAPPED として表に出さない", "LAPPED" not in r.stdout, r.stdout)
 
 
+def test_accept_end_pairs_with_start_for_any_id_spelling() -> None:
+    say("task.py accept: ID の書き方（表示・小文字・Beads）によらず、accept の start と end が同じ task で残る")
+    for spelling in ("T-100", "t-100", beads.to_bd_id("T-100")):
+        with tempfile.TemporaryDirectory() as tmp:
+            wt1 = _claimed_repo(tmp)
+            write(os.path.join(wt1, "note.md"), "x\n")
+            run_task(wt1, "verify")
+            r = run_task(wt1, "accept", spelling)
+            edges = [(e["task"], e.get("edge")) for e in flow_rows(wt1) if e["event"] == "lap" and e.get("stage") == "accept"]
+            check(f"{spelling}: start と end が T-100 に残る", r.returncode == 0 and edges == [("T-100", None), ("T-100", "end")], repr(edges) + r.stdout + r.stderr)
+
+
 TESTS = (
+    test_accept_end_pairs_with_start_for_any_id_spelling,
     test_accept_records_accept_end,
     test_accept_bundles_acceptance_steps,
     test_accept_stops_on_stop_lines,
