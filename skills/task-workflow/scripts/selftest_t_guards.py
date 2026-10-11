@@ -95,6 +95,91 @@ def test_commit_guard() -> None:
         check("release のあとは通る", run_guard(tmp, wt2, "git commit -m x") is None)
 
 
+@weight(6)
+def test_commit_guard_shell_edit() -> None:
+    say("task.py commit-guard: 印が立って done 前の作業ツリーで、シェルからのファイルの書き換えを拒む")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(tmp)
+        commit_task(main_path, taskfile.Task("T-100", "拒む", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        write(os.path.join(wt1, ".gitignore"), "*.log\n")
+        outside = os.path.join(tmp, "outside")
+        os.makedirs(outside)
+        py_write = "open(p, 'w').write('x')"
+        py_read = "print(open(p).read())"
+
+        reason = run_guard(tmp, wt1, "sed -i s/a/b/ f.txt")
+        check("理由にタスクIDと Edit・Write が入る",
+              reason is not None and "T-100" in reason and "Edit" in reason and "Write" in reason, str(reason))
+        for command, where in (
+            ("sed -i s/a/b/ f.txt", wt1),
+            ("sed -i '' s/a/b/ f.txt", wt1),
+            ("sed -ni 1p f.txt", wt1),
+            ("sed --in-place -e s/a/b/ f.txt", wt1),
+            ("sed -i s/a/b/ f.txt 2>&1", wt1),
+            ("perl -pi -e s/a/b/ f.txt", wt1),
+            ("echo x > f.txt", wt1),
+            ("echo x >f.txt", wt1),
+            ("echo x >> sub/f.txt", wt1),
+            ("> f.txt", wt1),
+            ("echo x &> f.txt", wt1),
+            ("cat > f.txt <<'EOF'\nhi > there\nEOF", wt1),
+            ("echo x | tee f.txt", wt1),
+            ("tee -a f.txt", wt1),
+            ("for f in a; do sed -i s/a/b/ f.txt; done", wt1),
+            (f"cd {wt1} && echo x > f.txt", tmp),
+            ("cd sub && echo x > ../f.txt", wt1),
+            (f"echo x > {wt1}/f.txt", tmp),
+            (f"python3 - <<'EOF'\n{py_write}\nEOF", wt1),
+            ("python3 -c \"Path(p).write_text('x')\"", wt1),
+            ("python3 -c 'open(p, \"a\")'", wt1),
+        ):
+            check(f"拒む: {command.splitlines()[0]}", run_guard(tmp, where, command) is not None)
+        for command, where in (
+            ("tw edit T-100 --section 'やること' --body-file - <<'EOF'\na > b\nEOF", wt1),
+            ("tw done T-100 --result-file - <<'EOF'\nx > y\nEOF", wt1),
+            ("ls 2>&1", wt1),
+            ("./check.sh >/dev/null 2>&1", wt1),
+            ("echo x >&2", wt1),
+            ("echo x > ignored.log", wt1),
+            (f"echo x > {outside}/log.txt", wt1),
+            ("echo x > /tmp/gh536-log.txt", wt1),
+            (f"git diff > {outside}/p.diff", wt1),
+            (f"sed -i s/a/b/ {outside}/o.txt 2>&1", wt1),
+            (f"echo x | tee {outside}/o.txt", wt1),
+            (f"cd {outside} && echo x > f.txt", wt1),
+            ("grep \">\" f.txt", wt1),
+            ("sed -n 1,5p f.txt", wt1),
+            ("git status && git log -1", wt1),
+            (f"python3 - <<'EOF'\n{py_read}\nEOF", wt1),
+            ("python3 -c \"open(p, 'r')\"", wt1),
+            ("python3 - <<'EOF'\nopen('/tmp/x', 'w')\nEOF", wt1),
+            ("python3 script.py", wt1),
+            ("echo x > $F", wt1),
+            ("echo x > \"$(pwd)/f.txt\"", wt1),
+            ("eval 'echo x > f.txt'", wt1),
+            ("bash -c 'echo x > f.txt'", wt1),
+            ("echo \"x", wt1),
+            ("sed -i s/a/b/ f.txt", wt2),
+            ("echo x > f.txt", wt2),
+            (f"python3 - <<'EOF'\n{py_write}\nEOF", wt2),
+            (f"cd {wt2} && sed -i s/a/b/ f.txt", wt1),
+        ):
+            check(f"通す: {command.splitlines()[0]}", run_guard(tmp, where, command) is None)
+
+        for agent_type, refused in ((None, False), ("tsukumo-workflow:no-delegate", True)):
+            payload = {"tool_name": "Bash", "tool_input": {"command": "echo x > f.txt"}, "cwd": wt1}
+            if agent_type is not None:
+                payload["agent_type"] = agent_type
+            r = run_task(tmp, "commit-guard", "--agent-scoped", stdin=json.dumps(payload))
+            check(f"--agent-scoped の書き換えの拒否は agent_type={agent_type} で{'拒む' if refused else '通す'}",
+                  r.returncode == 0 and (r.stdout != "") == refused, r.stdout + r.stderr)
+
+        result_path = write(os.path.join(tmp, "result.md"), "結果\n")
+        run_task(wt1, "done", "T-100", "--result-file", result_path)
+        check("done のあとの書き換えは通る", run_guard(tmp, wt1, "echo x > f.txt") is None)
+
+
 HOOKS_JSON = os.path.join(HERE, "..", "..", "..", "hooks", "hooks.json")
 
 
@@ -672,6 +757,7 @@ TESTS = (
     test_handback_guard_parallel_steps,
     test_handback_guard_step,
     test_commit_guard,
+    test_commit_guard_shell_edit,
     test_agent_scoped_guard,
     test_readonly_git,
     test_lap,
