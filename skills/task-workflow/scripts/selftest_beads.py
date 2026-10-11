@@ -772,14 +772,18 @@ def _with_fakes(tmp: str, fake: FakeGitHub) -> dict[str, str]:
 
 
 @contextlib.contextmanager
-def _github(prefix: str | None = beads.PREFIX_GITHUB) -> Iterator[tuple["FakeGitHub", str, str, str]]:
+def _github(
+    prefix: str | None = beads.PREFIX_GITHUB, verify: str | None = None
+) -> Iterator[tuple["FakeGitHub", str, str, str]]:
     """偽の GitHub へ向けた `(偽の GitHub, 一時ディレクトリ, 本体, 作業ツリー1)`。
-    `prefix` が `None` なら `.beads` は `init.py` がトラッカーの行から prefix を選んで作る。"""
+    `prefix` が `None` なら `.beads` は `init.py` がトラッカーの行から prefix を選んで作る。`verify` は `make_repo` へ渡す。"""
     fake = FakeGitHub()
     with tempfile.TemporaryDirectory() as tmp:
         local.env = _with_fakes(tmp, fake)
         try:
-            main_path, wt1, _ = make_repo(tmp, extra='tracker = "github"\ngithub_project = "sinnlosses/1"\n', prefix=prefix)
+            main_path, wt1, _ = make_repo(
+                tmp, extra='tracker = "github"\ngithub_project = "sinnlosses/1"\n', verify=verify, prefix=prefix
+            )
             bd(main_path, "config", "set", "github.repository", "o/r")
             yield fake, tmp, main_path, wt1
         finally:
@@ -966,6 +970,26 @@ def test_claim_restored_after_killed_sync() -> None:
         r = run_task(wt1, "plan-check", a)
         check("戻したあとは plan-check が戻さずに通る", r.returncode == 0 and "RESTORED" not in r.stdout + r.stderr,
               r.stdout + r.stderr)
+
+
+def test_handback_guard_after_killed_sync() -> None:
+    say("着手の印の控え: 取り込みが印を消したまま handback-guard が最初に走っても、戻した印で判定し、検証の欠けた返却を拒む")
+    with _github(verify="echo verified") as (fake, tmp, main_path, wt1):
+        _arm_kill_after_pull(tmp)
+        a, bd_id, n = _claim_and_push(fake, main_path, wt1, "返却の前に消える")
+        write(os.path.join(wt1, "work.txt"), "x\n")
+        git(wt1, "add", "work.txt")
+        git(wt1, "commit", "-q", "-m", f"{a}: 作業")
+        fake.edit(n, body="返却の前に GitHub で直した")
+        _killed_sync(main_path)
+        lost = beads.show(main_path, bd_id)
+        check("前提: 止めた sync が担当者と印を空にしたまま残す", lost is not None and not lost.assignee
+              and not beads.mark_values(lost), str(lost and lost.raw))
+        reason = handback_reason(tmp, wt1) or ""
+        got = beads.show(main_path, bd_id)
+        check("コミット済みで作業ツリーがきれいでも、検証が無ければ block（NOT_VERIFIED）", "NOT_VERIFIED" in reason, reason)
+        check("handback-guard が印を戻す", got is not None and got.assignee == "wt1"
+              and beads.CLAIM_HEAD_KEY in beads.mark_values(got), str(got and got.raw))
 
 
 def test_claim_not_restored_when_released_on_github() -> None:
@@ -1211,6 +1235,7 @@ def main() -> None:
         tests = (
             test_claim_not_restored_after_release_done_ship,
             test_claim_restored_after_killed_sync,
+            test_handback_guard_after_killed_sync,
             test_claim_not_restored_when_released_on_github,
             test_claim_kept_through_concurrent_syncs,
             test_tracker_github_bidirectional,

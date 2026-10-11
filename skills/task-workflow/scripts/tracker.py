@@ -206,7 +206,7 @@ class Session:
                 # 戻した課題は Beads で変えたものになるので、下の送りで送られ、取り込みでは Beads が勝つ。
                 lines += _restore_from_snapshots(self.toplevel, beads.read_kv(self.toplevel), None, self._actor)[0]
                 listed = beads.list_issues(self.toplevel)
-                stale ={i.bd_id for i in listed if _after(i.raw.get("updated_at"), self._synced_at(i))}
+                stale = {i.bd_id for i in listed if _after(i.raw.get("updated_at"), self._synced_at(i))}
                 if pull:
                     remote, newest = self._rest_changed()
                     lines += self._pull(self._without_echo(remote, listed))

@@ -177,10 +177,11 @@ def _handback_gaps(toplevel: str, task_id: str) -> list[str]:
 
     作業先の作業ツリーの `verify-check` の行には、その作業ツリーのパスを添える。
     """
+    # plan-check は取り込みが消した着手の印を控えから戻すので、claim 時の HEAD はそのあとに読む。
+    plan_line = _first_output_line(lambda: tw_edit.cmd_plan_check(toplevel, task_id))
     issue = beads.show(toplevel, beads.to_bd_id(task_id))
     metadata = issue.raw.get("metadata") if issue is not None else None
     head = metadata.get(beads.CLAIM_HEAD_KEY) if isinstance(metadata, dict) else None
-    plan_line = _first_output_line(lambda: tw_edit.cmd_plan_check(toplevel, task_id))
     plan_ok = plan_line.split("\t")[0] in HANDBACK_PLAN_OK
     gaps: list[str] = []
     for tree in _task_trees(toplevel, task_id):
