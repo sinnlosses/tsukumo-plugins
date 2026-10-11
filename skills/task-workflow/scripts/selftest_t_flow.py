@@ -11,6 +11,7 @@ import beads  # noqa: E402
 import ledger  # noqa: E402
 import metrics  # noqa: E402
 import taskfile  # noqa: E402
+import tw_base  # noqa: E402
 from selftest_fixtures import BODY, PLANNED_BODY, commit_task, flow_rows, make_repo, run_task  # noqa: E402
 
 
@@ -286,6 +287,16 @@ def test_lap_edge() -> None:
               [(e["stage"], e.get("edge")) for e in laps] == [("land", "end"), ("sync", None)], repr(laps))
 
 
+def test_record_normalizes_task_id() -> None:
+    say("tw_base.record: どの書き方のタスクIDを渡しても、flow/ の task は表示の形の1つになる")
+    with tempfile.TemporaryDirectory() as tmp:
+        _main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
+        for spelling in ("T-100", "t-100", beads.to_bd_id("T-100")):
+            tw_base.record(wt1, "lap", spelling, stage="sync")
+        tasks = [e["task"] for e in flow_rows(wt1) if e["event"] == "lap"]
+        check("3通りとも T-100 で残る", tasks == ["T-100"] * 3, repr(tasks))
+
+
 def test_retrospect_due() -> None:
     say("task.py status: 横断の振り返りの時期に retrospect_due の行を出す")
     due_line = lambda out: next((l for l in out.splitlines() if l.startswith("retrospect_due\t")), None)
@@ -529,6 +540,7 @@ TESTS = (
     test_metrics_stages_parallel_steps,
     test_metrics_stages_edge,
     test_lap_edge,
+    test_record_normalizes_task_id,
 )
 
 
