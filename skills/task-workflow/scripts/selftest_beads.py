@@ -758,6 +758,52 @@ def test_tracker_timeout() -> None:
               and "TRACKER\tFAILED" not in r.stdout, r.stdout + r.stderr)
 
 
+def test_release_force_without_assignee() -> None:
+    say("release --force: 担当者の消えた in_progress の着手の印を外せる")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp)
+        a = new(main_path, "担当者が消えた")
+        bd_id = beads.to_bd_id(a)
+        bd(main_path, "update", bd_id, "--status", "in_progress", "--add-label", beads.SHIP_LABELS["done"])
+        stuck = beads.show(main_path, bd_id)
+        check("前提: assignee 無しの in_progress", stuck is not None and stuck.status == "in_progress"
+              and not stuck.assignee, str(stuck and stuck.raw))
+        r = run_task(wt1, "release", a)
+        check("--force 無しは NOT_OWNER（挙動は変えない）", r.returncode == 4 and r.stdout.startswith("NOT_OWNER"), r.stdout)
+        r = run_task(wt1, "release", a, "--force")
+        freed = beads.show(main_path, bd_id)
+        check("--force は RELEASED で status が open に戻る", r.returncode == 0 and r.stdout.startswith("RELEASED")
+              and freed is not None and freed.status == "open" and not freed.assignee, r.stdout + r.stderr)
+        check("ship の label も残らない", freed is not None
+              and not any(l in beads.SHIP_LABELS.values() for l in freed.labels), str(freed and freed.labels))
+        r = run_task(wt1, "release", a, "--force")
+        check("もう一度は NOT_CLAIMED", r.returncode == 0 and r.stdout.startswith("NOT_CLAIMED"), r.stdout)
+
+
+def _status_labels(fake: "FakeGitHub", n: int) -> list[str]:
+    return [l for l in fake.issues[n]["labels"] if l.startswith("status::")]
+
+
+def test_release_force_clears_github_label() -> None:
+    say("release --force: GitHub の label status::in_progress も残らず、取り込みで戻らない")
+    with _github() as (fake, _tmp, main_path, wt1):
+        a = new(main_path, "label が残る")
+        n, bd_id = _num(a), beads.to_bd_id(a)
+        bd(main_path, "update", bd_id, "--status", "in_progress")
+        r = run_task(main_path, "sync")
+        check("前提: GitHub に status::in_progress が付く", r.returncode == 0
+              and "status::in_progress" in _status_labels(fake, n), r.stdout + repr(fake.issues[n]["labels"]))
+        r = run_task(wt1, "release", a, "--force")
+        check("RELEASED と TRACKER OK", r.returncode == 0 and r.stdout.startswith("RELEASED")
+              and "TRACKER\tOK\tgithub" in r.stdout, r.stdout + r.stderr)
+        check("GitHub の status::in_progress が外れる", "status::in_progress" not in _status_labels(fake, n),
+              repr(fake.issues[n]["labels"]))
+        r = run_task(main_path, "sync")
+        again = beads.show(main_path, bd_id)
+        check("sync のあとも open のまま", r.returncode == 0 and again is not None and again.status == "open",
+              r.stdout + str(again and again.status))
+
+
 def _kv(cwd: str) -> dict[str, str]:
     return json.loads(bd(cwd, "kv", "list", "--json").stdout or "{}")
 
@@ -879,6 +925,8 @@ def main() -> None:
             test_cycle_done_ship_and_dropped,
             test_commit_guard,
             test_claim_race_owner_and_release,
+            test_release_force_without_assignee,
+            test_release_force_clears_github_label,
             test_handback_guard,
             test_setup_and_config_doctor,
             test_backup,
