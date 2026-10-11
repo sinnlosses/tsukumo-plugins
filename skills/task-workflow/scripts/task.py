@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Beads に置いたタスクの運用を操作する入口コマンド。
 
-使い方: tw <status|new|claim|release|done|ship|finish|land|config|config-doctor|show|edit|plan-check|verify|verify-check|accept|pause|step|lap|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard> ...
+使い方: tw <status|new|claim|release|done|ship|finish|land|config|config-doctor|show|edit|plan-check|verify|verify-check|accept|pause|step|lap|metrics|adopt|sync|backup|migrate-attributes|jira-closed|commit-guard|handback-guard> ...
 
 `install.sh` が PATH 上に張る `tw` と、plugin の `bin/tw` から呼ぶ。`commit-guard`・`handback-guard` の
 `--agent-scoped` は plugin の `hooks/hooks.json` が付け、`agent_type` の末尾が `no-delegate` のときだけ関門を掛ける。
@@ -131,6 +131,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("sync")
     sub.add_parser("backup")
+    sub.add_parser("migrate-attributes")
 
     p_jira_closed = sub.add_parser("jira-closed")
     p_jira_closed.add_argument("task_ids", nargs="+")
@@ -237,6 +238,8 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
             tw_maint.cmd_sync(toplevel)
         elif args.command == "backup":
             tw_maint.cmd_backup(toplevel)
+        elif args.command == "migrate-attributes":
+            tw_maint.cmd_migrate_attributes(toplevel)
         elif args.command == "jira-closed":
             tw_maint.cmd_jira_closed(toplevel, args.task_ids)
     except beads.BeadsError as e:
