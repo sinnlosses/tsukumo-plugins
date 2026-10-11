@@ -595,7 +595,7 @@ class Session:
         return self._kv_all
 
     def _write(self, args: list[str], check: bool = False) -> subprocess.CompletedProcess:
-        """この作業ツリーの名前で課題を書く`bd`を打つ（読み済みの一覧を捨てる）。`check` なら失敗で `BeadsError`。"""
+        """この作業ツリーの名前で課題を書く `bd` を打つ（読み済みの一覧を捨てる）。`check` なら失敗で `BeadsError`。"""
         self._listed = None
         r = beads.run(self.toplevel, args, self._actor)
         if check and r.returncode != 0:
