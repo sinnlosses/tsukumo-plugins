@@ -95,6 +95,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_lap = sub.add_parser("lap")
     p_lap.add_argument("task_id")
     p_lap.add_argument("stage")
+    p_lap.add_argument("edge", nargs="?", default=None)
     p_metrics = sub.add_parser("metrics")
     p_metrics.add_argument("--days", type=int, default=metrics.DAYS_DEFAULT)
     p_metrics.add_argument("--stages", action="store_true")
@@ -228,7 +229,7 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
         elif args.command == "step":
             tw_handback.cmd_step(toplevel, args.task_id, args.step)
         elif args.command == "lap":
-            tw_handback.cmd_lap(toplevel, args.task_id, args.stage)
+            tw_handback.cmd_lap(toplevel, args.task_id, args.stage, args.edge)
         elif args.command == "metrics":
             (metrics.cmd_metrics_stages if args.stages else metrics.cmd_metrics)(toplevel, args.days)
         elif args.command == "adopt":
