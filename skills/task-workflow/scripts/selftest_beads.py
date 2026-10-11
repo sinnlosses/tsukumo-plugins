@@ -215,9 +215,11 @@ def test_difficulty_loopable_metadata() -> None:
     check("片方だけ消えたらその1つだけ戻す",
           tracker._claim_restore_args(issue(metadata=marks), issue(metadata={"difficulty": "opus"}), None, None)
           == ["--set-metadata", "loopable=N"])
-    check("閉じた課題も2キーだけ戻す",
-          tracker._claim_restore_args(issue(metadata={**marks, "task_branch": "b"}), issue("closed"), None, None)
-          == ["--set-metadata", "difficulty=opus", "--set-metadata", "loopable=N"])
+    closed_marks = {**marks, "task_branch": "b", "draft": "Y", "from_draft": "道案内"}
+    check("閉じた課題は difficulty・loopable とドラフトの出自（draft・from_draft）だけ戻す",
+          tracker._claim_restore_args(issue(metadata=closed_marks), issue("closed"), None, None)
+          == ["--set-metadata", "difficulty=opus", "--set-metadata", "loopable=N",
+              "--set-metadata", "draft=Y", "--set-metadata", "from_draft=道案内"])
 
     with tempfile.TemporaryDirectory() as tmp:
         main_path, _, _ = make_repo(tmp)

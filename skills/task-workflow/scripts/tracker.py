@@ -871,7 +871,7 @@ def _claim_restore_args(
         return [
             x
             for k, v in had.items()
-            if k in (beads.DIFFICULTY_KEY, beads.LOOPABLE_KEY) and k not in has
+            if k in (beads.DIFFICULTY_KEY, beads.LOOPABLE_KEY, beads.DRAFT_KEY, beads.FROM_DRAFT_KEY) and k not in has
             for x in ("--set-metadata", f"{k}={v}")
         ]
     args: list[str] = []

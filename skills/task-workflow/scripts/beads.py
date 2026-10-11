@@ -16,6 +16,7 @@ Issue 番号（`gh-5` ↔ `GH-5`）、`t` なら `task` の採番（`t-123` ↔ 
 | `open` | `todo` |
 | `deferred`（切り替え前の独自の状態 `pending` も） | `hold` |
 | `open`・`deferred` ＋ metadata `draft`（値 `Y`） | `draft` |
+| metadata `from_draft`（ドラフトから進めた課題の観点） | 振り返りが数えるドラフトの出自（`Task` には写さない） |
 | `in_progress` | `todo` ＋ 着手の印（assignee が作業ツリー名） |
 | `closed` | `done`（label `cancelled` があれば `dropped`） |
 | metadata `difficulty`・`loopable` | `difficulty`・`loopable` |
@@ -57,6 +58,9 @@ LOOPABLE_KEY = "loopable"
 # ドラフトの印（`tw new --draft` が `deferred` の課題に付ける metadata）。
 DRAFT_KEY = "draft"
 DRAFT_ON = "Y"
+# ドラフトから `todo`・`hold` へ進めた課題の出自（値はドラフトの `- 観点:` の観点。読めなければ `不明`）。
+FROM_DRAFT_KEY = "from_draft"
+FROM_DRAFT_UNKNOWN = "不明"
 DIRECT_LABEL = "direct:"
 DIRECT_ON = f"{DIRECT_LABEL}Y"
 # `task done` が立て、`task ship` が主ブランチへ送ったあとに閉じる印（done と dropped の2つ）。
@@ -76,7 +80,7 @@ PLAN_BASE_KEY = "task_plan_base"
 # 登録時の計画を判定した、着手時の主ブランチの先端。
 PLAN_TIP_KEY = "task_plan_tip"
 # この運用が metadata に置く印（GitHub には載らないので、取り込みで消えたら戻す）。
-MARK_KEYS = (CLAIM_BRANCH_KEY, CLAIM_HEAD_KEY, PLAN_KEY, PLAN_BASE_KEY, PLAN_TIP_KEY, DIFFICULTY_KEY, LOOPABLE_KEY, DRAFT_KEY)
+MARK_KEYS = (CLAIM_BRANCH_KEY, CLAIM_HEAD_KEY, PLAN_KEY, PLAN_BASE_KEY, PLAN_TIP_KEY, DIFFICULTY_KEY, LOOPABLE_KEY, DRAFT_KEY, FROM_DRAFT_KEY)
 RESULT_HEADING = taskfile.RESULT_HEADING
 
 # 本文の節のうち、`description` 以外へ入るもの。

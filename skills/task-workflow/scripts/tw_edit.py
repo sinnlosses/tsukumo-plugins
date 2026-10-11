@@ -141,7 +141,8 @@ def _draft_promotion_args(toplevel: str, shown: str, body: str, status: str) -> 
     if error is not None:
         print(f"NOT_READY\t{shown}\tDRAFT\t{error}")
         raise SystemExit(4)
-    args = ["--unset-metadata", beads.DRAFT_KEY]
+    viewpoint = taskfile.draft_viewpoint(body) or beads.FROM_DRAFT_UNKNOWN
+    args = ["--unset-metadata", beads.DRAFT_KEY, "--set-metadata", f"{beads.FROM_DRAFT_KEY}={viewpoint}"]
     if taskfile.has_plan(body):
         args += ["--set-metadata", f"{beads.PLAN_BASE_KEY}={tw_plan.registered_plan_base(toplevel, body)}"]
     return args

@@ -293,6 +293,20 @@ def test_new_avoids_history_ids() -> None:
         check("履歴のT-050より大きい番号になる（重複を避ける）", taskfile.id_number(task_id) > 50, task_id)
 
 
+def test_taskfile_draft_viewpoint() -> None:
+    say("taskfile.draft_viewpoint（ドラフトの観点の行）")
+    for body, expected in (
+        ("## 目的・背景\n\n- 出どころ: 振り返り: T-001\n- 観点: 赤 機械の検査\n- 根拠: x\n", "機械の検査"),
+        ("## 目的・背景\n\n- 観点: 黄 道案内\n", "道案内"),
+        ("## 目的・背景\n\n- 観点: 段の所要時間\n", "段の所要時間"),
+        ("## 目的・背景\n\n- 観点: 赤\n", None),
+        ("## 目的・背景\n\n直したい改善\n", None),
+        ("## 目的・背景\n\n直したい改善\n\n## 注意\n\n- 観点: 黄 道案内\n", None),
+    ):
+        check(f"{body.splitlines()[-1]!r} の観点は {expected!r}", taskfile.draft_viewpoint(body) == expected,
+              repr(taskfile.draft_viewpoint(body)))
+
+
 def test_taskfile_set_result_section() -> None:
     say("taskfile.set_result_section")
     body = BODY
@@ -482,6 +496,7 @@ TESTS = (
     test_new_parallel_no_collision,
     test_new_avoids_history_ids,
     test_taskfile_body,
+    test_taskfile_draft_viewpoint,
     test_taskfile_set_result_section,
 )
 

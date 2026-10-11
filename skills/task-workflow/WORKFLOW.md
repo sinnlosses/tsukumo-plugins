@@ -205,7 +205,8 @@ front matter（`id`・`summary`・`status`・`difficulty`・`loopable`・近道�
 - `draft` はエージェントが聞かずに積んだドラフト（下の「ドラフトの課題」）で、承認待ち。`bd ready` に出ず、`/loop` の
   `/next-task` は選ばず、`claim` は `NOT_READY\tT-xxx\tDRAFT` で拒む。承認されたら人がいるセッションが
   `## 完了条件`・`## やること` を `tw edit` で書き、`tw edit T-xxx --status todo|hold` で進める（`tw new` と同じ本文の検査が通らなければ
-  何も書かずに `NOT_READY\tT-xxx\tDRAFT\t<理由>`。通れば印 `draft` を外し、`## やること` に中身があれば登録時の計画として
+  何も書かずに `NOT_READY\tT-xxx\tDRAFT\t<理由>`。通れば印 `draft` を外し、metadata `from_draft` に
+  `## 目的・背景` の `- 観点:` の行の観点（色を除く。行が無ければ `不明`）を残し、`## やること` に中身があれば登録時の計画として
   `task_plan_base` を控える）。却下は理由を `## 結果` にして `tw done T-xxx --dropped` で、`claim` もコミットも `ship` も要らずに
   その場で閉じる
 - **見送り（やらない）と決まったら、その場で `dropped` にして閉じる。** 決定を `## 決まっていること`・
@@ -446,6 +447,7 @@ Beads の label・各スキルの本文は触らない）:
   `- 振り返り: 近道（省いた）`（`tw done` の記録は `reflection` が `skipped` になり、`tw metrics` の
   `reflection_none_ratio` の分母に入らない）。**行頭の `- 振り返り:` は機械が読む**（`tw done` が
   この行から `flow/` の `reflection` を決める）ので形を変えない
+- ドラフトから進めたタスク・ドラフトのまま閉じたタスク: 採用・却下の理由を1行（却下は `- 却下: <理由>`）
 - **自分の完了のコミットのハッシュは書けない**（`## 結果` がそのコミットに入り、rebase で変わる）。
   そのタスクのコミットは `git log --grep=T-xxx` で引く
 
@@ -480,7 +482,8 @@ Beads の label・各スキルの本文は触らない）:
   承認して計画するときに `tw edit` で直す。承認の関門は「ドラフトのあいだは誰も着手しない」で保つ
   （`bd ready` に出ず、`/loop` が選ばず、`claim` が拒む。上の「status と着手の印」）
 - **承認されたら** `## 完了条件`・`## やること` を `tw edit` で書き、`tw edit T-xxx --status todo`（判断待ちなら `hold`）で進める。
-  **却下は**理由を `## 結果` にして `tw done T-xxx --dropped` で閉じる（その場で閉じ、却下の記録が課題に残る）
+  進めると metadata `from_draft` に `- 観点:` の観点（無ければ `不明`）が残り、完了・却下のあとも振り返りが出自として数える。
+  **却下は**理由を `- 却下: <理由（1行）>` で始めた `## 結果` にして `tw done T-xxx --dropped` で閉じる（その場で閉じ、却下の記録が課題に残る）
 - 本文の書式（`## 目的・背景` だけ書けばよい。ほかの節は欠けてよい）:
 
   ```markdown
@@ -621,7 +624,8 @@ GitHub で本文を直したあとの取り込みで `open` に戻る。`deferre
 | 着手の印 | `bd update --claim`（actor は作業ツリーの名前）。`claim` した時点の `HEAD` と枝は metadata `task_claim_head`・`task_branch` |
 | `NOT_OWNER` | `done`・`release` の前に assignee が自分かを見る（`bd close` も actor が違えば拒む） |
 | `todo`・`hold` | `open`・`deferred`（`bd ready` から外れる。GitHub では label `status::deferred`）。切り替え前の独自の状態 `pending` も `hold` と読む |
-| `draft`（ドラフト） | `deferred` ＋ metadata `draft`（値 `Y`。GitHub には載らず、取り込みで消えたら取り込み前の値を戻す。GitHub で label を外されて `open` に戻っても、印があればドラフトと読む） |
+| `draft`（ドラフト） | `deferred` ＋ metadata `draft`（値 `Y`。GitHub には載らず、取り込みで消えたら取り込み前の値を戻す。GitHub で label を外されて `open` に戻っても、印があればドラフトと読む。ドラフトのまま閉じた課題でも戻す） |
+| ドラフトから進めた課題の出自 | metadata `from_draft`（値は `- 観点:` の観点か `不明`。GitHub には載らず、取り込みで消えたら取り込み前の値を戻す。閉じた課題でも戻す） |
 | `done`・`dropped` | `bd close`（`dropped` は label `cancelled` を足す。独自の状態 `cancelled` は依存を解決しないので使わない） |
 | `difficulty`・`loopable` | metadata `difficulty`・`loopable`（GitHub には載らず、取り込みで消えたら取り込み前の値を戻す。label `difficulty:`・`loopable:` は読まない） |
 | 委譲しない近道の印 | label `direct:Y`（印が無ければ label を置かない。`direct:` の label が `Y` 以外か2つ以上なら INVALID） |

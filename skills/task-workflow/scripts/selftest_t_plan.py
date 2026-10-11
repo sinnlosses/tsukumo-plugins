@@ -518,7 +518,7 @@ def test_draft_to_todo() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
         r = run_task(main_path, "new", "--summary", "ドラフト", "--difficulty", "sonnet", "--loopable", "Y", "--draft",
-                     "--body-file", "-", stdin="## 目的・背景\n\n直したい改善\n")
+                     "--body-file", "-", stdin="## 目的・背景\n\n- 出どころ: 振り返り: T-001\n- 観点: 黄 道案内\n")
         draft = r.stdout.split("\t")[1] if r.stdout.startswith("CREATED\t") else ""
         check("ドラフトを積む", draft != "", r.stdout + r.stderr)
 
@@ -552,10 +552,22 @@ def test_draft_to_todo() -> None:
         check("書けたドラフトは todo・READY になり、印が消えて計画の SHA を控える", r.returncode == 0
               and row[1:2] == ["todo"] and row[5:6] == ["READY"] and beads.DRAFT_KEY not in meta
               and meta.get(beads.PLAN_BASE_KEY) == head, r.stdout + r.stderr + str(row) + str(meta))
+        check("todo へ進めると from_draft に色を除いた観点が残る", meta.get(beads.FROM_DRAFT_KEY) == "道案内", str(meta))
         r = run_task(wt1, "claim", draft)
         r2 = run_task(wt1, "plan-check", draft)
         check("todo にしたドラフトを着手でき、計画は PLAN_REGISTERED", r.stdout.startswith(f"CLAIMED\t{draft}")
               and r2.stdout.strip() == f"PLAN_REGISTERED\t{draft}\t{head}", r.stdout + r.stderr + r2.stdout + r2.stderr)
+        check("着手のあとも from_draft が残る", metadata(main_path, draft).get(beads.FROM_DRAFT_KEY) == "道案内",
+              str(metadata(main_path, draft)))
+
+        r = run_task(main_path, "new", "--summary", "観点の無いドラフト", "--difficulty", "sonnet", "--loopable", "Y", "--draft",
+                     "--body-file", "-", stdin="## 目的・背景\n\n作業中に見つけた改善\n")
+        plain = r.stdout.split("\t")[1] if r.stdout.startswith("CREATED\t") else ""
+        run_task(main_path, "edit", plain, "--section", "完了条件", "--body-file", "-", stdin="- 通る\n")
+        r = run_task(main_path, "edit", plain, "--status", "hold")
+        meta = metadata(main_path, plain)
+        check("観点の行が無いドラフトを hold へ進めると from_draft は 不明", r.returncode == 0 and beads.DRAFT_KEY not in meta
+              and meta.get(beads.FROM_DRAFT_KEY) == beads.FROM_DRAFT_UNKNOWN, r.stdout + r.stderr + str(meta))
 
 
 TESTS = (

@@ -412,6 +412,22 @@ def has_plan(body: str) -> bool:
     return not is_blank(dict(_frame_sections(body)[1]).get(PLAN_HEADING, ""))
 
 
+def draft_viewpoint(body: str) -> str | None:
+    """`## 目的・背景` の最初の `- 観点:` の行の観点（先頭の色 `赤`・`黄` を落とす）。行が無い・空なら None。
+
+    行の形は retrospect の SKILL.md「ドラフトに積む」と WORKFLOW.md「ドラフトの課題」。
+    """
+    purpose = dict(_frame_sections(body)[1]).get(PURPOSE_HEADING, "")
+    for line in purpose.split("\n"):
+        m = _VIEWPOINT_LINE.match(line.strip())
+        if m is not None:
+            return m.group(1) or None
+    return None
+
+
+_VIEWPOINT_LINE = re.compile(r"^- 観点:\s*(?:[赤黄](?:\s+|$))?(.*?)\s*$")
+
+
 def plan_changed(old_body: str, new_body: str) -> bool:
     """`## やること` の中身が `old_body` と違うか。行末の空白と連続する空行の数は無視する。"""
     old = dict(_frame_sections(old_body)[1]).get(PLAN_HEADING, "")
