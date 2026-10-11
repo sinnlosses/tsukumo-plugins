@@ -601,7 +601,10 @@ Beads の中は `proj-123`）も同じ ID として読む。読む形はトラ�
 **トラッカー**（錠と本文は Beads が持ち、トラッカーは写し。**失敗はタスクの操作を止めない**——
 `new`・`claim`・`release`・`edit`・`adopt`・`done`・`ship` は `TRACKER\tFAILED\t…` の行を足して終了コードは
 そのまま。打ち直しは `tw sync`。`bd github` は GitHub に届かなくても終了コード0を返すので、`tw` は
-`--json` の `stats.errors` と `Warning: Failed` の行で失敗を見る）:
+`--json` の `stats.errors` と `Warning: Failed` の行で失敗を見る。1件の操作の反映は、始めから合わせて
+25 秒で打ち切って `TRACKER\tFAILED` にする（`bd` の内側の再試行は外から切れないので時間で切る。Beads への
+書き込みは残るので、`tw sync` で打ち直す。`ship`・`sync` の全件は期限なし。環境変数
+`TASK_WORKFLOW_TRACKER_TIMEOUT`〔秒〕で1件の上限を変えられる）:
 
 | 方式 | すること | しないこと |
 | --- | --- | --- |
