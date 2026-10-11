@@ -68,6 +68,8 @@ def test_flow_records_and_metrics() -> None:
                 ("verify", "T-100", "VERIFIED"),
                 ("done", "T-100", None),
                 ("ship", "T-100", "VERIFY_FAILED"),
+                ("lap", "T-100", None),
+                ("lap", "T-100", None),
                 ("ship", "T-100", "SHIPPED"),
             ],
             repr(steps),
