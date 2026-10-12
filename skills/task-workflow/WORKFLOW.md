@@ -35,22 +35,9 @@
 | `.tw/config.toml` | 設定（下）。コミットする |
 | `.tw/.gitignore` | 中身 `local/`。`.tw/local/` だけを git の外に置く。`init.py` が書き（無いときと、旧い形のとき）、`tw` は書かない。コミットする |
 | `docs/history/retrospect.md` | 横断の振り返りの記録（1回ごとに先頭へ `## YYYY-MM-DD（開始日〜終了日）` の見出しを足す。`retrospect` の SKILL.md「週ごとに振り返る」）。`tw status` が見出しの日付から `retrospect_due` を決める |
-| 台帳 `$(git rev-parse --path-format=absolute --git-common-dir)/task-workflow/`（環境変数 `TW_STATE_DIR` があれば `$TW_STATE_DIR/<本体の作業ツリーの名前>-<共有の git dir の realpath の sha1 の先頭12桁>/`） | 着手から送り出しまでの出来事（`flow/<YYYY-MM>.jsonl`。1行1出来事で、時刻（UTC）・出来事・タスクID・`difficulty` と、`verify`・`ship` の結果の先頭語と `verify` の所要秒、`lap` の段の名前（`stage`）と段の端（`edge`。`start`／`end`）、`done` の `dropped` と振り返りが「兆候なし」か。出来事の一覧は「台帳に残る出来事」。会話・コマンド・パスは入れない。消えない）。コミットしない。全作業ツリーで1つ。`TW_STATE_DIR` を付けると、そのあとの記録はその下に書き、共有の git dir の台帳は読まない（写さない）。書けなければ標準エラーに1行出すだけで、元のサブコマンドの出力と終了コードは変わらない |
+| 台帳 `$(git rev-parse --path-format=absolute --git-common-dir)/task-workflow/`（環境変数 `TW_STATE_DIR` があれば `$TW_STATE_DIR/<本体の作業ツリーの名前>-<共有の git dir の realpath の sha1 の先頭12桁>/`） | 着手から送り出しまでの出来事（`flow/<YYYY-MM>.jsonl`。1行1出来事。`tw metrics` が読む。会話・コマンド・パスは入れない。消えない）。コミットしない。全作業ツリーで1つ。`TW_STATE_DIR` を付けると、そのあとの記録はその下に書き、共有の git dir の台帳は読まない（写さない）。書けなければ標準エラーに1行出すだけで、元のサブコマンドの出力と終了コードは変わらない |
 | 作業ツリーの根の `.tw/local/task-open-claims/T-xxx` | `claim` から `done`・`release`・`ship` までの控え（中身は空）。`tw commit-guard`・`tw handback-guard`・`tw ask-guard` が読む。コミットしない。作業ツリーごと |
-| 作業ツリーの根の `.tw/local/` の `task-verify-stamp`・`task-pause-stamp`・`task-step-stamps/<ID>.<n>`・`task-ship-verify-owed`・`task-verify.log`・`task-ship-verify.log`・`task-verify.failed-<時刻>.log`・`task-ship-verify.failed-<時刻>.log` | `tw verify` が通った中身の鍵と、`tw pause`・`tw step` を打った時点の中身の鍵（どれも `HEAD` の SHA・作業ツリーの木の SHA〔`.tw/local/` を外す。`.tw/config.toml` は入れたまま〕・検証コマンドの3行。`task-step-stamps/` は段ごとに1つで、続けてタスクID・段の番号・種類〔`step`・`pause`〕の3行。木からはその段と並列の組になる段の触るファイルも外す）、`ship` の検証の借り、`verify`・`ship` の検証のログ（`task-verify.log` には整形の出力のあとに検証の出力が続く。通った回は上書き。落ちた回は `.failed-<時刻>.log` に写して種類ごとに直近3本を残す）。コミットしない。作業ツリーごと。`.tw/local/` は初めて書くときに `tw` が作り、中身 `*` の `.tw/local/.gitignore` を置く（`.tw/.gitignore`・利用者の `.gitignore`・`.git/info/exclude` には触らない）。読む順は `.tw/local/` → `.tw/` 直下（旧い置き場。上の控えの名前があるとき）→ 作業ツリー固有の git dir `$(git rev-parse --path-format=absolute --git-dir)`（最も古い置き場）で、書くのはいつも `.tw/local/`。`.tw/local/` があるかどうかが目印で、作るときに控えを名前ごとに `.tw/` 直下（無ければ git dir）から写し、`.tw/` 直下の検証のログも写して、旧い側を両方の置き場から消す |
-
-**台帳に残る出来事**（`flow/` の1行。どの行にも時刻・出来事・タスクID・`difficulty` が付く）:
-
-| 出来事 | 出るとき | 欄 |
-| --- | --- | --- |
-| `claim` | `tw claim` が着手の印を立てたとき | なし |
-| `release` | `tw release` が印を外したとき | なし |
-| `verify` | `tw verify` を打ったとき（着手の印を持つタスクごと） | `result`（先頭語）・`seconds`（所要秒） |
-| `pause` | `tw pause` を打ったとき | 段を付けたときだけ `step`・`steps` |
-| `step` | `tw step` を打ったとき | `step`・`steps` |
-| `lap` | `tw lap` を打ったとき | `stage`（`direct`・`delegate`・`accept`・`review`・`retro`・`land`・`sync`）、`edge`（`start`／`end`。`tw lap` が第3引数を与えられたときだけ入る。無い行は `start` とみなし、終わりは次の `verify` でない出来事までで補う） |
-| `ship` | `tw ship` が `SHIPPED`・`NOTHING`（着手の印を持つタスクごと）・`CONFLICT`・`VERIFY_FAILED`・`RACE` を返したとき | `result` |
-| `done` | `tw done` を打ったとき | `dropped`・`reflection` |
+| 作業ツリーの根の `.tw/local/` | `tw verify`・`tw pause`・`tw step` を打った時点の中身の鍵、`ship` の検証の借り、検証のログ。コミットしない。作業ツリーごと。初めて書くときに `tw` が作り、中身 `*` の `.tw/local/.gitignore` を置く |
 
 **プロジェクトごとに変わる値は `.tw/config.toml` に置く**（コミットする。`AGENTS.md`・`CLAUDE.md` には
 書かない）。`tw` は `layout.read_config` の1つの口で読み、`tw config` が解けた値を出す（スキルはこれを読む）。
@@ -63,22 +50,20 @@ verify = "pnpm check"        # 受け入れ判定に使う。打つものが無�
 # branch = "既定"            # 既定 / 作業ブランチを切る / 切らない
 ```
 
-形式は TOML の部分集合で、受け付けるのは空行・`# コメント`・`key = "値"`（`'値'` も可、行末コメント可。
-エスケープは `\"`・`\\` だけ）だけ。キーは `[A-Za-z0-9_-]+`。表・配列・数・真偽・複数行の文字列・知らないキー・
-重複したキー・語彙の外の値・値の後ろに続く説明文は、行番号付きの `INVALID`（終了コード3）。説明はコメントに書く。
+形式は TOML の部分集合。書き間違いは行番号付きの `INVALID`（終了コード3）。
 
-| キー | 値 | 無いとき |
-| --- | --- | --- |
-| `verify` | 検証コマンド（`sh -c` で打つ）。`"なし"` なら打たない | `INVALID`（必須） |
-| `verify_before_ship` | 送る前の検証コマンド（下） | 無し |
-| `format` | 整形コマンド。`tw verify` が検証の前に打つ（下の「`tw` コマンドの参照」の `verify`） | 打たない |
-| `branch` | `既定`・`作業ブランチを切る`・`切らない`（下の表） | `既定` |
-| `base_branch` | 主ブランチの名前（下の順1） | git から決める |
-| `store` | `beads` だけ（ほかの値は `files` も `INVALID`） | `beads` |
-| `tracker` | `なし`・`github`・`jira`（「Beads とトラッカー」） | `なし` |
-| `github_project` | `"<owner>/<番号>"`（Status 欄を書く Project） | `tracker = "github"` なら `INVALID` |
-| `backup` | Beads のバックアップの置き場（git の外） | `${XDG_DATA_HOME:-~/.local/share}/task-workflow/<本体の作業ツリーの名前>` |
-| `hook_tally` | 直近30日の hook ごとの拒否の回数を出すコマンド。読むのは `tw` ではなく横断の振り返り（`retrospect` の SKILL.md「週ごとに振り返る」）で、無ければその観点を飛ばす | 無し |
+| キー | 値 |
+| --- | --- |
+| `verify` | 検証コマンド（`sh -c` で打つ）。`"なし"` なら打たない。必須 |
+| `verify_before_ship` | 送る前の検証コマンド（下） |
+| `format` | 整形コマンド。`tw verify` が検証の前に打つ（下の「`tw` コマンドの参照」の `verify`） |
+| `branch` | `既定`・`作業ブランチを切る`・`切らない`（下の表） |
+| `base_branch` | 主ブランチの名前（下の順1） |
+| `store` | `beads` だけ（ほかの値は `files` も `INVALID`） |
+| `tracker` | `なし`・`github`・`jira`（「Beads とトラッカー」） |
+| `github_project` | `"<owner>/<番号>"`（Status 欄を書く Project）。`tracker = "github"` なら必須 |
+| `backup` | Beads のバックアップの置き場（git の外） |
+| `hook_tally` | 直近30日の hook ごとの拒否の回数を出すコマンド。読むのは `tw` ではなく横断の振り返り（`retrospect` の SKILL.md「週ごとに振り返る」）で、無ければその観点を飛ばす |
 
 - `verify_before_ship` があれば、`tw verify` は `verify` の代わりにそれを打ち、`tw verify-check`・`tw pause`・`tw step`
   の鍵もそのコマンドで取る。`tw ship` は主ブランチへ入れる直前に同じコマンドを打つ。ただし控えの木とコマンドが
@@ -553,7 +538,7 @@ Beads の中は `proj-123`）も同じ ID として読む。読む形はトラ�
 （キー名・番号の順）→ 仮の ID。`tw` が採番する番号（`last-id` の候補）に Jira のキーは数えない。
 過去の `T-xxx`（git の履歴と `docs/history/`）は動かさない。
 
-**設定のキー**は `tracker`・`github_project`・`backup`（値と既定は「ファイル配置と設定ファイル」の表）。
+**設定のキー**は `tracker`・`github_project`・`backup`（値は「ファイル配置と設定ファイル」の表）。
 
 **用意**: `/setup-tasks` の `init.py` が、主ブランチを出している作業ツリー（本体）で
 `bd init --stealth -p gh`（トラッカーが `github`）か `-p t`（それ以外）を打つ。`hold` は組み込みの
