@@ -548,6 +548,22 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
 **`commit-guard`・`handback-guard`・`ask-guard` は Claude Code の hook の取り決めに従う**: 出力は TSV でなく JSON で、終了コードはいつも0。
 読めない入力も何も出さずに通す。タスク運用を始めていないリポジトリ・git の外でも打てる。
 
+**この3つの hook は、サブエージェント定義の `tools`・`disallowedTools` や設定の `permissions.deny` では置き換えられない**
+（公式の説明: https://code.claude.com/docs/en/sub-agents ・ https://code.claude.com/docs/en/permissions ）。
+`disallowedTools` に `Bash(git push *)` のような指定子を書いても、Bash というツールごと外れ、コマンド単位の拒否にならない。
+コマンド単位で拒むには `permissions.deny` の `Bash(...)` か hook になるが、`permissions.deny` は設定にパターンで静的に書く規則で、
+着手の印や `loopable` のような状態によって拒むかを変えられず、`sh -c '…'`・フルパスの呼び出しは素通しする。
+plugin のサブエージェントは frontmatter の `hooks`・`permissionMode` を無視する。
+すでに `disallowedTools` でやっているのは、`agents/no-delegate.md` の `Agent` の除去と、`agents/acceptor.md` の `Edit`・`Write`・`NotebookEdit` の除去だけ。
+
+| 関門 | tools・`permissions.deny` で防げるか | 理由 |
+| --- | --- | --- |
+| `commit-guard` のコミット拒否 | 一部だけ | `Bash(git commit *)` の deny は書けるが、`sh -c` とフルパスは素通しし、着手の印の有無で出し分けられない |
+| `commit-guard` の Bash での書き換え拒否 | 不可 | 委譲先は `tw verify` と git の読み取りに Bash が要り、Bash を外せない |
+| `commit-guard` の検証コマンドの直打ち拒否 | 不可 | 検証コマンドはプロジェクトの設定にあり静的に書けない。`tw verify` の内部実行との区別もできない |
+| `handback-guard` の返却の関門 | 不可 | 作業の有無と `plan-check`・`verify-check` の結果という状態を見る検査 |
+| `ask-guard` | 不可 | 着手したタスクの `loopable` で拒むかが変わる |
+
 
 ## Beads とトラッカー
 
