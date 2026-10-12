@@ -53,11 +53,11 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
         "一覧（読むだけ。done/dropped は件数だけ。`--all` で行も）。",
         r"""一覧（読むだけ。done/dropped は件数だけ。`--all` で行も）。`--check` は検証コマンド向けの判定で、Beads の課題がこの運用の形（状態・`difficulty`・`loopable`・`direct:` の label・題）に読めないものがあれば `INVALID`、無ければ `OK`（本文の枠は見ない。枠は `new`・`adopt`・`edit` が書くときに検査する）
 
-出力: 行 `id/status/difficulty/loopable/dependencies/着手可否/印/summary`（ドラフトは status が `draft`・着手可否が `DRAFT`）、`---` の後に `counts`（ドラフトの件数は `draft=`）・`ready`（ドラフトは数えない）・`todo_loopable`・`stale`・`invalid`・`triage\t<件数>\t<ID>`（振り分け前の課題。WORKFLOW.md の「Beads とトラッカー」）・（`jira` なら）`jira_close`・（横断の振り返りの時期なら）`retrospect_due`。`retrospect_due\t<最後の記録の日付>\t<経過日数>d` は `docs/history/retrospect.md` の見出しの日付（主ブランチの版と作業ツリーの版の遅いほう）から7日以上経ったときに出る。記録が無いあいだは台帳の `flow/` の最も古い出来事から7日以上で `retrospect_due\t-\t<経過日数>d`（`flow/` が無ければ出ない）""",
+出力: 行 `id/status/difficulty/loopable/dependencies/着手可否/印/summary`（ドラフトは status が `draft`・着手可否が `DRAFT`）、`---` の後に `counts`（ドラフトの件数は `draft=`）・`ready`（ドラフトは数えない）・`todo_loopable`・`stale`・`invalid`・`triage\t<件数>\t<ID>`（振り分け前の課題。TRACKER.md の「サイクルの各段で Beads に起きること」）・（`jira` なら）`jira_close`・（横断の振り返りの時期なら）`retrospect_due`。`retrospect_due\t<最後の記録の日付>\t<経過日数>d` は `docs/history/retrospect.md` の見出しの日付（主ブランチの版と作業ツリーの版の遅いほう）から7日以上経ったときに出る。記録が無いあいだは台帳の `flow/` の最も古い出来事から7日以上で `retrospect_due\t-\t<経過日数>d`（`flow/` が無ければ出ない）""",
     ),
     "new": (
         "採番して Beads に課題を作る（コミットしない）。",
-        r"""採番して Beads に課題を作る（コミットしない。採番は WORKFLOW.md の「Beads とトラッカー」）。`--draft` はドラフト（WORKFLOW.md の「ドラフトの課題」）を作る: 本文は「タスクの本文」のドラフトの緩い検査で見て、`deferred` と metadata `draft`=`Y` で作り、`task_plan_base` は控えない。`--hold` と同時・`--direct` と同時は何も作らずに終了コード2。以下は `--draft` でないとき。`--difficulty`・`--loopable` は metadata `difficulty`・`loopable` に書く（label は付けない）。`--direct` は委譲しない近道の印（label `direct:Y`）を付け、「difficulty とモデルの切り替え」の基準の表で `tw` が見る条件を外れれば何も作らずに終了コード2。`## やること` の中身が要る（空にできるのは `--hold` だけ。段の形に沿わない・`### 名指すファイル` が無い・形が違う・パスが木に無い・`### 作業先` が絶対パス1行でないか git のリポジトリの根でなければ、何も作らずに終了コード2）。中身があれば、計画のリポジトリ（`### 作業先` があればそこ）の `HEAD` と主ブランチの分かれ目の SHA を metadata `task_plan_base` に控える
+        r"""採番して Beads に課題を作る（コミットしない。採番は TRACKER.md の「タスクの要素と Beads の置き場」）。`--draft` はドラフト（WORKFLOW.md の「ドラフトの課題」）を作る: 本文は「タスクの本文」のドラフトの緩い検査で見て、`deferred` と metadata `draft`=`Y` で作り、`task_plan_base` は控えない。`--hold` と同時・`--direct` と同時は何も作らずに終了コード2。以下は `--draft` でないとき。`--difficulty`・`--loopable` は metadata `difficulty`・`loopable` に書く（label は付けない）。`--direct` は委譲しない近道の印（label `direct:Y`）を付け、「difficulty とモデルの切り替え」の基準の表で `tw` が見る条件を外れれば何も作らずに終了コード2。`## やること` の中身が要る（空にできるのは `--hold` だけ。段の形に沿わない・`### 名指すファイル` が無い・形が違う・パスが木に無い・`### 作業先` が絶対パス1行でないか git のリポジトリの根でなければ、何も作らずに終了コード2）。中身があれば、計画のリポジトリ（`### 作業先` があればそこ）の `HEAD` と主ブランチの分かれ目の SHA を metadata `task_plan_base` に控える
 
 出力: `CREATED`・`LOCKED`（20回打ち直しても番号が取れない）""",
     ),
@@ -69,13 +69,13 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     ),
     "release": (
         "印（`bd unclaim`）と `task-open-claims/T-xxx` の控えを消すだけ（本文は戻さない）。",
-        r"""印（`bd unclaim`）と `task-open-claims/T-xxx` の控えを消すだけ（本文は戻さない）。`--force` は人が取り残しを片付けるときで、控えは印の持ち主の作業ツリーのものを消す（その作業ツリーが消えていれば何もしない）。担当者が無い `in_progress` の印も `--force` で外せる（status を `open` に戻す）。着手の印の控え（`bd kv` の `task-workflow.claim.<Beads ID>`。WORKFLOW.md の「GitHub との双方向」）も消すので、外した印は控えから戻らない
+        r"""印（`bd unclaim`）と `task-open-claims/T-xxx` の控えを消すだけ（本文は戻さない）。`--force` は人が取り残しを片付けるときで、控えは印の持ち主の作業ツリーのものを消す（その作業ツリーが消えていれば何もしない）。担当者が無い `in_progress` の印も `--force` で外せる（status を `open` に戻す）。着手の印の控え（`bd kv` の `task-workflow.claim.<Beads ID>`。TRACKER.md の「GitHub との双方向」）も消すので、外した印は控えから戻らない
 
 出力: `RELEASED`・`NOT_CLAIMED`・`NOT_OWNER`""",
     ),
     "done": (
         "`## 結果` を comment に入れ、label `ship:done`／`ship:dropped` を立てる。",
-        r"""`## 結果` を comment に入れ、label `ship:done`／`ship:dropped` を立てる（stage もコミットもしない・印は残す。`bd close` は `ship` が打つ）。`task-open-claims/T-xxx` の控えは消すので、このあとのコミットを `commit-guard` は拒まない。着手の印の控え（`bd kv` の `task-workflow.claim.<Beads ID>`。WORKFLOW.md の「GitHub との双方向」）も消すので、`ship` までの間に取り込みが印を消しても控えからは戻らない。本文が枠（`## 結果` を除く7節）と違えば書かずに `INVALID`（終了コード3）。`claim` した時点の `HEAD` より後に、主ブランチに無いコミットがあれば `DONE` に続けて知らせる（`commit-guard` をすり抜けたコミットの事後の知らせ。控えの無い古い印では出さない）。`.git` に書かないので、読み取り専用の `.git` でも通る。ドラフト（印は立たない）に `--dropped` を打つと、`## 結果` を comment に入れ、label `cancelled` を足して `bd close` までその場で打つ（`claim`・コミット・`ship` は要らず、着手の控えと `COMMITS_SINCE_CLAIM` は見ない）。ドラフトに `--dropped` なしで打つと `NOT_READY\tT-xxx\tDRAFT`（終了コード4）
+        r"""`## 結果` を comment に入れ、label `ship:done`／`ship:dropped` を立てる（stage もコミットもしない・印は残す。`bd close` は `ship` が打つ）。`task-open-claims/T-xxx` の控えは消すので、このあとのコミットを `commit-guard` は拒まない。着手の印の控え（`bd kv` の `task-workflow.claim.<Beads ID>`。TRACKER.md の「GitHub との双方向」）も消すので、`ship` までの間に取り込みが印を消しても控えからは戻らない。本文が枠（`## 結果` を除く7節）と違えば書かずに `INVALID`（終了コード3）。`claim` した時点の `HEAD` より後に、主ブランチに無いコミットがあれば `DONE` に続けて知らせる（`commit-guard` をすり抜けたコミットの事後の知らせ。控えの無い古い印では出さない）。`.git` に書かないので、読み取り専用の `.git` でも通る。ドラフト（印は立たない）に `--dropped` を打つと、`## 結果` を comment に入れ、label `cancelled` を足して `bd close` までその場で打つ（`claim`・コミット・`ship` は要らず、着手の控えと `COMMITS_SINCE_CLAIM` は見ない）。ドラフトに `--dropped` なしで打つと `NOT_READY\tT-xxx\tDRAFT`（終了コード4）
 
 出力: `DONE`（`COMMITS_SINCE_CLAIM` が続くことがある。ドラフトは `DONE\tT-xxx\tbeads:<id>\tドラフトを閉じた`）・`NOT_OWNER`・`NOT_READY`・`INVALID`""",
     ),
@@ -105,7 +105,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     ),
     "adopt": (
         "振り分け前の課題に metadata `difficulty`・`loopable` と本文を付ける。",
-        r"""振り分け前の課題（WORKFLOW.md の「Beads とトラッカー」）に metadata `difficulty`・`loopable` と本文を付ける（`jira` はキーの無い課題に番号も）。本文の検査は `new` と同じで `## やること` の中身が要り（`--hold` は無い）、`notes` に入れて metadata `task_plan_base` を控える。`--direct` は label `direct:Y` を付け、基準を外れれば `new` と同じく終了コード2
+        r"""振り分け前の課題（TRACKER.md の「サイクルの各段で Beads に起きること」）に metadata `difficulty`・`loopable` と本文を付ける（`jira` はキーの無い課題に番号も）。本文の検査は `new` と同じで `## やること` の中身が要り（`--hold` は無い）、`notes` に入れて metadata `task_plan_base` を控える。`--direct` は label `direct:Y` を付け、基準を外れれば `new` と同じく終了コード2
 
 出力: `ADOPTED\t<元のID>\t<ID>`""",
     ),

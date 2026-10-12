@@ -13,7 +13,7 @@ tw status
 
 行の列は `id / status / difficulty / loopable / dependencies / 着手可否 / 印 / summary`（`id` は `T-xxx`。
 トラッカーが `github` なら Issue 番号の `GH-<n>` もあり、`T-xxx` の行のあとに並ぶ）。`---` の後ろに
-`counts`・`ready`（READY 件数）・`todo_loopable`・`stale`・`invalid`・`triage`（正典「Beads とトラッカー」）、
+`counts`・`ready`（READY 件数）・`todo_loopable`・`stale`・`invalid`・`triage`（正典 `TRACKER.md`「サイクルの各段で Beads に起きること」）、
 トラッカーが `jira` なら `jira_close`。
 
 ## 表示のしかた

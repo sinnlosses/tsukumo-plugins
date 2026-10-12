@@ -24,7 +24,8 @@
 | ## コミットメッセージ | タスクIDの付け方 |
 | ## ドラフトの課題 | 指示の入口、承認ゲート、ドラフトの書式 |
 | ## `tw` コマンドの参照 | サブコマンドと出力、終了コードの表 |
-| ## Beads とトラッカー | ID の決まり方、用意、タスクの要素と Beads の置き場の対応、サイクルの各段で Beads に起きること、トラッカー（GitHub・Jira）、GitHub との双方向、バックアップ |
+| ## Beads とトラッカー | ID の決まり方、設定のキー、トラッカーの失敗はタスクの操作を止めないこと、`TRACKER.md` への参照 |
+| `TRACKER.md` | 用意、タスクの要素と Beads の置き場の対応、サイクルの各段で Beads に起きること、トラッカー（GitHub・Jira）、Status 欄の控え、GitHub との双方向、Jira の方式との違い、バックアップ |
 
 ## ファイル配置と設定ファイル
 
@@ -359,7 +360,7 @@ Beads の label・各スキルの本文は触らない）:
 - **merge commit は作らない**。本体が汚れていれば `MAIN_DIRTY` で送らない
 - 送り終えたあと（`SHIPPED`・`NOTHING` のどちらでも）、自分の印のうち `ship:*` の立ったものを `bd close` する
   （依存はここで初めて解決する。主ブランチに作業が入る前に後段を開けない）。閉じられなかったものは
-  `NOT_CLOSED\tT-xxx\t<理由>` の行。続けて `TRACKER`・`BACKUP` の行が付く（「Beads とトラッカー」）
+  `NOT_CLOSED\tT-xxx\t<理由>` の行。続けて `TRACKER`・`BACKUP` の行が付く（`TRACKER.md`「トラッカー」「バックアップ」）
 - 主ブランチを出している作業ツリーで起こしたときは送る段が無く、印を消して `SHIPPED <主ブランチ>` を返す
 
 `tw verify` が検証の前に主ブランチを取り込むので、`ship` が付け替えるのは、受け入れから送るまでの間に
@@ -465,16 +466,16 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 
 | サブコマンド | すること | 主な出力 |
 | --- | --- | --- |
-| `status [--all] [--check]` | 一覧（読むだけ。done/dropped は件数だけ。`--all` で行も）。`--check` は検証コマンド向けの判定で、Beads の課題がこの運用の形（状態・`difficulty`・`loopable`・`direct:` の label・題）に読めないものがあれば `INVALID`、無ければ `OK`（本文の枠は見ない。枠は `new`・`adopt`・`edit` が書くときに検査する） | 行 `id/status/difficulty/loopable/dependencies/着手可否/印/summary`（ドラフトは status が `draft`・着手可否が `DRAFT`）、`---` の後に `counts`（ドラフトの件数は `draft=`）・`ready`（ドラフトは数えない）・`todo_loopable`・`stale`・`invalid`・`triage\t<件数>\t<ID>`（振り分け前の課題。下の「Beads とトラッカー」）・（`jira` なら）`jira_close`・（横断の振り返りの時期なら）`retrospect_due`。`retrospect_due\t<最後の記録の日付>\t<経過日数>d` は `docs/history/retrospect.md` の見出しの日付（主ブランチの版と作業ツリーの版の遅いほう）から7日以上経ったときに出る。記録が無いあいだは台帳の `flow/` の最も古い出来事から7日以上で `retrospect_due\t-\t<経過日数>d`（`flow/` が無ければ出ない） |
-| `new --summary … --difficulty … --loopable Y\|N [--deps T-001,…] [--hold\|--draft] [--direct] --body-file <path\|->` | 採番して Beads に課題を作る（コミットしない。採番は「Beads とトラッカー」）。`--draft` はドラフト（「ドラフトの課題」）を作る: 本文は「タスクの本文」のドラフトの緩い検査で見て、`deferred` と metadata `draft`=`Y` で作り、`task_plan_base` は控えない。`--hold` と同時・`--direct` と同時は何も作らずに終了コード2。以下は `--draft` でないとき。`--difficulty`・`--loopable` は metadata `difficulty`・`loopable` に書く（label は付けない）。`--direct` は委譲しない近道の印（label `direct:Y`）を付け、「difficulty とモデルの切り替え」の基準の表で `tw` が見る条件を外れれば何も作らずに終了コード2。`## やること` の中身が要る（空にできるのは `--hold` だけ。段の形に沿わない・`### 名指すファイル` が無い・形が違う・パスが木に無い・`### 作業先` が絶対パス1行でないか git のリポジトリの根でなければ、何も作らずに終了コード2）。中身があれば、計画のリポジトリ（`### 作業先` があればそこ）の `HEAD` と主ブランチの分かれ目の SHA を metadata `task_plan_base` に控える | `CREATED`・`LOCKED`（20回打ち直しても番号が取れない） |
+| `status [--all] [--check]` | 一覧（読むだけ。done/dropped は件数だけ。`--all` で行も）。`--check` は検証コマンド向けの判定で、Beads の課題がこの運用の形（状態・`difficulty`・`loopable`・`direct:` の label・題）に読めないものがあれば `INVALID`、無ければ `OK`（本文の枠は見ない。枠は `new`・`adopt`・`edit` が書くときに検査する） | 行 `id/status/difficulty/loopable/dependencies/着手可否/印/summary`（ドラフトは status が `draft`・着手可否が `DRAFT`）、`---` の後に `counts`（ドラフトの件数は `draft=`）・`ready`（ドラフトは数えない）・`todo_loopable`・`stale`・`invalid`・`triage\t<件数>\t<ID>`（振り分け前の課題。`TRACKER.md`「サイクルの各段で Beads に起きること」）・（`jira` なら）`jira_close`・（横断の振り返りの時期なら）`retrospect_due`。`retrospect_due\t<最後の記録の日付>\t<経過日数>d` は `docs/history/retrospect.md` の見出しの日付（主ブランチの版と作業ツリーの版の遅いほう）から7日以上経ったときに出る。記録が無いあいだは台帳の `flow/` の最も古い出来事から7日以上で `retrospect_due\t-\t<経過日数>d`（`flow/` が無ければ出ない） |
+| `new --summary … --difficulty … --loopable Y\|N [--deps T-001,…] [--hold\|--draft] [--direct] --body-file <path\|->` | 採番して Beads に課題を作る（コミットしない。採番は `TRACKER.md`「タスクの要素と Beads の置き場」）。`--draft` はドラフト（「ドラフトの課題」）を作る: 本文は「タスクの本文」のドラフトの緩い検査で見て、`deferred` と metadata `draft`=`Y` で作り、`task_plan_base` は控えない。`--hold` と同時・`--direct` と同時は何も作らずに終了コード2。以下は `--draft` でないとき。`--difficulty`・`--loopable` は metadata `difficulty`・`loopable` に書く（label は付けない）。`--direct` は委譲しない近道の印（label `direct:Y`）を付け、「difficulty とモデルの切り替え」の基準の表で `tw` が見る条件を外れれば何も作らずに終了コード2。`## やること` の中身が要る（空にできるのは `--hold` だけ。段の形に沿わない・`### 名指すファイル` が無い・形が違う・パスが木に無い・`### 作業先` が絶対パス1行でないか git のリポジトリの根でなければ、何も作らずに終了コード2）。中身があれば、計画のリポジトリ（`### 作業先` があればそこ）の `HEAD` と主ブランチの分かれ目の SHA を metadata `task_plan_base` に控える | `CREATED`・`LOCKED`（20回打ち直しても番号が取れない） |
 | `claim T-xxx` | clean・未送りなしを確かめ、主ブランチへ追い付き（主ブランチが `HEAD` の祖先なら `merge` を打たない）、印を立て（`.tw/local/task-open-claims/T-xxx` の控えも置く）、設定の `branch` が `既定`・`作業ブランチを切る`（無ければ `既定`）なら枝を切る。追い付くか枝を切るのに `.git` へ書けなければ、印を立てる前に `GIT_READ_ONLY` で止まる。印は `bd update --claim`（actor は作業ツリーの名前）で、`claim` した時点の `HEAD` と枝を metadata `task_claim_head`・`task_branch` に控える。登録時の計画の控えがあれば、名指したファイルが控えから主ブランチの先端までに変わったかを判定し、比べた先端を metadata `task_plan_tip` に控え、変わっていなければ印に `registered` を残す（出力は変えない）。近道の印（label `direct:Y`）があれば基準を測り直し、`CLAIMED` の行末に `direct=Y`（基準に当たり `registered`）か `direct=N:<理由>`（外れた条件か `登録時の計画が古い`）の列を足す。印が無ければ列を出さない。ドラフトは何もせずに `NOT_READY\tT-xxx\tDRAFT`（終了コード4） | `CLAIMED`・`TAKEN`・`NOT_READY`・`DIRTY`・`UNSHIPPED`・`GIT_READ_ONLY` |
-| `release T-xxx [--force]` | 印（`bd unclaim`）と `task-open-claims/T-xxx` の控えを消すだけ（本文は戻さない）。`--force` は人が取り残しを片付けるときで、控えは印の持ち主の作業ツリーのものを消す（その作業ツリーが消えていれば何もしない）。担当者が無い `in_progress` の印も `--force` で外せる（status を `open` に戻す）。着手の印の控え（`bd kv` の `task-workflow.claim.<Beads ID>`。「GitHub との双方向」）も消すので、外した印は控えから戻らない | `RELEASED`・`NOT_CLAIMED`・`NOT_OWNER` |
-| `done T-xxx [--dropped] --result-file <path\|->` | `## 結果` を comment に入れ、label `ship:done`／`ship:dropped` を立てる（stage もコミットもしない・印は残す。`bd close` は `ship` が打つ）。`task-open-claims/T-xxx` の控えは消すので、このあとのコミットを `commit-guard` は拒まない。着手の印の控え（`bd kv` の `task-workflow.claim.<Beads ID>`。「GitHub との双方向」）も消すので、`ship` までの間に取り込みが印を消しても控えからは戻らない。本文が枠（`## 結果` を除く7節）と違えば書かずに `INVALID`（終了コード3）。`claim` した時点の `HEAD` より後に、主ブランチに無いコミットがあれば `DONE` に続けて知らせる（`commit-guard` をすり抜けたコミットの事後の知らせ。控えの無い古い印では出さない）。`.git` に書かないので、読み取り専用の `.git` でも通る。ドラフト（印は立たない）に `--dropped` を打つと、`## 結果` を comment に入れ、label `cancelled` を足して `bd close` までその場で打つ（`claim`・コミット・`ship` は要らず、着手の控えと `COMMITS_SINCE_CLAIM` は見ない）。ドラフトに `--dropped` なしで打つと `NOT_READY\tT-xxx\tDRAFT`（終了コード4） | `DONE`（`COMMITS_SINCE_CLAIM` が続くことがある。ドラフトは `DONE\tT-xxx\tbeads:<id>\tドラフトを閉じた`）・`NOT_OWNER`・`NOT_READY`・`INVALID` |
+| `release T-xxx [--force]` | 印（`bd unclaim`）と `task-open-claims/T-xxx` の控えを消すだけ（本文は戻さない）。`--force` は人が取り残しを片付けるときで、控えは印の持ち主の作業ツリーのものを消す（その作業ツリーが消えていれば何もしない）。担当者が無い `in_progress` の印も `--force` で外せる（status を `open` に戻す）。着手の印の控え（`bd kv` の `task-workflow.claim.<Beads ID>`。`TRACKER.md`「GitHub との双方向」）も消すので、外した印は控えから戻らない | `RELEASED`・`NOT_CLAIMED`・`NOT_OWNER` |
+| `done T-xxx [--dropped] --result-file <path\|->` | `## 結果` を comment に入れ、label `ship:done`／`ship:dropped` を立てる（stage もコミットもしない・印は残す。`bd close` は `ship` が打つ）。`task-open-claims/T-xxx` の控えは消すので、このあとのコミットを `commit-guard` は拒まない。着手の印の控え（`bd kv` の `task-workflow.claim.<Beads ID>`。`TRACKER.md`「GitHub との双方向」）も消すので、`ship` までの間に取り込みが印を消しても控えからは戻らない。本文が枠（`## 結果` を除く7節）と違えば書かずに `INVALID`（終了コード3）。`claim` した時点の `HEAD` より後に、主ブランチに無いコミットがあれば `DONE` に続けて知らせる（`commit-guard` をすり抜けたコミットの事後の知らせ。控えの無い古い印では出さない）。`.git` に書かないので、読み取り専用の `.git` でも通る。ドラフト（印は立たない）に `--dropped` を打つと、`## 結果` を comment に入れ、label `cancelled` を足して `bd close` までその場で打つ（`claim`・コミット・`ship` は要らず、着手の控えと `COMMITS_SINCE_CLAIM` は見ない）。ドラフトに `--dropped` なしで打つと `NOT_READY\tT-xxx\tDRAFT`（終了コード4） | `DONE`（`COMMITS_SINCE_CLAIM` が続くことがある。ドラフトは `DONE\tT-xxx\tbeads:<id>\tドラフトを閉じた`）・`NOT_OWNER`・`NOT_READY`・`INVALID` |
 | `ship` | rebase → （付け替えたら）検証 → （`verify_before_ship` があれば）付け替えた・借りがある・控えが今の中身と違うときだけそれを（付け替えた回は検証の代わりに） → ff-only で送る（主ブランチを出している別の作業ツリー〔本体〕があれば、そこに `.gitmodules` があるとき `git submodule update --init` を本体で打って、サブモジュールを記録した版へ揃える。揃えるのは本体のサブモジュールだけで、ほかの作業ツリーには触らない。揃えられなくても送りは取り消さず、結果は変えない） → `ship:*` の立った自分の印を `bd close` し、`task-open-claims/T-xxx` の控えを消す → 作業ブランチから降りる → トラッカーへ送り、バックアップを取る。送るものがあって `.git` に書けなければ、rebase の前に `GIT_READ_ONLY` で止まる | `SHIPPED`・`NOTHING`（どちらも `NOT_CLOSED`・`TRACKER`・`BACKUP` の行が続くことがある。`SHIPPED` の次に `SUBMODULE_NOT_SYNCED\t<本体の作業ツリーのパス>\t<理由の1行>` が出ることがある。本体のサブモジュールを揃えられなかった警告で、終了コードは変わらない）・`MAIN_DIRTY`・`CONFLICT`・`VERIFY_FAILED`・`RACE`・`GIT_READ_ONLY` |
 | `land <枝>` | 主ブランチを出している作業ツリーで `<枝>` を `git merge --ff-only` し、`git merge-base --is-ancestor` で主ブランチに入ったことを確かめてから、`<枝>` を出している作業ツリーを `git worktree remove` し（サブモジュールを持つ作業ツリーは git が断るので、作業ツリーと各サブモジュールの `git status --porcelain` が空のときだけ `--force` で消す。汚れがあれば消さずに `NOT_REMOVED`）、枝を `git branch -d` する（合流のあと、作業ツリーを消す前に、主ブランチを出している作業ツリーに `.gitmodules` があれば `git submodule update --init` をそこで打って、サブモジュールを記録した版へ揃える。揃えるのは本体のサブモジュールだけ。作業先が別のリポジトリのタスクの受け入れで、作業先の作業ツリーから打つ。消す作業ツリーの中から打ってもよい）。ff できない（主ブランチに入っていない）・主ブランチを出している作業ツリーか `<枝>` の作業ツリーに未コミットの変更か未追跡のファイルがある・どちらかの作業ツリーが無い（ディレクトリが消えているときも）ときは、何も変えずに `NOT_LANDED` で止まる。主ブランチ・無い枝を渡すと終了コード2。タスク運用を始めていないリポジトリでも打て、Beads と台帳に何も書かない。`.git` に書けなければ合流の前に `GIT_READ_ONLY` で止まる | `LANDED\t<枝>\t<主ブランチ>\t<合流後の SHA>` に続けて、サブモジュールを揃えられなかったときだけ `SUBMODULE_NOT_SYNCED\t<本体の作業ツリーのパス>\t<理由の1行>`（警告で、終了コードは変わらない）、そのあとに `REMOVED\t<作業ツリー>`・`DELETED\t<枝>`。合流のあとに消せなかったものは `NOT_REMOVED\t<作業ツリーか枝>\t<git の理由>`（終了コード4。合流は済んでいる）。`NOT_LANDED\t<枝>\t<理由>`（終了コード4）・`GIT_READ_ONLY` |
 | `show T-xxx` | タスク1件を front matter と本文の形で出す（読むだけ。「タスクの本文」）。枠の7節を空でもこの順に出す | 本文。無ければ `NOT_READY` |
 | `edit T-xxx [--body-file <path\|->] [--section <節名>] [--after-work] [--change-frame] [--summary …] [--difficulty …] [--loopable Y\|N] [--status todo\|hold] [--add-deps T-001,…] [--remove-deps T-001,…] [--direct Y\|N]` | 本文と属性と依存を直す（`--difficulty`・`--loopable` は metadata を書き換える。コミットも `ship` も要らない。`## 完了条件`・`## やること` はそれぞれの欄へ分けて入れ、版は `bd history` に残る。`## 結果` は拒む）。`--status` は着手前（`open`・`deferred`）だけ。ドラフトに `--status todo\|hold` を打つと、書いたあとの本文（同じ呼び出しの `--body-file` を当てたもの）を `new` と同じ検査（`hold` なら `--hold` の検査）にかけ、通らなければ何も書かずに `NOT_READY\tT-xxx\tDRAFT\t<理由>`（終了コード4）。通れば状態と印 `draft` の取り外しを同じ `bd update` で書き、`## やること` に中身があれば `new` と同じく `task_plan_base` を控える。ドラフトの本文の編集は「タスクの本文」のドラフトの緩い検査で見る。`--direct Y\|N`（`--body-file` が無くてもよい）は label `direct:Y` を付け外しする。`Y` で基準を外れれば何も書かずに終了コード2。印のあるタスクの本文か `--difficulty` を変えて基準を外れたら、書き込んで印を外し、`EDITED`（と `PLAN_AFTER_WORK`）の次に `DIRECT_OFF\tT-xxx\t<理由>` を出す。`--add-deps`・`--remove-deps`（`--body-file` が無くてもよく、その場合は本文に触れない）は Beads の依存を `bd dep add`・`bd dep remove` で1辺ずつ直す（`bd` の循環検査の前に `tw` が先に拒む）。削除してから追加し、すでにある依存の追加は通る。自分自身・Beads に無い ID・循環になる辺・形の違う ID・依存にない ID の削除・追加と削除に同じ ID は、何も書かずに終了コード2。以下は本文について。本文を丸ごと書き換える。`--section` を付けると、その節の中身だけを渡した中身に置き換え、ほかの節は1バイトも変えない（節名は `やること`・`## やること` のどちらでも受ける。枠に無い見出し・渡した中身に行頭の `## ` の行があれば、書き込まずに終了コード2。置き換えた全文に下の検査が効く）。渡した本文の `## 目的・背景`・`## 完了条件` がいまの本文と違えば、書き込まずに `FRAME_CHANGED\tT-xxx\t<違う節>` で止まる（終了コード4。行末の空白と空行の数の差は違いに数えない。いまの本文に節が無いもの・中身が空か「なし」のものは比べない）。変えてよいときだけ `--change-frame` を付けて打ち直す。ほかの節だけの書き換えは今までどおり通る。`claim` の後に、着手の印の持ち主が `## やること` に初めて中身を入れたとき、その時点で作業が始まっていたか（`claim` した時点の `HEAD` より後のコミットか、渡した本文のファイル以外の変更があるか。submodule のずれは数えない）を1回だけ metadata `task_plan` に残す（値は `first`／`after-work`）。`after-work` になるときは書き込まずに `WORK_BEFORE_PLAN\tT-xxx\t<次の一手>` で止まる（終了コード4）。`--after-work` を付けると書き込んで `after-work` を残し、`EDITED` の次に `PLAN_AFTER_WORK\tT-xxx\t作業の後に書いた` の行を足す（作業が始まっていなければ `--after-work` は何も変えず `first`）。front matter 付きの本文は拒む（終了コード2。除いて渡す） | `EDITED`（`PLAN_AFTER_WORK`・`DIRECT_OFF` が続くことがある）・`NOT_READY`・`WORK_BEFORE_PLAN`・`FRAME_CHANGED` |
-| `adopt <ID> --difficulty … --loopable … [--summary …] [--direct] --body-file …` | 振り分け前の課題（「Beads とトラッカー」）に metadata `difficulty`・`loopable` と本文を付ける（`jira` はキーの無い課題に番号も）。本文の検査は `new` と同じで `## やること` の中身が要り（`--hold` は無い）、`notes` に入れて metadata `task_plan_base` を控える。`--direct` は label `direct:Y` を付け、基準を外れれば `new` と同じく終了コード2 | `ADOPTED\t<元のID>\t<ID>` |
+| `adopt <ID> --difficulty … --loopable … [--summary …] [--direct] --body-file …` | 振り分け前の課題（`TRACKER.md`「サイクルの各段で Beads に起きること」）に metadata `difficulty`・`loopable` と本文を付ける（`jira` はキーの無い課題に番号も）。本文の検査は `new` と同じで `## やること` の中身が要り（`--hold` は無い）、`notes` に入れて metadata `task_plan_base` を控える。`--direct` は label `direct:Y` を付け、基準を外れれば `new` と同じく終了コード2 | `ADOPTED\t<元のID>\t<ID>` |
 | `sync` | トラッカーと同期する（`github` は双方向、`jira` は取り込み、打ち直しも兼ねる） | `TRACKER\tOK\|FAILED\t…`・`NOTHING`・`BUSY\tsync\t<持ち主の情報>`（別の `tw sync` が走っている。終了コード5） |
 | `backup` | Beads のバックアップを取る | `BACKUP\tOK\|FAILED\t<置き場>` |
 | `jira-closed T-xxx…` | `jira:close` を外す | `CLEARED` |
@@ -530,7 +531,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 **ID はトラッカーで決まる。** トラッカーが `github` なら **GitHub の Issue 番号がタスクID**で、`tw` の
 入出力とコミットの件名は `GH-<番号>`（ゼロ埋めしない）、Beads の中は `gh-<番号>`。`なし`・`jira` なら
 `tw` が採番し、外は `T-<n>`（3桁以上）、Beads の中は `t-<n>`。ただし `jira` で取り込んだ課題は
-**Jira のキーがタスクID**（外は `PROJ-123`、Beads の中は `proj-123`。下の「トラッカー」）。どちらの方式かは Beads の `issue_prefix`
+**Jira のキーがタスクID**（外は `PROJ-123`、Beads の中は `proj-123`。`TRACKER.md`「トラッカー」）。どちらの方式かは Beads の `issue_prefix`
 （`gh` か `t`）で決め、`tw` は両方の形を読む（切り替えの途中は `t-<n>` と `gh-<n>` が混ざる）。
 加えて **Jira のキー**（`PROJ-123`。プロジェクトキーは2文字以上・英大文字始まり `[A-Z][A-Z0-9_]+-\d+`、
 Beads の中は `proj-123`）も同じ ID として読む。読む形はトラッカーで切り替えず常に3つを受け、`T-<n>`・
@@ -540,164 +541,9 @@ Beads の中は `proj-123`）も同じ ID として読む。読む形はトラ�
 
 **設定のキー**は `tracker`・`github_project`・`backup`（値は「ファイル配置と設定ファイル」の表）。
 
-**用意**: `/setup-tasks` の `init.py` が、主ブランチを出している作業ツリー（本体）で
-`bd init --stealth -p gh`（トラッカーが `github`）か `-p t`（それ以外）を打つ。`hold` は組み込みの
-状態 `deferred` に置く（独自の状態は GitHub との往復で `open` に戻るので使わない）。ドラフトも `deferred` に置き、
-metadata `draft` で `hold` と見分ける（独自の状態 `draft` は `status::` の label を持たない `open` の Issue として出て、
-GitHub で本文を直したあとの取り込みで `open` に戻る。`deferred` は label `status::deferred` で往復して残るが、
-取り込みは metadata を消すので、`tw` が取り込みのあとに `draft` を戻す。`bd` 1.3.1 で確かめた）。`.beads` は本体の根に1つで、
-どの作業ツリーの `bd` も同じデータベースを読む。`--stealth` は `.git/info/exclude` で `.beads` を外し、
-コミットも `AGENTS.md`・`CLAUDE.md` への書き足しもしない（**`--stealth` なしの `bd init` を打たない**。
-両方を書き足して自動でコミットする）。ただし `--stealth` は利用者の `~/.config/bd/config.yaml` に `no-git-ops: true` を
-書き足す（端末全体の設定）。`bd` を同時に何本も `init` すると、この設定ファイルの
-ほかの値（使用状況の送信を止めた `metrics.disabled`）まで書き戻したことがあるので、`init` は1本ずつ打つ
-（自己テストは `HOME` を一時ディレクトリへ向けて利用者の設定に触れない）。`github` なら人が `gh auth login`（`project` スコープ）と
-`bd config set github.repository <owner>/<repo>` を済ませる。
+**トラッカーの失敗はタスクの操作を止めない。** `new`・`claim`・`release`・`edit`・`adopt`・`done`・`ship` は
+`TRACKER\tFAILED\t…` の行を足して終了コードはそのままで、打ち直しは `tw sync`。
 
-**タスクの要素と Beads の置き場**（`beads.py` の docstring と同じ表）:
-
-| タスクの要素 | Beads の置き場 |
-| --- | --- |
-| タスクID | `github`: 外は `GH-5`、Beads の中は `gh-5`（Issue 番号）。`なし`・`jira`: 外は `T-123`、Beads の中は `t-123`（接頭辞は小文字だけ）。`jira` で取り込んだ課題は外が `PROJ-123`、中が `proj-123` |
-| 採番 | `github`: GitHub の採番（下の「GitHub との双方向」の登録）。`なし`・`jira`: `bd create --id t-<n>`（同じ番号は1つしか作れない。負けたら次の番号で打ち直し、20回で `LOCKED`）。最後の番号は `bd kv` の `task-workflow.last-id`。候補は Beads の番号・`bd kv`・主ブランチの `docs/history/tasks.md` の最大 |
-| 着手の印 | `bd update --claim`（actor は作業ツリーの名前）。`claim` した時点の `HEAD` と枝は metadata `task_claim_head`・`task_branch` |
-| `NOT_OWNER` | `done`・`release` の前に assignee が自分かを見る（`bd close` も actor が違えば拒む） |
-| `todo`・`hold` | `open`・`deferred`（`bd ready` から外れる。GitHub では label `status::deferred`）。切り替え前の独自の状態 `pending` も `hold` と読む |
-| `draft`（ドラフト） | `deferred` ＋ metadata `draft`（値 `Y`。GitHub には載らず、取り込みで消えたら取り込み前の値を戻す。GitHub で label を外されて `open` に戻っても、印があればドラフトと読む。ドラフトのまま閉じた課題でも戻す） |
-| ドラフトから進めた課題の出自 | metadata `from_draft`（値は `- 観点:` の観点か `不明`。GitHub には載らず、取り込みで消えたら取り込み前の値を戻す。閉じた課題でも戻す） |
-| `done`・`dropped` | `bd close`（`dropped` は label `cancelled` を足す。独自の状態 `cancelled` は依存を解決しないので使わない） |
-| `difficulty`・`loopable` | metadata `difficulty`・`loopable`（GitHub には載らず、取り込みで消えたら取り込み前の値を戻す。label `difficulty:`・`loopable:` は読まない） |
-| 委譲しない近道の印 | label `direct:Y`（印が無ければ label を置かない。`direct:` の label が `Y` 以外か2つ以上なら INVALID） |
-| `dependencies` | `blocks` の依存（`bd create --deps`。後から変えるのは `tw edit --add-deps`・`--remove-deps` が打つ `bd dep add`・`bd dep remove`） |
-| `summary` | `title` |
-| `## 完了条件` | `acceptance_criteria` |
-| `## やること` | `notes` |
-| `## やること` を作業より先に書いたかの記録（`first`・`after-work`・`registered`） | metadata `task_plan` |
-| 登録時に `## やること` を書いたときの SHA と、着手時に比べた主ブランチの先端 | metadata `task_plan_base`・`task_plan_tip` |
-| `## 目的・背景`・`## 決まっていること`・`## 解くべき論点`・`## 注意`・`## 参考情報` | `description`（見出しのまま）。`tw show` は枠の7節を空でもこの順に出す |
-| `## 結果`（`- 振り返り:` を含む） | `## 結果` で始まる comment（最後のものが正） |
-| 登録から完了までの本文の差（`retrospect` の材料） | `bd history`（`material.py` が最初と最後の版の差を出す） |
-| git に残る過去の `develop/task/` と `docs/history/` | 動かさない |
-
-**サイクルの各段で Beads に起きること**（「1サイクル」と「`tw` コマンドの参照」の補足）:
-
-- **読む・書く**: `tw show T-xxx` で読み、`tw edit T-xxx` で直す（コミットも `ship` も要らない。引数は「`tw` コマンドの参照」の `edit`）
-- **`done`・`ship`**: `done` は `## 結果` を comment に入れて label `ship:done`／`ship:dropped` を立てるだけで、
-  `bd close` は `ship` が送り終えたあとに打つ（「送り出し」）
-- **取り残し**: 「status と着手の印」の表
-- **振り分け前**（番号でない ID か、`difficulty`・`loopable` が無い課題。トラッカーから
-  取り込んだもの）: `status` の `着手可否` が `TRIAGE` で、末尾の `triage` 行に出る。`claim` は
-  `NOT_READY\tT-xxx\tTRIAGE`。人の確認つきで `tw adopt <ID> --difficulty … --loopable … --body-file …`
-  （metadata `difficulty`・`loopable` を付け、`## 完了条件` を書き起こす。`jira` はキーの無い課題にだけ番号を振り、キーのある課題は
-  キーの ID のまま（まだなら付け替える。行き先が既にあれば `TRACKER\tINVALID` の行を出して終了コード3で、
-  番号も振らない）。`github` は取り込みの時点で `gh-<Issue 番号>` になっているので番号は変えない）してから着手する
-- **`status` の末尾**: `invalid` の次に `triage\t<件数>\t<ID>` が必ず、`jira` なら `jira_close` 行が付く
-
-**トラッカー**（錠と本文は Beads が持ち、トラッカーは写し。**失敗はタスクの操作を止めない**——
-`new`・`claim`・`release`・`edit`・`adopt`・`done`・`ship` は `TRACKER\tFAILED\t…` の行を足して終了コードは
-そのまま。打ち直しは `tw sync`。`bd github` は GitHub に届かなくても終了コード0を返すので、`tw` は
-`--json` の `stats.errors` と `Warning: Failed` の行で失敗を見る。1件の操作の反映は、始めから合わせて
-25 秒で打ち切って `TRACKER\tFAILED` にする（`bd` の内側の再試行は外から切れないので時間で切る。Beads への
-書き込みは残るので、`tw sync` で打ち直す。`ship`・`sync` の全件は期限なし。環境変数
-`TASK_WORKFLOW_TRACKER_TIMEOUT`〔秒〕で1件の上限を変えられる）:
-
-| 方式 | すること | しないこと |
-| --- | --- | --- |
-| `github` | `issue_prefix` が `gh` なら双方向（下の「GitHub との双方向」）、`t` なら Beads から送るだけ。1件だけを触る操作（`new`・`claim`・`release`・`edit`・`adopt`・`done`）はその1件だけを `bd github push <ID>` で、`ship`・`sync` は、双方向なら変えた課題（控えが無いか `updated_at` が控えより新しい）だけを `bd github sync --push-only --issues <ID,…>` で送り（`bd` の `github.last_sync` が無いと全件が更新対象になり遅いため）、`t` なら全件を `bd github sync --push-only` で送る。そのあと Project の Status 欄を `gh api graphql` で書く（`deferred` → `Pending`〔ドラフトも。`open` に戻っていても印 `draft` があれば `Pending`〕、`open` → `Todo`、`in_progress` → `In progress`、閉じた → `Done`、`cancelled` → `Cancel`。Project に無い Issue は足す）。`bd` は Status 欄を触らない。token は `GITHUB_TOKEN` が無ければ `gh auth token` | 引数なしの `bd github sync`・`--pull-only`（`bd` の増分の取り込みは取りこぼす）。`gh project` のコマンド（`item-list` は入れ子の上限で1回約101点かかり、どれも持ち主の照会を足す）。Status 欄を読んで合わせる（人が Project で変えた Status は、次にその課題の Beads の状態が変わるまで戻らない） |
-| `jira` | `tw sync`（と各操作のあと）で `bd jira sync --pull` だけ。取り込んだ課題の ID は `issue_prefix` の hash（`t-aby`。数字だけにもなりうる）なので、`external_ref`（`https://<site>/browse/PROJ-123`）のキーと ID が違う振り分け前の課題を `bd rename` で `proj-123` にする（行き先が既にあれば付け替えず `TRACKER\tINVALID\t<ID>\t<行き先> が既にある（付け替えない）`。`bd rename` は接頭辞が `issue_prefix` と違っても通り、次の取り込みは `external_ref` で同じ課題に当てる）。ローカルで閉じた Jira の課題（`external_ref` あり）には label `jira:close` を付け、`status` の `jira_close` 行に出す。人が Jira で閉じたら `tw jira-closed T-xxx` で外す | Jira へ書く（`--push`・引数なしの `sync`）。状態は人が Jira で変える |
-| `なし` | 何もしない（`tw sync` は `NOTHING`） | ― |
-
-**Status 欄の控え**（GraphQL の枠は1時間に5000点・アカウント単位で、点数は要求の上限で数えられる）:
-Project・Status 欄・選択肢の ID は `bd kv` の `task-workflow.project` に控え、控えで書いて落ちたら（欄や
-選択肢を作り直したとき）1回だけ読み直す。Issue ごとの項目 ID と最後に書いた Status は
-`task-workflow.project-item.<Issue 番号>`（課題ごとの1キー。値は `{"item", "status"}`。1つの JSON にまとめると
-`bd kv` の1値の上限を超える）に控える。Beads の状態から決まる Status が控えと同じ課題には
-触らない。項目 ID が控えに無い課題は Issue の `projectItems(first: 10)` だけを引き、控えの無い課題が10件を
-超えるとき（最初の1回）は Project を `items(first: 100)` の `id`・`content.url`・`fieldValueByName("Status")`
-だけで一巡して控えを埋める。Issue の読み書きと取り込む番号を選ぶ一覧は REST で、GraphQL の枠を食わない。
-
-**Jira の方式は本物の Jira で試していない**（サイトとトークンが要る）。取り込んだ課題の ID・`external_ref` の形と、
-付け替えたあとの取り込みが同じ課題に当たることは、`jira.url` を手元の偽の HTTP サーバへ向けた `bd` で確かめた。`bd jira sync --pull` が
-ローカルで閉じた課題をどう扱うか（開き直すか）は未確認で、試すときは人に用意を頼む。
-
-**GitHub との双方向**（`github` のとき。`bd` 1.3.0 の実測に合わせた形）:
-
-- **`bd` の増分の取り込みを使わない**。`bd` は前回の同期の時刻（push でも pull でも進む）より後に
-  更新された Issue だけを読むので、その間の GitHub での変更と、立てた直後の Issue を取りこぼす。
-  `tw sync` は GitHub の一覧（REST の `repos/<repo>/issues?state=all&since=…`）で見た最後の更新時刻を
-  自分で覚え（`bd kv` の `task-workflow.github-seen`。無ければ開いている全件）、その1時間前より後に
-  更新された Issue（立てた直後の Issue が一覧に遅れて出る分をさかのぼる）を番号で `bd github pull <番号>…` する。
-  自分の送りの反響（課題ごとの送った時刻 + 10 秒以内の GitHub 側の更新）は取り込みに渡さない
-  （送った時刻の控えが無い課題は渡す）
-- **登録**（`tw new`）: `bd create --id gh-new-<作業ツリーの名前>-<時刻>`（仮の ID。`bd` の採番は
-  数字だけの hash になりうるので使わない）→ `bd github push <仮の ID>` → `external_ref` の末尾の番号 →
-  `bd rename <仮の ID> gh-<番号>`（依存・comment・履歴ごと付け替わる）→ もう一度 `bd github push`（付け替えも
-  Beads の更新なので、前回の同期の時刻を進めておく）。push で落ちたら仮の ID のまま
-  `TRACKER\tFAILED` を出し、`tw sync` が push と付け替えをやり直す。立てた直後に上限で落ちて番号が
-  Beads に無い仮の ID は、送り直す前に題・本文が同じ Issue があればその番号を `external_ref` に控えるだけにし
-  （Issue を2つ立てない）、取り込んだ新しい Issue が既存の課題と題・本文が同じなら
-  `TRACKER\tINVALID\t<取り込んだ課題>\t<既にある課題> と重複している` の行で知らせる（閉じるのは人）
-- **取り込み**: 取り込んだ課題の ID は `gh-<時刻>-1-<hash>` なので、`external_ref` の番号 `n` と ID が
-  違う課題は `tw` が `bd rename` で `gh-<n>` にする（行き先が既にあれば付け替えず `INVALID` の行）。
-  `difficulty`・`loopable` が無ければ振り分け前（上の「サイクルの各段で Beads に起きること」）
-- **写る欄**: 題 ↔ `title`、本文 ↔ `description`、label ↔ label（`ship:*`・
-  `cancelled` も）、開閉 ↔ `open`／`closed`、`status::in_progress`・`status::deferred` ↔ `in_progress`・
-  `deferred`。`acceptance_criteria`・`notes`・comment（`## 結果`）は Beads だけに置き、GitHub には出さない
-- **錠の持ち主**: 取り込みは assignee を GitHub の担当者で上書きし（作業ツリーの名前は GitHub の
-  利用者でないので空になる）、metadata を消し、label `status::in_progress` が GitHub に無ければ
-  `open` に戻す。`tw` は取り込みを actor `<作業ツリーの名前>:github-pull` で打ち、その更新の書く直前の版
-  （`bd history --events` の `old_value`。取り込みの最中に別の作業ツリーが着手しても、その着手が入る）
-  から、消えた assignee と metadata の印（`task_*`・`difficulty`・`loopable`。閉じた課題は後の2つだけ）を `bd update` で戻す。`open` に戻った着手は、
-  着手の送りが GitHub に届く前の版で上書きされたときだけ `in_progress` に戻し、送ったあとで label が
-  外れた・GitHub で担当者が付いたものは手放しとして戻さない。届いたかは課題ごとの送りの印
-  （`bd kv` の `task-workflow.github-pushed.<番号>`。送りが届くたびに、送る直前に読んだ着手の時刻
-  `started_at` を書く。着手中でなければ空）で見て、印が今の着手の時刻と（秒で）違えば届いていない。
-  印の無い課題（印を書く前に送ったもの）だけは、`task-workflow.github-synced` の時刻が着手より前なら届いていないとする。
-  戻せなければ `TRACKER\tFAILED` の行を足し、ほかの行（`CLOSED` など）と送りは続ける。
-  **取り込みはすべてこの包みを通す**
-- **着手の印の控え**: 取り込みと上の戻しは別々の書き込みなので、間でプロセスが止まると書く直前の版は
-  監査の出来事にしか残らず、次の取り込みからは戻せない。そこで `tw claim` は印（assignee・`started_at`・
-  `task_*`・`difficulty`・`loopable` などの metadata）を `bd kv` の `task-workflow.claim.<Beads ID>` に
-  JSON で控え、`tw edit` が自分の着手中の課題に metadata を書くたびに書き直す。`tw release`・`tw done`・`tw ship`
-  （閉じたとき）が消す。控えから戻すのは3か所で、(1) 取り込みのあと、書く直前の版で戻せなかった分を補う、
-  (2) `tw sync`・`tw ship` の送りの前に控えのある課題をすべて見る、(3) `plan-check`・`step`・`verify`・`pause`・
-  handback-guard が `NOT_OWNER` を出す前に、その課題だけを見る（GitHub には触らず、戻した課題は次の送りで送る）。
-  戻すかの判定は上と同じで、GitHub で手放された・閉じた・別の作業ツリーが取った課題は戻さずに控えを消す。
-  戻したら `TRACKER\tRESTORED\tGH-<n>` の行を出す（(3) では標準エラー）。上の書く直前の版からの戻しはこの行を出さない
-- **タスクの操作**（`claim`・`release`・`edit`・`adopt`・`done`）: 触る課題だけを
-  取り込み → 操作 → `bd github push <ID>` の順で打つ。`ship` は取り込まずに全件を送る。
-  取り込みは前回の同期の時刻を進めるので、取り込みのあとの直し（assignee・label・付け替え）は
-  その場で送る（送らないと、次の取り込みがその課題を「Beads で変えたもの」として飛ばし、GitHub での変更を送り返して消す）
-- **衝突**: 課題ごとの勝ち負けで、欄ごとには合わせない。取り込みは前回の同期より後に Beads で
-  変えた課題を上書きしないので、**両側で変えたら Beads が勝ち**、GitHub の版は Issue の編集履歴に残る。
-  `tw` はその課題を `TRACKER\tCONFLICT\tGH-<n>` の行で知らせる（人が履歴から拾い直す）。`bd` は飛ばしたことを
-  教えないので、`tw` が課題ごとに最後に送った・取り込んだ時刻（`bd kv` の `task-workflow.github-synced`）を
-  控え、そのあとに Beads と GitHub の両方で更新された課題を衝突とする（書く直前に今の値を読み、触った番号だけを
-  書き換える）
-- **GitHub で閉じる**: 取り込むと Beads でも閉じ、依存が解ける。`ship:*` の無い課題が GitHub で
-  閉じられたら見送りとして label `cancelled` を足し、`TRACKER\tCLOSED\tGH-<n>` の行を出す（着手中なら
-  人に預ける）。GitHub で開き直したら `cancelled` と `ship:*` を外す
-- **`tw sync` の順**: 控える → 取り込む（反響を除く）→ 送りの印を読んで着手の印を戻し、付け替える（直したものを送る）→
-  push（取り込みの前に選んだ、控えが無いか `updated_at` が控えより新しい課題だけを
-  `bd github sync --push-only --issues <ID,…>` で。無ければ打たない）→ 登録で落ちた仮の ID を付け替える →
-  送りの印と違う着手中の課題をまとめて送り直し（1回の `bd github push <ID>…`）、届いたら
-  その課題の送りの印を書く → Status 欄を書く
-- **重ねて打った `tw sync` は錠で1本にする**: 台帳の `sync.lock` を持つ1本だけが走り、後から来た `tw sync` は待たず `BUSY\tsync\t<持ち主の情報>` を出して終了コード5で返る（持ち主のプロセスが無い古い錠は壊さず、行に添えて人に預ける）。ほかのコマンド末尾の取り込み・送りは錠に包まない
-
-**Jira の方式との違い**:
-
-| | `github` | `jira` |
-| --- | --- | --- |
-| タスクID | Issue 番号（`GH-5`） | 取り込んだ課題は Jira のキー（`PROJ-123`。取り込みの直後に `external_ref` のキーへ付け替える）、ローカルで `tw new` した課題は `tw` の採番（`T-123`）で、混ざる |
-| 登録 | Issue を先に作って番号を得る | Beads だけに作る（Jira に書かない） |
-| 同期の向き | 双方向（取り込みは `tw` が番号で選ぶ） | 取り込みだけ（`bd jira sync --pull`） |
-| 状態を変える場所 | どちらでも（GitHub で閉じたら見送り） | Beads。Jira で閉じるのは人（`jira_close`） |
-| 衝突 | Beads が勝ち、`CONFLICT` の行 | 起きない（Jira に書かない） |
-
-**バックアップ**: `.beads` は git の外なので、タスクの記録は git の履歴に残らない。`tw ship` の
-最後と `tw backup` が、置き場へ `bd backup sync`（Dolt の履歴ごと。置き場が未設定なら
-`bd backup init <置き場>/dolt`）と `bd export -o <置き場>/issues.jsonl` を取る（`BACKUP\tOK|FAILED\t<置き場>`）。
-**置き場がリポジトリの中なら取らない**——`bd export` の JSONL には作成者のメールアドレス（`owner`）が
-入るので、公開リポジトリにコミットされうる場所へ置かない。戻すのは `bd backup restore`（人が行う）。
-
-**触らないもの**: `bd metrics`（端末全体の設定）、`bd reclaim`、`bd init` の `--stealth` なし。
+用意・タスクの要素と Beads の置き場・サイクルの各段で Beads に起きること・トラッカー（GitHub・Jira）・
+Status 欄の控え・GitHub との双方向・Jira の方式との違い・バックアップは [TRACKER.md](TRACKER.md)。
+タスクの要素と Beads の置き場の対応は `beads.py` の docstring にも抜粋がある。

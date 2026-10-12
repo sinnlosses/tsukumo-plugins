@@ -14,7 +14,7 @@ user-invocable: false
 | プロジェクトにタスク運用を用意する | `/setup-tasks` |
 
 タスクの本文・着手の印・履歴は Beads（`bd`）に置き、`tw` が Beads とトラッカーと git をつなぐ
-（WORKFLOW.md「Beads とトラッカー」）。
+（WORKFLOW.md「Beads とトラッカー」。同期の実装の詳細は [TRACKER.md](TRACKER.md)）。
 ルール本文は [WORKFLOW.md](WORKFLOW.md)。冒頭の目次で節を1つ選んで読む（通読しない）。
 プロジェクト固有の値（検証コマンド・整形コマンド・ブランチ・トラッカー）は、そのプロジェクトの `.tw/config.toml`
 （`tw config` で見る。WORKFLOW.md「ファイル配置と設定ファイル」）。

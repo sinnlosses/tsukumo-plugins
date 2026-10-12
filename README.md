@@ -60,7 +60,7 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
 
 - `python3`（`tw` とスキルのスクリプト。標準ライブラリだけ）と `git`
 - `bd`（Beads）と Dolt（タスクの置き場。`tw` は `bd` が無いと動かない）。
-  トラッカーが `github` なら `gh` も要る（`skills/task-workflow/WORKFLOW.md`「Beads とトラッカー」）
+  トラッカーが `github` なら `gh` も要る（`skills/task-workflow/TRACKER.md`「トラッカー」）
 
 使うプロジェクトの側は、検証コマンドを書いた `.tw/config.toml` を置く。用意するのは `/setup-tasks`。
 
