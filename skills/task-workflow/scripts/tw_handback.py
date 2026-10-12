@@ -152,6 +152,7 @@ def handback_refusal(where: str) -> str | None:
     その作業ツリーの `verify-check` が通っているか `tw step` の印が最後でない段をいまの中身で指しているか、
     その作業ツリーの `tw pause` の控えがいまの中身と同じとき。段の印のいまの中身は、その段と並列の組になる段の
     触るファイルを外して取る。
+    検証が通る返却でも、計画の段が2つ以上でその作業ツリーに段の控えが1つも無ければ、段を飛ばしたとして拒む。
     """
     if not os.path.isdir(where):
         return None
@@ -200,7 +201,18 @@ def _handback_gaps(toplevel: str, task_id: str) -> list[str]:
             if verify_line.startswith("NOT_VERIFIED\tscheme"):
                 verify_line += "（別の版の tw が控えた。クローンと取り込みの版を揃えてから tw verify を打ち直す）"
             gaps.append(verify_line if tree == toplevel else f"{verify_line}（{tree}）")
+        elif plan_ok and verify_line.startswith("VERIFIED_SAME") and _skipped_steps(toplevel, tree, task_id):
+            gaps.append(
+                f"段の控えが無い。渡された段だけを進めて tw step {task_id} <段の番号> を打って返す"
+                + ("" if tree == toplevel else f"（{tree}）")
+            )
     return gaps
+
+
+def _skipped_steps(toplevel: str, tree: str, task_id: str) -> bool:
+    """計画の段が2つ以上なのに、`tree` にこのタスクの段の控えが1つも無い。"""
+    specs, _ = taskfile.plan_step_specs(_claimed_plan_body(toplevel, task_id))
+    return len(specs) >= 2 and not any(s.task_id == task_id for s in ledger.read_step_stamps(cwd=tree))
 
 
 def _tree_verify_line(tree: str) -> str:

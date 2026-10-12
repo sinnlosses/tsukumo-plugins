@@ -548,6 +548,33 @@ def test_handback_guard_step() -> None:
 
 
 @weight(15)
+def test_handback_guard_skipped_steps() -> None:
+    say("task.py handback-guard: 段が2つ以上の計画で tw step の控えが無いまま verify を通した返却は拒む")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(tmp, verify="`true`")
+        commit_task(main_path, taskfile.Task("T-100", "三段", "todo", "sonnet", "Y", (), BODY))
+        commit_task(main_path, taskfile.Task("T-101", "一段", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-",
+                 stdin="### 1. 書く\n\n### 2. 試す\n\n### 3. 直す\n")
+        write(os.path.join(wt1, "work.txt"), "x\n")
+        r = run_task(wt1, "verify")
+        reason = _block_reason(run_handback_guard(tmp, wt1))
+        check("step の控えが無いまま verify を通すと、tw step を打って返す旨で block",
+              r.returncode == 0 and "段の控えが無い" in reason and "tw step T-100" in reason, r.stdout + r.stderr + reason)
+        r = run_task(wt1, "step", "T-100", "1")
+        run_task(wt1, "verify")
+        check("step の控えが1つあれば通る", r.returncode == 0 and run_handback_guard(tmp, wt1) is None,
+              r.stdout + r.stderr)
+
+        run_task(wt2, "claim", "T-101")
+        run_task(wt2, "edit", "T-101", "--section", "やること", "--body-file", "-", stdin="### 1. 書く\n")
+        write(os.path.join(wt2, "work.txt"), "x\n")
+        run_task(wt2, "verify")
+        check("段が1つの計画は控え無しで通る", run_handback_guard(tmp, wt2) is None)
+
+
+@weight(15)
 def test_handback_guard_parallel_steps() -> None:
     say("task.py step・pause・handback-guard: 同じ作業ツリーで並列の段の担当どうしが互いの控えを崩さない")
     with tempfile.TemporaryDirectory() as tmp:
@@ -904,6 +931,7 @@ TESTS = (
     test_state_dir,
     test_handback_guard_parallel_steps,
     test_handback_guard_step,
+    test_handback_guard_skipped_steps,
     test_commit_guard,
     test_ask_guard,
     test_commit_guard_shell_edit,

@@ -492,7 +492,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | `pause [T-xxx [<n>]]` | 判断が要って止める・目視待ち・計画を作業の後に書いた返却の直前に打つ（委譲先。並列の段の担当は ID と段の番号を付ける） | `PAUSED`・`NOT_OWNER` |
 | `step T-xxx <n>` | 最後でない段を済ませて返す直前に打つ（委譲先。着手した作業ツリーで打つ） | `STEPPED`・`LAST_STEP`（終了コード4。最後の段は `tw verify` を通して返す）・`NOT_OWNER` |
 | `lap T-xxx <段> [start\|end]` | `/next-task` の段の頭と終わりを記録するとき（メイン。段は `direct`・`delegate`・`accept`・`review`・`retro`・`land`・`sync`） | `LAPPED`・`NOT_CLAIMED` |
-| `handback-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。作業があるのに計画・検証が欠けた委譲先の返却を拒む。控えた `tw` と照らす `tw` の版が違うと `NOT_VERIFIED scheme` で止まるので、第3列のチェックアウトの `bin/tw` で `tw verify` を打ち直す | 拒むときだけ JSON 1行（`SubagentStop` は `block`、`PreToolUse` は deny）。通すときは何も出さない |
+| `handback-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。作業があるのに計画・検証が欠けた委譲先の返却を拒む。段が2つ以上の計画で `tw step` の控えが1つも無い返却も拒む。控えた `tw` と照らす `tw` の版が違うと `NOT_VERIFIED scheme` で止まるので、第3列のチェックアウトの `bin/tw` で `tw verify` を打ち直す | 拒むときだけ JSON 1行（`SubagentStop` は `block`、`PreToolUse` は deny）。通すときは何も出さない |
 | `ask-guard` | hook が呼ぶ（手で打たない）。`loopable: Y` のタスクの着手中に、振り返り以外で `AskUserQuestion` を拒む | 拒むときだけ deny の JSON 1行（理由はタスクIDと次の一手）。通すときは何も出さない |
 
 | 終了コード | 先頭語 | 意味 | スキルがすること |

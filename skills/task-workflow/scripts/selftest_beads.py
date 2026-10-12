@@ -462,8 +462,9 @@ def test_handback_guard() -> None:
         reason = handback_reason(tmp, wt1) or ""
         check("計画があっても検証が無ければ block（NOT_VERIFIED）",
               "NOT_VERIFIED\tnone" in reason and "PLAN_NOT_FIRST" not in reason, reason)
+        run_task(wt1, "step", a, "1")
         r = run_task(wt1, "verify")
-        check("PLAN_FIRST と tw verify がそろえば通す", r.returncode == 0 and handback_reason(tmp, wt1) is None,
+        check("PLAN_FIRST と tw step と tw verify がそろえば通す", r.returncode == 0 and handback_reason(tmp, wt1) is None,
               r.stdout + r.stderr)
 
 
