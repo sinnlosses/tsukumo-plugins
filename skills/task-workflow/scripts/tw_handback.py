@@ -41,7 +41,7 @@ def cmd_pause(toplevel: str, task_id: str | None = None, step: str | None = None
             return
     key = _current_key(toplevel)
     ledger.write_pause_stamp(key, cwd=toplevel)
-    others = [tree for task_id in tw_base.claimed_here(toplevel) for tree in _task_trees(toplevel, task_id)[1:]]
+    others = [tree for task_id in tw_base.claimed_here(toplevel) for tree in task_trees(toplevel, task_id)[1:]]
     for tree in dict.fromkeys(others):
         ledger.write_pause_stamp(_current_key(tree), cwd=tree)
     tw_base.record_claimed(toplevel, "pause")
@@ -78,12 +78,12 @@ def _owned_step(toplevel: str, task_id: str, step: str) -> tuple[str, tuple[task
 def _write_step_stamps(
     toplevel: str, shown: str, specs: tuple[taskfile.PlanStep, ...], n: int, kind: str
 ) -> ledger.ContentKey:
-    """段 `n` の控えを、タスクの作業ツリー（`_task_trees`）それぞれに、段 `n` と並列の組になる段の触るファイルを
+    """段 `n` の控えを、タスクの作業ツリー（`task_trees`）それぞれに、段 `n` と並列の組になる段の触るファイルを
     外したいまの鍵で書き、着手中でないタスクの段の控えを消す。着手した作業ツリーの鍵を返す。"""
     excluded = taskfile.parallel_files(specs, n)
     claimed = tw_base.claimed_here(toplevel)
     key = _current_key(toplevel, excluded)
-    for tree in _task_trees(toplevel, shown):
+    for tree in task_trees(toplevel, shown):
         tree_key = key if tree == toplevel else _current_key(tree, excluded)
         ledger.write_step_stamp(ledger.StepStamp(tree_key, shown, n, kind), cwd=tree)
         stale = [s.task_id for s in ledger.read_step_stamps(cwd=tree) if s.task_id not in claimed]
@@ -114,7 +114,7 @@ def cmd_lap(toplevel: str, task_id: str, stage: str, edge: str | None = None) ->
     print(f"LAPPED\t{shown}\t{stage}\t{edge}")
 
 
-def _task_trees(toplevel: str, task_id: str) -> list[str]:
+def task_trees(toplevel: str, task_id: str) -> list[str]:
     """タスクの作業ツリー。先頭は着手した `toplevel`。
 
     `## やること` の `### 作業先` が別のリポジトリなら、そのリポジトリの作業ツリーのうち、
@@ -146,7 +146,7 @@ def _claimed_plan_body(toplevel: str, task_id: str) -> str:
 def handback_refusal(where: str) -> str | None:
     """`where` の作業ツリーから委譲先が返すのを拒む理由。通すなら `None`。
 
-    控えのタスクごとに、その作業ツリー（`_task_trees`）を1つずつ見る。作業ツリーを通すのは、作業が無い
+    控えのタスクごとに、その作業ツリー（`task_trees`）を1つずつ見る。作業ツリーを通すのは、作業が無い
     （着手した作業ツリーでは `claim` 時の `HEAD` より後のコミットも、変更も無い。
     作業先の作業ツリーでは主ブランチとの分かれ目より後のコミットも、変更も無い）か、`plan-check` が通ったうえで
     その作業ツリーの `verify-check` が通っているか `tw step` の印が最後でない段をいまの中身で指しているか、
@@ -185,7 +185,7 @@ def _handback_gaps(toplevel: str, task_id: str) -> list[str]:
     head = metadata.get(beads.CLAIM_HEAD_KEY) if isinstance(metadata, dict) else None
     plan_ok = plan_line.split("\t")[0] in HANDBACK_PLAN_OK
     gaps: list[str] = []
-    for tree in _task_trees(toplevel, task_id):
+    for tree in task_trees(toplevel, task_id):
         work_head = head if tree == toplevel else _fork_point(tree)
         if tw_plan.plan_state(tree, work_head, "-") == tw_plan.PLAN_FIRST:
             continue

@@ -210,6 +210,7 @@ front matter（`id`・`summary`・`status`・`difficulty`・`loopable`・近道�
   コミットを作る git のサブコマンド・シェルでのファイルの書き換え・検証コマンドの直打ちをすると `tw commit-guard` が拒み、
   作業があるのに計画か検証が欠けた返却をすると `tw handback-guard` が拒む。委譲先は `Edit`・`Write` で書き、
   検証は `tw verify` で打ち、最後でない段は `tw step T-xxx <n>`、止める返却は `tw pause` を返す直前に打つ。
+  作業先が別のリポジトリなら、作業先の作業ツリー（枝の名前がタスクIDの小文字）での書き換えと検証コマンドの直打ちも拒む（コミットは拒まない）。
   判定の詳細は `tw commit-guard --help`・`tw handback-guard --help`
 - **取り残し**（前提: 1つの作業ツリーでは同時に1セッション）:
 

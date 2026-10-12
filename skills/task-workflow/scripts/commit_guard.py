@@ -2,6 +2,8 @@
 `done` 前の着手の控え（`ledger.open_claims`）があれば拒む。
 コミットを作る git のサブコマンドと、シェルでのファイルの書き換え（`sed -i`・`perl -i`・`>`・`>>`・`tee`・
 python の書き込み）と、設定の `verify`・`verify_before_ship` と同じコマンドの直打ち。判定しきれない書き方は通す。
+書き換えと直打ちは、入力の `cwd` の控えのタスクの `### 作業先` の作業ツリー（`tw_handback.task_trees`）にも控えがあるとみなして拒む。
+コミットはそこでは拒まない。
 
 拒むときだけ stdout に deny の JSON を1行出す。通すときは何も出さない。終了コードはいつも0
 （hook の取り決め。`tw` の「stdout は先頭語の TSV」の例外）。
@@ -70,15 +72,16 @@ def decide(payload: dict) -> str | None:
                 f"着手の印（{','.join(claims)}）が立っていて tw done の前の作業ツリー（{where}）では "
                 f"git {subcommand} を拒む。コミットせず、変更は作業ツリーに残したまま報告で返す"
             )
+    work_claims = _WorkTreeClaims(start)
     for path, how in _shell_writes(command, start):
-        where, claims = _claims_for_write(path)
+        where, claims = _claims_for_write(path, work_claims)
         if claims:
             return (
                 f"着手の印（{','.join(claims)}）が立っていて tw done の前の作業ツリー（{where}）では "
                 f"{how} でファイルを書き換えない。Edit・Write で書く（作業ツリーの外のログへの出力は通る）"
             )
     for where, configured in _verify_commands(command, start):
-        claims = _open_claims_at(where)
+        claims = _open_claims_at(where) or work_claims.at(where)
         if claims:
             return (
                 f"着手の印（{','.join(claims)}）が立っていて tw done の前の作業ツリー（{where}）では "
@@ -236,12 +239,51 @@ def _python_writes(args: list[str], bodies: list[str]) -> bool:
     return _PY_WRITE.search(source) is not None and _PY_OUTSIDE.search(source) is None
 
 
-def _claims_for_write(path: str) -> tuple[str, list[str]]:
+class _WorkTreeClaims:
+    """`start` の控えのタスクの作業先の作業ツリーごとの控え。初めて要るときに1回だけ引く。"""
+
+    def __init__(self, start: str) -> None:
+        self._start = start
+        self._by_tree: dict[str, list[str]] | None = None
+
+    def at(self, where: str) -> list[str]:
+        """`where` を含む作業ツリーが作業先の作業ツリーなら、その作業ツリーを作業先に持つタスクのID。"""
+        if not os.path.isdir(where):
+            return []
+        try:
+            tree = os.path.realpath(ledger.git_toplevel(where))
+        except ledger.GitCommandError:
+            return []
+        if self._by_tree is None:
+            self._by_tree = _work_tree_claims(self._start)
+        return self._by_tree.get(tree, [])
+
+
+def _work_tree_claims(start: str) -> dict[str, list[str]]:
+    """`{作業先の作業ツリーの realpath: タスクID の並び}`。`start` に控えが無いか、引けなければ空。"""
+    claims = _open_claims_at(start)
+    if not claims:
+        return {}
+    import beads
+    import tw_handback
+
+    by_tree: dict[str, list[str]] = {}
+    try:
+        toplevel = ledger.git_toplevel(start)
+        for task_id in claims:
+            for tree in tw_handback.task_trees(toplevel, task_id)[1:]:
+                by_tree.setdefault(os.path.realpath(tree), []).append(task_id)
+    except (ledger.GitCommandError, beads.BeadsError, OSError):
+        return {}
+    return by_tree
+
+
+def _claims_for_write(path: str, work_claims: _WorkTreeClaims) -> tuple[str, list[str]]:
     """書き先を含む作業ツリーの `(ディレクトリ, 着手の控え)`。無視されるパスと、控えの無い所は控え無し。"""
     directory = path if os.path.isdir(path) else os.path.dirname(path)
     while directory != os.path.dirname(directory) and not os.path.isdir(directory):
         directory = os.path.dirname(directory)
-    claims = _open_claims_at(directory)
+    claims = _open_claims_at(directory) or work_claims.at(directory)
     if claims and not os.path.isdir(path) and _is_ignored(path, directory):
         return directory, []
     return directory, claims

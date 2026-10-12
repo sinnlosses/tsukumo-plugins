@@ -310,6 +310,52 @@ def test_commit_guard_verify() -> None:
         check("done のあとの検証コマンドは通る", run_guard(tmp, wt1, "./check.sh") is None)
 
 
+@weight(9)
+def test_commit_guard_other_repo() -> None:
+    say("task.py commit-guard: 作業先が別のリポジトリなら、作業先の作業ツリーの書き換えと検証コマンドの直打ちも拒み、コミットは通す")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(os.path.join(tmp, "own"), verify="`./check.sh`")
+        work_repo, _, _ = make_repo(os.path.join(tmp, "work"), verify="`./check.sh`")
+        commit_task(main_path, taskfile.Task("T-100", "作業先で直す", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-",
+                 stdin=f"### 1. 書く\n\n### 作業先\n- `{work_repo}`\n")
+        work_tree = os.path.join(tmp, "work-t-100")
+        git(work_repo, "worktree", "add", "-q", "-b", "t-100", work_tree, "main")
+        other_tree = os.path.join(tmp, "work-other")
+        git(work_repo, "worktree", "add", "-q", "-b", "other", other_tree, "main")
+        write(os.path.join(work_tree, ".gitignore"), "*.log\n")
+
+        reason = run_guard(tmp, wt1, f"echo x > {work_tree}/f.txt")
+        check("作業先の作業ツリーへの書き換えは理由にタスクIDを入れて拒む",
+              reason is not None and "T-100" in reason and "Edit" in reason, str(reason))
+        for command in (
+            f"cd {work_tree} && sed -i s/a/b/ f.txt",
+            f"cd {work_tree} && echo x | tee f.txt",
+            f"cd {work_tree} && ./check.sh",
+            f"cd {work_tree} && ./check.sh --full",
+        ):
+            check(f"拒む: {command}", run_guard(tmp, wt1, command) is not None)
+        for command, where in (
+            (f"cd {work_tree} && tw verify", wt1),
+            (f"cd {work_tree} && python3 skills/task-workflow/scripts/task.py verify", wt1),
+            (f"git -C {work_tree} status", wt1),
+            (f"cd {work_tree} && git log -1 && git diff", wt1),
+            (f"git -C {work_tree} commit -m x", wt1),
+            (f"cd {work_tree} && git add f.txt && git commit -m x", wt1),
+            (f"echo x > {work_tree}/ignored.log", wt1),
+            (f"echo x > {other_tree}/f.txt", wt1),
+            (f"cd {other_tree} && ./check.sh", wt1),
+            (f"echo x > {work_tree}/f.txt", wt2),
+        ):
+            check(f"通す: {command}（cwd {os.path.basename(where)}）", run_guard(tmp, where, command) is None)
+
+        run_task(wt1, "release", "T-100")
+        check("release のあとは作業先の作業ツリーの書き換えも直打ちも通す",
+              run_guard(tmp, wt1, f"echo x > {work_tree}/f.txt") is None
+              and run_guard(tmp, wt1, f"cd {work_tree} && ./check.sh") is None)
+
+
 HOOKS_JSON = os.path.join(HERE, "..", "..", "..", "hooks", "hooks.json")
 
 
@@ -936,6 +982,7 @@ TESTS = (
     test_ask_guard,
     test_commit_guard_shell_edit,
     test_commit_guard_verify,
+    test_commit_guard_other_repo,
     test_agent_scoped_guard,
     test_readonly_git,
     test_lap,
