@@ -260,7 +260,7 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
    | `none` | `tw verify` を打つ |
    | `base` | `tw verify` が主ブランチを取り込んでから打つ。送る前の検証コマンドの行があるときは、検証コマンドの代わりにそのコマンドで打って控えを取る。取り込みが衝突しなければ `base` にならず、鍵が同じなら `VERIFIED_SAME` |
    | `head`・`content`・`command` | `tw verify` を打つ |
-   | `scheme` | 第3列のパスの `tw` と版を揃えてから `tw verify` を打つ |
+   | `scheme` | 第3列（照らした側のチェックアウトの `tw_verify.py` のパス）のチェックアウトの `bin/tw` と版を揃えてから `tw verify` を打つ |
 
    **作業先が別のリポジトリのとき**（タスクが直す対象が自分の作業ツリーの外のリポジトリ）:
    `${CLAUDE_SKILL_DIR}/other-repo.md` の「受け入れ（手順6）」に従う。

@@ -35,3 +35,8 @@ hooks:
 同じ作業ツリーに作業（着手より後のコミットか、タスクのファイル以外の変更）があるのに、
 `tw plan-check` が `PLAN_FIRST`・`PLAN_REGISTERED` でないか、`tw verify-check` が `VERIFIED_SAME` で
 ないまま返そうとすると、hook（`tw handback-guard`）が拒んで理由を返す。拒まれたら理由に従って直してから返す。
+
+リンクと plugin を併用していると、この hook は frontmatter（PATH の `tw`）と plugin の `hooks/hooks.json`
+（plugin の `bin/tw`）の両方から走る。2つの `tw` の版が違い `NOT_VERIFIED scheme <パス>` で拒まれたら、
+第3列は照らした側のチェックアウトの `tw_verify.py` のパスなので、そのチェックアウトの `bin/tw`
+（またはそこへ解決される PATH の `tw`）で `tw verify` を打ち直す。

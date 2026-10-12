@@ -32,6 +32,8 @@ tsukumo のワークフローの契約に型の合う1つの例だが、tsukumo 
 （両方で入れると同じスキルが二重に見える）。
 リンクだけで入れると `hooks/hooks.json` は読まれないので、主のセッションに `tw ask-guard` は掛からない
 （`no-delegate` の hook はエージェント定義の frontmatter が掛ける）。
+やむを得ず plugin と併用したときは、`no-delegate` への委譲で frontmatter と `hooks.json` の両方の hook が走る。
+PATH の `tw` と plugin の `bin/tw` の版が違うと `tw verify` のあとの関門が `NOT_VERIFIED scheme` で止まるので、2つを同じチェックアウトに揃える。
 
 - 張る先は `--dest DIR` → `CLAUDE_CONFIG_DIR`（設定されていればその下の `skills/`）→ `$HOME/.claude/skills`
   の順で決まる。`tw` の張る先は `--bin-dir DIR`（無ければ `~/.local/bin`）
