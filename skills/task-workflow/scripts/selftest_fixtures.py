@@ -250,3 +250,49 @@ def flow_rows(wt: str) -> list[dict]:
         with open(os.path.join(d, name), encoding="utf-8") as f:
             out += [json.loads(line) for line in f if line.strip()]
     return out
+
+
+FILE_PROTOCOL = ("-c", "protocol.file.allow=always")
+FILE_PROTOCOL_ENV = {
+    "GIT_CONFIG_COUNT": "1",
+    "GIT_CONFIG_KEY_0": "protocol.file.allow",
+    "GIT_CONFIG_VALUE_0": "always",
+}
+
+
+def make_submodule_repo(tmp: str) -> tuple[str, str, str, str]:
+    """`(本体, 作業ツリー1, 作業ツリー2, サブモジュールの取り寄せ元)`。本体・両作業ツリーにサブモジュール `vendor/sub` が入っている。"""
+    main_path, wt1, wt2 = make_repo(tmp)
+    origin = os.path.join(tmp, "sub-origin")
+    os.makedirs(origin)
+    git(origin, "init", "-q", "-b", "main")
+    git(origin, "config", "user.email", "test@example.com")
+    git(origin, "config", "user.name", "test")
+    write(os.path.join(origin, "v.txt"), "1\n")
+    git(origin, "add", "v.txt")
+    git(origin, "commit", "-q", "-m", "v1")
+    git(main_path, *FILE_PROTOCOL, "submodule", "add", "-q", origin, "vendor/sub")
+    git(main_path, "commit", "-q", "-m", "サブモジュールを足す")
+    for wt in (wt1, wt2):
+        git(wt, "merge", "-q", "--ff-only", "main")
+        git(wt, *FILE_PROTOCOL, "submodule", "update", "--init", "-q")
+    return main_path, wt1, wt2, origin
+
+
+def drift_submodule(origin: str, worktree: str, name: str) -> str:
+    """取り寄せ元に1コミット足し、作業ツリーのサブモジュールをそれへ動かす（`git add` もコミットもしない）。新しいコミットを返す。"""
+    write(os.path.join(origin, "v.txt"), f"{name}\n")
+    git(origin, "commit", "-q", "-am", name)
+    new = git(origin, "rev-parse", "HEAD").stdout.strip()
+    sub = os.path.join(worktree, "vendor", "sub")
+    git(sub, *FILE_PROTOCOL, "fetch", "-q", "origin")
+    git(sub, "checkout", "-q", new)
+    return new
+
+
+def advance_submodule(origin: str, worktree: str, name: str) -> str:
+    """`drift_submodule` のあとにポインタのコミットを積む。新しいコミットを返す。"""
+    new = drift_submodule(origin, worktree, name)
+    git(worktree, "add", "vendor/sub")
+    git(worktree, "commit", "-q", "-m", f"サブモジュールを {name} へ")
+    return new

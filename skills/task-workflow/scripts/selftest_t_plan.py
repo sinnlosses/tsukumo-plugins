@@ -8,7 +8,7 @@ from selftest_support import check, git, refuse_direct_run, say, weight, write  
 import beads  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
-from selftest_fixtures import BODY, PLANNED_BODY, _claim_work_and_done, commit_task, issue_count, make_repo, metadata, run_task, set_plan_directly, shown, shown_body  # noqa: E402
+from selftest_fixtures import BODY, PLANNED_BODY, _claim_work_and_done, commit_task, issue_count, make_repo, make_submodule_repo, drift_submodule, metadata, run_task, set_plan_directly, shown, shown_body  # noqa: E402
 
 
 @weight(21)
@@ -513,6 +513,44 @@ def test_root_ignored() -> None:
                   r.stdout + r.stderr)
 
 
+def test_submodule_drift_is_not_work() -> None:
+    say("task.py edit・plan-check: submodule のずれだけなら作業に数えず、通常の変更かコミットがあれば数える")
+    planned = task_body([("書く", "")])
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2, origin = make_submodule_repo(tmp)
+        for tid in ("T-100", "T-101", "T-102"):
+            commit_task(main_path, taskfile.Task(tid, "submodule のずれ", "todo", "sonnet", "Y", (), BODY))
+        git(wt1, "merge", "-q", "--ff-only", "main")
+
+        run_task(wt1, "claim", "T-100")
+        drift_submodule(origin, wt1, "v2")
+        check("submodule のずれが git status に出ている", " M vendor/sub" in git(wt1, "status", "--porcelain").stdout)
+        r = run_task(wt1, "edit", "T-100", "--body-file", "-", stdin=planned)
+        check("submodule のずれだけなら初回の edit は EDITED（終了コード0）", r.returncode == 0
+              and r.stdout.strip() == "EDITED\tT-100", r.stdout + r.stderr)
+        r = run_task(wt1, "plan-check", "T-100")
+        check("submodule のずれだけなら PLAN_FIRST", r.stdout.strip() == "PLAN_FIRST\tT-100", r.stdout + r.stderr)
+        git(wt1, "submodule", "update", "-q")
+
+        run_task(wt1, "claim", "T-101")
+        drift_submodule(origin, wt1, "v3")
+        write(os.path.join(wt1, "work.txt"), "x\n")
+        r = run_task(wt1, "edit", "T-101", "--body-file", "-", stdin=planned)
+        check("submodule のずれに通常ファイルの変更が加われば WORK_BEFORE_PLAN（終了コード4）", r.returncode == 4
+              and r.stdout.startswith("WORK_BEFORE_PLAN\tT-101\t"), r.stdout + r.stderr)
+        os.remove(os.path.join(wt1, "work.txt"))
+        git(wt1, "submodule", "update", "-q")
+
+        run_task(wt1, "claim", "T-102")
+        drift_submodule(origin, wt1, "v4")
+        write(os.path.join(wt1, "work.txt"), "x\n")
+        git(wt1, "add", "work.txt")
+        git(wt1, "commit", "-q", "-m", "作業")
+        r = run_task(wt1, "edit", "T-102", "--body-file", "-", stdin=planned)
+        check("submodule のずれに着手後のコミットが加われば WORK_BEFORE_PLAN（終了コード4）", r.returncode == 4
+              and r.stdout.startswith("WORK_BEFORE_PLAN\tT-102\t"), r.stdout + r.stderr)
+
+
 def test_draft_to_todo() -> None:
     say("task.py edit: ドラフトは完了条件とやることが書けたときだけ todo に進め、登録時の計画として控える")
     with tempfile.TemporaryDirectory() as tmp:
@@ -574,6 +612,7 @@ TESTS = (
     test_draft_to_todo,
     test_registered_plan,
     test_edit_and_plan_check,
+    test_submodule_drift_is_not_work,
     test_edit_deps,
     test_edit_section,
     test_root_ignored,

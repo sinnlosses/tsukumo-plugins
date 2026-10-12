@@ -7,7 +7,7 @@ import tempfile
 from selftest_support import check, git, refuse_direct_run, say, weight, write  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
-from selftest_fixtures import BODY, _claim_work_and_done, body_file, commit_task, flow_rows, make_repo, run_task  # noqa: E402
+from selftest_fixtures import BODY, FILE_PROTOCOL, FILE_PROTOCOL_ENV, _claim_work_and_done, advance_submodule, body_file, commit_task, flow_rows, make_repo, make_submodule_repo, run_task  # noqa: E402
 
 
 def _no_merge_commits(repo: str, base: str = "main") -> str:
@@ -358,65 +358,25 @@ def test_land_without_base_worktree() -> None:
         )
 
 
-_FILE_PROTOCOL = ("-c", "protocol.file.allow=always")
-_FILE_PROTOCOL_ENV = {
-    "GIT_CONFIG_COUNT": "1",
-    "GIT_CONFIG_KEY_0": "protocol.file.allow",
-    "GIT_CONFIG_VALUE_0": "always",
-}
-
-
-def _make_submodule_repo(tmp: str) -> tuple[str, str, str, str]:
-    """`(本体, 作業ツリー1, 作業ツリー2, サブモジュールの取り寄せ元)`。本体・両作業ツリーにサブモジュール `vendor/sub` が入っている。"""
-    main_path, wt1, wt2 = make_repo(tmp)
-    origin = os.path.join(tmp, "sub-origin")
-    os.makedirs(origin)
-    git(origin, "init", "-q", "-b", "main")
-    git(origin, "config", "user.email", "test@example.com")
-    git(origin, "config", "user.name", "test")
-    write(os.path.join(origin, "v.txt"), "1\n")
-    git(origin, "add", "v.txt")
-    git(origin, "commit", "-q", "-m", "v1")
-    git(main_path, *_FILE_PROTOCOL, "submodule", "add", "-q", origin, "vendor/sub")
-    git(main_path, "commit", "-q", "-m", "サブモジュールを足す")
-    for wt in (wt1, wt2):
-        git(wt, "merge", "-q", "--ff-only", "main")
-        git(wt, *_FILE_PROTOCOL, "submodule", "update", "--init", "-q")
-    return main_path, wt1, wt2, origin
-
-
-def _advance_submodule(origin: str, worktree: str, name: str) -> str:
-    """取り寄せ元に1コミット足し、作業ツリーのサブモジュールをそれへ進めたポインタのコミットを積む。新しいコミットを返す。"""
-    write(os.path.join(origin, "v.txt"), f"{name}\n")
-    git(origin, "commit", "-q", "-am", name)
-    new = git(origin, "rev-parse", "HEAD").stdout.strip()
-    sub = os.path.join(worktree, "vendor", "sub")
-    git(sub, *_FILE_PROTOCOL, "fetch", "-q", "origin")
-    git(sub, "checkout", "-q", new)
-    git(worktree, "add", "vendor/sub")
-    git(worktree, "commit", "-q", "-m", f"サブモジュールを {name} へ")
-    return new
-
-
 def test_ship_and_land_sync_submodules() -> None:
     say("task.py ship / land: 合流のあと本体のサブモジュールを記録した版へ揃える")
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, wt2, origin = _make_submodule_repo(tmp)
+        main_path, wt1, wt2, origin = make_submodule_repo(tmp)
 
         def sub_head() -> str:
             return git(os.path.join(main_path, "vendor", "sub"), "rev-parse", "HEAD").stdout.strip()
 
-        new = _advance_submodule(origin, wt1, "v2")
-        r = run_task(wt1, "ship", env=_FILE_PROTOCOL_ENV)
+        new = advance_submodule(origin,wt1, "v2")
+        r = run_task(wt1, "ship", env=FILE_PROTOCOL_ENV)
         check("ship は SHIPPED(0)", r.returncode == 0 and r.stdout.startswith("SHIPPED\t"), r.stdout + r.stderr)
         check("SUBMODULE_NOT_SYNCED は出ない", "SUBMODULE_NOT_SYNCED" not in r.stdout, r.stdout)
         check("ship のあと本体の status が空", git(main_path, "status", "--porcelain").stdout == "")
         check("本体のサブモジュールが記録した版", sub_head() == new)
 
         git(wt2, "merge", "-q", "--ff-only", "main")
-        new = _advance_submodule(origin, wt2, "v3")
+        new = advance_submodule(origin,wt2, "v3")
         git(wt2, "submodule", "deinit", "-q", "-f", "vendor/sub")
-        r = run_task(main_path, "land", "wt2-branch", env=_FILE_PROTOCOL_ENV)
+        r = run_task(main_path, "land", "wt2-branch", env=FILE_PROTOCOL_ENV)
         check("land は LANDED で始まる", r.stdout.startswith("LANDED\t"), r.stdout + r.stderr)
         check("SUBMODULE_NOT_SYNCED は出ない（land）", "SUBMODULE_NOT_SYNCED" not in r.stdout, r.stdout)
         check("land のあと本体の status が空", git(main_path, "status", "--porcelain").stdout == "")
@@ -426,11 +386,11 @@ def test_ship_and_land_sync_submodules() -> None:
 def test_ship_and_land_report_unsynced_submodule() -> None:
     say("task.py ship / land: サブモジュールを揃えられなくても合流は変えず SUBMODULE_NOT_SYNCED で知らせる")
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, wt2, origin = _make_submodule_repo(tmp)
-        _advance_submodule(origin, wt1, "v2")
+        main_path, wt1, wt2, origin = make_submodule_repo(tmp)
+        advance_submodule(origin,wt1, "v2")
         shutil.move(origin, origin + "-gone")
 
-        r = run_task(wt1, "ship", env=_FILE_PROTOCOL_ENV)
+        r = run_task(wt1, "ship", env=FILE_PROTOCOL_ENV)
         lines = r.stdout.splitlines()
         check("ship は SHIPPED(0) のまま", r.returncode == 0 and lines[0].startswith("SHIPPED\t"), r.stdout + r.stderr)
         check(
@@ -441,13 +401,13 @@ def test_ship_and_land_report_unsynced_submodule() -> None:
 
         shutil.move(origin + "-gone", origin)
         git(wt2, "merge", "-q", "--ff-only", "main")
-        git(os.path.join(main_path, "vendor", "sub"), *_FILE_PROTOCOL, "fetch", "-q", "origin")
+        git(os.path.join(main_path, "vendor", "sub"), *FILE_PROTOCOL, "fetch", "-q", "origin")
         git(os.path.join(main_path, "vendor", "sub"), "checkout", "-q", git(wt1, "rev-parse", "HEAD:vendor/sub").stdout.strip())
-        _advance_submodule(origin, wt2, "v3")
+        advance_submodule(origin,wt2, "v3")
         git(wt2, "submodule", "deinit", "-q", "-f", "vendor/sub")
         shutil.move(origin, origin + "-gone")
         wt2_head = git(wt2, "rev-parse", "HEAD").stdout.strip()
-        r = run_task(main_path, "land", "wt2-branch", env=_FILE_PROTOCOL_ENV)
+        r = run_task(main_path, "land", "wt2-branch", env=FILE_PROTOCOL_ENV)
         lines = r.stdout.splitlines()
         check("land は LANDED で始まる", lines[0].startswith("LANDED\t"), r.stdout + r.stderr)
         check(
@@ -461,12 +421,12 @@ def test_ship_and_land_report_unsynced_submodule() -> None:
 def test_land_removes_worktree_with_submodule_only_when_clean() -> None:
     say("task.py land: サブモジュールを持つ作業ツリーは、作業ツリーとサブモジュールが綺麗なときだけ消す")
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, wt2, _origin = _make_submodule_repo(tmp)
+        main_path, wt1, wt2, _origin = make_submodule_repo(tmp)
 
         def branches() -> list[str]:
             return git(main_path, "branch", "--format=%(refname:short)").stdout.split()
 
-        r = run_task(main_path, "land", "wt2-branch", env=_FILE_PROTOCOL_ENV)
+        r = run_task(main_path, "land", "wt2-branch", env=FILE_PROTOCOL_ENV)
         lines = r.stdout.splitlines()
         check(
             "綺麗なら LANDED・REMOVED・DELETED（終了コード0）",
@@ -479,7 +439,7 @@ def test_land_removes_worktree_with_submodule_only_when_clean() -> None:
 
         write(os.path.join(wt1, "vendor", "sub", "dirty.txt"), "x\n")
         main_head = git(main_path, "rev-parse", "HEAD").stdout.strip()
-        r = run_task(main_path, "land", "wt1-branch", env=_FILE_PROTOCOL_ENV)
+        r = run_task(main_path, "land", "wt1-branch", env=FILE_PROTOCOL_ENV)
         check(
             "サブモジュールの中の未追跡は NOT_LANDED(4)",
             r.returncode == 4 and r.stdout.startswith("NOT_LANDED\twt1-branch\t"),
@@ -493,7 +453,7 @@ def test_land_removes_worktree_with_submodule_only_when_clean() -> None:
         )
 
         git(wt1, "config", "submodule.vendor/sub.ignore", "all")
-        r = run_task(main_path, "land", "wt1-branch", env=_FILE_PROTOCOL_ENV)
+        r = run_task(main_path, "land", "wt1-branch", env=FILE_PROTOCOL_ENV)
         lines = r.stdout.splitlines()
         check(
             "本体の status が汚れを隠すなら LANDED のあと作業ツリーは NOT_REMOVED(4)",
