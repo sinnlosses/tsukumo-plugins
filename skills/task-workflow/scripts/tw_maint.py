@@ -1,4 +1,4 @@
-"""`tw config-doctor`・`sync`・`backup`・`migrate-attributes`・`jira-closed`（置き場の手入れ）。"""
+"""`tw config-doctor`・`sync`・`backup`・`jira-closed`（置き場の手入れ）。"""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ import beads
 import init
 import layout
 import ledger
-import taskfile
 import tracker
 import tw_base
 
@@ -74,48 +73,6 @@ def cmd_backup(toplevel: str) -> None:
     tw_base.print_lines(lines)
     if any("\tFAILED\t" in l for l in lines):
         raise SystemExit(10)
-
-
-DIFFICULTY_LABEL = "difficulty:"
-LOOPABLE_LABEL = "loopable:"
-
-
-def cmd_migrate_attributes(toplevel: str) -> None:
-    """label `difficulty:`・`loopable:` を metadata へ写して label を外す（打ち直しても結果は変わらない）。"""
-    keys = (
-        (beads.DIFFICULTY_KEY, DIFFICULTY_LABEL, taskfile.DIFFICULTY_VALUES),
-        (beads.LOOPABLE_KEY, LOOPABLE_LABEL, taskfile.LOOPABLE_VALUES),
-    )
-    migrated = 0
-    invalid = 0
-    for issue in beads.list_issues(toplevel):
-        if not any(l.startswith((DIFFICULTY_LABEL, LOOPABLE_LABEL)) for l in issue.labels):
-            continue
-        shown = beads.to_task_id(issue.bd_id)
-        metadata = issue.raw.get("metadata")
-        metadata = metadata if isinstance(metadata, dict) else {}
-        cmd = ["update", issue.bd_id]
-        reason = None
-        for key, prefix, allowed in keys:
-            labels = [l for l in issue.labels if l.startswith(prefix)]
-            if metadata.get(key):
-                pass
-            elif len(labels) == 1 and labels[0][len(prefix) :] in allowed:
-                cmd += ["--set-metadata", f"{key}={labels[0][len(prefix) :]}"]
-            else:
-                reason = f"{key} を label から決められない（metadata が無く、label が{len(labels)}個か値が表に無い）"
-                break
-            cmd += [x for l in labels for x in ("--remove-label", l)]
-        if reason is not None:
-            invalid += 1
-            print(f"INVALID\t{shown}\t{reason}")
-            continue
-        beads.run_ok(toplevel, cmd, tw_base.actor(toplevel))
-        migrated += 1
-        print(f"MIGRATED\t{shown}")
-    print(f"MIGRATED_TOTAL\t{migrated}\tINVALID\t{invalid}")
-    if invalid:
-        raise SystemExit(3)
 
 
 def cmd_jira_closed(toplevel: str, task_ids: list[str]) -> None:

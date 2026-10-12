@@ -6,7 +6,7 @@
 `/next-task`・`/plan-tasks`・`/list-tasks`・`/retrospect`・`/setup-tasks` が従うルール。
 **手順は `tw` コマンドが持ち、自己テスト（`scripts/selftest_task.py`）で守る。** スキルの本文は
 「どのサブコマンドをいつ打つか」と「人が判断する点」だけで、プロジェクト側で手順を上書きする
-仕組みは無い。設計の経緯と採らなかった案は、切り出す前の置き場 `sinnlosses/claude-skills` の `docs/history/task-workflow-redesign.md`。
+仕組みは無い。
 
 ## 目次
 
@@ -24,19 +24,17 @@
 | ## コミットメッセージ | タスクIDの付け方 |
 | ## ドラフトの課題 | 指示の入口、承認ゲート、ドラフトの書式 |
 | ## `tw` コマンドの参照 | サブコマンドと出力、終了コードの表 |
-| ## Beads とトラッカー | ID の決まり方、用意、タスクの要素と Beads の置き場の対応、サイクルの各段で Beads に起きること、トラッカー（GitHub・Jira）、GitHub との双方向、ID の形の切り替え、バックアップ |
+| ## Beads とトラッカー | ID の決まり方、用意、タスクの要素と Beads の置き場の対応、サイクルの各段で Beads に起きること、トラッカー（GitHub・Jira）、GitHub との双方向、バックアップ |
 
 ## ファイル配置と設定ファイル
 
-設定は `.tw/config.toml`、作業ツリーごとの控えは `.tw/local/` に置く。設定に旧い `root` が書いてあっても拒まず無視する（`tw config` は出さない）。
-
+設定は `.tw/config.toml`、作業ツリーごとの控えは `.tw/local/` に置く。
 | 場所 | 役割 |
 | --- | --- |
 | 本体の根の `.beads/` | タスクの本文・着手の印・採番・履歴（Beads。下の「Beads とトラッカー」）。`bd init --stealth` が `.git/info/exclude` で外すのでコミットしない。全作業ツリーで1つ |
 | `.tw/config.toml` | 設定（下）。コミットする |
-| `.tw/.gitignore` | 中身 `local/`。`.tw/local/` だけを git の外に置く。`init.py` が書き（無いときと、旧い形〔`*`・`*` と `!config.toml` の2行〕のとき）、`tw` は書かない。コミットする |
+| `.tw/.gitignore` | 中身 `local/`。`.tw/local/` だけを git の外に置く。`init.py` が書き（無いときと、旧い形のとき）、`tw` は書かない。コミットする |
 | `docs/history/retrospect.md` | 横断の振り返りの記録（1回ごとに先頭へ `## YYYY-MM-DD（開始日〜終了日）` の見出しを足す。`retrospect` の SKILL.md「週ごとに振り返る」）。`tw status` が見出しの日付から `retrospect_due` を決める |
-| `docs/history/tasks.md`・`docs/history/progress.md` | 旧形式の時代の履歴。**読むだけで書き足さない** |
 | 台帳 `$(git rev-parse --path-format=absolute --git-common-dir)/task-workflow/`（環境変数 `TW_STATE_DIR` があれば `$TW_STATE_DIR/<本体の作業ツリーの名前>-<共有の git dir の realpath の sha1 の先頭12桁>/`） | 着手から送り出しまでの出来事（`flow/<YYYY-MM>.jsonl`。1行1出来事で、時刻（UTC）・出来事・タスクID・`difficulty` と、`verify`・`ship` の結果の先頭語と `verify` の所要秒、`lap` の段の名前（`stage`）と段の端（`edge`。`start`／`end`）、`done` の `dropped` と振り返りが「兆候なし」か。出来事の一覧は「台帳に残る出来事」。会話・コマンド・パスは入れない。消えない）。コミットしない。全作業ツリーで1つ。`TW_STATE_DIR` を付けると、そのあとの記録はその下に書き、共有の git dir の台帳は読まない（写さない）。書けなければ標準エラーに1行出すだけで、元のサブコマンドの出力と終了コードは変わらない |
 | 作業ツリーの根の `.tw/local/task-open-claims/T-xxx` | `claim` から `done`・`release`・`ship` までの控え（中身は空）。`tw commit-guard`・`tw handback-guard`・`tw ask-guard` が読む。コミットしない。作業ツリーごと |
 | 作業ツリーの根の `.tw/local/` の `task-verify-stamp`・`task-pause-stamp`・`task-step-stamps/<ID>.<n>`・`task-ship-verify-owed`・`task-verify.log`・`task-ship-verify.log`・`task-verify.failed-<時刻>.log`・`task-ship-verify.failed-<時刻>.log` | `tw verify` が通った中身の鍵と、`tw pause`・`tw step` を打った時点の中身の鍵（どれも `HEAD` の SHA・作業ツリーの木の SHA〔`.tw/local/` を外す。`.tw/config.toml` は入れたまま〕・検証コマンドの3行。`task-step-stamps/` は段ごとに1つで、続けてタスクID・段の番号・種類〔`step`・`pause`〕の3行。木からはその段と並列の組になる段の触るファイルも外す）、`ship` の検証の借り、`verify`・`ship` の検証のログ（`task-verify.log` には整形の出力のあとに検証の出力が続く。通った回は上書き。落ちた回は `.failed-<時刻>.log` に写して種類ごとに直近3本を残す）。コミットしない。作業ツリーごと。`.tw/local/` は初めて書くときに `tw` が作り、中身 `*` の `.tw/local/.gitignore` を置く（`.tw/.gitignore`・利用者の `.gitignore`・`.git/info/exclude` には触らない）。読む順は `.tw/local/` → `.tw/` 直下（旧い置き場。上の控えの名前があるとき）→ 作業ツリー固有の git dir `$(git rev-parse --path-format=absolute --git-dir)`（最も古い置き場）で、書くのはいつも `.tw/local/`。`.tw/local/` があるかどうかが目印で、作るときに控えを名前ごとに `.tw/` 直下（無ければ git dir）から写し、`.tw/` 直下の検証のログも写して、旧い側を両方の置き場から消す |
@@ -494,7 +492,6 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | `adopt <ID> --difficulty … --loopable … [--summary …] [--direct] --body-file …` | 振り分け前の課題（「Beads とトラッカー」）に metadata `difficulty`・`loopable` と本文を付ける（`jira` はキーの無い課題に番号も）。本文の検査は `new` と同じで `## やること` の中身が要り（`--hold` は無い）、`notes` に入れて metadata `task_plan_base` を控える。`--direct` は label `direct:Y` を付け、基準を外れれば `new` と同じく終了コード2 | `ADOPTED\t<元のID>\t<ID>` |
 | `sync` | トラッカーと同期する（`github` は双方向、`jira` は取り込み、打ち直しも兼ねる） | `TRACKER\tOK\|FAILED\t…`・`NOTHING`・`BUSY\tsync\t<持ち主の情報>`（別の `tw sync` が走っている。終了コード5） |
 | `backup` | Beads のバックアップを取る | `BACKUP\tOK\|FAILED\t<置き場>` |
-| `migrate-attributes` | 1回きりの移行。全課題（閉じたものを含む）の label `difficulty:`・`loopable:` を metadata `difficulty`・`loopable` へ写して label を外す（metadata が既にあれば metadata を勝たせて label だけ外す。ほかの label は触らない。打ち直しても結果は変わらない）。値が表に無い・片方しか決まらない課題は移さず `INVALID` の行に出す | `MIGRATED\tT-xxx`・`INVALID\tT-xxx\t<理由>`・`MIGRATED_TOTAL\t<件数>\tINVALID\t<件数>`（`INVALID` があれば終了コード3） |
 | `jira-closed T-xxx…` | `jira:close` を外す | `CLEARED` |
 | `plan-check T-xxx` | 自分の着手の印について、`## やること` を作業より先に `tw edit` で書いたかを出す（読むだけ） | `PLAN_FIRST\tT-xxx`、そうでなければ `PLAN_NOT_FIRST\tT-xxx\t<理由>`（`missing`＝空か「なし」／`after-work`＝作業が始まってから書いた／`unrecorded`＝`tw edit` が印を残さなかった。`claim` の前に書いた・着手の印の持ち主でない作業ツリーから書いた・`tw edit` を通さずに書いた／`steps`＝中身はあるが段の形（「タスクの本文」の「段の形」）に沿わない。印によらずこれを先に出す）。登録時に書いた計画（`new`・`adopt`）は、名指したファイルが変わっていなければ `PLAN_REGISTERED\tT-xxx\t<控えた SHA>`（`PLAN_FIRST` と同じに扱ってよい）、変わっていて書き直していなければ `PLAN_STALE\tT-xxx\t<変わったファイル,…>`（書き直すと `PLAN_FIRST`）。比べる先は `claim` が控えた着手時の主ブランチの先端なので、受け入れで打っても変わらない。段が読めれば2行目から、並列の組（「タスクの本文」の「段の形」）ごとに `PARALLEL\tT-xxx\t<a>,<b>`、触るファイルが重なって1本道にした組ごとに `SERIAL\tT-xxx\t<a>,<b>\t<重なったパス,…>` を番号の順に出す（欄の無い計画では出ない。最後の段は合流するので並列の組に入らない）。`PARALLEL` が1行でもあれば続けて段の順に `STEP\tT-xxx\t<n>\t<待つ段,…|なし>`（`前の段`・`SERIAL`・合流で決まる前後のうち、ほかの待つ段より先に済むものを除いた直の待ち）を出す。どれも終了コード0。`NOT_OWNER` |
 | `verify [T-xxx]` | タスクIDは基本付けない。付けるなら着手の印が立った自分のタスク1つだけで、引数なしと同じに動く（違えば何も打たず `NOT_OWNER`。`.beads` の無い作業先の作業ツリーでは付けられず usage）。主ブランチを取り込んでから検証コマンドを打つ。取り込むのは、主ブランチが `HEAD` より先へ進んでいて `HEAD` がその祖先のとき（`claim` のあとに自分のコミットがあれば取り込まず、`ship` が付け替える）で、未コミットの中身を一時のコミットにして `git merge-tree` で主ブランチと合わせ、衝突が無ければ作業ツリーに当てて `HEAD` を主ブランチへ進める（作業は未コミットのまま残る。`git add` 済みの区別は消える）。衝突すれば何も書き換えず、検証コマンドを打たずに控えを消して `CONFLICT` で止まる。取り込みが要るのに `.git` へ書けなければ、検証コマンドを打たずに控えを消して `GIT_READ_ONLY` で止まる（取り込みが要らなければ読み取り専用の `.git` でも通る）。取り込みのあと・検証の前に、設定に `format` があれば打つ（無ければ打たない。整形で変わった中身を鍵に取るので、続く `verify-check` は `VERIFIED_SAME` になる。整形が落ちたら検証コマンドを打たずに控えを消して `FORMAT_FAILED` で止まる）。打つ前後で作業ツリーの中身の鍵（`HEAD` の SHA・一時の index に `git add -A` して `.tw/local/` を外してから `write-tree` した木の SHA・検証コマンドの文字列。本物の index は変えず、新しい object は一時ディレクトリに書くので `.git` に書かない。`.tw/local/` の中身は木に入らない）を取り、通って前後で同じなら `.tw/local/task-verify-stamp` に控える。落ちたら控えを消す。全出力は同じ場所の `task-verify.log`（整形の出力のあとに検証の出力が続く。検証が落ちた回は `task-verify.failed-<時刻>.log` にも写して直近3本を残し、判定行のパスはこちら）。この作業ツリーが着手の印を持つタスク（`done`・`dropped` にしたものを除く）の `## やること` が空か「なし」のまま作業が始まっていれば（`edit` と同じ判定）、検証コマンドを打たずに控えを消して `PLAN_MISSING` で止まる | 取り込んだときは先頭に `FOLDED\t<前の HEAD>..<主ブランチ>` の1行。`CONFLICT\t<ファイル,…>`（終了コード7）。`VERIFIED\t<木の SHA>\t<ログのパス>`（控えた）／`VERIFIED_UNSTAMPED\t<ログのパス>`（通ったが検証のあいだに中身が変わったので控えない）／`VERIFY_NOT_PASSED\t<ログのパス>`（終了コード10）／`FORMAT_FAILED\t<ログのパス>`（整形コマンドが落ちた。終了コード10）。どれも出力の末尾40行が続き、そのあとに同じ判定行をもう一度出す（取り込んだときは `FOLDED` の行も判定行の前にもう一度出す）。出力を `tail` で切るときは、最後の行（取り込んだときは最後の2行）だけで判定と `FOLDED` の有無が取れる。`PLAN_MISSING\tT-xxx\t<次の一手>`（終了コード10。該当するタスクごとに1行）。`GIT_READ_ONLY`（終了コード11）。検証コマンドが無ければ `NOTHING` |
@@ -654,8 +651,7 @@ GitHub で本文を直したあとの取り込みで `open` に戻る。`deferre
 Project・Status 欄・選択肢の ID は `bd kv` の `task-workflow.project` に控え、控えで書いて落ちたら（欄や
 選択肢を作り直したとき）1回だけ読み直す。Issue ごとの項目 ID と最後に書いた Status は
 `task-workflow.project-item.<Issue 番号>`（課題ごとの1キー。値は `{"item", "status"}`。1つの JSON にまとめると
-`bd kv` の1値の上限を超える）に控え、旧い1つの塊 `task-workflow.project-items` は最初の読み込みで課題ごとの
-キーへ移して消す。Beads の状態から決まる Status が控えと同じ課題には
+`bd kv` の1値の上限を超える）に控える。Beads の状態から決まる Status が控えと同じ課題には
 触らない。項目 ID が控えに無い課題は Issue の `projectItems(first: 10)` だけを引き、控えの無い課題が10件を
 超えるとき（最初の1回）は Project を `items(first: 100)` の `id`・`content.url`・`fieldValueByName("Status")`
 だけで一巡して控えを埋める。Issue の読み書きと取り込む番号を選ぶ一覧は REST で、GraphQL の枠を食わない。
@@ -737,23 +733,6 @@ Project・Status 欄・選択肢の ID は `bd kv` の `task-workflow.project` �
 | 同期の向き | 双方向（取り込みは `tw` が番号で選ぶ） | 取り込みだけ（`bd jira sync --pull`） |
 | 状態を変える場所 | どちらでも（GitHub で閉じたら見送り） | Beads。Jira で閉じるのは人（`jira_close`） |
 | 衝突 | Beads が勝ち、`CONFLICT` の行 | 起きない（Jira に書かない） |
-
-**ID の形の切り替え**（`t-<n>` から `gh-<n>` へ、`T-<n>` から Jira のキーへ）は、全作業ツリーの手を止めて
-人が立ち会う。付け替えの前に `bd export` と `bd backup` を取る。`t-<n>` から `gh-<n>` へは、未完了の
-課題を `external_ref` の番号へ `bd rename` し、`pending` を `deferred` に変え、旧い ID を `description` の
-末尾の1行（`旧ID: T-123`）に残し、`issue_prefix` を `gh` にして `status.custom` を `bd config unset` で外す。
-`task-workflow.github-seen` は消しておき、最初の `tw sync` で開いた全件を取り込む。
-`issue_prefix` は `bd config set` では変えられず（`bd` 1.3.0 は拒む）、勧められる `bd rename-prefix` は閉じた
-`t-<n>` まで付け替えて本文の参照も書き換えるので使わない。`bd` を動かしていないときに、
-`.beads/embeddeddolt/<metadata.json の dolt_database>` で
-``dolt sql -q "update config set value='gh' where `key`='issue_prefix'"`` を打ち、`dolt commit -am <件名> --author <名前>` で
-残す。
-`jira` で `T-<n>` の ID のまま取り込み済みの課題は、振り分け前（label が無い）なら次の `tw sync` で
-キーの ID へ付け替わる。`adopt` 済みの `T-<n>` は `tw` が付け替えない（作業ブランチとコミットの件名が
-`T-<n>` を指す）。キーへ揃えるなら、全作業ツリーの手を止めて `bd export` と `bd backup` を取ってから、未完了の
-ものを `bd rename t-<n> <キーの小文字>` し、旧い ID を `description` の末尾の1行（`旧ID: T-123`）に残す。
-閉じたものは付け替えない。
-**ID を切り替えるコミットは、消す・付け替えるものを全部済ませた木で検証コマンドを打ってから送る。**
 
 **バックアップ**: `.beads` は git の外なので、タスクの記録は git の履歴に残らない。`tw ship` の
 最後と `tw backup` が、置き場へ `bd backup sync`（Dolt の履歴ごと。置き場が未設定なら

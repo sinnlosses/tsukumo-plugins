@@ -252,61 +252,6 @@ def test_difficulty_loopable_metadata() -> None:
               r.stdout + r.stderr + str(adopted))
 
 
-def test_migrate_attributes() -> None:
-    say("migrate-attributes: label の difficulty・loopable を metadata へ写して外し、打ち直しても変わらない")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, _, _ = make_repo(tmp)
-
-        def create(bd_id: str, labels: str) -> None:
-            r = bd(main_path, "create", "--id", bd_id, "--title", f"課題{bd_id}", "-l", labels, "-d", "本文")
-            check(f"{bd_id} を作れる", r.returncode == 0, r.stdout + r.stderr)
-
-        def state(bd_id: str) -> tuple[dict, list[str]]:
-            issue = beads.show(main_path, bd_id)
-            assert issue is not None
-            meta = issue.raw.get("metadata")
-            return (meta if isinstance(meta, dict) else {}), sorted(issue.labels)
-
-        create("t-801", "difficulty:opus,loopable:N,direct:Y,mytag")
-        create("t-802", "difficulty:opus,loopable:N,ship:done")
-        bd(main_path, "close", "t-802")
-        create("t-803", "difficulty:opus,loopable:N")
-        bd(main_path, "update", "t-803", "--set-metadata", "difficulty=haiku", "--set-metadata", "loopable=Y")
-        create("t-804", "difficulty:gpt,loopable:N")
-        create("t-805", "difficulty:sonnet")
-        create("t-806", "mytag")
-        before_bad = (state("t-804"), state("t-805"), state("t-806"))
-
-        r = run_task(main_path, "migrate-attributes")
-        check("INVALID があれば終了コード3", r.returncode == 3, r.stdout + r.stderr)
-        meta, labels = state("t-801")
-        check("label だけの課題は metadata へ移り、direct:Y と自由タグは残る",
-              meta.get("difficulty") == "opus" and meta.get("loopable") == "N" and labels == ["direct:Y", "mytag"],
-              str((meta, labels)))
-        meta, labels = state("t-802")
-        check("閉じた課題も移り、ship:done は残る",
-              meta.get("difficulty") == "opus" and meta.get("loopable") == "N" and labels == ["ship:done"],
-              str((meta, labels)))
-        meta, labels = state("t-803")
-        check("metadata が既にあれば metadata のまま label だけ外す",
-              meta.get("difficulty") == "haiku" and meta.get("loopable") == "Y" and labels == [], str((meta, labels)))
-        check("値が不正・片方だけ・属性なしの課題は変わらない",
-              (state("t-804"), state("t-805"), state("t-806")) == before_bad, r.stdout)
-        check("INVALID の行に2件が出る（ほかは出ない）",
-              "INVALID\tT-804\t" in r.stdout and "INVALID\tT-805\t" in r.stdout and "T-806" not in r.stdout
-              and "MIGRATED_TOTAL\t3\tINVALID\t2" in r.stdout, r.stdout)
-        check("移した3件が MIGRATED の行に出る",
-              all(f"MIGRATED\tT-{n}\n" in r.stdout for n in (801, 802, 803)), r.stdout)
-        shown_now = run_task(main_path, "show", "T-801").stdout
-        check("移したあとの show は metadata の値を読む", "\ndifficulty: opus\nloopable: N\n" in shown_now, shown_now)
-
-        after_first = [state(f"t-80{n}") for n in (1, 2, 3)]
-        r = run_task(main_path, "migrate-attributes")
-        check("打ち直すと移す課題が 0 で、移した課題は変わらない",
-              "MIGRATED_TOTAL\t0\tINVALID\t2" in r.stdout and [state(f"t-80{n}") for n in (1, 2, 3)] == after_first,
-              r.stdout + r.stderr)
-
-
 def test_setup_and_config_doctor() -> None:
     say("init.py・config-doctor・MISSING・設定の読み違い")
     with tempfile.TemporaryDirectory() as tmp:
@@ -1371,7 +1316,6 @@ def main() -> None:
             test_backup,
             test_direct_mark,
             test_difficulty_loopable_metadata,
-            test_migrate_attributes,
             test_missing_config_ignores_old_layout,
             test_store_default_is_beads,
             test_store_files_is_invalid,
