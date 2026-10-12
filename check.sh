@@ -16,8 +16,9 @@
 # 4. task-workflow の WORKFLOW.md を読む検査（WORKFLOW.md だけが変わったときの軽い段）
 # 5. retrospect のスクリプトの自己テスト
 # 6. plan-tasks のスクリプトの自己テスト
-# 7. next-task のスクリプトの自己テスト
-# 8. リポジトリ全体の整合（frontmatter・README の索引・参照先の実在）（いつも）
+# 7. comment-audit のスクリプトの自己テスト
+# 8. next-task のスクリプトの自己テスト
+# 9. リポジトリ全体の整合（frontmatter・README の索引・参照先の実在）（いつも）
 #
 # 当たる段は `./check.sh --plan` で見る。
 set -e
@@ -103,7 +104,11 @@ if stage "plan-tasks scripts の自己テスト" 'skills/plan-tasks/*'; then
   python3 "$here/skills/plan-tasks/scripts/selftest_removed_lines.py"
 fi
 
-if stage "next-task scripts の自己テスト" 'skills/next-task/*'; then
+if stage "comment-audit scripts の自己テスト" 'skills/comment-audit/*'; then
+  python3 "$here/skills/comment-audit/scripts/selftest_diff_added_comment_lines.py"
+fi
+
+if stage "next-task scripts の自己テスト" 'skills/next-task/*' 'skills/comment-audit/*'; then
   python3 "$here/skills/next-task/scripts/selftest_review_needed.py"
   python3 "$here/skills/next-task/scripts/selftest_context_size.py"
   python3 "$here/skills/next-task/scripts/selftest_review_snapshot.py"
@@ -113,5 +118,6 @@ fi
 echo
 echo "== リポジトリの整合 =="
 if [ "$mode" != plan ]; then
+  python3 "$here/scripts/selftest_check_repo.py"
   python3 "$here/scripts/check_repo.py"
 fi

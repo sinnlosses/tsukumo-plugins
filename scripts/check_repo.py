@@ -20,6 +20,7 @@
 - `tw` の指す `task.py` が実行でき、スキルの Markdown が `task.py` を `python3` で呼ぶ形や `` `task …` `` の略記で書いていないこと
 - 兄弟スキルの `scripts/` を `sys.path` に足して `import` しているなら、`REQUIRES` にその
   兄弟スキル名があること
+- 本文が `${CLAUDE_SKILL_DIR}/../<兄弟>` で兄弟スキルを指しているなら、`REQUIRES` にその兄弟スキル名があること
 """
 
 from __future__ import annotations
@@ -39,7 +40,6 @@ AGENTS = os.path.join(ROOT, "agents")
 # このリポジトリに無く、スキルの本文が「一覧にあれば使う」とだけ書いてよい外のスキル。
 OPTIONAL_SKILLS = (
     "code-review",
-    "comment-audit",
     "resolving-merge-conflicts",
     "token-usage-diet",
     "verifying-before-completion",
@@ -477,6 +477,30 @@ def _unwrap_normpath(node: ast.expr) -> ast.expr:
     return node
 
 
+SIBLING_REFERENCE = re.compile(r"\$\{CLAUDE_SKILL_DIR\}/\.\./([a-z][a-z0-9-]*)")
+
+
+def sibling_references(owner: str, text: str) -> list[str]:
+    """本文が `${CLAUDE_SKILL_DIR}/../<兄弟>` で指す、自分以外のスキル名（出てきた順、重複なし）。"""
+    return list(dict.fromkeys(dep for dep in SIBLING_REFERENCE.findall(text) if dep != owner))
+
+
+def unrequired_references(owner: str, text: str, required: set[str]) -> list[str]:
+    return [dep for dep in sibling_references(owner, text) if dep not in required]
+
+
+def check_sibling_references(names: list[str]) -> None:
+    """本文が `${CLAUDE_SKILL_DIR}/../<兄弟>` で指す兄弟が、そのスキルの `REQUIRES` にあるか。"""
+    for n in names:
+        req_path = os.path.join(SKILLS, n, "REQUIRES")
+        required = set()
+        if os.path.exists(req_path):
+            required = {line.strip() for line in read(req_path).splitlines() if line.strip()}
+        for md in markdown_files(n):
+            for dep in unrequired_references(n, read(md), required):
+                fail(f"{os.path.relpath(md, ROOT)}: `{dep}` を指しているが {n}/REQUIRES に `{dep}` が無い")
+
+
 def check_sibling_imports(names: list[str]) -> None:
     """兄弟スキルの `scripts/` を `sys.path` に足して `import` しているなら、そのスキルの
     `REQUIRES` に足し先のスキル名があるか（T-029）。
@@ -560,6 +584,7 @@ def main() -> None:
     check_plugin()
     check_cross_references(names)
     check_requires(names)
+    check_sibling_references(names)
     check_sibling_imports(names)
     check_python_syntax(names)
     check_task_workflow_layout()

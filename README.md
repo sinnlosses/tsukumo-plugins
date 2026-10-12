@@ -67,15 +67,11 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
 ## あれば使う外のスキル
 
 次のスキルはこのリポジトリに無い。スキルの一覧にあれば使い、無ければ本文の代わりの手順で進む
-（`scripts/check_repo.py` の `OPTIONAL_SKILLS`）。`comment-audit` だけは同梱のスクリプトのパスが要るので、
-一覧ではなく、リンクで入れて兄弟（`${CLAUDE_SKILL_DIR}/../comment-audit/`）に在るときだけ使う。
-マーケットプレイスから入れるとプラグインごとに別のキャッシュへ写されるので、別のプラグインで入れた
-`comment-audit` は使われない。
+（`scripts/check_repo.py` の `OPTIONAL_SKILLS`）。
 
 | 外のスキル | 使う場所 | 無いとき |
 | --- | --- | --- |
 | verifying-before-completion | next-task の受け入れの関門 | 主張ごとに差分とコマンドの出力で確かめる |
-| comment-audit（兄弟に在るときだけ） | next-task の受け入れ役に渡すコメントの判定 | コメント行の判定を依頼文から外す |
 | writing-for-agents | retro の物差し、retrospect の「空振り」の試金石 | retro の「ファイルの使い分け」を物差しにする |
 | code-review | retro が読むレビューの観点 | 読まない |
 | resolving-merge-conflicts | next-task の `CONFLICT` の案内 | 人に預ける |
@@ -83,10 +79,11 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
 
 ## 由来
 
-全7スキル。`skills/` にあるものが全てで、この一覧がその索引。
+全8スキル。`skills/` にあるものが全てで、この一覧がその索引。
 
-- 自作（6件）: `task-workflow`（運用の正典・参照専用）、`setup-tasks` `plan-tasks` `next-task` `list-tasks`、
-  `retrospect`（`/next-task` の中で1件ごと・7日おきに振り返り、改善候補をドラフトの課題〔`tw new --draft`〕として積む。正典・参照専用）
+- 自作（7件）: `task-workflow`（運用の正典・参照専用）、`setup-tasks` `plan-tasks` `next-task` `list-tasks`、
+  `retrospect`（`/next-task` の中で1件ごと・7日おきに振り返り、改善候補をドラフトの課題〔`tw new --draft`〕として積む。正典・参照専用）、
+  `comment-audit`（コメントの種類を判定して消す・縮める・正典へ移す。`next-task` の受け入れ役に渡す）
 - [mattpocock/skills](https://github.com/mattpocock/skills) を日本語化したもの（1件）: `retro`
   （改善の7観点の一覧を `retrospect` へ移してそこを指し、選ばれた改善案をドラフトの課題として積む）
 
@@ -132,8 +129,9 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
    `bd` が無ければ非0で終わる）
 4. `retrospect` の自己テスト
 5. `plan-tasks` の自己テスト
-6. `next-task` の自己テスト
-7. リポジトリの整合（`scripts/check_repo.py`。frontmatter、この README の由来一覧と `skills/` の一致、
+6. `comment-audit` の自己テスト
+7. `next-task` の自己テスト
+8. リポジトリの整合（`scripts/check_repo.py`。frontmatter、この README の由来一覧と `skills/` の一致、
    参照先の実在、プラグインの名前と `bin/tw`・`hooks/hooks.json`、エージェント定義）
 
 由来の一覧が索引なので、スキルを足したり消したりしたらここも直す（直し忘れは `./check.sh` が落とす）。

@@ -73,18 +73,9 @@ def main() -> int:
 
 
 def find_comment_script() -> str | None:
-    """メインが brief を実体のパスで渡すと兄弟が見えないので、スキルの置き場の候補を順に探す。"""
     here = os.path.dirname(os.path.abspath(__file__))
-    roots = [
-        os.path.join(os.environ.get("CLAUDE_SKILL_DIR", ""), ".."),
-        os.path.join(here, "..", ".."),
-        os.path.join(os.path.expanduser("~"), ".claude", "skills"),
-    ]
-    for root in roots:
-        candidate = os.path.normpath(os.path.join(root, COMMENT_AUDIT_RELATIVE))
-        if os.path.isfile(candidate):
-            return candidate
-    return None
+    candidate = os.path.normpath(os.path.join(here, "..", "..", COMMENT_AUDIT_RELATIVE))
+    return candidate if os.path.isfile(candidate) else None
 
 
 def decide(paths: list[str], untracked: set[str], comment_script: str | None) -> list[str]:

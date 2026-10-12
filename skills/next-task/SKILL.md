@@ -216,9 +216,9 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
    - 目視の完了条件があるときは、委譲先が報告した画像のパス（幅ごと。いちばん狭い幅も）
    - 振り返りの材料: 委譲先の段ごとの返却の friction log の行（そのまま）と、メインの一言メモの数
      （検証の打ち直し・受け入れでの直し・人の差し戻し）
-   - `${CLAUDE_SKILL_DIR}/../comment-audit/SKILL.md` が在るときだけ、差分で足されたコメント行を
-     拾うコマンド（`python3 <絶対パス>/diff_added_comment_lines.py HEAD`。`<絶対パス>` は
-     `${CLAUDE_SKILL_DIR}/../comment-audit/scripts` を解決したもの）と `comment-audit` の `SKILL.md` の絶対パス
+   - 差分で足されたコメント行を拾うコマンド（`python3 <絶対パス>/diff_added_comment_lines.py HEAD`。
+     `<絶対パス>` は `${CLAUDE_SKILL_DIR}/../comment-audit/scripts` を解決したもの）と、
+     `comment-audit` の `SKILL.md` の絶対パス（`${CLAUDE_SKILL_DIR}/../comment-audit/SKILL.md` を解決したもの）
 
    委譲の依頼文・委譲先の報告の本文・`## やること`・`## 目的・背景` は渡さない。
 
