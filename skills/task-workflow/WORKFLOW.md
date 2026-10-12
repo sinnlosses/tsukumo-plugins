@@ -554,7 +554,7 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
 コマンド単位で拒むには `permissions.deny` の `Bash(...)` か hook になるが、`permissions.deny` は設定にパターンで静的に書く規則で、
 着手の印や `loopable` のような状態によって拒むかを変えられず、`sh -c '…'`・フルパスの呼び出しは素通しする。
 plugin のサブエージェントは frontmatter の `hooks`・`permissionMode` を無視する。
-すでに `disallowedTools` でやっているのは、`agents/no-delegate.md` の `Agent` の除去と、`agents/acceptor.md` の `Edit`・`Write`・`NotebookEdit` の除去だけ。
+すでに `disallowedTools` でやっているのは、`agents/no-delegate.md` の `Agent` の除去と、`agents/acceptor.md` の `Agent`・`Edit`・`Write`・`NotebookEdit` の除去だけ。
 
 | 関門 | tools・`permissions.deny` で防げるか | 理由 |
 | --- | --- | --- |
