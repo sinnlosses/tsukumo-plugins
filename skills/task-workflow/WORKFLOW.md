@@ -358,7 +358,7 @@ Beads の label・各スキルの本文は触らない）:
 | --- | --- | --- |
 | 1〜3 | `tw status` で見渡し、`READY` を1件選ぶ。`retrospect_due` の行があれば選ぶ前に横断の振り返りを1回行う | 手順1〜3、`weekly-retrospect.md` |
 | 4 | `tw claim` で主ブランチへ追い付いて印を立て、`tw plan-check` で `## やること` の状態を見る | 手順4 |
-| 5 | `## やること` が `## 完了条件` を覆うか確かめ、段ごとに委譲する。計画が古いか覆っていなければ書き直しから委譲する。`direct=Y` で `PLAN_REGISTERED` なら委譲せず近道（手順5〜6b を通らない） | 手順5・5b・5c、`rewrite-plan.md`、`direct-run.md`、`visual-review.md`、正典「difficulty とモデルの切り替え」の「委譲しない近道」 |
+| 5 | `## やること` が `## 完了条件` を覆うか確かめ、段ごとに委譲する。計画が古いか覆っていなければ書き直しから委譲する。`direct=Y` で `PLAN_REGISTERED` なら委譲せず近道（手順5〜6b を通らない） | 手順5・5b・5c・5d、`rewrite-plan.md`、`direct-run.md`、`visual-review.md`、正典「difficulty とモデルの切り替え」の「委譲しない近道」 |
 | 6 | 受け入れ役の判定を受け、整形と `tw verify-check` で検証を省くか決める。`tw accept` が準備を束ねる | 手順6、`other-repo.md`、`review-rounds.md` |
 | 6a | 材料が観点に当たり物差しを通ったときだけ、`tw new --draft` でドラフトを積む | 手順6a、`retrospect` の「1件だけ振り返る」 |
 | 6b | 背景の `tw verify` の結果を読み、落ちていれば直して打ち直す | 手順6b、`verify-merge.md` |
