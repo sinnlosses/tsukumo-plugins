@@ -215,35 +215,11 @@ front matter（`id`・`summary`・`status`・`difficulty`・`loopable`・近道�
   で閉じる
 - **依存の解決**: `done`・`dropped`（`ship` で `bd close` したもの）と、Beads に無い ID（旧アーカイブ由来）は解決済み。
   `todo`・`hold` は未解決。後から変えるのは `tw edit T-xxx --add-deps T-yyy` と `--remove-deps`（本文の `## 注意` に書くだけでは Beads の依存に入らず、BLOCKED に出ない）
-- **委譲先のコミットを拒む**: 印を立ててから `done` を打つまで、その作業ツリーで `no-delegate`（plugin で入れたときは `tsukumo-workflow:no-delegate`）の委譲先が
-  `git commit` などコミットを作る git のサブコマンドを打つと、hook（`tw commit-guard`）が拒む。
-  メインのセッションと、別の作業ツリー・別のリポジトリへのコミットには掛からない。`general-purpose` への
-  委譲と、Bash のコマンド文字列に `git` が出ないコミット（`sh -c`・スクリプト越し）には効かず、
-  `done` の `COMMITS_SINCE_CLAIM` が事後に拾う
-- **委譲先のシェルでの書き換えを拒む**: 同じ間、控えのある作業ツリーの中のファイルを Bash から書き換えると（`cwd` が別でも、書き先がその作業ツリーの中なら）、同じ hook が拒む。
-  `sed -i`・`perl -i`・`>`・`>>`・`tee`、`-c` かヒアドキュメントに書き込み（`open(…, 'w')`・`write_text` など）が見える python。
-  `Edit`・`Write` で書く。作業ツリーの外・`.gitignore` で無視されるパス・`/dev/` への書き込みと、
-  変数展開・`eval`・`bash -c` のように判定しきれない書き方は通す
-- **委譲先の検証コマンドの直打ちを拒む**: 同じ間、実効の作業先（`cwd`・`cd <dir>`）がその作業ツリーのとき、設定の `verify`・`verify_before_ship` と同じコマンドを Bash で直に打つと、同じ hook が拒んで `tw verify` を案内する。
-  同じと見なすのは、`&&`・`;`・`|` を含まない設定のコマンドの語で始まり、残りが `-` で始まる語（`--full` など）だけのとき。
-  `&&`・`;`・`|` で割れた各コマンドを別々に見る（`./check.sh | tail` も拒む）。先頭の `env`・`command`・`VAR=値` の前置きとリダイレクトは無視し、`cd` は実効の作業先として追う。コマンドがパスで書かれていれば、実効の作業先（設定は作業ツリーの根）から解いて同じファイルを指すかで比べる（`./check.sh` と絶対パスは同じ）。
-  旗でない語が続く（`./check.sh path/to.test.ts` のような絞った実行）・`bash ./check.sh`・`timeout …`・`tw verify`・対象を絞った単体テスト・設定が読めないか `なし` のときは通す。
-  `cwd` が作業ツリーの外のまま絶対パスで打つものも、作業先に設定が無いので通す（既知の取りこぼし）
-- **委譲先の返却を拒む**: 同じ間、その作業ツリーに作業（`claim` した時点の `HEAD` より後のコミットか、
-  タスク自身のファイル以外の変更）があるのに、`plan-check` が `PLAN_FIRST`・`PLAN_REGISTERED` でないか
-  `verify-check` が `VERIFIED_SAME`・`NOTHING` でないまま `no-delegate` の委譲先が返そうとすると、hook
-  （`tw handback-guard`）が拒んで理由を委譲先へ返す。作業の無い返却（前提が誤り・`dropped`・計画だけの回）は通す。
-  この関門は2つの口から走る（エージェント定義の hook は PATH の `tw`、plugin の hook は取り込みの `bin/tw`）。
-  控えた `tw` と照らす `tw` の版が違うと、中身の鍵の `scheme` が合わず `NOT_VERIFIED scheme` で止まり、クローンと取り込みの版を揃えて `tw verify` を打ち直す。
-  `## やること` の `### 作業先` が別のリポジトリなら、そのリポジトリの作業ツリーのうち枝の名前がタスクIDを
-  小文字にしたもの（`T-012` なら `t-012`）にも同じ規則を当てる（作業は主ブランチとの分かれ目より後のコミットか変更。
-  `verify-check` はその作業ツリーで照らす。その作業ツリーがまだ無ければ見ない）。最後でない段を済ませた返却は、委譲先が `tw step T-xxx <n>` で
-  いまの中身に段の印を付けてから返す（`plan-check` は通っている要がある。最後の段は印を付けられず、
-  `verify-check` を求める）。目視待ち・判断が要って止める返却は、委譲先が `tw pause` で
-  いまの中身に印を付けてから返す（どちらの印も、印のあとに中身が変われば効かない。どちらも着手した作業ツリーで打ち、
-  作業先の作業ツリーにもその中身の鍵で印を置く）。並列の段（「タスクの本文」の「段の形」）の担当が同じ作業ツリーで
-  同時に動くときは、段の印は段ごとに残り、その段と並列の組になる段の触るファイルの書き換えでは崩れない
-  （止める返却は `tw pause T-xxx <n>` で段の印にする）。`general-purpose` への委譲には効かない
+- **委譲先を hook が拒む**: 印を立ててから `done` を打つまで、その作業ツリーで `no-delegate`（plugin で入れたときは `tsukumo-workflow:no-delegate`）の委譲先が
+  コミットを作る git のサブコマンド・シェルでのファイルの書き換え・検証コマンドの直打ちをすると `tw commit-guard` が拒み、
+  作業があるのに計画か検証が欠けた返却をすると `tw handback-guard` が拒む。委譲先は `Edit`・`Write` で書き、
+  検証は `tw verify` で打ち、最後でない段は `tw step T-xxx <n>`、止める返却は `tw pause` を返す直前に打つ。
+  判定の詳細は参照表の `commit-guard`・`handback-guard` の行
 - **取り残し**（前提: 1つの作業ツリーでは同時に1セッション）:
 
 | 状態 | 表示 | 誰が何をする |
@@ -376,26 +352,16 @@ Beads の label・各スキルの本文は触らない）:
 
 `/next-task` の1回。各段で打つものと、止まる出力は `skills/next-task/SKILL.md`。番号は `next-task/SKILL.md` の手順の番号と同じ。
 
-- **1〜3.** `tw status` で見渡す → `READY` を1件選ぶ（`retrospect_due` の行があれば、選ぶ前に横断の振り返りを1回行って送る。
-  `next-task/weekly-retrospect.md`）
-- **4.** `tw claim T-xxx`（主ブランチへ追い付き、印を立て、必要なら作業ブランチを切る）→ `tw plan-check T-xxx`
-- **5.** 確かめる: `PLAN_REGISTERED`（登録時に書いた `## やること` が名指すファイルが変わっていない）なら、メインが
-  `## やること` が `## 完了条件` の各行を覆うかを読んで確かめ、覆っていれば計画どおりに委譲する。
-  `PLAN_STALE`（変わった）・`PLAN_NOT_FIRST missing`・`unrecorded`・`steps`、または覆っていなければ、書き直しから委譲する
-  （委譲先が**いまの主ブランチで調べ直して `## やること` を書き直し、作業せずに返す**。`tw edit T-xxx --section 'やること' --body-file -`
-  が作業より先に書いたかを印に残し、作業の後の初回の記入は拒む）。設計を利用者とすでに決め、正典・コードを
-  読んでいるときはメインが書いてもよい。条件・渡す言葉は `next-task/rewrite-plan.md`。
-  `tw claim` が `direct=Y` を出し `tw plan-check` が `PLAN_REGISTERED` なら、委譲せず近道で進める（`tw lap T-xxx direct` → メインの直し → 整形コマンド → `tw verify` → 7 → 8。委譲と 6〜6b は通らない。「difficulty とモデルの切り替え」の「委譲しない近道」と `next-task/direct-run.md`）。
-  委譲（段ごと。`next-task/SKILL.md` 手順5・5b）: 最初の委譲で段1を渡し、委譲先は段を1つ済ませるたびに返す。最後でない段は `tw step T-xxx <n>` を打ってから、最後の段は `tw verify` を通してから返す。メインは同じ委譲先を `SendMessage` で再開して次の段を渡す（`difficulty` を上げるときだけ上のモデルで起こし直す）。前提が崩れていれば作業せず、`tw done --dropped` にする理由を報告させる。`tw plan-check T-xxx` が `PARALLEL` を出した計画では、`STEP` の行で待つ段がすべて返った段から別々の担当で同時に起こし、最後の段はほかの段がすべて返ってから渡して、その担当が `tw verify` を1回打つ（担当の割り当て・依頼文は `next-task/SKILL.md` 手順5の「並列の段」と手順5c）。返りではメインが `tw plan-check T-xxx`（`PLAN_REGISTERED` か `PLAN_FIRST` か）と `## やること` の中身を見る（`next-task/SKILL.md` 手順5b）。検証コマンドは `tw verify` で打つ（打つ前に主ブランチを未コミットの中身ごと取り込み、衝突したら打たずに `CONFLICT`。通ると作業ツリーの中身の鍵を控える。`## やること` が空のまま作業があれば打たない）。描画を変えるタスクでは、組み立てた直後に画を撮って受け入れ役の目視待ち（`- 目視:` の判定）を受けてから、E2E の期待値の撮り直しと `tw verify` に進む（`next-task/visual-review.md`）
-- **6.** 受け入れ: 受け入れ役（`acceptor`）を起こして判定の行（`受け入れ`・`差し戻し`・`預ける`）を受け取る。差分のレビュー・目視（画像）・振り返りの材料は受け入れ役が判断し、差し戻しの往復は同じ受け入れ役に `SendMessage` → 整形（設定の `format`）→ `tw verify-check`（`tw accept T-xxx` が `lap accept`・`plan-check`・レビューの要否の判定、レビューが要らなければ整形と `verify-check` まで束ねて打ち、レビューのあとは `--after-review` で整形と `verify-check` だけ打つ。作業先が別のリポジトリなら、委譲先が残したそのリポジトリの作業ツリーで打つ。`next-task/other-repo.md`。`VERIFIED_SAME` なら検証を省く。ほかは `tw verify` を背景で起こし、待たずに 6a へ。主ブランチが進んでいれば `NOT_VERIFIED base` で、`tw verify` が取り込んでから打つ。ただし `verify_before_ship` があり、取り込みが衝突しなければ `base` にせず鍵で照らす）
-- **6a.** 振り返り（`/loop` からも。`retrospect` の SKILL.md「1件だけ振り返る」。背景の検証と並べる）: 材料が観点に当たり物差しを通ったときだけ
-  `tw new --draft` でドラフトの課題を積む（Beads に作るだけで、作業ツリーのファイルは変わらない）
-- **6b.** 合流: 背景の `tw verify` の結果を読む。落ちていれば、振り返りの結果（積んだドラフトの ID と `- 振り返り:` の行）を持ったまま直して打ち直す
-- **7.** `tw finish T-xxx --result-file - --message '<件名>' --add <ファイル>…` が `tw done`（`## 結果` を comment に入れ、label
-  `ship:done`／`ship:dropped` を立てる。stage しない。印はまだ消さない）→ 作業を**1コミット**
-  （`T-xxx: <件名>`。`--add` のファイルを個別に `git add`。差分が無ければコミットしない）→ 8 の `tw ship` を順に打つ。
-  個別に `tw done`・コミット・`tw ship` と打ってもよい（近道・作業先が別のリポジトリなど）
-- **8.** `tw ship`（主ブランチへ送り、`ship:*` の立った自分の印を `bd close` する）。`tw finish` が 7 のあとに打つ
+| 手順 | 目的 | 参照先（`skills/next-task/SKILL.md` の手順と副ファイル） |
+| --- | --- | --- |
+| 1〜3 | `tw status` で見渡し、`READY` を1件選ぶ。`retrospect_due` の行があれば選ぶ前に横断の振り返りを1回行う | 手順1〜3、`weekly-retrospect.md` |
+| 4 | `tw claim` で主ブランチへ追い付いて印を立て、`tw plan-check` で `## やること` の状態を見る | 手順4 |
+| 5 | `## やること` が `## 完了条件` を覆うか確かめ、段ごとに委譲する。計画が古いか覆っていなければ書き直しから委譲する。`direct=Y` で `PLAN_REGISTERED` なら委譲せず近道（手順5〜6b を通らない） | 手順5・5b・5c、`rewrite-plan.md`、`direct-run.md`、`visual-review.md`、正典「difficulty とモデルの切り替え」の「委譲しない近道」 |
+| 6 | 受け入れ役の判定を受け、整形と `tw verify-check` で検証を省くか決める。`tw accept` が準備を束ねる | 手順6、`other-repo.md`、`review-rounds.md` |
+| 6a | 材料が観点に当たり物差しを通ったときだけ、`tw new --draft` でドラフトを積む | 手順6a、`retrospect` の「1件だけ振り返る」 |
+| 6b | 背景の `tw verify` の結果を読み、落ちていれば直して打ち直す | 手順6b、`verify-merge.md` |
+| 7 | `tw finish` が `tw done`・1コミット・`tw ship` を順に打つ | 手順7、`commits-since-claim.md` |
+| 8 | `tw ship` の判定で分ける | 手順8、`ship-stopped.md` |
 
 ## 送り出し
 
@@ -537,11 +503,11 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | `metrics [--days N] [--stages]` | 台帳の `flow/` の記録（`claim`・`release`・`verify`・`pause`・`step`・`lap`・`ship`・`done` のたびに `tw` が1行足す。書けなくても元のサブコマンドの出力と終了コードは変わらず、標準エラーに1行出るだけ）から、直近 N 日（既定 7）と、その前の同じ長さの期間の数を並べる（読むだけ）。`verify` は着手の印を持つタスクごと、`ship` は送れたタスクごと（`NOTHING` も着手の印を持つタスクごとに1行足すが、下の `shipped` の数は `SHIPPED` だけ。`VERIFY_FAILED`・`CONFLICT`・`RACE` は印を持つタスクごと）に1行 | 1行目 `PERIOD\t<N>d\tcurrent\tprevious`、続けて `shipped`（送り出した件数）・`lead_median_seconds`・`lead_max_seconds`（着手から送り出しまで）・`verify_per_task`（1件あたりの `verify` の回数の平均）・`verify_failed`（`FORMAT_FAILED`・`VERIFY_NOT_PASSED` の件数）・`ship_verify_failed`（`ship` の `VERIFY_FAILED`）・`reclaim`（`release` のあとの `claim`）・`reflection_none_ratio`（`done` のうち振り返りが兆候なしの割合。`dropped` と、近道で振り返りを省いた `done`〔`reflection` が `skipped`〕は除く）の各行が `<名前>\t<今>\t<前>`（無ければ `-`）。壊れた行は読み飛ばし `SKIPPED\t<件数>`。記録が無ければ `EMPTY`。`--stages` を付けると上の表の代わりに、直近 N 日に送り出したタスク〔`ship` が `SHIPPED`〕と、`done` したが `ship` が `NOTHING` だったタスク〔作業先が別のリポジトリのもの〕の段ごとの所要時間を `STAGE\t<段>\t<difficulty>\t<道>\t<件数>\t<中央値秒>\t<最大秒>` の行で出す（道は、着手から送り出しまでに `direct` の `lap` があり `delegate` の `lap` が無ければ `direct`〔委譲しない近道〕、ほかは `normal`。段は計画〔`claim`〕・直し〔`direct` の `lap`〕・委譲〔`delegate` の `lap`・`step`〕・検証〔`verify`。記録された所要秒〕・受け入れ・レビュー・振り返り〔それぞれの `lap`〕・合流〔`land` の `lap`〕・送り出し〔`done`〕・反映〔`sync` の `lap`〕の順。`edge` 付きの `lap` の段は同じタスクの同じ段の `end` の時刻 − `start` の時刻（検証の秒は引かない）で、`end` の無い `start` は所要に入れず、`STAGE` の行のあとに `OPEN\t<段>\t<件数>` の行で数を出す（`edge` の無い旧い `lap` は次の規則）。検証でない段の時間は、次の検証でない出来事までの差から、検証の区間〔記録の時刻から記録の秒だけ前まで〕と重なった秒を引く。並列の段の返却が重なっても区間は時刻順に切れて重ならないので、委譲の時間は段ごとの和でなく壁時計の長さになる。前の期間との比較は付けない。材料が無ければ `EMPTY`） |
 | `config` | 解けた設定を出す（読むだけ） | 1行目 `CONFIG\t.tw/config.toml`、続けて全キーを `<キー>\t<解けた値>\t<config\|default>`（`config` は設定に書いてある、`default` は既定。コマンドのキーで値が無ければ `なし`、ほかは `-`。`base_branch` を書いていなければ git で決めた主ブランチ）。設定が無ければ `MISSING`（終了コード6）。`.beads` が無くても打てる |
 | `config-doctor` | このリポジトリが今の読み取りに合っているかを点検する（**読むだけ。`--fix` は無い**）。主ブランチが何で決まったか・設定が読めるか、の2検査を必ず1行ずつ出し、設定が読めれば Beads の用意とトラッカーの行を足す | `base_branch`・`config` の2行。`config\t<OK\|MISSING\|INVALID>\t<ファイル>\t<詳細>`（読めない・語彙の外は `INVALID`、設定が無い・検証コマンドが無いは `MISSING`）。設定が読めれば続けて `store\tOK\tbeads`・`beads\t<OK\|MISSING>\t<.beads のパス>`（`MISSING` は直すもの）・`tracker\tOK\t<なし\|github\|jira>`。各行の2語目が `OK`／`MISSING`／`INVALID` |
-| `commit-guard [--agent-scoped]` | Claude Code の PreToolUse hook（`agents/no-delegate.md` の frontmatter と、plugin の `hooks/hooks.json`）から呼ばれる。`--agent-scoped`（`hooks/hooks.json` だけが付け、`"${CLAUDE_PLUGIN_ROOT}/bin/tw"` の絶対パスで呼ぶ）があるときは、入力の `agent_type` の末尾が `no-delegate` のときだけ掛け、`agent_type` が無い・ほかの名前なら通す。stdin の hook の入力を読み、Bash のコマンドのうちコミットを作る git のサブコマンド（`commit`・`merge`・`pull`・`cherry-pick`・`revert`・`am`・`rebase`）の実効の作業先（入力の `cwd`・`cd <dir>`・`git -C <dir>`）に `.tw/local/task-open-claims/` の控え（読む順は「ファイル配置と設定ファイル」の控えの行のとおり、`.tw/local/` が無ければ `.tw/` 直下、それも無ければ作業ツリー固有の git dir）があれば拒む。コミットのほかに、シェルでのファイルの書き換え（`sed -i`・`perl -i`・`>`・`>>`・`tee`、`-c`・ヒアドキュメントに書き込みが見える python）も、書き先（python は実効の作業先）を含む作業ツリーに控えがあれば拒む（入力の `cwd` に控えが無くても、書き先がその作業ツリーの中なら拒む）。作業ツリーの外・`.gitignore` で無視されるパス・`/dev/`・判定しきれない書き方（変数展開・変数やコマンド置換で決まる `cd` のあと・`eval`・`bash -c`）は通す。さらに、実効の作業先に控えがあるとき、その作業ツリーの設定の `verify`・`verify_before_ship` と同じコマンドの直打ち（詳しくは「委譲先の検証コマンドの直打ちを拒む」）も拒む。`bd` を呼ばない | 拒むときだけ PreToolUse の deny の JSON 1行（理由は「コミットせず…報告で返す」か「…`Edit`・`Write` で書く」か「検証コマンド…を直に打たない。`tw verify` で打つ」）。通すときは何も出さない |
+| `commit-guard [--agent-scoped]` | Claude Code の PreToolUse hook（`agents/no-delegate.md` の frontmatter と、plugin の `hooks/hooks.json`）から呼ばれる。`--agent-scoped`（`hooks/hooks.json` だけが付け、`"${CLAUDE_PLUGIN_ROOT}/bin/tw"` の絶対パスで呼ぶ）があるときは、入力の `agent_type` の末尾が `no-delegate` のときだけ掛け、`agent_type` が無い・ほかの名前なら通す。stdin の hook の入力を読み、Bash のコマンドのうちコミットを作る git のサブコマンド（`commit`・`merge`・`pull`・`cherry-pick`・`revert`・`am`・`rebase`）の実効の作業先（入力の `cwd`・`cd <dir>`・`git -C <dir>`）に `.tw/local/task-open-claims/` の控え（読む順は「ファイル配置と設定ファイル」の控えの行のとおり、`.tw/local/` が無ければ `.tw/` 直下、それも無ければ作業ツリー固有の git dir）があれば拒む。コミットのほかに、シェルでのファイルの書き換え（`sed -i`・`perl -i`・`>`・`>>`・`tee`、`-c`・ヒアドキュメントに書き込みが見える python）も、書き先（python は実効の作業先）を含む作業ツリーに控えがあれば拒む（入力の `cwd` に控えが無くても、書き先がその作業ツリーの中なら拒む）。作業ツリーの外・`.gitignore` で無視されるパス・`/dev/`・判定しきれない書き方（変数展開・変数やコマンド置換で決まる `cd` のあと・`eval`・`bash -c`）は通す。さらに、実効の作業先に控えがあるとき、その作業ツリーの設定の `verify`・`verify_before_ship` と同じコマンドの直打ちも拒んで `tw verify` を案内する。同じと見なすのは、`&&`・`;`・`|` を含まない設定のコマンドの語で始まり、残りが `-` で始まる語（`--full` など）だけのとき。`&&`・`;`・`|` で割れた各コマンドを別々に見る（`./check.sh` を `tail` に渡すパイプも拒む）。先頭の `env`・`command`・`VAR=値` の前置きとリダイレクトは無視し、`cd` は実効の作業先として追う。コマンドがパスで書かれていれば、実効の作業先（設定は作業ツリーの根）から解いて同じファイルを指すかで比べる（`./check.sh` と絶対パスは同じ）。旗でない語が続く絞った実行（`./check.sh path/to.test.ts`）・`bash ./check.sh`・`timeout …`・`tw verify`・設定が読めないか `なし` のときは通す。`cwd` が作業ツリーの外のまま絶対パスで打つものも、作業先に設定が無いので通す（既知の取りこぼし）。メインのセッションと、別の作業ツリー・別のリポジトリへのコミットには掛からない。`general-purpose` への委譲と、Bash のコマンド文字列に `git` が出ないコミット（`sh -c`・スクリプト越し）には効かず、`finish`・`done` の `COMMITS_SINCE_CLAIM` が事後に拾う。`bd` を呼ばない | 拒むときだけ PreToolUse の deny の JSON 1行（理由は「コミットせず…報告で返す」か「…`Edit`・`Write` で書く」か「検証コマンド…を直に打たない。`tw verify` で打つ」）。通すときは何も出さない |
 | `pause [T-xxx [<n>]]` | タスクIDだけを付けたときは、着手の印が立った自分のタスクなら引数なしと同じに動く（違えば `NOT_OWNER`。基本は引数なし）。いまの中身の鍵（`verify` と同じ取り方）を `.tw/local/task-pause-stamp` に控え、`flow/` に `pause` を1行足す。着手中のタスクの `### 作業先` が別のリポジトリで、枝の名前がタスクIDの小文字の作業ツリーがあれば、その作業ツリーの `.tw/local/task-pause-stamp` にもその中身の鍵を控える。`handback-guard` は、この控えがいまの中身と同じなら計画・検証が欠けていても返却を通す（目視待ち・判断が要って止める・計画を作業の後に書いた回の委譲先が、返す直前に打つ）。タスクIDと段の番号を付けると、`step` と同じ置き場・同じ鍵の取り方で種類 `pause` の段の印を控える（並列の段の担当が打つ。最後の段にも打てる。段の読めない計画・段の外の番号・自分の着手でなければ `NOT_OWNER`） | `PAUSED\t<木の SHA>`・`NOT_OWNER` |
 | `step T-xxx <n>` | 自分の着手の印のタスクの `## やること` の段 `n` を済ませた印として、いまの中身の鍵（`verify` と同じ取り方から、段 `n` と並列の組になる段の触るファイルも外す）とタスクID・段の番号を `.tw/local/task-step-stamps/<ID>.<n>` に控え（段ごとに1つで、ほかの段の控えを上書きしない。着手中でないタスクの控えは消す）、`flow/` に `step` を1行足す。`pause` と同じく、作業先の作業ツリーがあればそこにもその中身の鍵で控える（作業先の作業ツリーでは打たず、着手した作業ツリーで打つ）。`handback-guard` は、そのタスクの段の控えのどれかが同じ外し方で取ったいまの中身と同じで、段がいまの計画の最後より前なら、`plan-check` が通っている限り検証が欠けていても返却を通す（最後でない段を済ませた委譲先が、返す直前に打つ）。段の読めない計画・1〜段の数の外の番号は終了コード2。最後の段は控えずに `LAST_STEP`（終了コード4。`tw verify` を通して返す） | `STEPPED\tT-xxx\t<n>/<段の数>\t<木の SHA>`・`LAST_STEP\tT-xxx\t<n>/<段の数>\t<次の一手>`・`NOT_OWNER` |
 | `lap T-xxx <段> [start\|end]` | 自分の着手の印のタスクの `/next-task` の段の頭を、`flow/` に `{"event":"lap","stage":"<段>"}` の1行として足す（メインが打つ。第3引数を付けると `"edge":"start"`／`"end"` も入り、段の所要時間は同じ段の `end − start`。省くと `edge` の欄は書かず、旧い呼び方のまま、その出来事から同じタスクの次の出来事までの差。第3引数が `start`・`end` のどちらでもなければ終了コード2）。`<段>` は `direct`（委譲しない近道でメインが直し始めた）・`delegate`（委譲を投げた）・`accept`（最後の段の返りを受けて受け入れに入った）・`review`（受け入れ役を起こした。差し戻しのあとも打つ）・`retro`（振り返りに入った）・`land`（別のリポジトリへの合流。台帳は着手側と作業先で別なので `tw land` は記録せず、着手した作業ツリーでメインが `start`／`end` を打つ）・`sync`（`tw ship` のあとのトラッカー反映とバックアップ）。ほかの段は終了コード2。着手の印が無ければ記録しない。記録に失敗しても終了コードは 0 | `LAPPED\tT-xxx\t<段>`（第3引数を付けたときは末尾に `\t<start|end>`）・`NOT_CLAIMED\tT-xxx` |
-| `handback-guard [--agent-scoped]` | Claude Code の hook（`agents/no-delegate.md` の frontmatter の `Stop`（委譲先では `SubagentStop` として効く）と、`SubagentHandback` の `PreToolUse`。plugin では `hooks/hooks.json` の `SubagentStop` と `PreToolUse`）から呼ばれる。`--agent-scoped` の扱いは `commit-guard` と同じ。入力の `cwd` の作業ツリーに `.tw/local/task-open-claims/` の控え（`commit-guard` と同じ読む順。`verify`・`step`・`pause` の控えも同じ）があり、控えのタスクのどれかに作業（`claim` した時点の `HEAD` より後のコミットか、タスク自身のファイル以外の変更）があって、`plan-check` が `PLAN_FIRST`・`PLAN_REGISTERED` でないか、`verify-check` が `VERIFIED_SAME`・`NOTHING` でなく `step` の控えも効かず、`pause` の控え（段の印の `pause` を含む）もいまの中身と違えば拒む。段の印はどれか1つが効けば通すので、並列の段の担当が `tw step` を打ち忘れて返しても、ほかの並列の段の効いている印で通る（担当を見分けないため。メインが返却の1行目と差分で受け入れる）。タスクの `### 作業先` が別のリポジトリなら、枝の名前がタスクIDの小文字の作業ツリーにも同じ判定を当てる（作業は主ブランチとの分かれ目より後のコミットか変更で、`verify-check`・`step`・`pause` の控えはその作業ツリーのもの。作業先に `.tw/config.toml` を置けば、`.beads` が無くても作業先の作業ツリーで `tw verify` が打てて控えが効く。作業先の作業ツリーで `tw verify` が設定の判定（`MISSING`・`INVALID`）で打てないとき、または設定に検証コマンドが無いときは、`verify-check` を `NOTHING` と同じに扱って通す）。`bd` を呼ぶ | 拒むときだけ JSON 1行（`SubagentStop` は `{"decision":"block","reason":…}`、`PreToolUse` は deny。理由は欠けた `plan-check`・`verify-check` の行と次の一手。作業先の作業ツリーの行にはそのパスを添える）。通すとき・ほかのイベントやツールには何も出さない |
+| `handback-guard [--agent-scoped]` | Claude Code の hook（`agents/no-delegate.md` の frontmatter の `Stop`（委譲先では `SubagentStop` として効く）と、`SubagentHandback` の `PreToolUse`。plugin では `hooks/hooks.json` の `SubagentStop` と `PreToolUse`）から呼ばれる。`--agent-scoped` の扱いは `commit-guard` と同じ。入力の `cwd` の作業ツリーに `.tw/local/task-open-claims/` の控え（`commit-guard` と同じ読む順。`verify`・`step`・`pause` の控えも同じ）があり、控えのタスクのどれかに作業（`claim` した時点の `HEAD` より後のコミットか、タスク自身のファイル以外の変更）があって、`plan-check` が `PLAN_FIRST`・`PLAN_REGISTERED` でないか、`verify-check` が `VERIFIED_SAME`・`NOTHING` でなく `step` の控えも効かず、`pause` の控え（段の印の `pause` を含む）もいまの中身と違えば拒む。段の印はどれか1つが効けば通すので、並列の段の担当が `tw step` を打ち忘れて返しても、ほかの並列の段の効いている印で通る（担当を見分けないため。メインが返却の1行目と差分で受け入れる）。タスクの `### 作業先` が別のリポジトリなら、枝の名前がタスクIDの小文字の作業ツリーにも同じ判定を当てる（作業は主ブランチとの分かれ目より後のコミットか変更で、`verify-check`・`step`・`pause` の控えはその作業ツリーのもの。作業先に `.tw/config.toml` を置けば、`.beads` が無くても作業先の作業ツリーで `tw verify` が打てて控えが効く。作業先の作業ツリーで `tw verify` が設定の判定（`MISSING`・`INVALID`）で打てないとき、または設定に検証コマンドが無いときは、`verify-check` を `NOTHING` と同じに扱って通す。その作業ツリーがまだ無ければ見ない）。作業の無い返却（前提が誤り・`dropped`・計画だけの回）は通す。並列の段の印は段ごとに残り、並列の組になる段の触るファイルの書き換えでは崩れない（止める返却は `tw pause T-xxx <n>` で段の印にする）。この関門は2つの口から走る（エージェント定義の hook は PATH の `tw`、plugin の hook は取り込みの `bin/tw`）ので、控えた `tw` と照らす `tw` の版が違うと中身の鍵の `scheme` が合わず `NOT_VERIFIED scheme` で止まる。クローンと取り込みの版を揃えて `tw verify` を打ち直す。`general-purpose` への委譲には効かない。`bd` を呼ぶ | 拒むときだけ JSON 1行（`SubagentStop` は `{"decision":"block","reason":…}`、`PreToolUse` は deny。理由は欠けた `plan-check`・`verify-check` の行と次の一手。作業先の作業ツリーの行にはそのパスを添える）。通すとき・ほかのイベントやツールには何も出さない |
 | `ask-guard` | Claude Code の `PreToolUse` hook（plugin の `hooks/hooks.json` の matcher `AskUserQuestion`。`"${CLAUDE_PLUGIN_ROOT}/bin/tw"` の絶対パスで呼ぶ）から呼ばれる。`--agent-scoped` を持たず、`agent_type` を見ないので主のセッションにも委譲先にも掛かる。`install.sh` のリンクだけで入れたときは `hooks/hooks.json` が読まれないので掛からない。入力の `tool_name` が `AskUserQuestion` で、`cwd` の作業ツリーに `.tw/local/task-open-claims/` の控え（`commit-guard` と同じ読む順）があり、控えのタスクのどれかが `loopable: Y` で、台帳の `flow/` にそのタスクの最後の `claim` より後の `lap`（段 `retro`）が無ければ拒む（振り返りで利用者に採否を聞くのは通す）。`tw` にも `bd` にも書かない（`bd` は読む） | 拒むときだけ PreToolUse の deny の JSON 1行（理由はタスクIDと次の一手: `tw edit T-xxx --loopable N`・`## 注意` に理由を1行足す `tw edit T-xxx --section 注意 --body-file -`・`tw release T-xxx`、作業ツリーに作業が残っていなければ `/loop` は次の1件へ、残っていれば人に預けて終える）。通すとき・ほかのツールには何も出さない |
 
 | 終了コード | 先頭語 | 意味 | スキルがすること |
@@ -562,7 +528,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 
 **サブコマンドを足すときは、この参照表と終了コード表も同じコミットで直す**（参照表の追随が落ちると、読み手と実装が食い違う）。
 
-`/loop` は 1・3〜9・11 のどれで止まっても「続行不要」の合図として扱う。
+`/loop` を続けるかは、`skills/next-task/SKILL.md` の「`/loop` の続行判断」で決める（終了コードの一覧はここに持たない）。
 
 **`.git` が読み取り専用の sandbox で打つとき**（Codex のように、書けるのが作業ツリーと一時ディレクトリだけの環境）:
 `status`・`show`・`edit`・`done`・`plan-check`・`verify`（取り込みが要らないとき）・`verify-check`・`pause`・`step`・`metrics` と、
