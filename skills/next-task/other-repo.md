@@ -9,7 +9,9 @@
      小文字にしたもの。`T-012` なら `t-012`）で直してコミットし、**コミットの
      あと**にその作業ツリーを cwd にして `tw verify` を打つ（控えは cwd の作業ツリーごとで、鍵に `HEAD` の
      SHA を含むので、コミットの前に打つと受け入れで `NOT_VERIFIED head` になる）。`tw step`・`tw pause` は
-     着手した作業ツリーを cwd にして打つ（印は作業先の作業ツリーにも置かれる）。最後の段の返却は、
+     着手した側（Beads のある本体の作業ツリー。依頼文に渡したパス）を cwd にして打ち、作業先の作業ツリーでは
+     打たない（`NOT_OWNER` か `MISSING …/.beads` で拒まれる）。作業先の作業ツリーで打つ `tw` は
+     `tw verify` だけ。最後の段の返却は、
      作業先の作業ツリーの `tw verify-check` が `VERIFIED_SAME` でなければ hook に拒まれる。**`main` へ入れず、
      作業ツリーと枝を消さずに残して**、作業ツリーのパスと `tw verify` の判定行（`VERIFIED`・
      `VERIFY_NOT_PASSED` など）を報告に書く。作業先に `.tw/config.toml` があれば台帳（`.beads`）が無くても
