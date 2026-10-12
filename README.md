@@ -42,6 +42,20 @@ PATH の `tw` と plugin の `bin/tw` の版が違うと `tw verify` のあと�
   ファイル）を読み、依存先が張る先に無ければ警告する
 - `./uninstall.sh [--dest DIR] [--bin-dir DIR] [スキル名...]` は、このリポジトリを指すリンクだけを外す
 
+## `.git` が読み取り専用の sandbox で打つとき
+
+Codex のように、書けるのが作業ツリーと一時ディレクトリだけの環境:
+`status`・`show`・`edit`・`done`・`plan-check`・`verify`（取り込みが要らないとき）・`verify-check`・`pause`・`step`・`metrics` と、
+追い付きも枝の切り出しも要らない `claim`（`branch = "切らない"` で、主ブランチが `HEAD` の祖先）は通る。作業ツリーごとの控えは
+作業ツリーの根の `.tw/local/` に、中身の鍵の object は一時ディレクトリに書くので、`.git` には書かない。git に書くコマンドは
+`GIT_READ_ONLY`（終了コード11）で止まるので、sandbox の外で同じコマンドを打ち直す。Claude Code なら `settings.json` に
+`"sandbox": {"excludedCommands": ["tw"]}` を足すと `tw` が sandbox の外で動く。Codex なら sandbox の外での実行を承認して打ち直す。
+共有の台帳（共有の git dir の `task-workflow/`）も書けないので、`flow/` の記録を残すなら `TW_STATE_DIR` を書ける場所（Codex の writable roots、
+Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくても記録が落ちるだけで、サブコマンドは止まらない。
+`tw metrics` と横断の振り返りが同じ記録を読むよう、同じリポジトリを使うセッションは `TW_STATE_DIR` をそろえる）。
+`.beads`（本体の根）も書ける場所に足す
+（`bd` 1.3.1 は `.git` が読み取り専用でも動くが、`.beads` が読み取り専用だと読むだけの `bd list` も錠が取れずに落ち、`tw` は終了コード1になる）。
+
 ## 要るもの
 
 - `python3`（`tw` とスキルのスクリプト。標準ライブラリだけ）と `git`

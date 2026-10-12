@@ -521,46 +521,21 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | 8 | `VERIFY_FAILED` | 付け替えのあとの検証が落ちた（送っていない）。行は `VERIFY_FAILED\t<コマンド>\t<ログのパス>` で、続けて出力の末尾40行。ログは stdout と stderr を出た順に残した全文で、落ちた回のものを時刻つきの別名（`task-ship-verify.failed-<時刻>.log`）に写したもの。打ち直しても上書きされない | ログを読み、落ちた箇所を添えて人に預ける |
 | 9 | `RACE` | `--ff-only` が3回続けて落ちた | 人に預ける |
 | 10 | `VERIFY_NOT_PASSED`・`FORMAT_FAILED`・`PLAN_MISSING`・`TRACKER\tFAILED`・`BACKUP\tFAILED`（後ろ2つは `sync`・`backup` だけ） | `verify` の検証コマンドが落ちた／整形コマンドが落ちた（検証は打っていない）／`## やること` が空のまま作業があるので打たなかった（どちらも控えは消えた）／トラッカー・バックアップに届かない | `VERIFY_NOT_PASSED`・`FORMAT_FAILED` は出力の末尾（全体はログ）を読んで直し、`PLAN_MISSING` は `## やること` を書いて `tw edit T-xxx --after-work` で渡し、打ち直す。`TRACKER`・`BACKUP` は行を添えて報告する（タスクの操作は済んでいる） |
-| 11 | `GIT_READ_ONLY` | `.git` に書けない（`EACCES`・`EPERM`・`EROFS`）のに、git に書く操作が要る（`ship`・`land`、追い付くか枝を切る `claim`、取り込む `verify`）。行は `GIT_READ_ONLY\t<書けない git dir>\t<次の一手>`。打つ前に確かめるので、作業ツリーも Beads も変わっていない | sandbox の外で同じコマンドを打ち直す（下の「`.git` が読み取り専用の sandbox で打つとき」）。打ち直せなければ行を添えて人に預ける |
+| 11 | `GIT_READ_ONLY` | `.git` に書けない（`EACCES`・`EPERM`・`EROFS`）のに、git に書く操作が要る（`ship`・`land`、追い付くか枝を切る `claim`、取り込む `verify`）。行は `GIT_READ_ONLY\t<書けない git dir>\t<次の一手>`。打つ前に確かめるので、作業ツリーも Beads も変わっていない | sandbox の外で同じコマンドを打ち直す（`README.md`「`.git` が読み取り専用の sandbox で打つとき」節）。打ち直せなければ行を添えて人に預ける |
 | 12 | `COMMITS_SINCE_CLAIM`（`finish` だけ） | `done` は済んだが、`claim` のあとに委譲先が作ったコミットの合図が出たので、コミットと `ship` を打たずに止めた | `next-task/commits-since-claim.md` に従って判断し、個別に `git add`・`git commit`・`tw ship` を打つ |
 
 **サブコマンドを足すときは、この参照表と終了コード表も同じコミットで直す**（参照表の追随が落ちると、読み手と実装が食い違う）。
 
 `/loop` を続けるかは、`skills/next-task/SKILL.md` の「`/loop` の続行判断」で決める（終了コードの一覧はここに持たない）。
 
-**`.git` が読み取り専用の sandbox で打つとき**（Codex のように、書けるのが作業ツリーと一時ディレクトリだけの環境）:
-`status`・`show`・`edit`・`done`・`plan-check`・`verify`（取り込みが要らないとき）・`verify-check`・`pause`・`step`・`metrics` と、
-追い付きも枝の切り出しも要らない `claim`（`branch = "切らない"` で、主ブランチが `HEAD` の祖先）は通る。作業ツリーごとの控えは
-作業ツリーの根の `.tw/local/` に、中身の鍵の object は一時ディレクトリに書くので、`.git` には書かない。git に書くコマンドは
-`GIT_READ_ONLY`（終了コード11）で止まるので、sandbox の外で同じコマンドを打ち直す。Claude Code なら `settings.json` に
-`"sandbox": {"excludedCommands": ["tw"]}` を足すと `tw` が sandbox の外で動く。Codex なら sandbox の外での実行を承認して打ち直す。
-共有の台帳（共有の git dir の `task-workflow/`）も書けないので、`flow/` の記録を残すなら `TW_STATE_DIR` を書ける場所（Codex の writable roots、
-Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくても記録が落ちるだけで、サブコマンドは止まらない。
-`tw metrics` と横断の振り返りが同じ記録を読むよう、同じリポジトリを使うセッションは `TW_STATE_DIR` をそろえる）。
-`.beads`（本体の根）も書ける場所に足す
-（`bd` 1.3.1 は `.git` が読み取り専用でも動くが、`.beads` が読み取り専用だと読むだけの `bd list` も錠が取れずに落ち、`tw` は終了コード1になる）。
+`.git` が読み取り専用の sandbox で打つときは `README.md`「`.git` が読み取り専用の sandbox で打つとき」節。
 
 **`config-doctor` だけは終了コード1の意味が違う**（「直すものがある」。環境の故障ではない）。検査の最悪値を返し、`INVALID` があれば3、直すものがあれば1、全部OKで0。点検のコマンドなので、1で止まっても報告するだけでよい。
 
 **`commit-guard`・`handback-guard`・`ask-guard` は Claude Code の hook の取り決めに従う**: 出力は TSV でなく JSON で、終了コードはいつも0。
 読めない入力も何も出さずに通す。タスク運用を始めていないリポジトリ・git の外でも打てる。
 
-**この3つの hook は、サブエージェント定義の `tools`・`disallowedTools` や設定の `permissions.deny` では置き換えられない**
-（公式の説明: https://code.claude.com/docs/en/sub-agents ・ https://code.claude.com/docs/en/permissions ）。
-`disallowedTools` に `Bash(git push *)` のような指定子を書いても、Bash というツールごと外れ、コマンド単位の拒否にならない。
-コマンド単位で拒むには `permissions.deny` の `Bash(...)` か hook になるが、`permissions.deny` は設定にパターンで静的に書く規則で、
-着手の印や `loopable` のような状態によって拒むかを変えられず、`sh -c '…'`・フルパスの呼び出しは素通しする。
-plugin のサブエージェントは frontmatter の `hooks`・`permissionMode` を無視する。
-すでに `disallowedTools` でやっているのは、`agents/no-delegate.md` の `Agent` の除去と、`agents/acceptor.md` の `Agent`・`Edit`・`Write`・`NotebookEdit` の除去だけ。
-
-| 関門 | tools・`permissions.deny` で防げるか | 理由 |
-| --- | --- | --- |
-| `commit-guard` のコミット拒否 | 一部だけ | `Bash(git commit *)` の deny は書けるが、`sh -c` とフルパスは素通しし、着手の印の有無で出し分けられない |
-| `commit-guard` の Bash での書き換え拒否 | 不可 | 委譲先は `tw verify` と git の読み取りに Bash が要り、Bash を外せない |
-| `commit-guard` の検証コマンドの直打ち拒否 | 不可 | 検証コマンドはプロジェクトの設定にあり静的に書けない。`tw verify` の内部実行との区別もできない |
-| `handback-guard` の返却の関門 | 不可 | 作業の有無と `plan-check`・`verify-check` の結果という状態を見る検査 |
-| `ask-guard` | 不可 | 着手したタスクの `loopable` で拒むかが変わる |
-
+この3つの hook を `tools`・`permissions.deny` で置き換えられない理由は `agents/no-delegate.md`「hook を tools・permissions.deny で置き換えられない理由」節。
 
 ## Beads とトラッカー
 
