@@ -13,10 +13,11 @@
 # 1. 構文: install.sh・uninstall.sh・scripts/links.sh（いつも）
 # 2. install.sh・uninstall.sh の自己テスト
 # 3. task-workflow のスクリプトの自己テスト
-# 4. retrospect のスクリプトの自己テスト
-# 5. plan-tasks のスクリプトの自己テスト
-# 6. next-task のスクリプトの自己テスト
-# 7. リポジトリ全体の整合（frontmatter・README の索引・参照先の実在）（いつも）
+# 4. task-workflow の WORKFLOW.md を読む検査（WORKFLOW.md だけが変わったときの軽い段）
+# 5. retrospect のスクリプトの自己テスト
+# 6. plan-tasks のスクリプトの自己テスト
+# 7. next-task のスクリプトの自己テスト
+# 8. リポジトリ全体の整合（frontmatter・README の索引・参照先の実在）（いつも）
 #
 # 当たる段は `./check.sh --plan` で見る。
 set -e
@@ -79,7 +80,7 @@ if stage "install.sh・uninstall.sh の自己テスト" \
 fi
 
 if stage "task-workflow: scripts・task コマンドの自己テスト" \
-  'skills/task-workflow/*' 'agents/*' 'hooks/*' 'bin/*' 'skills/retrospect/scripts/*'; then
+  'skills/task-workflow/scripts/*' 'agents/*' 'hooks/*' 'bin/*' 'skills/retrospect/scripts/*'; then
   python3 "$here/skills/task-workflow/scripts/selftest.py"
   echo
   echo "-- task コマンド（develop/task/ + 台帳） --"
@@ -87,6 +88,10 @@ if stage "task-workflow: scripts・task コマンドの自己テスト" \
   echo
   echo "-- task コマンド（Beads 方式。bd が無ければ飛ばす） --"
   python3 "$here/skills/task-workflow/scripts/selftest_beads.py"
+fi
+
+if stage "task-workflow: WORKFLOW.md を読む検査" skills/task-workflow/WORKFLOW.md; then
+  python3 "$here/skills/task-workflow/scripts/selftest_task.py" test_readonly_commands_stay_out_of_git
 fi
 
 if stage "retrospect scripts の自己テスト" \
