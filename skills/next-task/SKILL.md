@@ -196,7 +196,7 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
    | 出力 | すること |
    | --- | --- |
    | 最後が `SNAPSHOT\t<木の SHA>`（その前に `REVIEW\topus`・`REVIEW\tcode\t<数>`） | レビューが要る。`lap review`（start）は打ってあり、木の SHA が1回目の控え。下の受け入れ役を起こす。判定を受けた直後に `tw lap T-xxx review end` を打つ（差し戻しで受け入れ役を起こし直すたびに、起こす直前の `tw lap T-xxx review start` と判定直後の `review end` を対で打つ）。直しのあとは `tw accept T-xxx --after-review`（終わりで `accept` の end を `tw` が出す） |
-   | 最後が `tw verify-check` の行（その前に `SKIP\tdocs-only`・`NOTHING`、設定に `format` があれば `FORMATTED`） | レビューは要らない（`accept` の end は `tw` が出した）。下の受け入れ役を `SKIP`・`NOTHING` の依頼（目視と材料だけ）で起こす |
+   | 最後が `tw verify-check` の行（その前に `SKIP\tdocs-only`・`NOTHING`・`NO_RANGE`、設定に `format` があれば `FORMATTED`） | レビューは要らない（`accept` の end は `tw` が出した）。下の受け入れ役を `SKIP`・`NOTHING`・`NO_RANGE` の依頼（目視と材料だけ）で起こす。`NO_RANGE` は範囲なしで作業ツリーの変更が空という意味で、作業先が別のリポジトリのタスクでは範囲の渡し忘れの合図なので、`other-repo.md` のとおり範囲つきで打ち直す |
    | `FORMAT_FAILED\t<コマンド>` | 整形が落ちた。続く末尾の行を読んで直し、`tw accept T-xxx --after-review` を打ち直す |
    | `MISSING`・`INVALID` | review_needed.py が見つからない・失敗した。行を添えて人に預けて終了する |
 
@@ -212,7 +212,7 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
      `git ls-files --others --exclude-standard`）・`tw show T-xxx` の `## 完了条件` の本文・
      プロジェクトの規約のファイル（AGENTS.md・CLAUDE.md と、そこから引かれるコーディング規約）のパス
    - `${CLAUDE_SKILL_DIR}/acceptor-brief.md` を解決した絶対パスと「最初にそれを読んで従う」
-   - `tw accept` の判定（`REVIEW\t…` か `SKIP`・`NOTHING`）と、`REVIEW` のときは木の SHA
+   - `tw accept` の判定（`REVIEW\t…` か `SKIP`・`NOTHING`・`NO_RANGE`）と、`REVIEW` のときは木の SHA
    - 目視の完了条件があるときは、委譲先が報告した画像のパス（幅ごと。いちばん狭い幅も）
    - 振り返りの材料: 委譲先の段ごとの返却の friction log の行（そのまま）と、メインの一言メモの数
      （検証の打ち直し・受け入れでの直し・人の差し戻し）

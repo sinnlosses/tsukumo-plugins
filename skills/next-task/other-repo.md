@@ -52,7 +52,7 @@
    になるだけ）。レビューの判定も同じ作業ツリーで、主ブランチから委譲先の枝までの範囲を渡して打ち
    （`python3 ${CLAUDE_SKILL_DIR}/scripts/review_needed.py --difficulty <difficulty> main..<枝>`）、
    受け入れ役に渡す差分のコマンドも `git diff main...<枝>` に、コメント行を拾うコマンドの範囲も
-   `main..<枝>` にする。表は同じに読む。`VERIFIED_SAME` なら、検証コマンドを打たずに同じ作業ツリーで
+   `main..<枝>` にする。範囲を渡さず本体で打つと `NO_RANGE` が返る（`NOTHING` ではない）ので、出たら範囲を付けて打ち直す。表は同じに読む。`VERIFIED_SAME` なら、検証コマンドを打たずに同じ作業ツリーで
    `cd <パス> && tw land <枝>` を打つ。`tw land` は作業先の本体で `<枝>` を ff-only で主ブランチへ合流し、
    入ったことを確かめてから作業ツリーと枝を消す。`git merge`・`git worktree remove`・`git branch -d` を
    素で打たない。
