@@ -1,9 +1,8 @@
 # COMMITS_SINCE_CLAIM の扱い
 
-   手順7の `tw finish` の出力に、`tw done` の行として `COMMITS_SINCE_CLAIM` の行が出たら、次のとおり
-   扱ってから先へ進む（`claim` した時点より後に、委譲先が hook（`tw commit-guard`）をすり抜けて作った
-   コミットがあった合図。すり抜けるのは `general-purpose` への委譲と、Bash の文字列に `git` が出ない
-   コミットだけ。控えの無い古い印では出ない）:
+   `claim` した時点より後に、委譲先が hook（`tw commit-guard`）をすり抜けて作ったコミットがあった合図。
+   すり抜けるのは `general-purpose` への委譲と、Bash の文字列に `git` が出ないコミットだけ。
+   控えの無い古い印では出ない:
 
    | 出力 | すること |
    | --- | --- |
