@@ -393,6 +393,11 @@ def test_stage_signals() -> None:
         r = gate("GH-52")
         lines = r.stdout.splitlines()
         check("end の無い start は OPEN の SIGNAL と節の OPEN の行", "SIGNAL\t段の所要時間\tOPEN レビュー" in lines and "OPEN\tレビュー" in lines, r.stdout + r.stderr)
+        check(
+            "OPEN があれば空きが50%でも段の空きの SIGNAL は出ず、節の GAP の行は出る",
+            not any(l.startswith("SIGNAL\t段の所要時間\t段の空き") for l in lines) and "GAP\t100\t50%" in lines_of("段の所要時間（flow/ から取った秒）", r.stdout),
+            r.stdout + r.stderr,
+        )
 
         r = gate("GH-53")
         check("段のあいだの空きが2割以上なら SIGNAL", "SIGNAL\t段の所要時間\t段の空き 45%" in r.stdout.splitlines(), r.stdout + r.stderr)

@@ -400,7 +400,7 @@ def stage_signals(stages: StageTimes | str | None) -> list[tuple[str, str]]:
             for stage, seconds in stages.seconds.items()
             if seconds * 100 >= STAGE_SHARE_PERCENT * stages.total
         ]
-        if stages.gap * 100 >= STAGE_GAP_PERCENT * stages.total:
+        if not stages.opens and stages.gap * 100 >= STAGE_GAP_PERCENT * stages.total:
             hits.append(("段の所要時間", f"段の空き {stage_percent(stages.gap, stages.total)}%"))
     return hits
 
