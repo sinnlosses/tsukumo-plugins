@@ -282,7 +282,7 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
    `NO_COMMIT` を出してコミットせず、そのまま ship へ進む（`tw ship` が `NOTHING` を返して閉じる）。
    知見は `## 結果`・`## 注意`・正典の docs・新しいタスクへ置き、`develop/progress.md` には書かない。
    `tw finish` は `tw done`・コミット・`tw ship` の行をそのまま並べ、止まる行（`NOT_OWNER`・`CONFLICT` など）が出たら
-   以降を打たない。`DONE` の次に `COMMITS_SINCE_CLAIM` が続いたら、`tw finish` はそこで（`tw done` は済んだまま）
+   以降を打たず、`${CLAUDE_SKILL_DIR}/ship-stopped.md` の表で読む。`DONE` の次に `COMMITS_SINCE_CLAIM` が続いたら、`tw finish` はそこで（`tw done` は済んだまま）
    コミットも `tw ship` も打たず終了コード12で止まる。`${CLAUDE_SKILL_DIR}/commits-since-claim.md` に従って判断し、
    個別の `git add`・`git commit`・`tw ship` で続ける（`tw finish`・`tw done` は打ち直さない。`## 結果` が二重になる）。
    `tw finish` は終わりに、`start` だけで `end` の無い段を `OPEN_SPAN\tT-xxx\t<段>` の行で出す（出力のみ。終了コードは変わらない）。
