@@ -295,7 +295,7 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
    | `SHIPPED`・`NOTHING` | 完了。`kept=feature/T-xxx` が付いていたら、枝を消せなかったことを報告して人に預ける（消さない）。続く行に `NOT_CLOSED`・`TRACKER\tFAILED`・`BACKUP\tFAILED` があれば、行を添えて報告する（送れてはいる。`TRACKER` は `tw sync` で打ち直せる） |
    | それ以外 | `${CLAUDE_SKILL_DIR}/ship-stopped.md` の表に従う |
 
-   `SHIPPED`・`NOTHING` 以外のどれで止まっても `/loop` は「続行不要」と扱う。push はしない。
+   `/loop` を続けるかは「完了報告のフォーマット」の「`/loop` の続行判断」で決める。push はしない。
 
 ## 完了報告のフォーマット
 
