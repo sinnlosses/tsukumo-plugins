@@ -44,7 +44,7 @@ GitHub で本文を直したあとの取り込みで `open` に戻る。`deferre
 
 **サイクルの各段で Beads に起きること**（「1サイクル」と「`tw` コマンドの参照」の補足）:
 
-- **読む・書く**: `tw show T-xxx` で読み、`tw edit T-xxx` で直す（コミットも `ship` も要らない。引数は「`tw` コマンドの参照」の `edit`）
+- **読む・書く**: `tw show T-xxx` で読み、`tw edit T-xxx` で直す（コミットも `ship` も要らない。引数は `tw edit --help`）
 - **`done`・`ship`**: `done` は `## 結果` を comment に入れて label `ship:done`／`ship:dropped` を立てるだけで、
   `bd close` は `ship` が送り終えたあとに打つ（「送り出し」）
 - **取り残し**: 「status と着手の印」の表
