@@ -297,7 +297,7 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
    `## 結果`（正典「結果の書き方と知見の置き場」。3行程度、自分のコミットのハッシュは書かない）を標準入力で渡す:
 
    ```bash
-   tw finish T-xxx --result-file - --message 'T-xxx: <何をしたか>' --add <作業のファイル> <<'EOF'
+   tw finish T-xxx --result-file - --message 'T-xxx: <何をしたか>' --add <ファイル1> --add <ファイル2> <<'EOF'
    - 検証コマンド: 1204 pass / 0 fail（+9）
    - 規約: coding-standards「テスト」
    - 規約の指摘: 0
@@ -315,7 +315,8 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
 
    `dropped` にするときは `--dropped` を付け、理由を結果に書く。`DONE` は
    stage せず（`## 結果` は Beads の comment に入る）、コミットは `--add` で渡した作業のファイルだけ
-   （振り返りのドラフトは Beads の課題なので入れない）。`--add` のファイルは**個別に** `git add` され（`git add -A` は使わない）、
+   （振り返りのドラフトは Beads の課題なので入れない）。`--add` はファイルごとに繰り返す（空白・コンマで1つにまとめない）。
+   `--add` のファイルは**個別に** `git add` され（`git add -A` は使わない）、
    **1コミット**になる。件名は `T-xxx: <何をしたか>`
    （正典「コミットメッセージ」）、末尾の署名も同じ節に従って `--message` に入れる。`--add` を付けないか差分が無ければ
    `NO_COMMIT` を出してコミットせず、そのまま ship へ進む（`tw ship` が `NOTHING` を返して閉じる）。
