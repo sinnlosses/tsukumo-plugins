@@ -866,6 +866,7 @@ def test_release_force_clears_github_label() -> None:
     with _github() as (fake, _tmp, main_path, wt1):
         a = new(main_path, "label が残る")
         n, bd_id = _num(a), beads.to_bd_id(a)
+        time.sleep(1.1)
         bd(main_path, "update", bd_id, "--status", "in_progress")
         r = run_task(main_path, "sync")
         check("前提: GitHub に status::in_progress が付く", r.returncode == 0
@@ -886,6 +887,7 @@ def test_release_force_deadline_then_sync() -> None:
     with _github() as (fake, _tmp, main_path, wt1):
         a = new(main_path, "送りが切れる")
         n, bd_id = _num(a), beads.to_bd_id(a)
+        time.sleep(1.1)
         bd(main_path, "update", bd_id, "--status", "in_progress")
         r = run_task(main_path, "sync")
         check("前提: GitHub に status::in_progress が付く", r.returncode == 0
@@ -1090,12 +1092,16 @@ def test_tracker_project_items_per_issue() -> None:
               f"{fake.status_writes}\n{r.stdout}{r.stderr}")
 
         before = _kv(main_path)
+        # 直前の sync が控える時刻は秒に丸まるので、同じ秒に更新すると送る課題に選ばれない。
+        time.sleep(1.1)
         bd(main_path, "update", beads.to_bd_id(a), "--status", "deferred")
         r = run_task(main_path, "sync")
         after = _kv(main_path)
         changed = sorted(k for k in after if k.startswith(prefix) and before.get(k) != after[k])
         check("Status が変わった課題だけ1キー書き換わる", fake.status_writes == 1 and fake.status_of(na) == "Pending"
-              and fake.status_of(nb) == "Todo" and changed == [f"{prefix}{na}"], f"{fake.status_writes} {changed}\n{r.stdout}{r.stderr}")
+              and fake.status_of(nb) == "Todo" and changed == [f"{prefix}{na}"],
+              f"status_writes={fake.status_writes} 課題{na}={fake.status_of(na)} 課題{nb}={fake.status_of(nb)} changed={changed}\n"
+              f"sync:\n{r.stdout}{r.stderr}\nkv の控え: {after}")
 
 
 def test_tracker_sync_pushes_only_changed() -> None:
