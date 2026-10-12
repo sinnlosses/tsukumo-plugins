@@ -86,11 +86,14 @@ def test_opus_docs_only() -> None:
 
 
 def test_nothing() -> None:
-    print("差分が空なら NOTHING")
+    print("範囲なしで差分が空なら NO_RANGE、範囲つきで空なら NOTHING")
     with tempfile.TemporaryDirectory() as d:
         init_repo(d)
         got = run(d, "--difficulty", "opus")
-        check("NOTHING", got == "NOTHING", repr(got))
+        check("範囲なしは NO_RANGE", got == "NO_RANGE", repr(got))
+        git(d, "checkout", "-q", "-b", "work")
+        got = run(d, "--difficulty", "opus", "main..work")
+        check("範囲つきは NOTHING", got == "NOTHING", repr(got))
 
 
 def test_range() -> None:

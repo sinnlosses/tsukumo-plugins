@@ -9,7 +9,8 @@
   REVIEW<TAB>opus                 difficulty が opus（差分によらない）
   REVIEW<TAB>code<TAB><数>        文書の拡張子でないパスがある（数はそのパスの数）
   SKIP<TAB>docs-only              変わったパスが全部文書
-  NOTHING                         差分が空
+  NOTHING                         範囲つきで差分が空
+  NO_RANGE                        範囲なしで作業ツリーの変更が空（作業先が別のリポジトリのタスクなら範囲の渡し忘れ）
 """
 
 from __future__ import annotations
@@ -28,13 +29,13 @@ def main() -> int:
     ap.add_argument("diff_args", nargs="*", help="git diff に渡す範囲などの引数")
     args = ap.parse_args()
 
-    print(decide(args.difficulty, changed_paths(args.diff_args)))
+    print(decide(args.difficulty, changed_paths(args.diff_args), bool(args.diff_args)))
     return 0
 
 
-def decide(difficulty: str, paths: list[str]) -> str:
+def decide(difficulty: str, paths: list[str], has_range: bool) -> str:
     if not paths:
-        return "NOTHING"
+        return "NOTHING" if has_range else "NO_RANGE"
     if difficulty == "opus":
         return "REVIEW\topus"
     code = [p for p in paths if os.path.splitext(p)[1].lower() not in DOC_EXTENSIONS]
