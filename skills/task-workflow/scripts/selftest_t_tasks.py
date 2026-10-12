@@ -484,7 +484,23 @@ def test_part_direct_run_refused() -> None:
         )
 
 
+def test_subcommand_help_complete() -> None:
+    import argparse
+
+    import task
+
+    say("task.py の全サブコマンドに help と description がある")
+    action = next(a for a in task.build_parser()._actions if isinstance(a, argparse._SubParsersAction))
+    helps = {a.dest: a.help for a in action._choices_actions}
+    check("表のキーと実際のサブコマンドが同じ", set(task.SUBCOMMAND_HELP) == set(action.choices))
+    for name, parser in action.choices.items():
+        line = helps.get(name) or ""
+        check(f"{name} の help が1行ある", bool(line.strip()) and "\n" not in line)
+        check(f"{name} の description がある", bool((parser.description or "").strip()))
+
+
 TESTS = (
+    test_subcommand_help_complete,
     test_part_direct_run_refused,
     test_done_commits_since_claim,
     test_done_single_worktree,
