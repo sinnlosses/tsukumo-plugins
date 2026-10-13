@@ -26,6 +26,7 @@ import re
 import subprocess
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -122,6 +123,12 @@ class Session:
         self._listed: list[beads.Issue] | None = None
         self._kv_all: dict | None = None
         self._deadline: float | None = None
+        # 経過を1行ずつ受ける先（`tw sync` が stderr へ出す）。無ければ何も出さない。
+        self.progress: Callable[[str], None] | None = None
+
+    def _say(self, message: str) -> None:
+        if self.progress is not None:
+            self.progress(message)
 
     @property
     def bidirectional(self) -> bool:
@@ -204,14 +211,32 @@ class Session:
             # 取り込みは送った時刻を進める（Beads が勝って飛ばした課題も）ので、送る課題は取り込みの前に選ぶ。
             pushed_count = "all"
             if not self.bidirectional:
+                self._say("GitHub へ全件を送る（bd github sync --push-only）")
                 self._bd_ok(["github", "sync", "--push-only"], "bd github sync --push-only")
             else:
-                self._adopt_existing([i.bd_id for i in self._issues() if beads.is_provisional(i.bd_id)])
-                listed = self._issues()
-                stale = {i.bd_id for i in listed if _after(i.raw.get("updated_at"), self._synced_at(i))}
-                if pull:
-                    remote, newest = self._rest_changed()
-                    lines += self._pull(self._without_echo(remote, listed))
+                # GitHub の一覧と Beads の読みは互いに頼らないので、一覧を先に走らせて待ちを重ねる。
+                # 走らせる前に `bd` を打つ読み（前回見た時刻・リポジトリ名）を済ませる（スレッドでは `gh` だけを打つ）。
+                fetch = None
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    if pull:
+                        query = self._changed_query()
+                        self._repository()
+                        self._say(f"GitHub の更新を取得中（{query.partition('since=')[2] or '開いている全件'} 以降）")
+                        fetch = pool.submit(self._rest_issues, query)
+                    self._say("Beads の課題を読み込み中")
+                    self._adopt_existing([i.bd_id for i in self._issues() if beads.is_provisional(i.bd_id)])
+                    listed = self._issues()
+                    stale = {i.bd_id for i in listed if _after(i.raw.get("updated_at"), self._synced_at(i))}
+                    self._say(f"Beads: {len(listed)} 件を読んだ（前回の送りより後に変えたもの {len(stale)} 件）")
+                    if fetch is not None:
+                        remote = fetch.result()
+                        newest = _newest_update(remote)
+                        self._say(f"GitHub: {len(remote)} 件が更新されていた")
+                if fetch is not None:
+                    incoming = self._without_echo(remote, listed)
+                    if incoming:
+                        self._say(f"Beads へ取り込む: {len(incoming)} 件（#{', #'.join(str(n) for n in sorted(incoming))}）")
+                    lines += self._pull(incoming)
                 # 取り込まなかった課題も控えから戻す（取り込みが読んだ kv を使い回す）。戻した課題は下で送る。
                 restore_lines, restored = self._restore_from_snapshots(None)
                 lines += restore_lines
@@ -220,6 +245,7 @@ class Session:
                 changed_ids = [i.bd_id for i in before if i.bd_id in stale]
                 pushed_count = str(len(changed_ids))
                 if changed_ids:
+                    self._say(f"GitHub へ送る: {len(changed_ids)} 件")
                     self._bd_ok(
                         ["github", "sync", "--push-only", "--issues", ",".join(changed_ids)],
                         "bd github sync --push-only",
@@ -240,6 +266,7 @@ class Session:
                 if unsent:
                     self._push(unsent)
                     self._mark_synced(unsent)
+            self._say("Project の Status 欄を揃える")
             changed = self._bridge(self._issues())
             if pull and self.bidirectional:
                 beads.run_ok(self.toplevel, ["kv", "set", SEEN_KEY, _format_time(newest or started)])
@@ -375,16 +402,13 @@ class Session:
             raise _Failed(f"gh api issues/{number} の JSON が思った形でない")
         return data
 
-    def _rest_changed(self) -> tuple[dict[int, dict], datetime | None]:
-        """前回見た更新時刻（無ければ開いた全件）より後に更新された Issue（PR を除く）と、その最新の時刻。"""
-        seen = _parse_time(beads.run(self.toplevel, ["kv", "get", SEEN_KEY]).stdout.strip())
+    def _changed_query(self) -> str:
+        """前回見た更新時刻（無ければ開いた全件）より後に更新された Issue を引く一覧の問い合わせ。"""
+        raw = self._kv_listing().get(SEEN_KEY)
+        seen = _parse_time(raw.strip()) if isinstance(raw, str) else None
         if seen is None:
-            query = "state=open&per_page=100"
-        else:
-            query = "state=all&per_page=100&since=" + _format_time(seen - SEEN_MARGIN)
-        remote = self._rest_issues(query)
-        times = [t for t in (_parse_time(i.get("updated_at")) for i in remote.values()) if t is not None]
-        return remote, max(times) if times else None
+            return "state=open&per_page=100"
+        return "state=all&per_page=100&since=" + _format_time(seen - SEEN_MARGIN)
 
     def _rest_issues(self, query: str) -> dict[int, dict]:
         """`repos/<repo>/issues?<query>` の Issue（PR を除く）を番号で引く。"""
@@ -536,7 +560,8 @@ class Session:
 
     def _load_synced(self) -> dict:
         if self._synced is None:
-            cached = _loads(beads.run(self.toplevel, ["kv", "get", SYNCED_KEY]).stdout)
+            raw = self._kv_listing().get(SYNCED_KEY)
+            cached = _loads(raw) if isinstance(raw, str) else None
             self._synced = cached if isinstance(cached, dict) else {}
         return self._synced
 
@@ -1002,6 +1027,12 @@ def _parse_time(value) -> datetime | None:
     except ValueError:
         return None
     return at if at.tzinfo else at.replace(tzinfo=timezone.utc)
+
+
+def _newest_update(remote: dict[int, dict]) -> datetime | None:
+    """Issue の一覧の中で最も新しい `updated_at`。"""
+    times = [t for t in (_parse_time(i.get("updated_at")) for i in remote.values()) if t is not None]
+    return max(times) if times else None
 
 
 def _format_time(at: datetime) -> str:

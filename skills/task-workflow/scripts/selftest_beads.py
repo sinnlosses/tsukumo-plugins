@@ -814,7 +814,8 @@ def test_tracker_register_timeout_no_duplicate() -> None:
         fake.listed.clear()
         r = run_task(main_path, "sync")
         check("sync のあとも立てた Issue は1つ（合わせて2つ）", len(fake.issues) == 2, f"{len(fake.issues)} {r.stdout}{r.stderr}")
-        check("sync の拾い探しも古い Issue を取りに行かない", old not in fake.listed[0], repr(fake.listed))
+        # 取り込みの一覧と拾い探しの一覧は並んで走るので、順は決まらない。古い Issue を含まないのは拾い探しの一覧。
+        check("sync の拾い探しも古い Issue を取りに行かない", any(old not in got for got in fake.listed), repr(fake.listed))
         check("仮の ID は gh-2 へ付け替わる", beads.show(main_path, "gh-2") is not None
               and not any(beads.is_provisional(i.bd_id) for i in beads.list_issues(main_path)), r.stdout)
 

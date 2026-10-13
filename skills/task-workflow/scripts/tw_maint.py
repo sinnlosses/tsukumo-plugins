@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import sys
+import time
+
 import beads
 import init
 import layout
@@ -54,9 +57,17 @@ BUSY_EXIT = 5
 
 
 def cmd_sync(toplevel: str) -> None:
+    started = time.monotonic()
+
+    def progress(message: str) -> None:
+        # stdout は結果の行だけ（呼ぶ側が読む）。経過は stderr へ、始めからの秒数つきで出す。
+        print(f"[{time.monotonic() - started:5.1f}s] {message}", file=sys.stderr, flush=True)
+
+    session = tracker.session(toplevel)
+    session.progress = progress
     try:
         with ledger.sync_lock(toplevel):
-            lines = tracker.session(toplevel).sync_all(pull=True)
+            lines = session.sync_all(pull=True)
     except ledger.SyncBusy as e:
         print(f"BUSY\tsync\t{e}")
         raise SystemExit(BUSY_EXIT)
