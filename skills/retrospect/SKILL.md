@@ -91,7 +91,7 @@ user-invocable: false
 ## 1件だけ振り返る（`/next-task` の中から）
 
 `/next-task` が受け入れ（手順6）のあと・`tw done` の前に、**メインが**まず判定の口を打つ
-（`/next-task` の手順6a。5つの値の決め方もそこにある）:
+（`/next-task` の手順6a。`next-task` スキルの `retro-step.md`。5つの値の決め方もそこにある）:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/../retrospect/scripts/material.py . T-XXX --gate --friction … --reverify … --fixes … --human … --review …
