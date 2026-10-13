@@ -16,6 +16,8 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "review_snapshot.py")
 
+from selftest_support import git, write  # noqa: E402
+
 failures: list[str] = []
 
 
@@ -25,16 +27,6 @@ def check(label: str, cond: bool, detail: str = "") -> None:
     else:
         print(f"  FAIL {label}{(': ' + detail) if detail else ''}")
         failures.append(label)
-
-
-def git(repo: str, *args: str) -> str:
-    out = subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, text=True)
-    return out.stdout
-
-
-def write(repo: str, path: str, body: str) -> None:
-    with open(os.path.join(repo, path), "w", encoding="utf-8") as f:
-        f.write(body)
 
 
 def snapshot(repo: str) -> str:

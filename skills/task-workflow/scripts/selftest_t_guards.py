@@ -13,23 +13,10 @@ from selftest_support import check, git, refuse_direct_run, say, weight, write  
 import beads  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
-from selftest_fixtures import BODY, TASK_PY, commit_task, flow_rows, hook_env, make_repo, metadata, readonly_git, run_handback_guard, run_task, snapshot  # noqa: E402
+from selftest_fixtures import BODY, TASK_PY, commit_task, flow_rows, hook_env, make_repo, metadata, readonly_git, run_guard, run_handback_guard, run_task, snapshot  # noqa: E402
 
 
 NO_DELEGATE = os.path.join(HERE, "..", "..", "..", "agents", "no-delegate.md")
-
-
-def run_guard(tmp: str, where: str, command: str) -> str | None:
-    """`tw commit-guard` を git の外（`tmp`）から打つ。拒んだら理由、通したら `None`（落ちたら例外）。"""
-    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": where})
-    r = run_task(tmp, "commit-guard", stdin=payload)
-    if r.returncode != 0:
-        raise RuntimeError(f"commit-guard が {r.returncode} で終わった: {r.stderr}")
-    if r.stdout == "":
-        return None
-    out = json.loads(r.stdout)["hookSpecificOutput"]
-    assert out["permissionDecision"] == "deny"
-    return out["permissionDecisionReason"]
 
 
 def _hook_command(subcommand: str) -> str:

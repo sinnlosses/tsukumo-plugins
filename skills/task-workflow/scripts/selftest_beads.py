@@ -15,6 +15,7 @@ GitHub には繋がない。本物の `bd` の `bd github push`・`pull` を `GI
 from __future__ import annotations
 
 import contextlib
+import functools
 import json
 import os
 import shutil
@@ -38,15 +39,14 @@ import ledger  # noqa: E402
 import taskfile  # noqa: E402
 import tracker  # noqa: E402
 from selftest_body import task_body  # noqa: E402
-from selftest_support import beads_home, check, copy_beads, finish, git, local, run_parallel, say, select, write  # noqa: E402
+from selftest_fixtures import make_repo as make_fixture_repo, run_guard, run_handback_guard, run_task, start_task  # noqa: E402
+from selftest_support import beads_home, check, finish, git, local, run_parallel, say, select, write  # noqa: E402
 
 # 利用者の値のままだと、一時リポジトリの台帳がその置き場に積もる。
 os.environ.pop(ledger.STATE_DIR_ENV, None)
 # このプロセスは `task.py` の子プロセスが書いたあとに読み直すので、読みを使い回さない。
 beads.READ_REUSE_SECONDS = 0
 
-TASK_PY = os.path.join(HERE, "task.py")
-INIT_PY = os.path.join(HERE, "init.py")
 MATERIAL_PY = os.path.join(HERE, "..", "..", "retrospect", "scripts", "material.py")
 BODY = task_body(acceptance="- 通る", caution="z")
 # 登録の既定の本文。`make_repo` が主ブランチに置く `shared.txt` を名指す。
@@ -57,25 +57,6 @@ PLANNED_BODY = task_body([("書く", "x")], ["shared.txt"], acceptance="- 通る
 def env() -> dict[str, str]:
     """テストは CPU 数の半分まで並行に走らせる。出力と環境変数はテストごとに持つ。"""
     return getattr(local, "env", None) or dict(os.environ)
-
-
-def run_task(cwd: str, *args: str, stdin: str | None = None) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, TASK_PY, *args], cwd=cwd, capture_output=True, text=True, input=stdin, env=env()
-    )
-
-
-def start_task(cwd: str, *args: str, stdin: str | None = None) -> subprocess.Popen:
-    p = subprocess.Popen(
-        [sys.executable, TASK_PY, *args],
-        cwd=cwd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        env=env(),
-    )
-    return p
 
 
 def bd(cwd: str, *args: str) -> subprocess.CompletedProcess:
@@ -99,33 +80,8 @@ def tail_line(out: str, key: str) -> str:
     return next((l for l in out.splitlines() if l.startswith(key + "\t")), "")
 
 
-def make_repo(tmp: str, branch: str | None = "切らない", extra: str = "", verify: str | None = None,
-              prefix: str | None = beads.PREFIX_LOCAL) -> tuple[str, str, str]:
-    """`(本体, 作業ツリー1, 作業ツリー2)`。`.beads` は `prefix` の作り置きを写してから `init.py` を打つ。
-    `prefix` が `None` なら `init.py` が `bd init` で作る。設定は `.tw/config.toml` に書き、`extra` はその続きの行。
-    `verify` はコマンドそのもの。`branch` が `None` なら `branch` を書かない。"""
-    main_path = os.path.join(tmp, "base")
-    os.makedirs(main_path)
-    git(main_path, "init", "-q", "-b", "main")
-    git(main_path, "config", "user.email", "test@example.com")
-    git(main_path, "config", "user.name", "test")
-    git(main_path, "config", "beads.role", "maintainer")
-    config = f'verify = "{verify or "なし"}"\n' + (f'branch = "{branch}"\n' if branch is not None else "")
-    config += f'store = "beads"\n{extra}'
-    write(os.path.join(main_path, ".tw", "config.toml"), config)
-    write(os.path.join(main_path, "shared.txt"), "line1\n")
-    if prefix is not None:
-        copy_beads(main_path, prefix)
-    r = subprocess.run([sys.executable, INIT_PY], cwd=main_path, capture_output=True, text=True, env=env())
-    if r.returncode != 0:
-        raise RuntimeError(f"init.py 失敗: {r.stdout}{r.stderr}")
-    git(main_path, "add", "-A")
-    git(main_path, "commit", "-q", "-m", "init")
-    wt1 = os.path.join(tmp, "wt1")
-    wt2 = os.path.join(tmp, "wt2")
-    git(main_path, "worktree", "add", "-q", "-b", "wt1", wt1, "main")
-    git(main_path, "worktree", "add", "-q", "-b", "wt2", wt2, "main")
-    return main_path, wt1, wt2
+# `init.py` を打つ足場。作業ツリーの枝の名前（課題の持ち主の名前になる）は `wt1`・`wt2`。
+make_repo = functools.partial(make_fixture_repo, branch="切らない", init=True, worktree_branches=("wt1", "wt2"))
 
 
 def new(cwd: str, summary: str, *extra: str, body: str = PLANNED_BODY) -> str:
@@ -398,15 +354,6 @@ def test_claim_race_owner_and_release() -> None:
         check("汚れた作業ツリーでは DIRTY", r.returncode == 4 and r.stdout.startswith("DIRTY"), r.stdout)
 
 
-def guard_denies(tmp: str, where: str, command: str = "git commit -m x") -> bool:
-    """`tw commit-guard` を git の外（`tmp`）から打ち、拒んだか。"""
-    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": where})
-    r = run_task(tmp, "commit-guard", stdin=payload)
-    if r.returncode != 0:
-        raise RuntimeError(f"commit-guard が {r.returncode} で終わった: {r.stderr}")
-    return '"deny"' in r.stdout
-
-
 def test_commit_guard() -> None:
     say("commit-guard: 印が立って done 前の作業ツリーのコミットを拒む")
     with tempfile.TemporaryDirectory() as tmp:
@@ -417,9 +364,9 @@ def test_commit_guard() -> None:
         run_task(wt1, "claim", a)
         check("claim で控えが立つ（作業ツリーごと）",
               ledger.open_claims(cwd=wt1) == [a] and ledger.open_claims(cwd=wt2) == [], str(ledger.open_claims(cwd=wt1)))
-        check("印の作業ツリーの git commit は拒む", guard_denies(tmp, wt1))
-        check("印の無い作業ツリーの git commit は通す", not guard_denies(tmp, wt2))
-        check("別の作業ツリーへの git -C は通す", not guard_denies(tmp, wt1, f"git -C {wt2} commit -m x"))
+        check("印の作業ツリーの git commit は拒む", run_guard(tmp, wt1, "git commit -m x") is not None)
+        check("印の無い作業ツリーの git commit は通す", run_guard(tmp, wt2, "git commit -m x") is None)
+        check("別の作業ツリーへの git -C は通す", run_guard(tmp, wt1, f"git -C {wt2} commit -m x") is None)
         write(os.path.join(wt1, "work.txt"), "x\n")
         git(wt1, "add", "work.txt")
         git(wt1, "commit", "-q", "-m", "メインの手直し")
@@ -427,21 +374,12 @@ def test_commit_guard() -> None:
               git(wt1, "log", "-1", "--format=%s").stdout.strip() == "メインの手直し")
         r = run_task(wt1, "done", a, "--result-file", "-", stdin="- 検証: なし\n- 振り返り: 兆候なし\n")
         check("done で控えが消え、そのあとの git commit は通る",
-              r.returncode == 0 and ledger.open_claims(cwd=wt1) == [] and not guard_denies(tmp, wt1), r.stdout)
+              r.returncode == 0 and ledger.open_claims(cwd=wt1) == [] and run_guard(tmp, wt1, "git commit -m x") is None, r.stdout)
 
         run_task(wt2, "claim", c)
         r = run_task(wt1, "release", c, "--force")
         check("人が --force で外すと持ち主の作業ツリーの控えも消える",
-              r.returncode == 0 and ledger.open_claims(cwd=wt2) == [] and not guard_denies(tmp, wt2), r.stdout)
-
-
-def handback_reason(tmp: str, where: str) -> str | None:
-    """`tw handback-guard` に SubagentStop を渡し、block の理由。通したら `None`。"""
-    payload = json.dumps({"hook_event_name": "SubagentStop", "cwd": where})
-    r = run_task(tmp, "handback-guard", stdin=payload)
-    if r.returncode != 0:
-        raise RuntimeError(f"handback-guard が {r.returncode} で終わった: {r.stderr}")
-    return json.loads(r.stdout)["reason"] if r.stdout else None
+              r.returncode == 0 and ledger.open_claims(cwd=wt2) == [] and run_guard(tmp, wt2, "git commit -m x") is None, r.stdout)
 
 
 def test_handback_guard() -> None:
@@ -450,21 +388,21 @@ def test_handback_guard() -> None:
         main_path, wt1, _wt2 = make_repo(tmp, verify="echo verified")
         a = new_unplanned(main_path, "先に計画")
 
-        check("着手の印が無い委譲は通す", handback_reason(tmp, wt1) is None)
+        check("着手の印が無い委譲は通す", run_handback_guard(tmp, wt1) is None)
         run_task(wt1, "claim", a)
-        check("印があっても作業が無ければ通す", handback_reason(tmp, wt1) is None)
+        check("印があっても作業が無ければ通す", run_handback_guard(tmp, wt1) is None)
         run_task(wt1, "edit", a, "--section", "やること", "--body-file", "-", stdin=(
             "### 1. 書く\n- 触るファイル: `src/a.py`\n"
             "### 2. 文書\n- 前の段: 1\n- 触るファイル: `docs/`\n"
         ))
-        check("計画だけの回は通す", handback_reason(tmp, wt1) is None)
+        check("計画だけの回は通す", run_handback_guard(tmp, wt1) is None)
         write(os.path.join(wt1, "work.txt"), "x\n")
-        reason = handback_reason(tmp, wt1) or ""
+        reason = (run_handback_guard(tmp, wt1) or {}).get("reason", "")
         check("計画があっても検証が無ければ block（NOT_VERIFIED）",
               "NOT_VERIFIED\tnone" in reason and "PLAN_NOT_FIRST" not in reason, reason)
         run_task(wt1, "step", a, "1")
         r = run_task(wt1, "verify")
-        check("PLAN_FIRST と tw step と tw verify がそろえば通す", r.returncode == 0 and handback_reason(tmp, wt1) is None,
+        check("PLAN_FIRST と tw step と tw verify がそろえば通す", r.returncode == 0 and run_handback_guard(tmp, wt1) is None,
               r.stdout + r.stderr)
 
 
@@ -988,7 +926,7 @@ def test_handback_guard_after_killed_sync() -> None:
         lost = beads.show(main_path, bd_id)
         check("前提: 止めた sync が担当者と印を空にしたまま残す", lost is not None and not lost.assignee
               and not beads.mark_values(lost), str(lost and lost.raw))
-        reason = handback_reason(tmp, wt1) or ""
+        reason = (run_handback_guard(tmp, wt1) or {}).get("reason", "")
         got = beads.show(main_path, bd_id)
         check("コミット済みで作業ツリーがきれいでも、検証が無ければ block（NOT_VERIFIED）", "NOT_VERIFIED" in reason, reason)
         check("handback-guard が印を戻す", got is not None and got.assignee == "wt1"
