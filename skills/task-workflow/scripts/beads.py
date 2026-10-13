@@ -39,6 +39,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 
+import gitcmd
 import layout
 import taskfile
 
@@ -214,12 +215,7 @@ def run_json(toplevel: str, args: list[str]):
 
 def beads_dir(toplevel: str) -> str:
     """`.beads` の置き場（主ブランチを出している作業ツリーの根＝共有の `.git` の親）。"""
-    r = subprocess.run(
-        ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
-        cwd=toplevel,
-        capture_output=True,
-        text=True,
-    )
+    r = gitcmd.run(["rev-parse", "--path-format=absolute", "--git-common-dir"], toplevel)
     common = r.stdout.strip() if r.returncode == 0 else os.path.join(toplevel, ".git")
     return os.path.join(os.path.dirname(common), ".beads")
 

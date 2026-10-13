@@ -38,6 +38,7 @@ if _TASK_WORKFLOW_SCRIPTS not in sys.path:
 
 import cross_review  # noqa: E402
 import draft_fate  # noqa: E402
+import gitcmd  # noqa: E402
 import layout  # noqa: E402
 import ledger  # noqa: E402
 import metrics  # noqa: E402
@@ -168,7 +169,7 @@ def section(title: str) -> None:
 
 def _git_lines(cwd: str, *args: str) -> list[str]:
     try:
-        r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+        r = gitcmd.run(list(args), cwd)
     except OSError:
         return []
     return r.stdout.splitlines() if r.returncode == 0 else []

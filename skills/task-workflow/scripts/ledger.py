@@ -13,13 +13,13 @@ import inspect
 import json
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+import gitcmd
 import layout
 
 LEDGER_DIR_NAME = "task-workflow"
@@ -27,8 +27,7 @@ STATE_DIR_ENV = "TW_STATE_DIR"
 READ_ONLY_ERRNOS = (errno.EACCES, errno.EPERM, errno.EROFS)
 
 
-class GitCommandError(RuntimeError):
-    """git を呼んで非0で終わった。環境の故障として扱う（データの不備ではない）。"""
+GitCommandError = gitcmd.GitCommandError
 
 
 class NoBaseBranch(RuntimeError):
@@ -44,15 +43,7 @@ class GitReadOnly(RuntimeError):
 
 
 def _git(args: list[str], cwd: str | None = None) -> str:
-    r = subprocess.run(
-        ["git", *args],
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-    )
-    if r.returncode != 0:
-        raise GitCommandError(f"git {' '.join(args)} が失敗（{r.returncode}）: {r.stderr.strip()}")
-    return r.stdout.strip()
+    return gitcmd.out(args, cwd)
 
 
 def git_common_dir(cwd: str | None = None) -> str:
@@ -93,7 +84,7 @@ def is_clean(cwd: str | None = None) -> bool:
 
 def head_sha_or_none(cwd: str | None = None) -> str | None:
     """`git rev-parse HEAD`。引けなければ `None`（`claim` が `head` を控えずに済ませる）。"""
-    r = subprocess.run(["git", "rev-parse", "HEAD"], cwd=cwd, capture_output=True, text=True)
+    r = gitcmd.run(["rev-parse", "HEAD"], cwd)
     return r.stdout.strip() if r.returncode == 0 else None
 
 
@@ -130,24 +121,14 @@ def _resolve_base_branch(cwd: str | None) -> tuple[str, int]:
     order = 1
     if found is None:
         order = 2
-        r = subprocess.run(
-            ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
-            cwd=toplevel,
-            capture_output=True,
-            text=True,
-        )
+        r = gitcmd.run(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], toplevel)
         head = r.stdout.strip()
         if r.returncode == 0 and head.startswith("origin/"):
             found = head[len("origin/") :]
     if found is None:
         order = 3
         for name in BASE_BRANCH_CANDIDATES:
-            r = subprocess.run(
-                ["git", "rev-parse", "--verify", "--quiet", f"refs/heads/{name}"],
-                cwd=toplevel,
-                capture_output=True,
-                text=True,
-            )
+            r = gitcmd.run(["rev-parse", "--verify", "--quiet", f"refs/heads/{name}"], toplevel)
             if r.returncode == 0:
                 found = name
                 break
@@ -408,11 +389,10 @@ def worktree_tree(
         steps = [["add", "-A"], ["write-tree"]]
         if excluded:
             steps.insert(1, ["rm", "-r", "--cached", "-q", "--ignore-unmatch", "--", *excluded])
+        tree = ""
         for args in steps:
-            r = subprocess.run(["git", *args], cwd=toplevel, env=env, capture_output=True, text=True)
-            if r.returncode != 0:
-                raise GitCommandError(f"git {' '.join(args)} が失敗（{r.returncode}）: {r.stderr.strip()}")
-        return r.stdout.strip()
+            tree = gitcmd.out(args, toplevel, env)
+        return tree
 
 
 def _content_scheme() -> str:

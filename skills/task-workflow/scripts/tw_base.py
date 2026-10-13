@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import beads
+import gitcmd
 import layout
 import ledger
 import taskfile
@@ -24,7 +25,7 @@ def format_refusal(toplevel: str) -> tuple[str, int] | None:
 
 
 def run_git(toplevel: str, args: list[str]) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", *args], cwd=toplevel, capture_output=True, text=True)
+    return gitcmd.run(args, toplevel)
 
 
 def history_ids_at_base(toplevel: str) -> set[str]:
