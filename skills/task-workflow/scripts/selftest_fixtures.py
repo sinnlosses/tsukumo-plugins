@@ -13,7 +13,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from selftest_support import copy_beads, git, write  # noqa: E402
+from selftest_support import copy_beads, git, local, write  # noqa: E402
 import beads  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
@@ -31,6 +31,12 @@ BODY = task_body()
 # 登録の既定の本文。`make_repo` が主ブランチに置く `shared.txt` を名指す。
 PLANNED_BODY = task_body([("書く", "x")], ["shared.txt"])
 
+def child_env(env: dict[str, str] | None = None) -> dict[str, str] | None:
+    """子プロセスの環境。`env` は `os.environ` に重ねる。省略すると、テストが `local.env` に置いた環境（あれば）。"""
+    layer = env if env is not None else getattr(local, "env", None)
+    return {**os.environ, **layer} if layer is not None else None
+
+
 def run_task(
     cwd: str, *args: str, stdin: str | None = None, env: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess:
@@ -40,13 +46,19 @@ def run_task(
         capture_output=True,
         text=True,
         input=stdin,
-        env={**os.environ, **env} if env is not None else None,
+        env=child_env(env),
     )
 
 
 def start_task(cwd: str, *args: str) -> subprocess.Popen:
     return subprocess.Popen(
-        [sys.executable, TASK_PY, *args], cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        [sys.executable, TASK_PY, *args],
+        cwd=cwd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=child_env(),
     )
 
 
@@ -63,13 +75,18 @@ def make_repo(
     base: str = "main",
     format_command: str | None = None,
     preship: str | None = None,
+    extra: str = "",
+    prefix: str | None = beads.PREFIX_LOCAL,
+    init: bool = False,
+    worktree_branches: tuple[str, str] = ("wt1-branch", "wt2-branch"),
 ) -> tuple[str, str, str]:
     """`(本体, 作業ツリー1, 作業ツリー2)`。本体だけが主ブランチを出す。
 
     設定は `.tw/config.toml` に書く。`verify`・`format_command`・`preship` は `` `cmd` `` か `なし` の形で渡し、
     `verify` を省略すると `verify = "なし"`。`branch` が `None` なら `branch` を書かない。`base` は主ブランチの
-    名前——リモートを持たない足場なので `ledger.base_branch` の順3で決まる。
-    `.beads` は `beads_home` の `t` の作り置きを写す。
+    名前——リモートを持たない足場なので `ledger.base_branch` の順3で決まる。`extra` は設定の続きの行。
+    `.beads` は `beads_home` の `prefix` の作り置きを写す。`prefix` が `None` なら写さない。
+    `init` が真なら `store = "beads"` を書き、`init.py` を打ってからコミットする（`prefix` が `None` なら `.beads` も `init.py` が作る）。
     """
     main_path = os.path.join(tmp, "base")
     os.makedirs(main_path)
@@ -77,8 +94,10 @@ def make_repo(
     git(main_path, "config", "user.email", "test@example.com")
     git(main_path, "config", "user.name", "test")
     git(main_path, "config", "beads.role", "maintainer")
-    copy_beads(main_path, beads.PREFIX_LOCAL)
-    write(os.path.join(main_path, "docs", "history", "tasks.md"), "# 完了タスクのアーカイブ\n")
+    if prefix is not None:
+        copy_beads(main_path, prefix)
+    if not init:
+        write(os.path.join(main_path, "docs", "history", "tasks.md"), "# 完了タスクのアーカイブ\n")
     toml = f"verify = {_toml_value(verify or 'なし')}\n"
     if format_command is not None:
         toml += f"format = {_toml_value(format_command)}\n"
@@ -86,15 +105,23 @@ def make_repo(
         toml += f"verify_before_ship = {_toml_value(preship)}\n"
     if branch is not None:
         toml += f'branch = "{branch}"\n'
-    write(os.path.join(main_path, ".tw", "config.toml"), toml)
+    if init:
+        toml += 'store = "beads"\n'
+    write(os.path.join(main_path, ".tw", "config.toml"), toml + extra)
     write(os.path.join(main_path, "shared.txt"), "line1\n")
+    if init:
+        r = subprocess.run(
+            [sys.executable, os.path.join(HERE, "init.py")], cwd=main_path, capture_output=True, text=True, env=child_env()
+        )
+        if r.returncode != 0:
+            raise RuntimeError(f"init.py 失敗: {r.stdout}{r.stderr}")
     git(main_path, "add", "-A")
     git(main_path, "commit", "-q", "-m", "init")
 
     wt1 = os.path.join(tmp, "wt1")
     wt2 = os.path.join(tmp, "wt2")
-    git(main_path, "worktree", "add", "-q", "-b", "wt1-branch", wt1, base)
-    git(main_path, "worktree", "add", "-q", "-b", "wt2-branch", wt2, base)
+    git(main_path, "worktree", "add", "-q", "-b", worktree_branches[0], wt1, base)
+    git(main_path, "worktree", "add", "-q", "-b", worktree_branches[1], wt2, base)
     return main_path, wt1, wt2
 
 
@@ -184,6 +211,19 @@ def hook_env(tmp: str, path: str) -> dict[str, str]:
         os.symlink(shutil.which("bd") or "bd", os.path.join(bd_dir, "bd"))
     homes = {k: os.environ[k] for k in ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME") if k in os.environ}
     return {"PATH": f"{path}:{bd_dir}", **homes}
+
+
+def run_guard(tmp: str, where: str, command: str) -> str | None:
+    """`tw commit-guard` を git の外（`tmp`）から打つ。拒んだら理由、通したら `None`（落ちたら例外）。"""
+    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": where})
+    r = run_task(tmp, "commit-guard", stdin=payload)
+    if r.returncode != 0:
+        raise RuntimeError(f"commit-guard が {r.returncode} で終わった: {r.stderr}")
+    if r.stdout == "":
+        return None
+    out = json.loads(r.stdout)["hookSpecificOutput"]
+    assert out["permissionDecision"] == "deny"
+    return out["permissionDecisionReason"]
 
 
 def run_handback_guard(
