@@ -17,13 +17,11 @@ description: "会話での明示の指示、引数のファイル、エージェ
 タスクは Beads に置かれている（正典「Beads とトラッカー」）。トラッカーが `github` なら、タスクID は
 `tw new` が返す Issue 番号の `GH-<n>` で、`T-xxx` をそう読み替える。`--deps` にもその形で渡す。
 `## 完了条件` に書く**検証コマンド**は `verify` の行の値。`なし` なら完了条件は検証可能な言葉だけで書く。
-出力が `MISSING` の行か、`tw config` を打てない旨（git の外など）なら、`/setup-tasks` を案内して終了する。
+`MISSING` の行などで設定が読めないときは `task-workflow` スキルの `preflight.md` に従う。
 
 ## 手順
 
-0. **依存を確かめる**: `command -v tw` が何も返さなければ、`tw` が PATH に張られていないとして
-   `MISSING` を報告して終了する（plugin で入れるなら `/plugin install tsukumo-workflow@tsukumo-plugins`、
-   リンクで入れるなら `task-workflow` を含めて `./install.sh` を打ち直すよう案内する）。
+0. **依存を確かめる**: `task-workflow` スキルの `preflight.md` に従う。
 
 1. **読む**: `tw status` で既存の一覧を見る（本文は読まない。重なりそうな1件があるときだけ
    `tw show T-xxx` で読む）。終了コード6（`MISSING`）なら

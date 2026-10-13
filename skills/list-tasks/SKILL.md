@@ -18,9 +18,7 @@ tw status
 
 ## 表示のしかた
 
-0. **依存を確かめる**: `command -v tw` が何も返さなければ、`tw` が PATH に張られていないとして
-   `MISSING` を報告して終了する（plugin で入れるなら `/plugin install tsukumo-workflow@tsukumo-plugins`、
-   リンクで入れるなら `task-workflow` を含めて `./install.sh` を打ち直すよう案内する）。
+0. **依存を確かめる**: `task-workflow` スキルの `preflight.md` に従う。
 
 1. 終了コードが0でなければ表を出さずに終わる: 6（`MISSING`）は「タスク運用を始めていない
    （`/setup-tasks`）」、3 は `INVALID` の理由、1 はエラー出力をそのまま添える。

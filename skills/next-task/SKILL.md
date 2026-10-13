@@ -17,13 +17,11 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
 `T-xxx` とコミットの件名の `T-xxx:` をそう読み替える）。
 以下の**検証コマンド**は `verify` の行、**整形コマンド**は `format` の行の値に読み替える。`verify` が `なし` なら打たず、`## 完了条件`
 だけで受け入れを判定してその旨を報告に書く。`format` が `なし` なら整形は打たない。
-出力が `MISSING` の行か、`tw config` を打てない旨（git の外など）なら、`/setup-tasks` を案内して終了する。
+`MISSING` の行などで設定が読めないときは `task-workflow` スキルの `preflight.md` に従う。
 
 ## 手順
 
-0. **依存を確かめる**: `command -v tw` が何も返さなければ、`tw` が PATH に張られていないとして
-   `MISSING` を報告して終了する（plugin で入れるなら `/plugin install tsukumo-workflow@tsukumo-plugins`、
-   リンクで入れるなら `task-workflow` を含めて `./install.sh` を打ち直すよう案内する）。
+0. **依存を確かめる**: `task-workflow` スキルの `preflight.md` に従う。
 
 1. **見渡す**: `tw status`（手順8のあとに取り直した `tw status` が同じ会話に残っていて、その後に状態を変える `tw` を打っていなければ打ち直さない。トラッカーが `jira`・`github` なら、先に `tw sync` で取り込む。
    `TRACKER\tFAILED` は報告に添えて先へ進む）。終了コードが 6 `MISSING`・1・3 なら、
