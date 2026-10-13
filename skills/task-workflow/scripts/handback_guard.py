@@ -18,7 +18,7 @@ STOP_EVENTS = ("SubagentStop", "Stop")
 
 
 def run(
-    stdin: IO[str], stdout: IO[str], refusal: Callable[[str], str | None], agent_scoped: bool = False
+    stdin: IO[str], stdout: IO[str], refusal: Callable[[str, str | None], str | None], agent_scoped: bool = False
 ) -> None:
     try:
         payload = json.loads(stdin.read())
@@ -31,7 +31,14 @@ def run(
         stdout.write(json.dumps(out, ensure_ascii=False) + "\n")
 
 
-def decide(payload: dict, refusal: Callable[[str], str | None]) -> dict | None:
+def _handback_body(payload: dict) -> str | None:
+    """`SubagentHandback` の `tool_input.message`。読めなければ `None`。"""
+    tool_input = payload.get("tool_input")
+    message = tool_input.get("message") if isinstance(tool_input, dict) else None
+    return message if isinstance(message, str) else None
+
+
+def decide(payload: dict, refusal: Callable[[str, str | None], str | None]) -> dict | None:
     """出す JSON。通すなら `None`。"""
     event = payload.get("hook_event_name")
     is_stop = event in STOP_EVENTS
@@ -39,7 +46,7 @@ def decide(payload: dict, refusal: Callable[[str], str | None]) -> dict | None:
     cwd = payload.get("cwd")
     if not (is_stop or is_handback) or not isinstance(cwd, str):
         return None
-    reason = refusal(cwd)
+    reason = refusal(cwd, _handback_body(payload) if is_handback else None)
     if reason is None:
         return None
     if is_stop:

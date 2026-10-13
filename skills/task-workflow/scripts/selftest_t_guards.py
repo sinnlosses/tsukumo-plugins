@@ -553,6 +553,38 @@ def test_lap() -> None:
 
 
 @weight(11)
+def test_handback_guard_structure() -> None:
+    say("task.py handback-guard: 最後の段の返却の本文に ## 構造の変更 が無ければ拒む")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(tmp, verify="`true`")
+        commit_task(main_path, taskfile.Task("T-100", "段ごと", "todo", "sonnet", "Y", (), BODY))
+        commit_task(main_path, taskfile.Task("T-101", "作業なし", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-", stdin="### 1. 書く\n\n### 2. 試す\n")
+        write(os.path.join(wt1, "work.txt"), "x\n")
+        handback = ("PreToolUse", "SubagentHandback")
+        with_section = "段 2/2 | 済\n\n## 構造の変更\n+ A -> B: 語\n"
+
+        run_task(wt1, "step", "T-100", "1")
+        check("最後でない段（tw step の印あり）は節が無くても通す",
+              run_handback_guard(tmp, wt1, *handback, body="段 1/2 | 済\n") is None)
+        write(os.path.join(wt1, "work.txt"), "y\n")
+        run_task(wt1, "step", "T-100", "2")
+        r = run_task(wt1, "verify")
+        check("最後の段で節が無ければ deny し、理由は本文を写さない", r.returncode == 0 and "構造の変更" in (
+            reason := (run_handback_guard(tmp, wt1, *handback, body="段 2/2 | 秘密の本文\n") or {})
+            .get("hookSpecificOutput", {}).get("permissionDecisionReason", "")) and "秘密" not in reason, reason)
+        check("最後の段で節があれば通す", run_handback_guard(tmp, wt1, *handback, body=with_section) is None)
+        check("なし: <理由> の節でも通す",
+              run_handback_guard(tmp, wt1, *handback, body="段 2/2 | 済\n\n## 構造の変更\nなし: 構造は変わらない\n") is None)
+        check("本文が読めない経路（SubagentStop）では見ない", run_handback_guard(tmp, wt1) is None)
+
+        run_task(wt2, "claim", "T-101")
+        check("作業の無い返却は節が無くても通す",
+              run_handback_guard(tmp, wt2, *handback, body="計画 0/1 | 前提が誤り\n") is None)
+
+
+@weight(11)
 def test_handback_guard_step() -> None:
     say("task.py step・handback-guard: 途中の段の返却は tw step で通し、最後の段は検証を求める")
     with tempfile.TemporaryDirectory() as tmp:
@@ -977,6 +1009,7 @@ TESTS = (
     test_state_dir,
     test_handback_guard_parallel_steps,
     test_handback_guard_step,
+    test_handback_guard_structure,
     test_handback_guard_skipped_steps,
     test_commit_guard,
     test_ask_guard,

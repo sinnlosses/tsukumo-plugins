@@ -143,8 +143,18 @@ def _claimed_plan_body(toplevel: str, task_id: str) -> str:
     return f"{taskfile.PLAN_HEADING}\n{issue.raw.get('notes') or ''}\n" if issue is not None else ""
 
 
-def handback_refusal(where: str) -> str | None:
+STRUCTURE_HEADING = "## 構造の変更"
+
+
+def _has_structure_section(body: str) -> bool:
+    return any(line.strip() == STRUCTURE_HEADING for line in body.splitlines())
+
+
+def handback_refusal(where: str, body: str | None = None) -> str | None:
     """`where` の作業ツリーから委譲先が返すのを拒む理由。通すなら `None`。
+
+    `body`（返却の本文。読める経路でだけ渡る）があり、計画・検証が揃った最後の段の返却（`tw step` の印も
+    `tw pause` の控えも使わず `verify-check` が `VERIFIED_SAME`）で、本文に `## 構造の変更` の行が無ければ拒む。
 
     控えのタスクごとに、その作業ツリー（`task_trees`）を1つずつ見る。作業ツリーを通すのは、作業が無い
     （着手した作業ツリーでは `claim` 時の `HEAD` より後のコミットも、変更も無い。
@@ -160,8 +170,15 @@ def handback_refusal(where: str) -> str | None:
     if not claims:
         return None
     toplevel = ledger.git_toplevel(where)
-    gaps = [line for task_id in claims for line in _handback_gaps(toplevel, task_id)]
+    last_stage: list[str] = []
+    gaps = [line for task_id in claims for line in _handback_gaps(toplevel, task_id, last_stage)]
     if not gaps:
+        if body is not None and last_stage and not _has_structure_section(body):
+            return (
+                f"最後の段の返却の本文に {STRUCTURE_HEADING} の節が無い（着手の印 {','.join(claims)}）。"
+                f"{STRUCTURE_HEADING} を足し、tsukumo の graph の記法の行（例: + A -> B: 語）か "
+                f"なし: <理由> の1行を書いてから返す"
+            )
         return None
     shown = ",".join(claims)
     return (
@@ -173,8 +190,10 @@ def handback_refusal(where: str) -> str | None:
     )
 
 
-def _handback_gaps(toplevel: str, task_id: str) -> list[str]:
+def _handback_gaps(toplevel: str, task_id: str, last_stage: list[str] | None = None) -> list[str]:
     """作業がある作業ツリーの、通っていない `plan-check`・`verify-check` の行。作業が無ければ空。
+
+    `last_stage` を渡すと、`verify-check` が `VERIFIED_SAME` で通った作業ツリーをそこへ足す。
 
     作業先の作業ツリーの `verify-check` の行には、その作業ツリーのパスを添える。
     """
@@ -206,6 +225,8 @@ def _handback_gaps(toplevel: str, task_id: str) -> list[str]:
                 f"段の控えが無い。渡された段だけを進めて tw step {task_id} <段の番号> を打って返す"
                 + ("" if tree == toplevel else f"（{tree}）")
             )
+        elif last_stage is not None and verify_line.startswith("VERIFIED_SAME"):
+            last_stage.append(tree)
     return gaps
 
 

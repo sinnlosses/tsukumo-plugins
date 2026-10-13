@@ -186,11 +186,15 @@ def hook_env(tmp: str, path: str) -> dict[str, str]:
     return {"PATH": f"{path}:{bd_dir}", **homes}
 
 
-def run_handback_guard(tmp: str, where: str, event: str = "SubagentStop", tool: str | None = None) -> dict | None:
-    """`tw handback-guard` を git の外（`tmp`）から打つ。拒んだら出した JSON、通したら `None`。"""
+def run_handback_guard(
+    tmp: str, where: str, event: str = "SubagentStop", tool: str | None = None, body: str | None = None
+) -> dict | None:
+    """`tw handback-guard` を git の外（`tmp`）から打つ。拒んだら出した JSON、通したら `None`。`body` は `tool_input.message`。"""
     fields: dict = {"hook_event_name": event, "cwd": where}
     if tool is not None:
         fields["tool_name"] = tool
+    if body is not None:
+        fields["tool_input"] = {"message": body}
     r = run_task(tmp, "handback-guard", stdin=json.dumps(fields))
     if r.returncode != 0:
         raise RuntimeError(f"handback-guard が {r.returncode} で終わった: {r.stderr}")

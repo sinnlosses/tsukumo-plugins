@@ -1,6 +1,6 @@
 ---
 name: no-delegate
-description: "調べもの・コード検索・複数手順の実行を行う汎用エージェント。`general-purpose` と同じ道具を持つが `Agent` ツールを持たないため、これ自身は別のサブエージェント（fork を含む）を立てられない。委譲を1段で止めたい場面（例: `/next-task` からの委譲）で `general-purpose` の代わりに使う。着手の印が立った作業ツリーでのコミットとシェルでのファイルの書き換えと設定の検証コマンドの直打ちは hook（`tw commit-guard`）が、計画か検証（途中の段では `tw step` の印）が欠けたままの返却は hook（`tw handback-guard`）が拒む。"
+description: "調べもの・コード検索・複数手順の実行を行う汎用エージェント。`general-purpose` と同じ道具を持つが `Agent` ツールを持たないため、これ自身は別のサブエージェント（fork を含む）を立てられない。委譲を1段で止めたい場面（例: `/next-task` からの委譲）で `general-purpose` の代わりに使う。着手の印が立った作業ツリーでのコミットとシェルでのファイルの書き換えと設定の検証コマンドの直打ちは hook（`tw commit-guard`）が、計画か検証（途中の段では `tw step` の印）が欠けたままの返却と、最後の段の返却で本文に `## 構造の変更` の節が無いものは hook（`tw handback-guard`）が拒む。"
 disallowedTools: Agent
 hooks:
   PreToolUse:
@@ -34,7 +34,8 @@ hooks:
 
 同じ作業ツリーに作業（着手より後のコミットか、タスクのファイル以外の変更）があるのに、
 `tw plan-check` が `PLAN_FIRST`・`PLAN_REGISTERED` でないか、`tw verify-check` が `VERIFIED_SAME` で
-ないまま返そうとすると、hook（`tw handback-guard`）が拒んで理由を返す。拒まれたら理由に従って直してから返す。
+ないまま返そうとすると、hook（`tw handback-guard`）が拒んで理由を返す。最後の段の返却の本文に
+`## 構造の変更` の節が無いときも同じに拒む。拒まれたら理由に従って直してから返す。
 
 リンクと plugin を併用していると、この hook は frontmatter（PATH の `tw`）と plugin の `hooks/hooks.json`
 （plugin の `bin/tw`）の両方から走る。2つの `tw` の版が違い `NOT_VERIFIED scheme <パス>` で拒まれたら、
