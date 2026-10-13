@@ -42,7 +42,7 @@ GitHub で本文を直したあとの取り込みで `open` に戻る。`deferre
 | 登録から完了までの本文の差（`retrospect` の材料） | `bd history`（`material.py` が最初と最後の版の差を出す） |
 | git に残る過去の `develop/task/` と `docs/history/` | 動かさない |
 
-**サイクルの各段で Beads に起きること**（「1サイクル」と「`tw` コマンドの参照」の補足）:
+**サイクルの各段で Beads に起きること**（WORKFLOW.md の「1サイクル」と tw-reference.md の「`tw` コマンドの参照」の補足）:
 
 - **読む・書く**: `tw show T-xxx` で読み、`tw edit T-xxx` で直す（コミットも `ship` も要らない。引数は `tw edit --help`）
 - **`done`・`ship`**: `done` は `## 結果` を comment に入れて label `ship:done`／`ship:dropped` を立てるだけで、

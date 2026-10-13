@@ -5,7 +5,7 @@
 
 タスクは Beads（`bd`）に置き、`/plan-tasks` で指示をタスクにし、`/next-task` で
 1件ずつ difficulty のモデルのサブエージェントへ委譲して、受け入れてから主ブランチへ送る。手順はコマンド `tw`
-が持ち、スキルは「どのサブコマンドをいつ打つか」だけを書く（正典は `skills/task-workflow/WORKFLOW.md`）。
+が持ち、スキルは「どのサブコマンドをいつ打つか」だけを書く（正典は `skills/task-workflow/WORKFLOW.md`、サブコマンドの表は `skills/task-workflow/tw-reference.md`）。
 
 tsukumo のワークフローの契約に型の合う1つの例だが、tsukumo がいなくても素の Claude Code で動く。
 

@@ -67,7 +67,7 @@
    | `LANDED` に続けて `REMOVED`・`DELETED` | 次へ |
    | `NOT_LANDED`（何も変えていない） | 理由が「ff-only で合流できない」なら、作業先の主ブランチが先へ進んでいる。その作業ツリーで主ブランチを取り込んで `tw verify` を打ち直してから、もう一度打つ。ほかの理由は行を添えて人に預けて終了する |
    | `NOT_REMOVED`（合流は済んでいる） | 残った作業ツリーか枝を報告に書いて次へ進む（消すのは人に預ける） |
-   | `GIT_READ_ONLY` | `task-workflow` の WORKFLOW.md の終了コード表のとおり |
+   | `GIT_READ_ONLY` | `task-workflow` の tw-reference.md の終了コード表のとおり |
 
    **許可規則**: auto mode の分類器は、作業先の本体の主ブランチへ合流するコマンドを [Modify Shared Resources]
    として拒むことがある。`tw land` も許可規則が無ければ拒まれうるので、利用者が `settings.json` の

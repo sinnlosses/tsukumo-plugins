@@ -8,10 +8,10 @@
 `install.sh` が PATH 上に張る `tw` と、plugin の `bin/tw` から呼ぶ。`commit-guard`・`handback-guard` の
 `--agent-scoped` は plugin の `hooks/hooks.json` が付け、`agent_type` の末尾が `no-delegate` のときだけ関門を掛ける。
 `ask-guard` は `--agent-scoped` を持たず、主のセッションにも委譲先にも掛かる。
-スキル側の呼び方の正典は task-workflow の WORKFLOW.md「`tw` コマンドの参照」。
+スキル側の呼び方の正典は task-workflow の tw-reference.md「`tw` コマンドの参照」。
 
 出力は常に stdout（先頭語で種類を判定する TSV）、stderr は使い方の誤りだけ、
-終了コードは WORKFLOW.md の表のとおり。データの不備で traceback を出さない
+終了コードは tw-reference.md の表のとおり。データの不備で traceback を出さない
 （traceback は「環境の故障」の合図として取っておく）。ここは引数を解釈して、
 `tw_*.py` のサブコマンドへ振り分けるだけ。
 """

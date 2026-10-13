@@ -370,10 +370,10 @@ def test_verify_folds_base_before_check() -> None:
 
 
 def readonly_subcommands() -> list[str]:
-    """WORKFLOW.md の「`tw` コマンドの参照」の表で、すること欄に「読むだけ」と書かれた行のサブコマンド名。"""
-    with open(os.path.join(HERE, "..", "WORKFLOW.md"), encoding="utf-8") as f:
+    """tw-reference.md の「`tw` コマンドの参照」の表で、すること欄に「読むだけ」と書かれた行のサブコマンド名。"""
+    with open(os.path.join(HERE, "..", "tw-reference.md"), encoding="utf-8") as f:
         text = f.read()
-    section = text.split("\n## `tw` コマンドの参照\n", 1)[1].split("\n## ", 1)[0]
+    section = ("\n" + text).split("\n## `tw` コマンドの参照\n", 1)[1].split("\n## ", 1)[0]
     names = []
     for row in section.splitlines():
         cells = re.split(r" (?<!\\)\| ", row)
@@ -401,7 +401,7 @@ def test_readonly_commands_stay_out_of_git() -> None:
         "config-doctor": ["config-doctor"],
     }
     names = readonly_subcommands()
-    check("WORKFLOW.md の読むだけの行が、テストの引数表と同じ", sorted(names) == sorted(args_of), str(names))
+    check("tw-reference.md の読むだけの行が、テストの引数表と同じ", sorted(names) == sorted(args_of), str(names))
 
     def probe(main_path: str, wt1: str, state: str, base_ahead: bool, verify_check: str) -> None:
         r = subprocess.run(["git", "merge-base", "--is-ancestor", "main", "HEAD"], cwd=wt1)

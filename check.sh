@@ -13,7 +13,7 @@
 # 1. 構文: install.sh・uninstall.sh・scripts/links.sh（いつも）
 # 2. install.sh・uninstall.sh の自己テスト
 # 3. task-workflow のスクリプトの自己テスト
-# 4. task-workflow の WORKFLOW.md を読む検査（WORKFLOW.md だけが変わったときの軽い段）
+# 4. task-workflow の WORKFLOW.md・tw-reference.md を読む検査（それだけが変わったときの軽い段）
 # 5. retrospect のスクリプトの自己テスト
 # 6. plan-tasks のスクリプトの自己テスト
 # 7. comment-audit のスクリプトの自己テスト
@@ -91,7 +91,7 @@ if stage "task-workflow: scripts・task コマンドの自己テスト" \
   python3 "$here/skills/task-workflow/scripts/selftest_beads.py"
 fi
 
-if stage "task-workflow: WORKFLOW.md を読む検査" skills/task-workflow/WORKFLOW.md; then
+if stage "task-workflow: WORKFLOW.md・tw-reference.md を読む検査" skills/task-workflow/WORKFLOW.md skills/task-workflow/tw-reference.md; then
   python3 "$here/skills/task-workflow/scripts/selftest_task.py" test_readonly_commands_stay_out_of_git
 fi
 

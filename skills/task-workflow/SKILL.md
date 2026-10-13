@@ -15,7 +15,7 @@ user-invocable: false
 
 タスクの本文・着手の印・履歴は Beads（`bd`）に置き、`tw` が Beads とトラッカーと git をつなぐ
 （WORKFLOW.md「Beads とトラッカー」。同期の実装の詳細は [TRACKER.md](TRACKER.md)）。
-ルール本文は [WORKFLOW.md](WORKFLOW.md)。冒頭の目次で節を1つ選んで読む（通読しない）。
+ルール本文は [WORKFLOW.md](WORKFLOW.md)。サブコマンドの表と終了コード表は [tw-reference.md](tw-reference.md)。冒頭の目次で節を1つ選んで読む（通読しない）。
 プロジェクト固有の値（検証コマンド・整形コマンド・ブランチ・トラッカー）は、そのプロジェクトの `.tw/config.toml`
 （`tw config` で見る。WORKFLOW.md「ファイル配置と設定ファイル」）。
 

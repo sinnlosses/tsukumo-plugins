@@ -5,7 +5,7 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
 
 タスクを1サイクルぶん前に進めて終わる（全件進めたいときは `/loop /next-task`。続行/停止は `/loop` が
 決める）。ルールは `task-workflow` スキルの `WORKFLOW.md`（以下「正典」）。`tw` は
-`task-workflow` のタスク運用のコマンド（正典「`tw` コマンドの参照」）。
+`task-workflow` のタスク運用のコマンド（`tw-reference.md`「`tw` コマンドの参照」）。
 **`tw` の代わりに `bd` や台帳を手で操作しない。**
 
 ## このプロジェクトの設定（`tw config`）

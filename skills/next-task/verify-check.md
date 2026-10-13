@@ -6,7 +6,7 @@
 | `NOT_VERIFIED\t<理由>` | `tw verify` を Bash の背景（`run_in_background`）で起こし、待たずに手順6aへ（出力は手順6bで読む）。理由ごとの前置きは下の表 |
 | `NOTHING` | 検証コマンドが無い。完了条件を目視で確かめる |
 
-`NOT_VERIFIED` の理由の意味は `skills/task-workflow/WORKFLOW.md` の `verify-check` の行。理由ごとの対処:
+`NOT_VERIFIED` の理由の意味は `skills/task-workflow/tw-reference.md` の `verify-check` の行。理由ごとの対処:
 
 | 理由 | 対処 |
 | --- | --- |
