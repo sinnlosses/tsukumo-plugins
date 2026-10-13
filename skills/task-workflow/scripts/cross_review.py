@@ -8,9 +8,9 @@
 from __future__ import annotations
 
 import os
-import subprocess
 from datetime import date, datetime, timezone
 
+import gitcmd
 import layout
 import ledger
 import metrics
@@ -48,9 +48,7 @@ def _base_text(toplevel: str) -> str | None:
         base = ledger.base_branch(toplevel)
     except (ledger.GitCommandError, ledger.NoBaseBranch):
         return None
-    r = subprocess.run(
-        ["git", "show", f"{base}:{layout.RETROSPECT_RECORD_PATH}"], cwd=toplevel, capture_output=True, text=True
-    )
+    r = gitcmd.run(["show", f"{base}:{layout.RETROSPECT_RECORD_PATH}"], toplevel)
     return r.stdout if r.returncode == 0 else None
 
 

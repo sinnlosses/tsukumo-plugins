@@ -6,11 +6,11 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
 
+import gitcmd
 import ledger
 
 
@@ -70,13 +70,8 @@ def _is_ancestor(toplevel: str, ancestor: str, descendant: str) -> bool:
 
 
 def _git(toplevel: str, args: list[str], env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["git", *args], cwd=toplevel, capture_output=True, text=True, env={**os.environ, **(env or {})}
-    )
+    return gitcmd.run(args, toplevel, env)
 
 
 def _checked(toplevel: str, args: list[str], env: dict[str, str] | None = None) -> str:
-    r = _git(toplevel, args, env)
-    if r.returncode != 0:
-        raise ledger.GitCommandError(f"git {' '.join(args)} が失敗（{r.returncode}）: {r.stderr.strip()}")
-    return r.stdout.strip()
+    return gitcmd.out(args, toplevel, env)

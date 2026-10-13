@@ -17,8 +17,15 @@ from __future__ import annotations
 
 import argparse
 import os
-import subprocess
 import sys
+
+_TASK_WORKFLOW_SCRIPTS = os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "task-workflow", "scripts")
+)
+if _TASK_WORKFLOW_SCRIPTS not in sys.path:
+    sys.path.insert(0, _TASK_WORKFLOW_SCRIPTS)
+
+import gitcmd  # noqa: E402
 
 DOC_EXTENSIONS = frozenset({".md", ".mdx", ".markdown", ".txt", ".rst", ".adoc"})
 
@@ -53,7 +60,7 @@ def changed_paths(diff_args: list[str]) -> list[str]:
 
 
 def git_lines(*args: str) -> list[str]:
-    out = subprocess.run(["git", *args], capture_output=True, text=True)
+    out = gitcmd.run(list(args))
     if out.returncode != 0:
         sys.exit(out.stderr.strip() or f"git {args[0]} が失敗した")
     return [line for line in out.stdout.splitlines() if line]

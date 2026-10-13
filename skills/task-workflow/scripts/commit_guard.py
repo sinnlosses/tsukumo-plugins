@@ -14,10 +14,10 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 from typing import IO, NamedTuple
 
 import agent_scope
+import gitcmd
 import layout
 import ledger
 
@@ -291,9 +291,7 @@ def _claims_for_write(path: str, work_claims: _WorkTreeClaims) -> tuple[str, lis
 
 def _is_ignored(path: str, directory: str) -> bool:
     try:
-        r = subprocess.run(
-            ["git", "check-ignore", "-q", "--", path], cwd=directory, capture_output=True, check=False
-        )
+        r = gitcmd.run(["check-ignore", "-q", "--", path], directory)
     except OSError:
         return False
     return r.returncode == 0

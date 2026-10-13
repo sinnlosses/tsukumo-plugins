@@ -14,6 +14,7 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass, field
 
+import gitcmd
 import layout
 import ledger
 
@@ -59,7 +60,7 @@ def _run_logged(toplevel: str, command: str) -> tuple[int, str, str]:
 
 
 def _run(cwd: str, args: list[str]) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+    return gitcmd.run(args, cwd)
 
 
 def attempt(

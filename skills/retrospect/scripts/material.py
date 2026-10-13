@@ -40,7 +40,6 @@ from __future__ import annotations
 import difflib
 import os
 import re
-import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -53,6 +52,7 @@ if _TASK_WORKFLOW_SCRIPTS not in sys.path:
 
 import beads  # noqa: E402
 import draft_fate  # noqa: E402
+import gitcmd  # noqa: E402
 import layout  # noqa: E402
 import ledger  # noqa: E402
 import metrics  # noqa: E402
@@ -505,7 +505,7 @@ def gate_answers_valid(answers: dict[str, str]) -> bool:
 
 def git_out(root: str, *args: str) -> tuple[str | None, str]:
     try:
-        p = subprocess.run(["git", "-C", root, *args], capture_output=True, text=True)
+        p = gitcmd.run(["-C", root, *args])
     except OSError as e:
         return None, str(e)
     if p.returncode != 0:

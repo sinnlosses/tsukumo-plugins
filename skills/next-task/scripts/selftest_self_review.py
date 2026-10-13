@@ -17,6 +17,7 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "self_review.py")
+GITCMD = os.path.join(HERE, "..", "..", "task-workflow", "scripts", "gitcmd.py")
 
 STUB = """\
 import subprocess
@@ -76,6 +77,8 @@ def with_repo(with_comment_audit: bool, body) -> None:
         init_repo(repo)
         with open(SCRIPT, encoding="utf-8") as f:
             write(d, "skills/next-task/scripts/self_review.py", f.read())
+        with open(GITCMD, encoding="utf-8") as f:
+            write(d, "skills/task-workflow/scripts/gitcmd.py", f.read())
         if with_comment_audit:
             write(d, "skills/comment-audit/scripts/diff_added_comment_lines.py", STUB)
         body(repo, os.path.join(d, "skills/next-task/scripts/self_review.py"))
