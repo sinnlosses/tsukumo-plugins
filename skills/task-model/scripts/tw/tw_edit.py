@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from collections.abc import Collection, Mapping
@@ -120,7 +121,8 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
     tw_base.print_lines(pulled + trk.after([bd_id]))
 
 
-def cmd_plan_check(toplevel: str, task_id: str) -> None:
+def _own_plan(toplevel: str, task_id: str) -> tuple[str, beads.Issue, str, str | None, str | None, list[str] | None]:
+    """自分の着手の印のタスクの `(表示ID, 課題, 計画の本文, 印, 控えた SHA, 変わったファイル)`。持ち主でなければ `NOT_OWNER`（終了コード4）。"""
     bd_id = tw_base.bd_task_id(task_id)
     shown = beads.to_task_id(bd_id)
     issue = beads.listed(toplevel, bd_id) if tw_base.owns(toplevel, shown) else None
@@ -132,7 +134,45 @@ def cmd_plan_check(toplevel: str, task_id: str) -> None:
     plan_body = f"{taskfile.PLAN_HEADING}\n{issue.raw.get('notes') or ''}\n"
     plan_base = metadata.get(beads.PLAN_BASE_KEY) or None
     stale = tw_plan.registered_plan_changes(toplevel, plan_base, metadata.get(beads.PLAN_TIP_KEY) or None, plan_body)
-    _print_plan_check(shown, plan_body, metadata.get(beads.PLAN_KEY) or None, plan_base, stale)
+    return shown, issue, plan_body, metadata.get(beads.PLAN_KEY) or None, plan_base, stale
+
+
+def cmd_plan_check(toplevel: str, task_id: str) -> None:
+    shown, _issue, plan_body, mark, plan_base, stale = _own_plan(toplevel, task_id)
+    _print_plan_check(shown, plan_body, mark, plan_base, stale)
+
+
+def cmd_plan_phases(toplevel: str, task_id: str, through: str | None, also: str | None) -> None:
+    """`work_plan` の引数を `PHASES\\tT-xxx\\t<JSON 1行>` で出す。指定が並びに合わなければ `NO_PHASE`（終了コード2）。"""
+    shown, issue, plan_body, mark, _base, _stale = _own_plan(toplevel, task_id)
+    specs, steps_error = taskfile.plan_step_specs(plan_body) if taskfile.has_plan(plan_body) else ((), None)
+    if specs and steps_error is None and mark == tw_plan.PLAN_REGISTERED:
+        plan_state = taskfile.PLAN_REGISTERED_STATE
+    elif specs and steps_error is None and mark == tw_plan.PLAN_FIRST:
+        plan_state = taskfile.PLAN_WRITTEN_STATE
+    else:
+        plan_state = taskfile.PLAN_MISSING_STATE
+    config = layout.read_config(toplevel)
+    direct = beads.label_values(issue.labels, beads.DIRECT_LABEL) == ["Y"]
+    if direct and plan_state == taskfile.PLAN_REGISTERED_STATE:
+        flow = taskfile.FLOW_DIRECT
+    elif config.flow == layout.FLOW_MAIN or beads.attribute_values(issue, beads.LOOPABLE_KEY) == ["N"]:
+        flow = layout.FLOW_MAIN
+    else:
+        flow = layout.FLOW_DELEGATE
+    also_numbers: tuple[int, ...] = ()
+    if also:
+        if not all(x.strip().isdigit() for x in also.split(",")):
+            print(f"NO_PHASE\t{shown}\t--also は段の番号のコンマ区切り: {also}")
+            raise SystemExit(2)
+        also_numbers = tuple(int(x) for x in also.split(","))
+    result, error = taskfile.work_plan_phases(
+        specs, flow, plan_state, config.part("retrospect") != layout.PART_NONE, through, also_numbers
+    )
+    if result is None:
+        print(f"NO_PHASE\t{shown}\t{error}")
+        raise SystemExit(2)
+    print(f"PHASES\t{shown}\t{json.dumps(result, ensure_ascii=False, separators=(',', ':'))}")
 
 
 def _draft_promotion_args(toplevel: str, shown: str, body: str, status: str) -> list[str]:

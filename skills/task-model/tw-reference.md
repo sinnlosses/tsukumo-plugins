@@ -22,6 +22,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | `backup` | Beads のバックアップを取るとき | `BACKUP\tOK\|FAILED` |
 | `jira-closed T-xxx…` | `jira:close` を外すとき | `CLEARED` |
 | `plan-check T-xxx` | `## やること` を作業より先に書いたかを読むだけで確かめるとき（受け入れと返却の前） | `PLAN_FIRST`・`PLAN_REGISTERED`・`PLAN_NOT_FIRST\t…\t<理由>`・`PLAN_STALE`（どれも終了コード0）、並列の計画では続けて `PARALLEL`・`SERIAL`・`STEP`。`NOT_OWNER` |
+| `plan-phases T-xxx [--through <段>] [--also <n,…>]` | tsukumo の `work_plan` に渡す段の並びと位置を読むだけで出すとき（受け入れ以降は「受け入れ」「振り返り」「送り出し」に固定。使い方はオーケストレーターの「進み具合の帯（`work_plan`）」） | `PHASES\tT-xxx\t<JSON 1行>`。`NO_PHASE`（終了コード2）・`NOT_OWNER` |
 | `verify [T-xxx]` | 検証コマンドを打つとき（主ブランチの取り込み・整形・中身の鍵の控えも担う。ID は基本付けない） | `FOLDED`（取り込んだとき先頭）・`VERIFIED`・`VERIFIED_UNSTAMPED`・`VERIFY_NOT_PASSED`・`FORMAT_FAILED`・`PLAN_MISSING`・`CONFLICT`・`GIT_READ_ONLY`・`NOTHING`。末尾40行のあとに判定行をもう一度出すので、`tail` で切っても最後の行（取り込んだときは最後の2行）で判定が取れる |
 | `verify-check` | 中身が `verify` の控えと同じかを読むだけで見るとき（同じなら検証を省く） | `VERIFIED_SAME`・`NOT_VERIFIED\t<理由>`（終了コード0）・`NOTHING` |
 | `accept T-xxx [--after-review]` | 受け入れの機械的な並び（機械的な判定と `verify-check`）を打つとき | `REVIEW`・`SKIP`・`NOTHING`・`NO_RANGE`・`SNAPSHOT`・`FORMATTED`・`FORMAT_FAILED`・`MISSING`・`INVALID`・`NOT_CLAIMED`・`NOT_OWNER` |

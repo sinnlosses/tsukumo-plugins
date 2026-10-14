@@ -3,7 +3,7 @@
 # 宣言が無いと Python 3.9 が、長い日本語の行の読み込み位置によって「Non-UTF-8 code」で落ちる。
 """Beads に置いたタスクの運用を操作する入口コマンド。
 
-使い方: tw <status|new|claim|release|done|ship|finish|land|config|config-doctor|show|edit|plan-check|verify|verify-check|accept|pause|step|lap|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|ask-guard> ...
+使い方: tw <status|new|claim|release|done|ship|finish|land|config|config-doctor|show|edit|plan-check|plan-phases|verify|verify-check|accept|pause|step|lap|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|ask-guard> ...
 
 `install.sh` が PATH 上に張る `tw` と、plugin の `bin/tw` から呼ぶ。`commit-guard`・`handback-guard` の
 `--agent-scoped` は plugin の `hooks/hooks.json` が付け、入力に `agent_id` があるとき（サブエージェント）だけ関門を掛ける。
@@ -155,6 +155,12 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
 
 出力: `PLAN_FIRST\tT-xxx`、そうでなければ `PLAN_NOT_FIRST\tT-xxx\t<理由>`（`missing`＝空か「なし」／`after-work`＝作業が始まってから書いた／`unrecorded`＝`tw edit` が印を残さなかった。`claim` の前に書いた・着手の印の持ち主でない作業ツリーから書いた・`tw edit` を通さずに書いた／`steps`＝中身はあるが段の形（WORKFLOW.md の「タスクの本文」の「段の形」）に沿わない。印によらずこれを先に出す）。登録時に書いた計画（`new`・`adopt`）は、名指したファイルが変わっていなければ `PLAN_REGISTERED\tT-xxx\t<控えた SHA>`（`PLAN_FIRST` と同じに扱ってよい）、変わっていて書き直していなければ `PLAN_STALE\tT-xxx\t<変わったファイル,…>`（書き直すと `PLAN_FIRST`）。比べる先は `claim` が控えた着手時の主ブランチの先端なので、受け入れで打っても変わらない。段が読めれば2行目から、並列の組（「タスクの本文」の「段の形」）ごとに `PARALLEL\tT-xxx\t<a>,<b>`、触るファイルが重なって1本道にした組ごとに `SERIAL\tT-xxx\t<a>,<b>\t<重なったパス,…>` を番号の順に出す（欄の無い計画では出ない。最後の段は合流するので並列の組に入らない）。`PARALLEL` が1行でもあれば続けて段の順に `STEP\tT-xxx\t<n>\t<待つ段,…|なし>`（`前の段`・`SERIAL`・合流で決まる前後のうち、ほかの待つ段より先に済むものを除いた直の待ち）を出す。どれも終了コード0。`NOT_OWNER`""",
     ),
+    "plan-phases": (
+        "自分の着手の印について、`work_plan` に渡す段の並びと位置を出す（読むだけ）。",
+        r"""自分の着手の印について、`work_plan` の引数（`phases`・`current`・`finishedInGroup`・あれば `delegatedRange`）をそのまま写せる形で出す（読むだけ）。受け入れ以降は「受け入れ」「振り返り」「送り出し」に固定（`parts.retrospect` が `なし` なら「振り返り」を省く）。並びは `plan-check` と同じ印で決める: `PLAN_REGISTERED` は計画の段なしで各段、`PLAN_FIRST` は先頭に済みの「計画」を足し、それ以外は仮の「実装」1段と `delegatedRange` の `{first}` だけ（段の数が未定）。`flow` が `main` か `loopable: N` なら `delegatedRange` なし。近道（`direct:Y` かつ `PLAN_REGISTERED`）は「直す」「検証」「送り出し」。連続する段のすべての組が並列の組なら1つの配列にまとめる（`current` は配列を1要素に数える）。`--through <段>` は、その段までと、それ以前を済ませた位置（段は `計画`・`実装`（全段）・`受け入れ`・`振り返り`・`直す`・`検証`・段の番号。省略は何も済んでいない位置）。`--also <n,…>` は、並列のまとまりの中で `--through` の後ろにあるが先に済んだ段の番号。全部済みにする指定（送り出しまで）と、並びに無い段は何も出さず `NO_PHASE`
+
+出力: `PHASES\tT-xxx\t<JSON 1行>`。`NO_PHASE\tT-xxx\t<理由>`（終了コード2）。`NOT_OWNER`（終了コード4）""",
+    ),
     "verify-check": (
         "いまの中身の鍵を `verify` の控えと照らす（読むだけ）。",
         r"""いまの中身の鍵を `verify` の控えと照らす（読むだけ）
@@ -300,6 +306,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_plan_check = sub.add_parser("plan-check")
     p_plan_check.add_argument("task_id")
+
+    p_plan_phases = sub.add_parser("plan-phases")
+    p_plan_phases.add_argument("task_id")
+    p_plan_phases.add_argument("--through")
+    p_plan_phases.add_argument("--also")
 
     p_accept = sub.add_parser("accept")
     p_accept.add_argument("task_id")
@@ -452,6 +463,8 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
             tw_edit.cmd_edit(toplevel, args)
         elif args.command == "plan-check":
             tw_edit.cmd_plan_check(toplevel, args.task_id)
+        elif args.command == "plan-phases":
+            tw_edit.cmd_plan_phases(toplevel, args.task_id, args.through, args.also)
         elif args.command == "accept":
             tw_accept.cmd_accept(toplevel, args.task_id, args.after_review)
         elif args.command == "verify":

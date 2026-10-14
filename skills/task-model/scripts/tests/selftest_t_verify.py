@@ -395,6 +395,7 @@ def test_readonly_commands_stay_out_of_git() -> None:
         "status": ["status"],
         "show": ["show", "T-120"],
         "plan-check": ["plan-check", "T-120"],
+        "plan-phases": ["plan-phases", "T-120"],
         "verify-check": ["verify-check"],
         "metrics": ["metrics"],
         "config": ["config"],

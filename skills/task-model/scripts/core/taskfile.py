@@ -281,6 +281,107 @@ def parallel_files(specs: tuple[PlanStep, ...], n: int) -> tuple[str, ...]:
     return tuple(dict.fromkeys(p for o in others for p in specs[o - 1].files))
 
 
+PHASE_PLAN = "計画"
+PHASE_IMPLEMENT = "実装"
+PHASE_ACCEPT = "受け入れ"
+PHASE_RETRO = "振り返り"
+PHASE_SHIP = "送り出し"
+PHASE_FIX = "直す"
+PHASE_VERIFY = "検証"
+
+FLOW_DIRECT = "direct"
+PLAN_REGISTERED_STATE = "registered"
+PLAN_WRITTEN_STATE = "written"
+PLAN_MISSING_STATE = "missing"
+
+
+def _step_groups(specs: tuple[PlanStep, ...]) -> list[list[int]]:
+    """段の番号を読み順に、全組が並列の組に入る連続した段だけ1つにまとめた並び。"""
+    pairs, _ = parallel_steps(specs)
+    free = set(pairs)
+    groups: list[list[int]] = []
+    n = 1
+    while n <= len(specs):
+        run = [n]
+        while n + 1 <= len(specs) and all((m, n + 1) in free for m in run):
+            n += 1
+            run.append(n)
+        groups.append(run)
+        n += 1
+    return groups
+
+
+def work_plan_phases(
+    specs: tuple[PlanStep, ...],
+    flow: str,
+    plan_state: str,
+    with_retro: bool,
+    through: str | None,
+    also: tuple[int, ...],
+) -> tuple[dict | None, str | None]:
+    """`work_plan` の引数（`phases`・`current`・`finishedInGroup`・あれば `delegatedRange`）。形が決まらなければ `(None, 理由)`。
+
+    `flow` は `delegate`・`main`・`FLOW_DIRECT`。`through` はその段までと、それ以前を済ませた位置（省略は何も済んでいない）。
+    `also` は並列のまとまりの中で、`through` の後ろにあるが先に済んだ段の番号。
+    """
+    tail = [PHASE_ACCEPT, *([PHASE_RETRO] if with_retro else []), PHASE_SHIP]
+    entries: list[str | list[str]]
+    keys: list[list[str]] = []
+    range_out: dict | None = None
+    if flow == FLOW_DIRECT:
+        entries = [PHASE_FIX, PHASE_VERIFY, PHASE_SHIP]
+        keys = [[p] for p in entries]
+    else:
+        head = [] if plan_state == PLAN_REGISTERED_STATE else [PHASE_PLAN]
+        entries = list(head)
+        keys = [[p] for p in head]
+        if plan_state == PLAN_MISSING_STATE:
+            entries.append(PHASE_IMPLEMENT)
+            keys.append([PHASE_IMPLEMENT])
+            range_out = {"first": len(head)}
+        else:
+            for group in _step_groups(specs):
+                names = [specs[n - 1].name for n in group]
+                entries.append(names if len(group) > 1 else names[0])
+                keys.append([f"#{n}" for n in group])
+            range_out = {"first": len(head), "count": len(specs)}
+        entries += tail
+        keys += [[p] for p in tail]
+        if flow != "delegate":
+            range_out = None
+    finished: set[str] = set()
+    if through is not None:
+        flat = [k for entry in keys for k in entry]
+        steps = [k for k in flat if k.startswith("#")]
+        if through.isdigit():
+            target = f"#{through}"
+        elif through == PHASE_IMPLEMENT and steps:
+            target = steps[-1]
+        else:
+            target = through
+        if target not in flat:
+            return None, f"段 {through} は並びに無い（{' '.join(str(p) for p in entries)}）"
+        finished = set(flat[: flat.index(target) + 1])
+    for n in also:
+        if f"#{n}" not in {k for entry in keys for k in entry}:
+            return None, f"--also の段 {n} は並びに無い"
+        finished.add(f"#{n}")
+    current = 0
+    while current < len(keys) and all(k in finished for k in keys[current]):
+        current += 1
+    if current == len(keys):
+        return None, f"全部済みにする指定は渡せない（最後の段 {PHASE_SHIP} を閉じるのは report の workPlanClosing）"
+    in_group = [n for n, k in zip(entries[current], keys[current]) if k in finished] if isinstance(entries[current], list) else []
+    if len([k for k in finished if k not in keys[current]]) != sum(len(e) for e in keys[:current]):
+        return None, "--also の段は、今のまとまりの中のものだけ指せる"
+    result: dict = {"phases": entries}
+    if range_out is not None:
+        result["delegatedRange"] = range_out
+    result["current"] = current
+    result["finishedInGroup"] = in_group
+    return result, None
+
+
 def _overlap(left: tuple[str, ...], right: tuple[str, ...]) -> tuple[str, ...]:
     """`left` のパスのうち、`right` のどれかと同じか、片方がもう片方のディレクトリの中にあるもの。"""
 

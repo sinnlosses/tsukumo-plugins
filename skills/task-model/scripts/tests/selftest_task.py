@@ -21,6 +21,7 @@ import selftest_t_accept  # noqa: E402
 import selftest_t_finish  # noqa: E402
 import selftest_t_flow  # noqa: E402
 import selftest_t_guards  # noqa: E402
+import selftest_t_phases  # noqa: E402
 import selftest_t_plan  # noqa: E402
 import selftest_t_ship  # noqa: E402
 import selftest_t_tasks  # noqa: E402
@@ -31,6 +32,7 @@ from selftest_support import beads_home, finish, local, run_parallel, select  # 
 MODULES = (
     selftest_t_verify,
     selftest_t_plan,
+    selftest_t_phases,
     selftest_t_guards,
     selftest_t_accept,
     selftest_t_finish,
