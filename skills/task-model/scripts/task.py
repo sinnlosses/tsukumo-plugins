@@ -111,7 +111,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     ),
     "accept": (
         "受け入れの機械的な並びを打つ。",
-        r"""受け入れの機械的な並びを打つ。`lap T-xxx accept start` → `plan-check T-xxx` → `next-task/scripts/review_needed.py`（タスクの `difficulty` で判定）の順で、`REVIEW` なら `lap T-xxx review start` を打って木の控えを出して区切る。`SKIP`・`NOTHING`・`NO_RANGE` なら続けて設定の `format`（あれば）→ `verify-check`。`--after-review` は `lap accept`・`plan-check`・判定を飛ばし、`format` → `verify-check` だけ打つ。部品の出力の行をそのまま打った順に並べ、止まる行が出たらそこで以降を打たない
+        r"""受け入れの機械的な並びを打つ。`lap T-xxx accept start` → `plan-check T-xxx` → `scripts/review_needed.py`（タスクの `difficulty` で判定）の順で、`REVIEW` なら `lap T-xxx review start` を打って木の控えを出して区切る。`SKIP`・`NOTHING`・`NO_RANGE` なら続けて設定の `format`（あれば）→ `verify-check`。`--after-review` は `lap accept`・`plan-check`・判定を飛ばし、`format` → `verify-check` だけ打つ。部品の出力の行をそのまま打った順に並べ、止まる行が出たらそこで以降を打たない
 
 出力: 部品の行に加え、`REVIEW\topus`・`REVIEW\tcode\t<数>`・`SKIP\tdocs-only`・`NOTHING`・`NO_RANGE`（判定。`NO_RANGE` は範囲なしで作業ツリーの変更が空）、`SNAPSHOT\t<木の SHA>`（レビューが要るとき。最後の行）、`FORMATTED`（整形が通った）、`FORMAT_FAILED\t<コマンド>`（続けて出力の末尾40行。終了コード10）、`MISSING\t<パス>`（`review_needed.py` が無い。終了コード6）、`INVALID\t…`（判定の失敗。終了コード3）。`NOT_CLAIMED`・`NOT_OWNER` は終了コード4で止まる。それ以外の終了コードは部品のもの""",
     ),
@@ -134,8 +134,8 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
 出力: `STEPPED\tT-xxx\t<n>/<段の数>\t<木の SHA>`・`LAST_STEP\tT-xxx\t<n>/<段の数>\t<次の一手>`・`NOT_OWNER`""",
     ),
     "lap": (
-        "`/next-task` の段の頭を、`flow/` に `lap` の1行として足す。",
-        r"""自分の着手の印のタスクの `/next-task` の段の頭を、`flow/` に `{"event":"lap","stage":"<段>"}` の1行として足す（メインが打つ。第3引数を付けると `"edge":"start"`／`"end"` も入り、段の所要時間は同じ段の `end − start`。省くと `edge` の欄は書かず、旧い呼び方のまま、その出来事から同じタスクの次の出来事までの差。第3引数が `start`・`end` のどちらでもなければ終了コード2）。`<段>` は `direct`（委譲しない近道でメインが直し始めた）・`delegate`（委譲を投げた）・`accept`（最後の段の返りを受けて受け入れに入った）・`review`（受け入れ役を起こした。差し戻しのあとも打つ）・`retro`（振り返りに入った）・`land`（別のリポジトリへの合流。台帳は着手側と作業先で別なので `tw land` は記録せず、着手した作業ツリーでメインが `start`／`end` を打つ）・`sync`（`tw ship` のあとのトラッカー反映とバックアップ）。ほかの段は終了コード2。着手の印が無ければ記録しない。記録に失敗しても終了コードは 0
+        "オーケストレーターの段の頭を、`flow/` に `lap` の1行として足す。",
+        r"""自分の着手の印のタスクのオーケストレーターの段の頭を、`flow/` に `{"event":"lap","stage":"<段>"}` の1行として足す（メインが打つ。第3引数を付けると `"edge":"start"`／`"end"` も入り、段の所要時間は同じ段の `end − start`。省くと `edge` の欄は書かず、旧い呼び方のまま、その出来事から同じタスクの次の出来事までの差。第3引数が `start`・`end` のどちらでもなければ終了コード2）。`<段>` は `direct`（委譲しない近道でメインが直し始めた）・`delegate`（委譲を投げた）・`accept`（最後の段の返りを受けて受け入れに入った）・`review`（受け入れ役を起こした。差し戻しのあとも打つ）・`retro`（振り返りに入った）・`land`（別のリポジトリへの合流。台帳は着手側と作業先で別なので `tw land` は記録せず、着手した作業ツリーでメインが `start`／`end` を打つ）・`sync`（`tw ship` のあとのトラッカー反映とバックアップ）。ほかの段は終了コード2。着手の印が無ければ記録しない。記録に失敗しても終了コードは 0
 
 出力: `LAPPED\tT-xxx\t<段>`（第3引数を付けたときは末尾に `\t<start|end>`）・`NOT_CLAIMED\tT-xxx`""",
     ),

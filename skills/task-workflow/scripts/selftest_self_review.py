@@ -4,7 +4,7 @@
 使い方: python3 selftest_self_review.py
 
 標準ライブラリだけで動く。落ちたら非0で終わる。
-self_review.py は一時ディレクトリの skills/next-task/scripts/ に写し、
+self_review.py は一時ディレクトリの skills/task-workflow/scripts/ に写し、
 comment-audit のスクリプトは兄弟の skills/comment-audit/scripts/ に置いた代役で確かめる。
 """
 
@@ -67,12 +67,12 @@ def with_repo(with_comment_audit: bool, body) -> None:
         os.makedirs(repo)
         init_repo(repo)
         with open(SCRIPT, encoding="utf-8") as f:
-            write(d, "skills/next-task/scripts/self_review.py", f.read())
+            write(d, "skills/task-workflow/scripts/self_review.py", f.read())
         with open(GITCMD, encoding="utf-8") as f:
             write(d, "skills/task-model/scripts/gitcmd.py", f.read())
         if with_comment_audit:
             write(d, "skills/comment-audit/scripts/diff_added_comment_lines.py", STUB)
-        body(repo, os.path.join(d, "skills/next-task/scripts/self_review.py"))
+        body(repo, os.path.join(d, "skills/task-workflow/scripts/self_review.py"))
 
 
 def test_nothing() -> None:

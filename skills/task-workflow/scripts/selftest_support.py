@@ -1,4 +1,4 @@
-"""next-task の自己テストが共有する、一時リポジトリの下ごしらえ。"""
+"""task-workflow の自己テストが共有する、一時リポジトリの下ごしらえ。"""
 
 from __future__ import annotations
 

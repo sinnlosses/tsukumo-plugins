@@ -2,7 +2,7 @@
 
 打つ部品の出力の行はそのまま並べ、止まる行が出たらそこで以降を打たない（終了コードは部品のもの）。
 `REVIEW` は止まる行ではなく、レビューを挟むための区切りで、木の控えを出して終了コード0で返す。
-`review_needed.py`・`review_snapshot.py` は next-task スキルの持ち物なので、位置から相対で探して subprocess で打つ。
+`review_needed.py`・`review_snapshot.py` は同じ `scripts/` にあり、subprocess で打つ。
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ import tw_edit
 import tw_handback
 import tw_verify
 
-NEXT_TASK_SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "next-task", "scripts")
+SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 STOP_WORDS = ("NOT_CLAIMED", "NOT_OWNER")
 FORMAT_TAIL_LINES = 40
 
@@ -59,12 +59,12 @@ def _review_gate(toplevel: str, task_id: str) -> bool:
     """レビューが要るなら `lap review` と木の控えを出して `True`。要らなければ判定の行だけ出して `False`。"""
     issue = beads.show(toplevel, tw_base.bd_task_id(task_id))
     difficulty = _difficulty(issue)
-    decided = _next_task_script(toplevel, "review_needed.py", "--difficulty", difficulty)
+    decided = _review_script(toplevel, "review_needed.py", "--difficulty", difficulty)
     print(decided)
     if not decided.startswith("REVIEW"):
         return False
     _run_part(lambda: tw_handback.cmd_lap(toplevel, task_id, "review", "start"))
-    print(f"SNAPSHOT\t{_next_task_script(toplevel, 'review_snapshot.py')}")
+    print(f"SNAPSHOT\t{_review_script(toplevel, 'review_snapshot.py')}")
     return True
 
 
@@ -75,8 +75,8 @@ def _difficulty(issue: beads.Issue | None) -> str:
     return values[0] if len(values) == 1 else "sonnet"
 
 
-def _next_task_script(toplevel: str, name: str, *args: str) -> str:
-    path = os.path.normpath(os.path.join(NEXT_TASK_SCRIPTS, name))
+def _review_script(toplevel: str, name: str, *args: str) -> str:
+    path = os.path.join(SCRIPTS, name)
     if not os.path.isfile(path):
         print(f"MISSING\t{path}")
         raise SystemExit(6)

@@ -19,13 +19,7 @@ import argparse
 import os
 import sys
 
-_TASK_WORKFLOW_SCRIPTS = os.path.normpath(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "task-model", "scripts")
-)
-if _TASK_WORKFLOW_SCRIPTS not in sys.path:
-    sys.path.insert(0, _TASK_WORKFLOW_SCRIPTS)
-
-import gitcmd  # noqa: E402
+import gitcmd
 
 DOC_EXTENSIONS = frozenset({".md", ".mdx", ".markdown", ".txt", ".rst", ".adoc"})
 

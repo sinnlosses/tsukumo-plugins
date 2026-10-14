@@ -1,5 +1,5 @@
 #!/bin/sh
-# このリポジトリの検証コマンド。`/next-task` が受け入れ判定に使う。
+# このリポジトリの検証コマンド。`tw verify` が打ち、受け入れの判定に使う。
 #
 # 使い方: ./check.sh [--full | --plan]
 #
@@ -12,12 +12,12 @@
 #
 # 1. 構文: install.sh・uninstall.sh・scripts/links.sh（いつも）
 # 2. install.sh・uninstall.sh の自己テスト
-# 3. task-model のスクリプトの自己テスト
+# 3. task-model のスクリプトの自己テスト（review_needed.py・review_snapshot.py を含む）
 # 4. task-model の WORKFLOW.md・tw-reference.md を読む検査（それだけが変わったときの軽い段）
 # 5. retrospect のスクリプトの自己テスト
 # 6. plan-tasks のスクリプトの自己テスト
 # 7. comment-audit のスクリプトの自己テスト
-# 8. next-task のスクリプトの自己テスト
+# 8. task-workflow のスクリプトの自己テスト
 # 9. リポジトリ全体の整合（frontmatter・README の索引・参照先の実在）（いつも）
 #
 # 当たる段は `./check.sh --plan` で見る。
@@ -83,6 +83,8 @@ fi
 if stage "task-model: scripts・task コマンドの自己テスト" \
   'skills/task-model/scripts/*' 'agents/*' 'hooks/*' 'bin/*' 'skills/retrospect/scripts/*'; then
   python3 "$here/skills/task-model/scripts/selftest.py"
+  python3 "$here/skills/task-model/scripts/selftest_review_needed.py"
+  python3 "$here/skills/task-model/scripts/selftest_review_snapshot.py"
   echo
   echo "-- task コマンド（develop/task/ + 台帳） --"
   python3 "$here/skills/task-model/scripts/selftest_task.py"
@@ -108,11 +110,9 @@ if stage "comment-audit scripts の自己テスト" 'skills/comment-audit/*'; th
   python3 "$here/skills/comment-audit/scripts/selftest_diff_added_comment_lines.py"
 fi
 
-if stage "next-task scripts の自己テスト" 'skills/next-task/*' 'skills/comment-audit/*'; then
-  python3 "$here/skills/next-task/scripts/selftest_review_needed.py"
-  python3 "$here/skills/next-task/scripts/selftest_context_size.py"
-  python3 "$here/skills/next-task/scripts/selftest_review_snapshot.py"
-  python3 "$here/skills/next-task/scripts/selftest_self_review.py"
+if stage "task-workflow scripts の自己テスト" 'skills/task-workflow/scripts/*' 'skills/task-model/scripts/gitcmd.py' 'skills/comment-audit/*'; then
+  python3 "$here/skills/task-workflow/scripts/selftest_context_size.py"
+  python3 "$here/skills/task-workflow/scripts/selftest_self_review.py"
 fi
 
 echo

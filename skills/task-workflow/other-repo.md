@@ -4,7 +4,7 @@
 
 ## 実装の依頼文に足す項目（手順5c）
 
-   - 作業先が別のリポジトリのときだけ渡す（`${CLAUDE_SKILL_DIR}/accept.md` の手順6の「作業先が別のリポジトリのとき」）: 「作業先の
+   - 作業先が別のリポジトリのときだけ渡す（`${CLAUDE_SKILL_DIR}/parts/acceptor/accept.md` の手順6の「作業先が別のリポジトリのとき」）: 「作業先の
      リポジトリでは、別の作業ツリー（`git -C <作業先> worktree add -b <枝> <パス> main`。`<枝>` はタスクIDを
      小文字にしたもの。`T-012` なら `t-012`）で直してコミットし、**コミットの
      あと**にその作業ツリーを cwd にして `tw verify` を打つ（控えは cwd の作業ツリーごとで、鍵に `HEAD` の
@@ -41,7 +41,7 @@
    | 見たもの | すること |
    | --- | --- |
    | 空、または控えと同じ | 次へ |
-   | 控えに無いファイルがあり、中身（`git hash-object <ファイル>`）が委譲先の枝の同じパス（`git rev-parse <枝>:<パス>`）の blob と同じ | 委譲先が本体に書き残したもの。報告と食い違うものとして `${CLAUDE_SKILL_DIR}/return-abnormal.md` の表に従い、委譲先へ `SendMessage` で伝えて差し戻す。`git restore` は blob が同じと確かめたファイルだけに打つ |
+   | 控えに無いファイルがあり、中身（`git hash-object <ファイル>`）が委譲先の枝の同じパス（`git rev-parse <枝>:<パス>`）の blob と同じ | 委譲先が本体に書き残したもの。報告と食い違うものとして `${CLAUDE_SKILL_DIR}/parts/implementer/return-abnormal.md` の表に従い、委譲先へ `SendMessage` で伝えて差し戻す。`git restore` は blob が同じと確かめたファイルだけに打つ |
    | 控えに無いファイルがあり、blob が枝と違う・枝に無いファイル | 委譲先か別の作業か分からない。消さずに、ファイルと `git diff` の要点を添えて人に預けて終了する |
    | 控えにあったファイル（委譲の前から在る） | 別の作業。消さない。本体が汚れているあいだは下の `tw land` が `NOT_LANDED` で止まるので、汚れが消えるのを待つか、人に預けて終了する |
 
@@ -49,7 +49,7 @@
    cwd の作業ツリーごとに別なので、`tw verify-check` は、委譲先が残した作業先の作業ツリー
    （報告のパス。枝はタスクIDを小文字にした `<枝>`）で `cd <パス> && tw verify-check` と打つ（自分の作業ツリーで打つと `NOT_VERIFIED none`
    になるだけ）。レビューの判定も同じ作業ツリーで、主ブランチから委譲先の枝までの範囲を渡して打ち
-   （`python3 ${CLAUDE_SKILL_DIR}/scripts/review_needed.py --difficulty <difficulty> main..<枝>`）、
+   （`python3 ${CLAUDE_SKILL_DIR}/../task-model/scripts/review_needed.py --difficulty <difficulty> main..<枝>`）、
    受け入れ役に渡す差分のコマンドも `git diff main...<枝>` に、コメント行を拾うコマンドの範囲も
    `main..<枝>` にする。範囲を渡さず本体で打つと `NO_RANGE` が返る（`NOTHING` ではない）ので、出たら範囲を付けて打ち直す。表は同じに読む。`VERIFIED_SAME` なら、検証コマンドを打たずに同じ作業ツリーで
    `cd <パス> && tw land <枝>` を打つ。`tw land` は作業先の本体で `<枝>` を ff-only で主ブランチへ合流し、

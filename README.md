@@ -74,19 +74,21 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
 
 | 外のスキル | 使う場所 | 無いとき |
 | --- | --- | --- |
-| verifying-before-completion | next-task の受け入れの関門 | 主張ごとに差分とコマンドの出力で確かめる |
+| verifying-before-completion | task-workflow の受け入れの関門 | 主張ごとに差分とコマンドの出力で確かめる |
 | writing-for-agents | retro の物差し、retrospect の「空振り」の試金石 | retro の「ファイルの使い分け」を物差しにする |
 | code-review | retro が読むレビューの観点 | 読まない |
-| resolving-merge-conflicts | next-task の `CONFLICT` の案内 | 人に預ける |
+| resolving-merge-conflicts | task-workflow の `CONFLICT` の案内 | 人に預ける |
 | token-usage-diet | retrospect の「道具の経済」の根拠 | 使用量の数を根拠にしない |
 
 ## 由来
 
-全8スキル。`skills/` にあるものが全てで、この一覧がその索引。
+全9スキル。`skills/` にあるものが全てで、この一覧がその索引。
 
-- 自作（7件）: `task-model`（タスクの規則の正典と `tw` の実装・参照専用）、`setup-tasks` `plan-tasks` `next-task` `list-tasks`、
-  `retrospect`（`/next-task` の中で1件ごと・7日おきに振り返り、改善候補をドラフトの課題〔`tw new --draft`〕として積む。正典・参照専用）、
-  `comment-audit`（コメントの種類を判定して消す・縮める・正典へ移す。`next-task` の受け入れ役に渡す）
+- 自作（8件）: `task-model`（タスクの規則の正典と `tw` の実装・参照専用）、`setup-tasks` `plan-tasks` `list-tasks`、
+  `next-task`（タスクを1件に決めて着手の印を立てる入口）、
+  `task-workflow`（印の立ったタスクを委譲→受け入れ→振り返り→送り出しの段で進めるオーケストレーター。流れの変種は `flows/`、パーツの契約は `parts/`）、
+  `retrospect`（`task-workflow` の中で1件ごと・`next-task` の頭で7日おきに振り返り、改善候補をドラフトの課題〔`tw new --draft`〕として積む。正典・参照専用）、
+  `comment-audit`（コメントの種類を判定して消す・縮める・正典へ移す。`task-workflow` の受け入れ役に渡す）
 - [mattpocock/skills](https://github.com/mattpocock/skills) を日本語化したもの（1件）: `retro`
   （改善の7観点の一覧を `retrospect` へ移してそこを指し、選ばれた改善案をドラフトの課題として積む）
 
@@ -128,13 +130,13 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
 
 1. `install.sh`・`uninstall.sh`・`scripts/links.sh` の構文
 2. `install.sh`・`uninstall.sh` の自己テスト（`scripts/selftest_links.sh`）
-3. `task-model` のスクリプトの自己テスト（`selftest.py`・`selftest_task.py`・`selftest_beads.py`。
+3. `task-model` のスクリプトの自己テスト（`selftest.py`・`selftest_review_needed.py`・`selftest_review_snapshot.py`・`selftest_task.py`・`selftest_beads.py`。
    後ろの2つは入口で、テストの本体は `selftest_t_*.py`・`selftest_b_*.py` にある。
    `bd` が無ければ非0で終わる）
 4. `retrospect` の自己テスト
 5. `plan-tasks` の自己テスト
 6. `comment-audit` の自己テスト
-7. `next-task` の自己テスト
+7. `task-workflow` の自己テスト
 8. リポジトリの整合（`scripts/check_repo.py`。frontmatter、この README の由来一覧と `skills/` の一致、
    参照先の実在、プラグインの名前と `bin/tw`・`hooks/hooks.json`、エージェント定義）
 
@@ -146,4 +148,4 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
   `.tw/config.toml` で表す
 - SKILL.md 内の `` !`コマンド` `` はスキル読み込み時に実行され、非0で終わるとスキル全体が失敗する。
   終了コードを潰していない埋め込みは `./check.sh` の `check_repo.py` が落とす。
-  `/next-task` と `/plan-tasks` は設定を `` !`tw config 2>&1 || true` `` で読む（設定が無い・git の外でも非0で終わらない）
+  `/next-task`・`task-workflow`・`/plan-tasks` は設定を `` !`tw config 2>&1 || true` `` で読む（設定が無い・git の外でも非0で終わらない）

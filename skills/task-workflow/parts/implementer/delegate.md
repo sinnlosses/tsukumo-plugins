@@ -11,7 +11,7 @@
 
    **メインが書いてよいとき**: 「書き直しから委譲する」に当たり、同じセッションでこのタスクの設計を
    利用者と決めていて、`## やること` に要る正典・コードをメインがすでに読んでいるときだけ、
-   `${CLAUDE_SKILL_DIR}/rewrite-plan.md` の「メインが書いてよいとき」に従う。
+   `${CLAUDE_SKILL_DIR}/parts/implementer/rewrite-plan.md` の「メインが書いてよいとき」に従う。
 
    **(c) 計画どおりに委譲する**: (d) の依頼（brief のパス）と手順5cの依頼に、次を足して渡す（並列の段の担当には、
    段1の代わりに渡す段の番号を書く）:
@@ -21,7 +21,7 @@
      付けず、変えたい理由を報告する）」
 
    **(c) 書き直しから委譲する**: (d) の依頼（brief のパス）と手順5cの依頼に、
-   `${CLAUDE_SKILL_DIR}/rewrite-plan.md` の「書き直しから委譲する」を足して渡す。最初の返却は計画だけの
+   `${CLAUDE_SKILL_DIR}/parts/implementer/rewrite-plan.md` の「書き直しから委譲する」を足して渡す。最初の返却は計画だけの
    回（段に数えない。1行目は brief の「段の進め方と返却」の計画だけの回の形）で、メインが手順5bで読んでから段1を渡す。
 
    どちらの形でも、途中で `difficulty` を上げるときは、段の返却を受けた切れ目で前の担当を `TaskStop` で
@@ -38,7 +38,7 @@
    `verify-check` だけが頼りになる。
    決まりの本文は貼らず、次を渡す（委譲先は `${CLAUDE_SKILL_DIR}` を持たないので、パスは解決した絶対パスにする）:
    - タスクID と「まず `tw show T-xxx` で読む」
-   - `${CLAUDE_SKILL_DIR}/implementer-brief.md` を解決した絶対パスと「最初にそれを読んで従う」
+   - `${CLAUDE_SKILL_DIR}/parts/implementer/implementer-brief.md` を解決した絶対パスと「最初にそれを読んで従う」
      （`no-delegate` でも `general-purpose` でも同じ brief を渡す）
    - 「`tw verify`・`tw pause` は引数なしで打つのが基本。ID を付けるなら着手中のタスクの ID 1つだけ
      （違う ID は `NOT_OWNER` で拒まれる）」
@@ -57,12 +57,12 @@
    そこで委譲を投げた直後に `Monitor` で見張りを起こす。
    - 起こし方: `Agent` の戻りの `output_file` は symlink で、実体は委譲先の transcript。
      `stat` は `-L` を付けて実体の更新時刻を読む（付けないと symlink 自体の時刻で、更新が一度も見えない）。
-     `T` には `${CLAUDE_SKILL_DIR}/unresponsive.md` の項3が決める無音の秒数を渡す（数はここに書かない）:
+     `T` には `${CLAUDE_SKILL_DIR}/parts/implementer/unresponsive.md` の項3が決める無音の秒数を渡す（数はここに書かない）:
      `f=<output_file>; T=<秒数>; l=$(date +%s); p=$(stat -L -f %m "$f"); g=0; while :; do n=$(date +%s); m=$(stat -L -f %m "$f"); [ "$m" != "$p" ] && { p=$m; l=$n; g=0; }; [ $((n-l)) -ge $T ] && [ $g -eq 0 ] && { echo "SILENT $((n-l))s"; g=1; }; sleep 5; done`
      更新のたびには出さず、無音を越えた1回だけ出す。`Monitor` の `timeout_ms` は上限（30分）にし、
      失効の通知が来たとき委譲先がまだ動いていれば起こし直す。並列の段では担当ごとに1つ起こす。
      見張るのは transcript の実体の更新だけで、作業ツリーの更新は補いにしない（読み取りと待ちの間は進まない）。
-   - `SILENT` の通知が来たら、`${CLAUDE_SKILL_DIR}/unresponsive.md` を読んで項3の尋ねる・止める・引き取るに従う。
+   - `SILENT` の通知が来たら、`${CLAUDE_SKILL_DIR}/parts/implementer/unresponsive.md` を読んで項3の尋ねる・止める・引き取るに従う。
    - 委譲先の最後の段の返却を受けたら、見張りを `TaskStop` で止める（手順6の頭。返却のあとも transcript が
      数秒更新されるので、畳まないと失効まで残る）。
 
@@ -74,4 +74,4 @@
      検証コマンドの全段も打たない（対象を絞った単体テストは打ってよい）。止めて返すときは、基本の引数なしの
      `tw pause` の代わりに `tw pause T-xxx <段の番号>`（ID と段の番号の2つ）を打つ」
    - 本文が見本（画・ラフ）を名指しているか、完了条件に目視があるか、描画を変えるタスクのときだけ、
-     `${CLAUDE_SKILL_DIR}/visual-review.md` の「実装の依頼文に足す項目（手順5c）」の項目を渡す
+     `${CLAUDE_SKILL_DIR}/parts/acceptor/visual-review.md` の「実装の依頼文に足す項目（手順5c）」の項目を渡す

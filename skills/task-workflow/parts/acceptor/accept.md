@@ -1,9 +1,9 @@
 手順6（受け入れる）の続き。`SKILL.md` の手順6から読まれる。委譲先の最後の段の hand-back を確かめ、`tw accept T-xxx` を打つところまでは本文で済んでいる。
 
    **目視待ちの報告が来たとき**（描画を変えるタスクで、委譲先が組み立てた直後に返したもの。完了の
-   hand-back ではないので、ここで受け入れを始めない）: `${CLAUDE_SKILL_DIR}/visual-review.md` を読んで従う。
+   hand-back ではないので、ここで受け入れを始めない）: `${CLAUDE_SKILL_DIR}/parts/acceptor/visual-review.md` を読んで従う。
 
-   **完了条件に目視（画面・見た目）があるとき**: `${CLAUDE_SKILL_DIR}/visual-review.md` の「完了条件に目視があるとき（手順6）」に従う。
+   **完了条件に目視（画面・見た目）があるとき**: `${CLAUDE_SKILL_DIR}/parts/acceptor/visual-review.md` の「完了条件に目視があるとき（手順6）」に従う。
    受け入れ役の `- 目視:` が `可` になるまで手順7の `tw finish` に進まない。
 
    メインは差分を読まず、画像も開かない。差分のレビュー・目視・振り返りの材料は、下の受け入れ役が判断して判定の行で返す。
@@ -32,7 +32,7 @@
    - 作業ツリーのパス・差分を出すコマンド（`git diff HEAD` と、未追跡の新しいファイルを並べる
      `git ls-files --others --exclude-standard`）・`tw show T-xxx` の `## 完了条件` の本文・
      プロジェクトの規約のファイル（AGENTS.md・CLAUDE.md と、そこから引かれるコーディング規約）のパス
-   - `${CLAUDE_SKILL_DIR}/acceptor-brief.md` を解決した絶対パスと「最初にそれを読んで従う」
+   - `${CLAUDE_SKILL_DIR}/parts/acceptor/acceptor-brief.md` を解決した絶対パスと「最初にそれを読んで従う」
    - `tw accept` の判定（`REVIEW\t…` か `SKIP`・`NOTHING`・`NO_RANGE`）と、`REVIEW` のときは木の SHA
    - 目視の完了条件があるときは、委譲先が報告した画像のパス（幅ごと。いちばん狭い幅も）
    - 振り返りの材料: 委譲先の段ごとの返却の friction log の行（そのまま）と、メインの一言メモの数
@@ -50,7 +50,7 @@
    | 判定 | すること |
    | --- | --- |
    | `受け入れ` | 次へ。`- 材料:` の行を手順6aに使う |
-   | `差し戻し` | `- 指摘:`（`直し:` 付きを含む）と `- 目視: 否` の行をそのまま `SendMessage` で委譲先へ渡して差し戻す（メインは直さない。委譲先が終わっていても `SendMessage` で再開できる。並列の段の担当を起こしたときは、まとめて最後の段の担当へ渡す）。差し戻したときは一言メモしておく（手順6aの材料「受け入れでの直し」）。直ったら `${CLAUDE_SKILL_DIR}/review-rounds.md` に従って同じ受け入れ役に続けさせる |
+   | `差し戻し` | `- 指摘:`（`直し:` 付きを含む）と `- 目視: 否` の行をそのまま `SendMessage` で委譲先へ渡して差し戻す（メインは直さない。委譲先が終わっていても `SendMessage` で再開できる。並列の段の担当を起こしたときは、まとめて最後の段の担当へ渡す）。差し戻したときは一言メモしておく（手順6aの材料「受け入れでの直し」）。直ったら `${CLAUDE_SKILL_DIR}/parts/acceptor/review-rounds.md` に従って同じ受け入れ役に続けさせる |
    | `預ける` | 直す指摘が無く、`- 預けること:` だけが残った（直し方を選ぶ必要がある）。直さず、その行をそのまま手順7の `## 結果` と完了報告の「人に知らせること」に写し、`受け入れ` と同じく `tw accept T-xxx --after-review` 以降（整形・`verify-check`・手順6a・6b）を通って手順7へ進む（終了しない。`- 材料:` は手順6aに使う。3回目も同じ） |
 
    `差し戻し` の返却に `- 預けること:` が混ざるときは、委譲先へは `- 指摘:`・`- 目視: 否` の行だけを渡し、`- 預けること:` の行は手順7の `## 結果` と「人に知らせること」に写すために控える。
@@ -60,13 +60,13 @@
    渡す前に、`- 指摘: 簡素化` の行が委譲先の返却か friction log に書かれた「試して退けた案」へ戻す内容でないかを見る（メインは差分を読まず、書かれた退けた案との一致だけを見る）。
    当たる行は渡さず取り下げ、取り下げた行を控えて、手順7の `## 結果` に `- 取り下げた指摘: <数>` と写す。
    渡す行が残らなければ `受け入れ` と同じに `tw accept T-xxx --after-review` 以降へ進む。
-   取り下げた行は、2・3回目の受け入れ役にも `${CLAUDE_SKILL_DIR}/review-rounds.md` の定めで知らせる。
+   取り下げた行は、2・3回目の受け入れ役にも `${CLAUDE_SKILL_DIR}/parts/acceptor/review-rounds.md` の定めで知らせる。
 
    **差し戻したあとの2・3回目**と、**3回目にも指摘が残ったとき**は、
-   `${CLAUDE_SKILL_DIR}/review-rounds.md` を読んで従う（同じ受け入れ役に `SendMessage` で、直しの差分だけを見させる）。
+   `${CLAUDE_SKILL_DIR}/parts/acceptor/review-rounds.md` を読んで従う（同じ受け入れ役に `SendMessage` で、直しの差分だけを見させる）。
 
    方針からズレた実装を見つけたら、受け入れ役が `- 指摘:` に入れて差し戻しになる。メインは直さない。
-   受け入れのあとは、`tw accept T-xxx --after-review` で整形コマンド（`format` の行があれば）→ `tw verify-check` を打つ（`${CLAUDE_SKILL_DIR}/verify-check.md` の表。検証を省くか、`tw verify` を背景で起こして手順6aの振り返りと並べるかを決める）。
+   受け入れのあとは、`tw accept T-xxx --after-review` で整形コマンド（`format` の行があれば）→ `tw verify-check` を打つ（`${CLAUDE_SKILL_DIR}/parts/acceptor/verify-check.md` の表。検証を省くか、`tw verify` を背景で起こして手順6aの振り返りと並べるかを決める）。
    背景で起こした `tw verify` は、手順6bで合流するまで止めない。
    **検証コマンドが1回で通らず、打ち直したら通った**ときは、落ちた・打ち直した・通った、を
    一言メモしておく（手順6aで `retrospect` の材料「検証の打ち直し」に使う。委譲先の friction log の
@@ -81,4 +81,4 @@
    検証は、この控えでは省かれない（付け替えが起きるのは、受け入れのあとに主ブランチが進んだときだけ）。
 
    手順7の `tw finish` の出力に（`tw done` の行として） `COMMITS_SINCE_CLAIM` の行が出たら（`tw finish` は終了コード12で止まる）、
-   `${CLAUDE_SKILL_DIR}/commits-since-claim.md` を読んで扱ってから先へ進む。
+   `${CLAUDE_SKILL_DIR}/parts/ship/commits-since-claim.md` を読んで扱ってから先へ進む。
