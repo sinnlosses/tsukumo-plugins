@@ -204,6 +204,62 @@ def test_edit_section() -> None:
               and "- 別の申し送り" in read("T-110") and r2.stdout.strip() == "PLAN_FIRST\tT-110", r.stdout + r2.stdout + r.stderr)
 
 
+@weight(4)
+def test_edit_sections_in_one_call() -> None:
+    say("task.py edit: --section と --body-file の組を繰り返して、複数の節を1回で書く")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp)
+        for tid in ("T-120", "T-121"):
+            commit_task(main_path, taskfile.Task(tid, "複数節", "todo", "sonnet", "Y", (), task_body()))
+        files = {name: os.path.join(tmp, f"{name}.md") for name in ("plan", "note", "ref")}
+        write(files["plan"], "### 1. 書く\n\n- x\n")
+        write(files["note"], "- 申し送り\n")
+        write(files["ref"], "- 参考\n")
+        run_task(wt1, "claim", "T-120")
+        run_task(wt1, "claim", "T-121")
+
+        def edit(*pairs: tuple[str, str], extra: tuple[str, ...] = ()) -> subprocess.CompletedProcess:
+            flags = [x for name, path in pairs for x in ("--section", name, "--body-file", path)]
+            return run_task(wt1, "edit", "T-120", *flags, *extra)
+
+        r = edit(("やること", files["plan"]), ("注意", files["note"]), ("参考情報", files["ref"]))
+        after = shown(wt1, "T-120")
+        check("3つの節が1回で入り、EDITED は1行だけ", r.returncode == 0 and r.stdout.strip() == "EDITED\tT-120"
+              and "### 1. 書く" in after and "- 申し送り" in after and "- 参考" in after, r.stdout + r.stderr + after)
+        r = run_task(wt1, "plan-check", "T-120")
+        check("複数節の記入も作業より先なら PLAN_FIRST", r.stdout.strip() == "PLAN_FIRST\tT-120", r.stdout + r.stderr)
+
+        for label, pairs in (
+            ("不正な節名が混じる", (("注意", files["note"]), ("ほげ", files["ref"]))),
+            ("同じ節を2回指す", (("注意", files["note"]), ("## 注意", files["ref"]))),
+        ):
+            mid = shown(wt1, "T-120")
+            r = edit(*pairs)
+            check(f"{label}と何も書かずに終了コード2", r.returncode == 2 and "usage:" in r.stderr
+                  and shown(wt1, "T-120") == mid, r.stdout + r.stderr)
+        r = run_task(wt1, "edit", "T-120", "--section", "注意", "--section", "参考情報", "--body-file", files["note"])
+        check("組の数が違えば何も書かずに終了コード2", r.returncode == 2 and "usage:" in r.stderr, r.stdout + r.stderr)
+        r = run_task(wt1, "edit", "T-120", "--body-file", files["note"], "--body-file", files["ref"])
+        check("--section の無い --body-file の複数は終了コード2", r.returncode == 2 and "usage:" in r.stderr, r.stdout + r.stderr)
+
+        mid = shown(wt1, "T-120")
+        write(files["ref"], "別の条件\n")
+        r = edit(("注意", files["note"]), ("完了条件", files["ref"]))
+        check("複数節でも枠の節を変えれば FRAME_CHANGED で拒み、前の節も書かない", r.returncode == 4
+              and r.stdout.startswith("FRAME_CHANGED\tT-120\t") and shown(wt1, "T-120") == mid, r.stdout + r.stderr)
+        write(files["note"], "- 二度目の申し送り\n")
+        r = edit(("注意", files["note"]), ("完了条件", files["ref"]), extra=("--change-frame",))
+        check("--change-frame を付ければ複数節でも書く", r.returncode == 0
+              and "- 二度目の申し送り" in shown(wt1, "T-120") and "別の条件" in shown(wt1, "T-120"), r.stdout + r.stderr)
+
+        write(os.path.join(wt1, "work.txt"), "x\n")
+        r = run_task(wt1, "edit", "T-121", "--section", "やること", "--body-file", files["plan"],
+                     "--section", "注意", "--body-file", files["note"])
+        check("複数節でも作業のあとの初回の記入は WORK_BEFORE_PLAN で拒む", r.returncode == 4
+              and r.stdout.startswith("WORK_BEFORE_PLAN\tT-121\t") and "### 1. 書く" not in shown(wt1, "T-121"),
+              r.stdout + r.stderr)
+
+
 @weight(13)
 def test_edit_deps() -> None:
     say("task.py edit --add-deps・--remove-deps: 台帳の依存を後から変える")
@@ -615,6 +671,7 @@ TESTS = (
     test_submodule_drift_is_not_work,
     test_edit_deps,
     test_edit_section,
+    test_edit_sections_in_one_call,
     test_root_ignored,
     test_direct_mark,
 )

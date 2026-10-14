@@ -20,10 +20,10 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
     """本文・summary・difficulty・loopable・todo↔hold・依存・近道の印を書き換える。"""
     bd_id = tw_base.bd_task_id(args.task_id)
     shown = beads.to_task_id(bd_id)
-    if args.section is not None and not args.body_file:
-        print("usage: --section は --body-file と一緒に使う", file=sys.stderr)
-        raise SystemExit(2)
-    if not any([args.body_file, args.summary, args.difficulty, args.loopable, args.status, args.add_deps, args.remove_deps, args.direct]):
+    sections: list[str] = args.section or []
+    body_files: list[str] = args.body_file or []
+    _check_body_args(sections, body_files)
+    if not any([body_files,args.summary, args.difficulty, args.loopable, args.status, args.add_deps, args.remove_deps, args.direct]):
         print("usage: 直すもの（--body-file・--summary・--difficulty・--loopable・--status・--add-deps・--remove-deps・--direct）が無い", file=sys.stderr)
         raise SystemExit(2)
     add = _parse_dep_list(args.add_deps, layout.ANY_ID_PATTERN, "--add-deps", "T-999・GH-5・PROJ-123")
@@ -52,12 +52,14 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
         None,
     )
     body = current
-    if args.body_file:
-        given = tw_base.read_body(args.body_file)
-        if not given.strip():
-            print("usage: --body-file の中身が空（空白だけ）。書き換えない", file=sys.stderr)
-            raise SystemExit(2)
-        body = _section_body(args, current, given)
+    if body_files:
+        body = current
+        for name, path in zip(sections or [None], body_files):
+            given = tw_base.read_body(path)
+            if not given.strip():
+                print("usage: --body-file の中身が空（空白だけ）。書き換えない", file=sys.stderr)
+                raise SystemExit(2)
+            body = given if name is None else _section_body(name, body, given)
         error = taskfile.validate_edited_body(current, body, draft=beads.is_draft(issue))
         if error is not None:
             print(f"usage: {error}", file=sys.stderr)
@@ -75,7 +77,7 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
             and taskfile.plan_changed(current, body)
             and not metadata.get(beads.PLAN_KEY)
         ):
-            state = tw_plan.plan_state(toplevel, metadata.get(beads.CLAIM_HEAD_KEY), args.body_file)
+            state = tw_plan.plan_state(toplevel, metadata.get(beads.CLAIM_HEAD_KEY), body_files)
             _refuse_plan_after_work(shown, state, args.after_work)
             cmd += ["--set-metadata", f"{beads.PLAN_KEY}={state}"]
     if args.summary:
@@ -225,13 +227,29 @@ def _print_direct_off(shown: str, reason: str | None) -> None:
         print(f"DIRECT_OFF\t{shown}\t{reason}")
 
 
-def _section_body(args: argparse.Namespace, current: str, given: str) -> str:
-    """`--section` が無ければ渡された本文、あれば `current` のその節だけを `given` にした本文。"""
-    if args.section is None:
-        return given
-    heading = taskfile.section_heading(args.section)
+def _check_body_args(sections: list[str], body_files: list[str]) -> None:
+    """`--section`・`--body-file` の並びの誤りは何も書かずに終了コード2。"""
+    message = None
+    if sections and not body_files:
+        message = "--section は --body-file と一緒に使う"
+    elif sections and len(sections) != len(body_files):
+        message = "--section と --body-file は同じ数だけ、同じ順に並べる"
+    elif not sections and len(body_files) > 1:
+        message = "--body-file を並べるときは、それぞれに --section を付ける"
+    elif body_files.count("-") > 1:
+        message = "標準入力（--body-file -）は1回しか読めない"
+    elif len({taskfile.section_heading(s) or s for s in sections}) != len(sections):
+        message = "同じ節を2回指している"
+    if message is not None:
+        print(f"usage: {message}", file=sys.stderr)
+        raise SystemExit(2)
+
+
+def _section_body(section: str, current: str, given: str) -> str:
+    """`current` の `section` の節だけを `given` にした本文。"""
+    heading = taskfile.section_heading(section)
     if heading is None:
-        print(f"usage: --section {args.section!r} は枠の見出しでない: " + "、".join(taskfile.SECTION_HEADINGS), file=sys.stderr)
+        print(f"usage: --section {section!r} は枠の見出しでない: " + "、".join(taskfile.SECTION_HEADINGS), file=sys.stderr)
         raise SystemExit(2)
     error = taskfile.check_section_content(given)
     replaced = taskfile.replace_section(current, heading, given) if error is None else None

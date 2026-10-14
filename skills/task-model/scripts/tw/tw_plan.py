@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Sequence
 
 import gitinfo
 import taskfile
@@ -117,17 +118,18 @@ def commits_since_claim(toplevel: str, head: str | None) -> list[str]:
     return [line for line in r.stdout.splitlines() if line]
 
 
-def plan_state(toplevel: str, head: str | None, body_file: str) -> str:
+def plan_state(toplevel: str, head: str | None, body_file: str | Sequence[str]) -> str:
     """いま `## やること` を書くと、作業より先（`first`）か作業が始まってから（`after-work`）か。
 
-    作業が始まっているとは、claim した時点の `head` より後のコミットがあるか、`body_file` 以外に
+    作業が始まっているとは、claim した時点の `head` より後のコミットがあるか、`body_file`（複数なら全部）以外に
     `git status` の変更があること（submodule のずれは数えない）。
     """
     if commits_since_claim(toplevel, head):
         return PLAN_AFTER_WORK
     ignored: set[str] = set()
-    if body_file != "-":
-        ignored.add(os.path.relpath(os.path.realpath(body_file), os.path.realpath(toplevel)))
+    for path in [body_file] if isinstance(body_file, str) else body_file:
+        if path != "-":
+            ignored.add(os.path.relpath(os.path.realpath(path), os.path.realpath(toplevel)))
     r = tw_base.run_git(toplevel, ["status", "--porcelain", "-z", "--untracked-files=all", "--ignore-submodules=all"])
     changed = _porcelain_paths(r.stdout) if r.returncode == 0 else []
     return PLAN_AFTER_WORK if any(p not in ignored for p in changed) else PLAN_FIRST
