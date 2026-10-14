@@ -1,7 +1,7 @@
 6a. **振り返る**（`/loop` から回っているときも。委譲せずメインで行う）: 頭に `tw lap T-xxx retro start` を打ち（振り返りを終えて手順7の `tw finish` を打つ直前に `tw lap T-xxx retro end`）、
    受け入れ役の最後の返却の `- 材料: friction=… reverify=… fixes=… human=… review=…` の5つの値を、
    `python3 ${CLAUDE_SKILL_DIR}/../retrospect/scripts/material.py . T-xxx --gate --friction … --reverify … --fixes … --human … --review …` にそのまま渡す
-   （値の意味は `skills/task-workflow/WORKFLOW.md` の「受け入れ役の契約」。`human` は手順6で依頼に添えたメモの数が返る。
+   （値の意味は `skills/next-task/acceptor-contract.md`。`human` は手順6で依頼に添えたメモの数が返る。
    手順6で `受け入れ` を受けたあとに検証を打ち直したときは、`reverify` にその回数を足す）。
    受け入れ役の `- 指摘:`・`- 付随:` の行は、`retrospect` の材料「受け入れでの直し」「本文と差分のずれ」「付いてきた文書の変更」の出どころとして、手順6aの振り返りに使う。
    委譲先の報告の `- ドラフト:` の行（委譲先は `tw new` を打てないので報告に書く）も、候補として同じ物差しにかける。
