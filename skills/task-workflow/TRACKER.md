@@ -22,10 +22,10 @@ GitHub で本文を直したあとの取り込みで `open` に戻る。`deferre
 | タスクの要素 | Beads の置き場 |
 | --- | --- |
 | タスクID | `github`: 外は `GH-5`、Beads の中は `gh-5`（Issue 番号）。`なし`・`jira`: 外は `T-123`、Beads の中は `t-123`（接頭辞は小文字だけ）。`jira` で取り込んだ課題は外が `PROJ-123`、中が `proj-123` |
-| 採番 | `github`: GitHub の採番（下の「GitHub との双方向」の登録）。`なし`・`jira`: `bd create --id t-<n>`（同じ番号は1つしか作れない。負けたら次の番号で打ち直し、20回で `LOCKED`）。最後の番号は `bd kv` の `task-workflow.last-id`。候補は Beads の番号・`bd kv`・主ブランチの `docs/history/tasks.md` の最大 |
+| 採番 | `github`: GitHub の採番（下の「GitHub との双方向」の登録）。`なし`・`jira`: `bd create --id t-<n>`（同じ番号は1つしか作れない。負けたら次の番号で打ち直し、20回で `LOCKED`）。最後の番号は `bd kv` の `task-workflow.last-id`。候補は Beads の番号・`bd kv`・主ブランチの旧いアーカイブの最大（[legacy.md](legacy.md)） |
 | 着手の印 | `bd update --claim`（actor は作業ツリーの名前）。`claim` した時点の `HEAD` と枝は metadata `task_claim_head`・`task_branch` |
 | `NOT_OWNER` | `done`・`release` の前に assignee が自分かを見る（`bd close` も actor が違えば拒む） |
-| `todo`・`hold` | `open`・`deferred`（`bd ready` から外れる。GitHub では label `status::deferred`）。切り替え前の独自の状態 `pending` も `hold` と読む |
+| `todo`・`hold` | `open`・`deferred`（`bd ready` から外れる。GitHub では label `status::deferred`）。旧形式の `pending` も `hold` と読む（[legacy.md](legacy.md)） |
 | `draft`（ドラフト） | `deferred` ＋ metadata `draft`（値 `Y`。GitHub には載らず、取り込みで消えたら取り込み前の値を戻す。GitHub で label を外されて `open` に戻っても、印があればドラフトと読む。ドラフトのまま閉じた課題でも戻す） |
 | ドラフトから進めた課題の出自 | metadata `from_draft`（値は `- 観点:` の観点か `不明`。GitHub には載らず、取り込みで消えたら取り込み前の値を戻す。閉じた課題でも戻す） |
 | `done`・`dropped` | `bd close`（`dropped` は label `cancelled` を足す。独自の状態 `cancelled` は依存を解決しないので使わない） |
@@ -40,9 +40,9 @@ GitHub で本文を直したあとの取り込みで `open` に戻る。`deferre
 | `## 目的・背景`・`## 決まっていること`・`## 解くべき論点`・`## 注意`・`## 参考情報` | `description`（見出しのまま）。`tw show` は枠の7節を空でもこの順に出す |
 | `## 結果`（`- 振り返り:` を含む） | `## 結果` で始まる comment（最後のものが正） |
 | 登録から完了までの本文の差（`retrospect` の材料） | `bd history`（`material.py` が最初と最後の版の差を出す） |
-| git に残る過去の `develop/task/` と `docs/history/` | 動かさない |
+| git に残る過去の `develop/task/` と `docs/history/` | 動かさない（[legacy.md](legacy.md)） |
 
-**サイクルの各段で Beads に起きること**（WORKFLOW.md の「1サイクル」と tw-reference.md の「`tw` コマンドの参照」の補足）:
+**サイクルの各段で Beads に起きること**（`skills/next-task/SKILL.md` の手順と tw-reference.md の「`tw` コマンドの参照」の補足）:
 
 - **読む・書く**: `tw show T-xxx` で読み、`tw edit T-xxx` で直す（コミットも `ship` も要らない。引数は `tw edit --help`）
 - **`done`・`ship`**: `done` は `## 結果` を comment に入れて label `ship:done`／`ship:dropped` を立てるだけで、

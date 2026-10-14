@@ -450,18 +450,6 @@ def _squeeze(content: str) -> str:
     return "\n".join(kept).strip()
 
 
-def set_result_section(body: str, content: str) -> str:
-    """本文の `## 結果` 節を `content` に置き換える（無ければ末尾に足す。3.3・3.4・5.7）。
-
-    節の並びは固定で `## 結果` は常に最後（3.3）なので、既存の節があれば丸ごと外し、
-    改めて末尾に置き直す（順の入れ替えは起きない）。
-    """
-    content = content.strip("\n")
-    body = strip_result_section(body).rstrip("\n")
-    prefix = f"{body}\n\n" if body else ""
-    return f"{prefix}{RESULT_HEADING}\n\n{content}\n"
-
-
 def strip_result_section(body: str) -> str:
     """本文から `## 結果` 節を丸ごと外す（無ければそのまま）。"""
     lines = body.split("\n")
