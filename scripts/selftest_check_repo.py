@@ -48,9 +48,18 @@ def main() -> int:
     check_repo.check_python_syntax(skills)
     check("実物の .py は全部 from __future__ import annotations を持つ", check_repo.problems == [])
 
+    forbidden = check_repo.forbidden_path_references
+    check("task-workflow のパスは許す", forbidden("a", "${CLAUDE_SKILL_DIR}/../task-workflow/WORKFLOW.md") == [])
+    check("自分自身のパスは許す", forbidden("a", "${CLAUDE_SKILL_DIR}/../a/scripts") == [])
+    check("ほかの兄弟のパスは返す", forbidden("a", "${CLAUDE_SKILL_DIR}/../task-workflow/x ${CLAUDE_SKILL_DIR}/../retrospect/SKILL.md") == ["retrospect"])
+
     check_repo.problems.clear()
     check_repo.check_sibling_references(skills)
     check("実物のリポジトリは通る", check_repo.problems == [])
+
+    check_repo.problems.clear()
+    check_repo.check_sibling_path_references(skills)
+    check("実物のリポジトリは兄弟のパスで task-workflow しか指さない", check_repo.problems == [])
 
     if failures:
         print(f"\n{len(failures)} 件落ちた: {', '.join(failures)}")

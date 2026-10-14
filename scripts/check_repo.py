@@ -21,6 +21,8 @@
 - 兄弟スキルの `scripts/` を `sys.path` に足して `import` しているなら、`REQUIRES` にその
   兄弟スキル名があること
 - 本文が `${CLAUDE_SKILL_DIR}/../<兄弟>` で兄弟スキルを指しているなら、`REQUIRES` にその兄弟スキル名があること
+- 兄弟のパス `${CLAUDE_SKILL_DIR}/../<兄弟>` で指してよいのは `task-workflow` と自分自身だけであること
+  （ほかのパーツは Skill ツールで名前を指して呼び、そのパーツの道具は置き場〔Base directory〕から打つ）
 """
 
 from __future__ import annotations
@@ -505,6 +507,22 @@ def unrequired_references(owner: str, text: str, required: set[str]) -> list[str
     return [dep for dep in sibling_references(owner, text) if dep not in required]
 
 
+PATH_REFERENCE_ALLOWED = ("task-workflow",)
+
+
+def forbidden_path_references(owner: str, text: str) -> list[str]:
+    return [dep for dep in sibling_references(owner, text) if dep not in PATH_REFERENCE_ALLOWED]
+
+
+def check_sibling_path_references(names: list[str]) -> None:
+    """兄弟のパス `${CLAUDE_SKILL_DIR}/../<兄弟>` で指してよいのは `task-workflow` と自分自身だけ。
+    ほかのパーツは Skill ツールで名前を指して呼ぶ。"""
+    for n in names:
+        for md in markdown_files(n):
+            for dep in forbidden_path_references(n, read(md)):
+                fail(f"{os.path.relpath(md, ROOT)}: `{dep}` を兄弟のパスで指している（Skill ツールで名前を指して呼ぶ）")
+
+
 def check_sibling_references(names: list[str]) -> None:
     """本文が `${CLAUDE_SKILL_DIR}/../<兄弟>` で指す兄弟が、そのスキルの `REQUIRES` にあるか。"""
     for n in names:
@@ -601,6 +619,7 @@ def main() -> None:
     check_cross_references(names)
     check_requires(names)
     check_sibling_references(names)
+    check_sibling_path_references(names)
     check_sibling_imports(names)
     check_python_syntax(names)
     check_task_workflow_layout()

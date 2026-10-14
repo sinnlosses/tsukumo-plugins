@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""横断の振り返り（retrospect の SKILL.md「週ごとに振り返る」）の材料を、数だけで1回に出す。
+"""横断の振り返り（retrospect の detail.md「週ごとに振り返る」）の材料を、数だけで1回に出す。
 
 使い方: weekly.py <リポジトリの根> [--days N]
 

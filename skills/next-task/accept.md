@@ -37,9 +37,10 @@
    - 目視の完了条件があるときは、委譲先が報告した画像のパス（幅ごと。いちばん狭い幅も）
    - 振り返りの材料: 委譲先の段ごとの返却の friction log の行（そのまま）と、メインの一言メモの数
      （検証の打ち直し・受け入れでの直し・人の差し戻し）
-   - 差分で足されたコメント行を拾うコマンド（`python3 <絶対パス>/diff_added_comment_lines.py HEAD`。
-     `<絶対パス>` は `${CLAUDE_SKILL_DIR}/../comment-audit/scripts` を解決したもの）と、
-     `comment-audit` の `SKILL.md` の絶対パス（`${CLAUDE_SKILL_DIR}/../comment-audit/SKILL.md` を解決したもの）
+   - 「`comment-audit` を Skill ツールで名前を指して読む」こと（一覧の末尾が `comment-audit` の行。リンクで入れたとき
+     `comment-audit`、plugin で入れたとき `tsukumo-workflow:comment-audit`。一覧に出ている名前のまま使う。受け入れ役は
+     Skill ツールを持つ）。差分で足されたコメント行は、受け入れ役がその置き場（Base directory）の
+     `python3 <Base directory>/scripts/diff_added_comment_lines.py HEAD` で拾う
 
    委譲の依頼文・委譲先の報告の本文・`## やること`・`## 目的・背景` は渡さない。
 

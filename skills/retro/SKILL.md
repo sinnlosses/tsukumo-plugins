@@ -10,7 +10,7 @@ disable-model-invocation: true
 
 `retrospect`（`/next-task` が1件ごと・7日おきに自動で行う振り返り）とは材料と起こし方が違う。
 こちらは**ユーザーが手で呼び、1つのセッションを丸ごと**材料にする。改善の7観点・色・ドラフトの形は
-`retrospect` の SKILL.md にある（下の手順4〜6）。
+`retrospect` の `detail.md` にある（下の手順4〜6）。
 
 ## 守ること
 
@@ -32,7 +32,7 @@ disable-model-invocation: true
    そのセッションのコミット（`git log`）、タスクの `## 結果`（task-workflow の運用なら `tw show`）、
    プロジェクトに集計の道具があればそれ（`tw config` の `hook_tally` の行など）、
    サブエージェントの手数（タスクに紐付くセッションなら
-   `python3 ${CLAUDE_SKILL_DIR}/../retrospect/scripts/material.py . <タスクID> --signals`）。
+   `retrospect` を Skill ツールで名前を指して呼び、その置き場の `python3 <Base directory>/scripts/material.py . <タスクID> --signals`）。
    セッションのログ（jsonl）の本文は材料にしない（守ること1）。
    _済んだ印_: 材料にするセッションと、そこから取った記録の一覧が決まっている
 
@@ -46,13 +46,13 @@ disable-model-invocation: true
 
    _済んだ印_: 上の3種のそれぞれについて、あるか・どこにあるかが言える
 
-4. **改善の候補を7つの観点で探す。** 観点は `retrospect` の SKILL.md
-   （`${CLAUDE_SKILL_DIR}/../retrospect/SKILL.md`）の節「改善の7観点」にある。読んで、各観点の
+4. **改善の候補を7つの観点で探す。** 観点は `retrospect` スキル（Skill ツールで名前を指して呼ぶ）の副ファイル
+   `detail.md`（`retrospect` の置き場にある）の節「改善の7観点」にある。読んで、各観点の
    「使うとき」に当たるものを見る。
    _済んだ印_: 「使うとき」に当たった観点のすべてに、候補か「候補なし」が付いている
 
 5. **候補を重い順（`赤` → `黄`）にユーザーへ示す。** 物差しにかけ、1件1行で色・観点・何を足すか・根拠を添える
-   （物差しは `retrospect` の SKILL.md の節「1件だけ振り返る」の手順3、色は節「色と1行の書式」、
+   （物差しは `retrospect` の `detail.md` の節「1件だけ振り返る」の手順3、色は節「色と1行の書式」、
    根拠は守ること1の形）。採否は聞かない。
    _済んだ印_: 物差しを通った候補がすべて示されている
 

@@ -25,7 +25,7 @@ OLD_TW_GITIGNORES = ("*", "*\n", "*\n!config.toml", "*\n!config.toml\n")
 # docs/history/tasks.md（旧形式の履歴・採番の下限。正典5.3）
 HISTORY_TASKS_PATH = "docs/history/tasks.md"
 
-# 横断の振り返りの記録（1回ごとに `## YYYY-MM-DD（開始日〜終了日）` の見出しを1つ。retrospect の SKILL.md「週ごとに振り返る」）
+# 横断の振り返りの記録（1回ごとに `## YYYY-MM-DD（開始日〜終了日）` の見出しを1つ。retrospect の detail.md「週ごとに振り返る」）
 RETROSPECT_RECORD_PATH = "docs/history/retrospect.md"
 RETROSPECT_RECORD_HEADING_PATTERN = re.compile(r"^## (\d{4}-\d{2}-\d{2})", re.MULTILINE)
 

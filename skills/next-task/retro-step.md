@@ -1,14 +1,14 @@
 6a. **振り返る**（`/loop` から回っているときも。委譲せずメインで行う）: 頭に `tw lap T-xxx retro start` を打ち（振り返りを終えて手順7の `tw finish` を打つ直前に `tw lap T-xxx retro end`）、
    受け入れ役の最後の返却の `- 材料: friction=… reverify=… fixes=… human=… review=…` の5つの値を、
-   `python3 ${CLAUDE_SKILL_DIR}/../retrospect/scripts/material.py . T-xxx --gate --friction … --reverify … --fixes … --human … --review …` にそのまま渡す
+   `retrospect` を Skill ツールで名前を指して呼び（一覧の末尾が `retrospect` の行。リンクで入れたとき `retrospect`、plugin で入れたとき `tsukumo-workflow:retrospect`。一覧に出ている名前のまま使う）、
+   タスクID `T-xxx` と一緒にそのまま渡す。判定の口 `material.py --gate` は retrospect が自分の置き場から打つ
    （値の意味は `skills/next-task/acceptor-contract.md`。`human` は手順6で依頼に添えたメモの数が返る。
    手順6で `受け入れ` を受けたあとに検証を打ち直したときは、`reverify` にその回数を足す）。
    受け入れ役の `- 指摘:`・`- 付随:` の行は、`retrospect` の材料「受け入れでの直し」「本文と差分のずれ」「付いてきた文書の変更」の出どころとして、手順6aの振り返りに使う。
    委譲先の報告の `- ドラフト:` の行（委譲先は `tw new` を打てないので報告に書く）も、候補として同じ物差しにかける。
 
-   出力が `QUIET` の1行なら、`retrospect` の `SKILL.md` を読まずに `- 振り返り: 兆候なし` に決めて先へ進む。
-   `SIGNAL` の行が1つでもあれば、`retrospect` スキルの
-   `SKILL.md`（`${CLAUDE_SKILL_DIR}/../retrospect/SKILL.md`）の節「1件だけ振り返る」と、そこが指す
+   `retrospect` が `- 振り返り: 兆候なし` を返したら（判定が `QUIET`。本文は読まれない）そのまま先へ進む。
+   `SIGNAL` の行が1つでもあれば、`retrospect` の入口が指す副ファイル `detail.md` の節「1件だけ振り返る」と、そこが指す
    節「改善の7観点」「色と1行の書式」**だけ**を読んで従い、`SIGNAL` の行と手数・段の所要時間の節をその手順1の材料にする。材料を7観点に当てて物差しを通った候補が
    残ったら、直接呼んだときも `/loop` から回っているときも、聞かずに残ったものをすべて
    `tw new --draft` でドラフトの課題として積む（作業ツリーのファイルは変わらない）。`## 結果` に入れる
