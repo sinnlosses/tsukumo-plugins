@@ -84,6 +84,21 @@ def main() -> int:
     check("台帳の置き場は拾わない",
           edges("task-model", "`$(git rev-parse --git-common-dir)/task-workflow/flow/<ID>.md`", skills) == [])
 
+    upward = check_repo.upward_reference_problems
+    brief = os.path.join(check_repo.SKILLS, "task-workflow", "parts", "acceptor", "acceptor-brief.md")
+    check("1つ上の `acceptor.md` は届く", upward(brief, "このファイルの1つ上のディレクトリの `acceptor.md`") == [])
+    check("括弧の中の言及から2つ上の `review-criteria.md` に届く",
+          upward(brief, "置き場（このファイルの2つ上のディレクトリ）の `review-criteria.md`") == [])
+    check("括弧の後ろの `scripts/self_review.py` に届く",
+          upward(brief, "このファイルの2つ上のディレクトリ（`task-workflow` の置き場）の `scripts/self_review.py`") == [])
+    check("3つ上の `review-criteria.md` は届かないとして返す",
+          len(upward(brief, "置き場（このファイルの3つ上のディレクトリ）の `review-criteria.md`")) == 1)
+    check("先のパスを読めない言及を返す", len(upward(brief, "このファイルの2つ上のディレクトリにある台本")) == 1)
+
+    check_repo.problems.clear()
+    check_repo.check_upward_references(skills)
+    check("実物のリポジトリの「N つ上」は実在するファイルに届く", check_repo.problems == [])
+
     mentions = check_repo.task_model_name_mentions
     agents = check_repo.agent_names()
     check("データの名前は拾わない",

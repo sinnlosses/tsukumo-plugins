@@ -217,7 +217,7 @@ ship = "tw"                     # 今は tw finish だけ
 
 ## 7. 未決事項
 
-- **`task-model` の名前**: 本文は `task-model` で書いた。`task-rules`・`task-store` を採っても、変わるのは段階4の改名先と参照の追随だけ
+- **`task-model` の名前**: 本文は `task-model` で書いた。`task-rules`・`task-store` を採っても、変わるのは段階4の改名先と参照の追随だけ。段階4（GH-779）で名前は `task-model` に決めて改名した
 - **「他の人が使う」前提**: tsukumo の `docs/requirements.md` は対象ユーザーを作者本人だけとしている。このプラグインを他の人に向けるなら、tsukumo 側の記述をどう扱うかを決める必要がある
 - **tsukumo 側の追随の範囲**: 段階4で `vendor/tsukumo-plugins` を上げるとき、tsukumo の文書（`workflow-contract.md`・`CLAUDE.md` の手順の参照など）のどこが `task-workflow` を規則の正典として指しているかは数えていない
 - **パーツの選びの置き場**: 本文はリポジトリごと（`.tw/config.toml`。コミットされ、同じリポジトリの人と流れを共有できる）にした。利用者ごとの好み（受け入れ役だけ替えたい、など）を許すなら、利用者単位の設定を重ねる層が要る

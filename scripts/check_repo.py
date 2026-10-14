@@ -26,6 +26,8 @@
 - retrospect の本文を `retrospect/SKILL.md` で指す文言が無いこと（本文は `detail.md`）
 - 各スキルの `.md` がファイルを指す先（`skills/<名>/`・`<名>/<ファイル>.md|py`・`` `<名>` スキルの `…` ``・
   `` `<名>` の `<ファイル>.md` ``）が、`DEPENDENCY_EDGES` の許す辺に収まること
+- 「このファイルの N つ上のディレクトリ（…）の `<パス>`」が、このファイルのあるディレクトリから N 回上がった先の
+  実在するファイルを指すこと（形を読めない言及も落とす）
 - `task-model` の `.md` が、ほかのスキル名とエージェント名を書いていないこと（データの名前の
   `task-workflow.` の kv キー・`/task-workflow/` の台帳・`docs/history/retrospect.md`・`retrospect_due` は除く）
 """
@@ -588,6 +590,36 @@ def check_dependency_edges(names: list[str]) -> None:
                 fail(f"{os.path.relpath(md, ROOT)}: `{dep}` のファイルを指している（{n} から許す先は DEPENDENCY_EDGES）")
 
 
+UPWARD_MENTION = re.compile(r"このファイルの([0-9])つ上のディレクトリ")
+UPWARD_REFERENCE = re.compile(r"このファイルの([0-9])つ上のディレクトリ(?:（[^）\n]*）)?）?の `([^`\n]+)`")
+
+
+def upward_reference_problems(md_path: str, text: str) -> list[str]:
+    """「このファイルの N つ上のディレクトリ（…）の `<パス>`」が実在するファイルに届かないもの。
+    数え方は、このファイルのあるディレクトリから N 回上がる（1つ上なら親のディレクトリ）。
+    形を読めない言及も返す。"""
+    out = []
+    readable = {m.start() for m in UPWARD_REFERENCE.finditer(text)}
+    for m in UPWARD_MENTION.finditer(text):
+        if m.start() not in readable:
+            out.append(f"「{m.group(0)}」の先のパスを読めない（「…ディレクトリの `<パス>`」の形で書く）")
+    for m in UPWARD_REFERENCE.finditer(text):
+        base = os.path.dirname(md_path)
+        for _ in range(int(m.group(1))):
+            base = os.path.dirname(base)
+        if not os.path.exists(os.path.join(base, m.group(2))):
+            out.append(f"「{m.group(0)}」が実在するファイルに届かない")
+    return out
+
+
+def check_upward_references(names: list[str]) -> None:
+    """移したファイルが自分の位置から数えて指すファイルが実在するか。"""
+    for n in names:
+        for md in markdown_files(n):
+            for p in upward_reference_problems(md, read(md)):
+                fail(f"{os.path.relpath(md, ROOT)}: {p}")
+
+
 # task-model の文書に出てよいデータの名前（kv キー・台帳の置き場・振り返りの記録・`tw status` の行の名前）。
 TASK_MODEL_DATA_NAMES = re.compile(r"task-workflow\.[\w.<>-]+|/task-workflow/|docs/history/retrospect\.md|retrospect_due")
 
@@ -710,6 +742,7 @@ def main() -> None:
     check_sibling_path_references(names)
     check_retrospect_entry_references(names)
     check_dependency_edges(names)
+    check_upward_references(names)
     check_task_model_names(names, agent_names())
     check_sibling_imports(names)
     check_python_syntax(names)
