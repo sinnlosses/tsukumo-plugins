@@ -54,6 +54,7 @@ import beads  # noqa: E402
 import draft_fate  # noqa: E402
 import gitcmd  # noqa: E402
 import layout  # noqa: E402
+import gitinfo  # noqa: E402
 import ledger  # noqa: E402
 import metrics  # noqa: E402
 import transcript  # noqa: E402
@@ -338,7 +339,7 @@ def read_stages(root: str, task_id: str) -> StageTimes | str | None:
     """台帳から段ごとの秒を取る。読めなければ理由の文字列、そのタスクの `claim` が無ければ `None`。"""
     try:
         events, _ = metrics.read_events(ledger.ledger_root(cwd=root))
-    except (ledger.GitCommandError, OSError):
+    except (gitinfo.GitCommandError, OSError):
         return "台帳が読めない（git のリポジトリでない）"
     found = metrics.task_stage_spans(events, task_id)
     if found is None:

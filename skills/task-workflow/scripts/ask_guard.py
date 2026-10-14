@@ -14,6 +14,7 @@ import os
 from typing import IO
 
 import beads
+import gitinfo
 import ledger
 import metrics
 
@@ -50,9 +51,9 @@ def decide(payload: dict) -> str | None:
         claims = ledger.open_claims(cwd=cwd)
         if not claims:
             return None
-        toplevel = ledger.git_toplevel(cwd)
+        toplevel = gitinfo.git_toplevel(cwd)
         root = ledger.ledger_root(cwd)
-    except ledger.GitCommandError:
+    except gitinfo.GitCommandError:
         return None
     loopable = [task_id for task_id in claims if _is_loopable(toplevel, task_id)]
     if not loopable:

@@ -9,6 +9,7 @@ import time
 import beads
 import fold
 import layout
+import gitinfo
 import ledger
 import ship
 import taskfile
@@ -35,10 +36,10 @@ def cmd_verify(toplevel: str, task_id: str | None = None) -> None:
                 f"先に ## やること を書いて tw edit {shown} --after-work --body-file - で渡し、打ち直す"
             )
         raise SystemExit(10)
-    base = ledger.base_branch(toplevel)
+    base = gitinfo.base_branch(toplevel)
     if fold.can_fold(toplevel, base):
         ledger.clear_verify_stamp(cwd=toplevel)
-        ledger.require_git_writable(toplevel)
+        gitinfo.require_git_writable(toplevel)
     folded = fold.fold_base(toplevel, base)
     if folded.kind == "CONFLICT":
         ledger.clear_verify_stamp(cwd=toplevel)
@@ -91,7 +92,7 @@ def cmd_verify_check(toplevel: str) -> None:
     if stamp is None:
         print("NOT_VERIFIED\tnone")
         return
-    base = ledger.base_branch(toplevel)
+    base = gitinfo.base_branch(toplevel)
     if fold.can_fold(toplevel, base) and not (
         layout.read_config(toplevel).verify_before_ship is not None and fold.folds_cleanly(toplevel, base)
     ):

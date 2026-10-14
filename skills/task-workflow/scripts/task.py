@@ -26,7 +26,7 @@ import beads
 import commit_guard
 import handback_guard
 import layout
-import ledger
+import gitinfo
 import metrics
 import taskfile
 import tracker
@@ -357,8 +357,8 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     try:
-        toplevel = ledger.git_toplevel()
-    except ledger.GitCommandError as e:
+        toplevel = gitinfo.git_toplevel()
+    except gitinfo.GitCommandError as e:
         print(str(e), file=sys.stderr)
         raise SystemExit(1)
 
@@ -368,7 +368,7 @@ def main(argv: list[str] | None = None) -> None:
             print(refusal[0])
             raise SystemExit(refusal[1])
 
-    # 主ブランチは要る道でだけ問い合わせる（`ledger.base_branch`。決まらなければ INVALID）。
+    # 主ブランチは要る道でだけ問い合わせる（`gitinfo.base_branch`。決まらなければ INVALID）。
     try:
         if args.command == "land":
             tw_ship.cmd_land(toplevel, args.branch)
@@ -381,10 +381,10 @@ def main(argv: list[str] | None = None) -> None:
             tw_status.cmd_config(toplevel)
             return
         _run(toplevel, args)
-    except (ledger.NoBaseBranch, layout.ConfigError) as e:
+    except (gitinfo.NoBaseBranch, layout.ConfigError) as e:
         print(f"INVALID\t{e}")
         raise SystemExit(3)
-    except ledger.GitReadOnly as e:
+    except gitinfo.GitReadOnly as e:
         print(
             f"GIT_READ_ONLY\t{e.path}\tsandbox の外で同じコマンドを打ち直す"
             "（Claude Code は sandbox.excludedCommands に tw を足す）"

@@ -10,7 +10,7 @@ from typing import Callable
 import beads
 import cross_review
 import layout
-import ledger
+import gitinfo
 import taskfile
 import tracker
 import tw_base
@@ -35,8 +35,8 @@ def cmd_status(toplevel: str, show_all: bool, check: bool) -> None:
         print("OK")
         return
 
-    base = ledger.base_branch(toplevel)
-    worktree_names = {os.path.basename(w.path) for w in ledger.list_worktrees(cwd=toplevel)}
+    base = gitinfo.base_branch(toplevel)
+    worktree_names = {os.path.basename(w.path) for w in gitinfo.list_worktrees(cwd=toplevel)}
     labels = {tid: _classify_claim(toplevel, snap.issues[tid], worktree_names, base) for tid in snap.claims}
 
     def marker_of(tid: str) -> str:
@@ -81,8 +81,8 @@ def cmd_config(toplevel: str) -> None:
         value = getattr(config, key)
         if key == "base_branch" and value is None:
             try:
-                value = ledger.base_branch(toplevel)
-            except ledger.NoBaseBranch:
+                value = gitinfo.base_branch(toplevel)
+            except gitinfo.NoBaseBranch:
                 value = None
         elif key == "backup" and value is None:
             value = beads.backup_dir(toplevel)

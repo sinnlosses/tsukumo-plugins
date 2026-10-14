@@ -9,6 +9,7 @@ import sys
 from typing import Callable
 
 import beads
+import gitinfo
 import ledger
 import ship
 import taskfile
@@ -124,10 +125,10 @@ def task_trees(toplevel: str, task_id: str) -> list[str]:
     if work_repo is None or not os.path.isdir(work_repo):
         return [toplevel]
     try:
-        if ledger.git_common_dir(work_repo) == ledger.git_common_dir(toplevel):
+        if gitinfo.git_common_dir(work_repo) == gitinfo.git_common_dir(toplevel):
             return [toplevel]
-        worktrees = ledger.list_worktrees(cwd=work_repo)
-    except ledger.GitCommandError:
+        worktrees = gitinfo.list_worktrees(cwd=work_repo)
+    except gitinfo.GitCommandError:
         return [toplevel]
     return [toplevel, *(w.path for w in worktrees if w.branch == task_id.lower())]
 
@@ -169,7 +170,7 @@ def handback_refusal(where: str, body: str | None = None) -> str | None:
     claims = ledger.open_claims(cwd=where)
     if not claims:
         return None
-    toplevel = ledger.git_toplevel(where)
+    toplevel = gitinfo.git_toplevel(where)
     last_stage: list[str] = []
     gaps = [line for task_id in claims for line in _handback_gaps(toplevel, task_id, last_stage)]
     if not gaps:
@@ -245,7 +246,7 @@ def _tree_verify_line(tree: str) -> str:
 
 def _fork_point(tree: str) -> str | None:
     """`tree` の `HEAD` と主ブランチの分かれ目。引けなければ `None`。"""
-    r = tw_base.run_git(tree, ["merge-base", "HEAD", ledger.base_branch(tree)])
+    r = tw_base.run_git(tree, ["merge-base", "HEAD", gitinfo.base_branch(tree)])
     return r.stdout.strip() if r.returncode == 0 else None
 
 

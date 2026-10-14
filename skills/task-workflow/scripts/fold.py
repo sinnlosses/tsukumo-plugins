@@ -11,6 +11,7 @@ import tempfile
 from dataclasses import dataclass, field
 
 import gitcmd
+import gitinfo
 import ledger
 
 
@@ -61,7 +62,7 @@ def _merge_tree(toplevel: str, new_base: str, object_env: dict[str, str] | None 
     if merged.returncode == 1:
         return FoldOutcome(kind="CONFLICT", conflict_files=tuple(dict.fromkeys(lines[1:])))
     if merged.returncode != 0 or not lines:
-        raise ledger.GitCommandError(f"git merge-tree が失敗（{merged.returncode}）: {merged.stderr.strip()}")
+        raise gitinfo.GitCommandError(f"git merge-tree が失敗（{merged.returncode}）: {merged.stderr.strip()}")
     return FoldOutcome(kind="FOLDED", merged_tree=lines[0])
 
 

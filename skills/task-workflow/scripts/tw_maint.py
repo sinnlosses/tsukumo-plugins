@@ -11,6 +11,7 @@ import time
 import beads
 import init
 import layout
+import gitinfo
 import ledger
 import tracker
 import tw_base
@@ -19,22 +20,22 @@ import tw_base
 def cmd_config_doctor(toplevel: str) -> None:
     """設定と置き場のズレの点検（読むだけ・`--fix` は無い）。検査1つに1行、タブ区切りで出す
     （`task status` と同じ形。人向けの段落は出さない）。判定は書き起こさず、既存の部品
-    （`ledger.base_branch`・`init.check_config`・`beads.is_initialized`）を呼ぶだけ
+    （`gitinfo.base_branch`・`init.check_config`・`beads.is_initialized`）を呼ぶだけ
     （正典 WORKFLOW.md「ファイル配置と設定ファイル」）。
 
     `base_branch`・`config` の2行を必ず出す（途中の検査が INVALID でも残りの検査は続ける。呼び出し側が全体像を
     1回の実行で見られるようにする）。終了コードは 0（全部OK）／1（直すものがある）／
-    3（INVALID）——最悪のものを返す。`main` の `ledger.NoBaseBranch`・`layout.ConfigError`
+    3（INVALID）——最悪のものを返す。`main` の `gitinfo.NoBaseBranch`・`layout.ConfigError`
     の受け皿（呼び出し側で即 `INVALID` にする仕組み）は使わない。ここで捕まえて次の検査に進む。
     """
     exit_code = 0
 
     # 検査1: 主ブランチが何で決まったか（順1〜3。決まらなければ INVALID）。
     try:
-        base = ledger.base_branch(toplevel)
-        order = ledger.base_branch_order(toplevel)
+        base = gitinfo.base_branch(toplevel)
+        order = gitinfo.base_branch_order(toplevel)
         print(f"base_branch\tOK\t{base}\t順{order}")
-    except (ledger.NoBaseBranch, layout.ConfigError) as e:
+    except (gitinfo.NoBaseBranch, layout.ConfigError) as e:
         print(f"base_branch\tINVALID\t{e}")
         exit_code = 3
 

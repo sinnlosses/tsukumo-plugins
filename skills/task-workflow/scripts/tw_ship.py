@@ -10,6 +10,7 @@ from typing import Literal, NoReturn
 
 import beads
 import layout
+import gitinfo
 import ledger
 import ship
 import tracker
@@ -17,13 +18,13 @@ import tw_base
 
 
 def cmd_ship(toplevel: str) -> None:
-    if not ledger.is_clean(cwd=toplevel):
+    if not gitinfo.is_clean(cwd=toplevel):
         print("DIRTY")
         raise SystemExit(4)
 
     branch_setting = layout.read_config(toplevel).branch
-    base = ledger.base_branch(toplevel)
-    branch = ledger.current_branch(cwd=toplevel)
+    base = gitinfo.base_branch(toplevel)
+    branch = gitinfo.current_branch(cwd=toplevel)
 
     if branch == base:
         # 4.4: 主ブランチを出している作業ツリーで起こしたときは送る段が無い。
@@ -44,7 +45,7 @@ def cmd_ship(toplevel: str) -> None:
         tw_base.print_lines(not_closed + after)
         return
 
-    worktrees = ledger.list_worktrees(cwd=toplevel)
+    worktrees = gitinfo.list_worktrees(cwd=toplevel)
     base_worktree = ship.find_base_worktree(worktrees, toplevel, base)
     blocker = _merge_blocker(base_worktree.path if base_worktree else None, base, [], toplevel, need_base=False)
     if blocker is not None:
@@ -183,12 +184,12 @@ def cmd_land(toplevel: str, branch: str) -> None:
     合流は主ブランチを出している作業ツリーで打つ。合流できない・入っていない・どちらかの作業ツリーが汚れているか無いときは
     何も消さずに `NOT_LANDED`。合流のあとに消せなかったものは `NOT_REMOVED` の行で残りを知らせる。
     """
-    base = ledger.base_branch(toplevel)
+    base = gitinfo.base_branch(toplevel)
     known = tw_base.run_git(toplevel, ["rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"]).returncode == 0
     if branch == base or not known:
         print(f"usage: land <枝>（主ブランチ {base} 以外の、在る枝を渡す）: {branch}", file=sys.stderr)
         raise SystemExit(2)
-    worktrees = ledger.list_worktrees(toplevel)
+    worktrees = gitinfo.list_worktrees(toplevel)
     base_tree = next((w.path for w in worktrees if w.branch == base), None)
     branch_trees = [w.path for w in worktrees if w.branch == branch]
     blocker = _merge_blocker(base_tree, base, branch_trees, base_tree or "", need_base=True)
@@ -265,7 +266,7 @@ def _merge_blocker(
     """合流の前提（主ブランチを出している作業ツリーが在る・汚れていない・`.git` に書ける）で欠けたものを返す。
 
     `need_base` が偽のとき、主ブランチの作業ツリーが無くても欠けとしない（ディレクトリの実在も見ない）。
-    書けないときは `ledger.GitReadOnly` を投げる。
+    書けないときは `gitinfo.GitReadOnly` を投げる。
     """
     if need_base:
         if base_tree is None:
@@ -273,12 +274,12 @@ def _merge_blocker(
         missing = [path for path in [base_tree, *branch_trees] if not os.path.isdir(path)]
         if missing:
             return MergeBlocker("MISSING_DIR", ",".join(missing))
-    if base_tree is not None and not ledger.is_clean(base_tree):
+    if base_tree is not None and not gitinfo.is_clean(base_tree):
         return MergeBlocker("MAIN_DIRTY", base_tree)
-    dirty = [path for path in branch_trees if not ledger.is_clean(path)]
+    dirty = [path for path in branch_trees if not gitinfo.is_clean(path)]
     if dirty:
         return MergeBlocker("BRANCH_DIRTY", ",".join(dirty))
-    ledger.require_git_writable(writable_in)
+    gitinfo.require_git_writable(writable_in)
     return None
 
 
@@ -303,7 +304,7 @@ def _leave_feature_branch(toplevel: str, branch: str) -> str:
     detached HEAD にする（枝を黙って残さない。detached のままでも次の `claim` は主ブランチから切る）。
     消せなかったときは `kept=<枝>` を添えて知らせる。
     """
-    base = ledger.base_branch(toplevel)
+    base = gitinfo.base_branch(toplevel)
     m = FEATURE_BRANCH.fullmatch(branch)
     back = _claimed_branch(toplevel, m.group(1)) if m else None
     targets = [b for b in dict.fromkeys([back, base]) if b and b not in (branch, "HEAD")]

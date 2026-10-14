@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 
 import gitcmd
 import layout
+import gitinfo
 import ledger
 
 MAX_TRIES = 3
@@ -41,8 +42,8 @@ def read_stamp_command(toplevel: str) -> str | None:
 
 
 def find_base_worktree(
-    worktrees: list[ledger.Worktree], own_path: str, base: str
-) -> ledger.Worktree | None:
+    worktrees: list[gitinfo.Worktree], own_path: str, base: str
+) -> gitinfo.Worktree | None:
     """主ブランチを出している別の作業ツリー（本体）を探す（6.2手順4）。自分自身は数えない。"""
     return next((w for w in worktrees if w.branch == base and w.path != own_path), None)
 
@@ -65,7 +66,7 @@ def _run(cwd: str, args: list[str]) -> subprocess.CompletedProcess:
 
 def attempt(
     toplevel: str,
-    base_worktree: ledger.Worktree | None,
+    base_worktree: gitinfo.Worktree | None,
     verify_command: str | None,
     base: str,
     verify_owed: bool = False,
@@ -74,7 +75,7 @@ def attempt(
 ) -> ShipOutcome:
     """最大 `MAX_TRIES` 回、rebase → 検証（付け替えた回だけ）→ 送る、を繰り返す（6.2手順5・6）。
 
-    `base` は主ブランチの名前（`ledger.base_branch`）。送る先は `base_worktree` があれば
+    `base` は主ブランチの名前（`gitinfo.base_branch`）。送る先は `base_worktree` があれば
     `git -C <本体> merge --ff-only <HEAD のコミット>`、無ければ比較付きの `git update-ref`。
     失敗（相手に先を越された）は次の回の rebase からやり直す。
 

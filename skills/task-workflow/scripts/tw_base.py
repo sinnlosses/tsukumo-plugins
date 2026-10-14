@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 import beads
 import gitcmd
 import layout
+import gitinfo
 import ledger
 import taskfile
 import tracker
@@ -29,7 +30,7 @@ def run_git(toplevel: str, args: list[str]) -> subprocess.CompletedProcess:
 
 
 def history_ids_at_base(toplevel: str) -> set[str]:
-    base = ledger.base_branch(toplevel)
+    base = gitinfo.base_branch(toplevel)
     r = run_git(toplevel, ["show", f"{base}:{layout.HISTORY_TASKS_PATH}"])
     if r.returncode != 0:
         return set()

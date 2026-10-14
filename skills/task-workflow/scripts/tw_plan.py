@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import sys
 
-import ledger
+import gitinfo
 import taskfile
 import tw_base
 
@@ -41,7 +41,7 @@ def registered_plan_base(toplevel: str, body: str) -> str:
             file=sys.stderr,
         )
         raise SystemExit(2)
-    base = ledger.base_branch(repo)
+    base = gitinfo.base_branch(repo)
     r = tw_base.run_git(repo, ["merge-base", "HEAD", base])
     if r.returncode != 0:
         print(f"INVALID\t{base} との分かれ目が引けない（{r.stderr.strip()}）")
@@ -98,7 +98,7 @@ def plan_tip(toplevel: str, body: str) -> str | None:
 
 
 def _base_tip(toplevel: str) -> str | None:
-    r = tw_base.run_git(toplevel, ["rev-parse", ledger.base_branch(toplevel)])
+    r = tw_base.run_git(toplevel, ["rev-parse", gitinfo.base_branch(toplevel)])
     return r.stdout.strip() if r.returncode == 0 else None
 
 
@@ -110,7 +110,7 @@ def commits_since_claim(toplevel: str, head: str | None) -> list[str]:
     """
     if not head:
         return []
-    base = ledger.base_branch(toplevel)
+    base = gitinfo.base_branch(toplevel)
     r = tw_base.run_git(toplevel, ["log", "--format=%h", "--reverse", "HEAD", f"^{head}", f"^{base}"])
     if r.returncode != 0:
         return []

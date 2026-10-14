@@ -8,7 +8,7 @@ import tempfile
 
 from selftest_support import check, git, refuse_direct_run, say, write  # noqa: E402
 import beads  # noqa: E402
-import ledger  # noqa: E402
+import gitinfo  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
 from selftest_fixtures import BODY, PLANNED_BODY, body_file, commit_task, issue_count, issue_json, make_repo, run_task, shown, start_task, unset_metadata  # noqa: E402
@@ -216,7 +216,7 @@ def test_claim_and_release_single_worktree() -> None:
             r.returncode == 0 and r.stdout.startswith("CLAIMED\tT-100"),
             r.stdout + r.stderr,
         )
-        check("feature/T-100に移っている", ledger.current_branch(cwd=wt1) == "feature/T-100")
+        check("feature/T-100に移っている", gitinfo.current_branch(cwd=wt1) == "feature/T-100")
 
         r = run_task(wt1, "claim", "T-100")
         check("同じ作業ツリーからの2回目はTAKEN", r.returncode == 4 and r.stdout.startswith("TAKEN\t"), r.stdout)

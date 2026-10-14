@@ -11,6 +11,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 from selftest_support import check, git, refuse_direct_run, say, weight, write  # noqa: E402
 import beads  # noqa: E402
+import gitinfo  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_fixtures import BODY, TASK_PY, commit_task, flow_rows, hook_env, make_repo, metadata, readonly_git, run_guard, run_handback_guard, run_task, snapshot  # noqa: E402
@@ -803,7 +804,7 @@ def test_worktree_state_dir() -> None:
         check("claim が .tw/local/task-open-claims/ に控えを置き、.tw/local/.gitignore は * で .tw/.gitignore は作らない",
               os.path.isfile(os.path.join(local1, "task-open-claims", "T-100")) and ignore == "*\n"
               and not os.path.exists(os.path.join(wt1, ".tw", ".gitignore"))
-              and not os.path.exists(os.path.join(ledger.git_dir(wt1), "task-open-claims")), ignore)
+              and not os.path.exists(os.path.join(gitinfo.git_dir(wt1), "task-open-claims")), ignore)
         run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-", stdin="### 1. 書く\n")
         write(os.path.join(wt1, "work.txt"), "x\n")
         git(wt1, "add", "-A")
@@ -820,7 +821,7 @@ def test_worktree_state_dir() -> None:
         run_task(wt2, "verify")
         tw2 = os.path.join(wt2, ".tw")
         local2 = os.path.join(tw2, "local")
-        old = ledger.git_dir(wt2)
+        old = gitinfo.git_dir(wt2)
         shutil.copy2(os.path.join(local2, "task-verify-stamp"), os.path.join(old, "task-verify-stamp"))
         shutil.copytree(os.path.join(local2, "task-open-claims"), os.path.join(old, "task-open-claims"))
         shutil.rmtree(local2)

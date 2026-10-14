@@ -12,6 +12,7 @@ from datetime import date, datetime, timezone
 
 import gitcmd
 import layout
+import gitinfo
 import ledger
 import metrics
 
@@ -45,8 +46,8 @@ def due(toplevel: str) -> tuple[str, int] | None:
 
 def _base_text(toplevel: str) -> str | None:
     try:
-        base = ledger.base_branch(toplevel)
-    except (ledger.GitCommandError, ledger.NoBaseBranch):
+        base = gitinfo.base_branch(toplevel)
+    except (gitinfo.GitCommandError, gitinfo.NoBaseBranch):
         return None
     r = gitcmd.run(["show", f"{base}:{layout.RETROSPECT_RECORD_PATH}"], toplevel)
     return r.stdout if r.returncode == 0 else None
@@ -63,7 +64,7 @@ def _worktree_text(toplevel: str) -> str | None:
 def _first_flow_event(toplevel: str) -> datetime | None:
     try:
         events, _ = metrics.read_events(ledger.ledger_root(cwd=toplevel))
-    except (ledger.GitCommandError, OSError):
+    except (gitinfo.GitCommandError, OSError):
         return None
     return events[0].at if events else None
 

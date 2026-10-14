@@ -15,6 +15,7 @@ sys.path.insert(0, HERE)
 
 from selftest_support import copy_beads, git, local, write  # noqa: E402
 import beads  # noqa: E402
+import gitinfo  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
@@ -84,7 +85,7 @@ def make_repo(
 
     設定は `.tw/config.toml` に書く。`verify`・`format_command`・`preship` は `` `cmd` `` か `なし` の形で渡し、
     `verify` を省略すると `verify = "なし"`。`branch` が `None` なら `branch` を書かない。`base` は主ブランチの
-    名前——リモートを持たない足場なので `ledger.base_branch` の順3で決まる。`extra` は設定の続きの行。
+    名前——リモートを持たない足場なので `gitinfo.base_branch` の順3で決まる。`extra` は設定の続きの行。
     `.beads` は `beads_home` の `prefix` の作り置きを写す。`prefix` が `None` なら写さない。
     `init` が真なら `store = "beads"` を書き、`init.py` を打ってからコミットする（`prefix` が `None` なら `.beads` も `init.py` が作る）。
     """

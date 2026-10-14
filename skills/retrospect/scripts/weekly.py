@@ -40,6 +40,7 @@ import cross_review  # noqa: E402
 import draft_fate  # noqa: E402
 import gitcmd  # noqa: E402
 import layout  # noqa: E402
+import gitinfo  # noqa: E402
 import ledger  # noqa: E402
 import metrics  # noqa: E402
 
@@ -97,7 +98,7 @@ def print_flow(root: str, days: int) -> bool:
     """数を出し、悪くなった数があれば True。"""
     try:
         events, _ = metrics.read_events(ledger.ledger_root(cwd=root))
-    except (ledger.GitCommandError, OSError):
+    except (gitinfo.GitCommandError, OSError):
         print("-\t台帳が読めない（git のリポジトリでない）")
         return False
     if not events:
@@ -115,7 +116,7 @@ def print_flow(root: str, days: int) -> bool:
 def print_stages(root: str, days: int) -> None:
     try:
         events, _ = metrics.read_events(ledger.ledger_root(cwd=root))
-    except (ledger.GitCommandError, OSError):
+    except (gitinfo.GitCommandError, OSError):
         print("-\t台帳が読めない（git のリポジトリでない）")
         return
     print("\n".join(metrics.stage_lines(events, days)) or "EMPTY")
@@ -124,8 +125,8 @@ def print_stages(root: str, days: int) -> None:
 def print_changes(root: str, start: datetime) -> None:
     since = f"--since={start.isoformat()}"
     try:
-        base = ledger.base_branch(root)
-    except (ledger.GitCommandError, ledger.NoBaseBranch):
+        base = gitinfo.base_branch(root)
+    except (gitinfo.GitCommandError, gitinfo.NoBaseBranch):
         base = "HEAD"
     project = _git_lines(root, "log", since, f"-n{CHANGE_LIMIT}", "--format=%h%x09%s", base, "--", *PROJECT_CHANGE_PATHS)
     for line in project:

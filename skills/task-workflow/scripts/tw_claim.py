@@ -7,6 +7,7 @@ import sys
 
 import beads
 import layout
+import gitinfo
 import ledger
 import taskfile
 import tracker
@@ -47,9 +48,9 @@ def cmd_claim(toplevel: str, task_id: str) -> None:
 
     # `bd update --claim` は依存を見ないので、上で依存を確かめてから取る。取り合いの勝ち負けは Beads が決める。
     actor = tw_base.actor(toplevel)
-    branch_after_sync = ledger.current_branch(cwd=toplevel)
+    branch_after_sync = gitinfo.current_branch(cwd=toplevel)
     claim_args = ["update", bd_id, "--claim", "--set-metadata", f"{beads.CLAIM_BRANCH_KEY}={branch_after_sync}"]
-    head = ledger.head_sha_or_none(cwd=toplevel)
+    head = gitinfo.head_sha_or_none(cwd=toplevel)
     if head is not None:
         claim_args += ["--set-metadata", f"{beads.CLAIM_HEAD_KEY}={head}"]
     metadata = issue.raw.get("metadata")
@@ -106,7 +107,7 @@ def cmd_release(toplevel: str, task_id: str, force: bool) -> None:
     marks = [v for v in beads.SHIP_LABELS.values() if v in issue.labels]
     if marks:
         beads.run_ok(toplevel, ["update", bd_id] + [x for m in marks for x in ("--remove-label", m)], actor)
-    owner_paths = [w.path for w in ledger.list_worktrees(cwd=toplevel) if os.path.basename(w.path) == issue.assignee]
+    owner_paths = [w.path for w in gitinfo.list_worktrees(cwd=toplevel) if os.path.basename(w.path) == issue.assignee]
     for path in owner_paths:
         _clear_open_claim_in(path, shown)
     print(f"RELEASED\t{shown}")
@@ -167,19 +168,19 @@ def _claim_preflight(toplevel: str) -> tuple[str, str]:
     """`claim` の git の前提（`- ブランチ:` が読める・clean・未送りなし・主ブランチへ追い付く）。
 
     `(ブランチの設定の先頭語, 主ブランチ)` を返す。前提を欠けば出力して `SystemExit`。
-    追い付くか枝を切るのに `.git` へ書けなければ、印を立てる前に `ledger.GitReadOnly`。
+    追い付くか枝を切るのに `.git` へ書けなければ、印を立てる前に `gitinfo.GitReadOnly`。
     """
     branch_setting = layout.read_config(toplevel).branch
     if branch_setting not in layout.BRANCH_VALUES:
         print(f"INVALID\t- ブランチ: の値 {branch_setting!r} を機械が読めない")
         raise SystemExit(3)
 
-    if not ledger.is_clean(cwd=toplevel):
+    if not gitinfo.is_clean(cwd=toplevel):
         print("DIRTY")
         raise SystemExit(4)
 
-    base = ledger.base_branch(toplevel)
-    branch = ledger.current_branch(cwd=toplevel)
+    base = gitinfo.base_branch(toplevel)
+    branch = gitinfo.current_branch(cwd=toplevel)
     if branch != base:
         ahead = tw_base.run_git(toplevel, ["rev-list", "--count", f"{base}..HEAD"])
         if ahead.returncode == 0 and ahead.stdout.strip() not in ("0", ""):
@@ -187,13 +188,13 @@ def _claim_preflight(toplevel: str) -> tuple[str, str]:
             raise SystemExit(4)
         # 追い付き済みでも `merge` は ORIG_HEAD を書くので、要るときだけ打つ。
         if tw_base.run_git(toplevel, ["merge-base", "--is-ancestor", base, "HEAD"]).returncode != 0:
-            ledger.require_git_writable(toplevel)
+            gitinfo.require_git_writable(toplevel)
             r = tw_base.run_git(toplevel, ["merge", "--ff-only", base])
             if r.returncode != 0:
                 print(f"INVALID\t{base} へ追い付けない（{r.stderr.strip()}）")
                 raise SystemExit(3)
     if branch_setting in ("既定", "作業ブランチを切る"):
-        ledger.require_git_writable(toplevel)
+        gitinfo.require_git_writable(toplevel)
     return branch_setting, base
 
 
@@ -229,7 +230,7 @@ def _clear_open_claim_in(worktree: str, task_id: str) -> None:
         return
     try:
         ledger.clear_open_claim(task_id, cwd=worktree)
-    except ledger.GitCommandError:
+    except gitinfo.GitCommandError:
         return
 
 

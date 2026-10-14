@@ -19,6 +19,7 @@ from typing import IO, NamedTuple
 import agent_scope
 import gitcmd
 import layout
+import gitinfo
 import ledger
 
 COMMIT_SUBCOMMANDS = ("commit", "merge", "pull", "cherry-pick", "revert", "am", "rebase")
@@ -105,9 +106,9 @@ def _verify_commands(command: str, start: str) -> list[tuple[str, str]]:
             continue
         if where not in configs:
             try:
-                top = ledger.git_toplevel(where)
+                top = gitinfo.git_toplevel(where)
                 config = layout.read_config(top)
-            except (ledger.GitCommandError, layout.ConfigError):
+            except (gitinfo.GitCommandError, layout.ConfigError):
                 configs[where] = ("", [])
             else:
                 configs[where] = (top, [c for c in (config.verify, config.verify_before_ship) if c is not None])
@@ -251,8 +252,8 @@ class _WorkTreeClaims:
         if not os.path.isdir(where):
             return []
         try:
-            tree = os.path.realpath(ledger.git_toplevel(where))
-        except ledger.GitCommandError:
+            tree = os.path.realpath(gitinfo.git_toplevel(where))
+        except gitinfo.GitCommandError:
             return []
         if self._by_tree is None:
             self._by_tree = _work_tree_claims(self._start)
@@ -269,11 +270,11 @@ def _work_tree_claims(start: str) -> dict[str, list[str]]:
 
     by_tree: dict[str, list[str]] = {}
     try:
-        toplevel = ledger.git_toplevel(start)
+        toplevel = gitinfo.git_toplevel(start)
         for task_id in claims:
             for tree in tw_handback.task_trees(toplevel, task_id)[1:]:
                 by_tree.setdefault(os.path.realpath(tree), []).append(task_id)
-    except (ledger.GitCommandError, beads.BeadsError, OSError):
+    except (gitinfo.GitCommandError, beads.BeadsError, OSError):
         return {}
     return by_tree
 
@@ -474,5 +475,5 @@ def _open_claims_at(where: str) -> list[str]:
         return []
     try:
         return ledger.open_claims(cwd=where)
-    except ledger.GitCommandError:
+    except gitinfo.GitCommandError:
         return []

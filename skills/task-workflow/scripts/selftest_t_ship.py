@@ -5,6 +5,7 @@ import shutil
 import tempfile
 
 from selftest_support import check, git, refuse_direct_run, say, weight, write  # noqa: E402
+import gitinfo  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_fixtures import BODY, FILE_PROTOCOL, FILE_PROTOCOL_ENV, _claim_work_and_done, advance_submodule, body_file, commit_task, flow_rows, make_repo, make_submodule_repo, run_task  # noqa: E402
@@ -496,7 +497,7 @@ def test_ship_skips_send_on_main_worktree() -> None:
 
         r = run_task(main_path, "claim", "T-100")
         check("main上でもclaimできる", r.returncode == 0, r.stdout + r.stderr)
-        check("branchはmainのまま", ledger.current_branch(cwd=main_path) == "main")
+        check("branchはmainのまま", gitinfo.current_branch(cwd=main_path) == "main")
 
         _claim_work_and_done(main_path, "T-100")
 
@@ -632,41 +633,41 @@ def test_branch_setting_missing_is_default() -> None:
 
 
 def test_base_branch_resolution() -> None:
-    say("ledger.base_branch: 設定の base_branch → origin/HEAD → main/master/trunk → NoBaseBranch")
+    say("gitinfo.base_branch: 設定の base_branch → origin/HEAD → main/master/trunk → NoBaseBranch")
     with tempfile.TemporaryDirectory() as tmp:
-        ledger.clear_base_branch_cache()
+        gitinfo.clear_base_branch_cache()
         master_repo, _wt1, _wt2 = make_repo(tmp, base="master")
-        check("順3: master しか無ければ master", ledger.base_branch(cwd=master_repo) == "master")
+        check("順3: master しか無ければ master", gitinfo.base_branch(cwd=master_repo) == "master")
 
         git(master_repo, "branch", "main")
-        ledger.clear_base_branch_cache()
-        check("main も出来たら順3では main が先", ledger.base_branch(cwd=master_repo) == "main")
+        gitinfo.clear_base_branch_cache()
+        check("main も出来たら順3では main が先", gitinfo.base_branch(cwd=master_repo) == "main")
         config = os.path.join(master_repo, ".tw", "config.toml")
         with open(config, encoding="utf-8") as f:
             body = f.read()
         write(config, body + 'base_branch = "master"  # 保護ブランチ\n')
-        ledger.clear_base_branch_cache()
-        check("順1: base_branch が最優先", ledger.base_branch(cwd=master_repo) == "master")
+        gitinfo.clear_base_branch_cache()
+        check("順1: base_branch が最優先", gitinfo.base_branch(cwd=master_repo) == "master")
 
     with tempfile.TemporaryDirectory() as tmp:
         # 順2: origin/HEAD の枝名。候補の順（main が先）より優先する。
-        ledger.clear_base_branch_cache()
+        gitinfo.clear_base_branch_cache()
         repo, _wt1, _wt2 = make_repo(tmp, base="main")
         git(repo, "branch", "trunk")
         git(repo, "remote", "add", "origin", repo)
         git(repo, "update-ref", "refs/remotes/origin/trunk", "trunk")
         git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk")
-        ledger.clear_base_branch_cache()
-        check("順2: origin/HEAD が指す枝を採る", ledger.base_branch(cwd=repo) == "trunk")
+        gitinfo.clear_base_branch_cache()
+        check("順2: origin/HEAD が指す枝を採る", gitinfo.base_branch(cwd=repo) == "trunk")
 
     with tempfile.TemporaryDirectory() as tmp:
         # 順4: 候補の枝が無ければ黙って main を作らず INVALID（終了コード3）。
-        ledger.clear_base_branch_cache()
+        gitinfo.clear_base_branch_cache()
         repo, _wt1, _wt2 = make_repo(tmp, base="dev")
         raised = False
         try:
-            ledger.base_branch(cwd=repo)
-        except ledger.NoBaseBranch:
+            gitinfo.base_branch(cwd=repo)
+        except gitinfo.NoBaseBranch:
             raised = True
         check("順4: 決まらなければ NoBaseBranch", raised)
         r = run_task(repo, "status")
@@ -675,7 +676,7 @@ def test_base_branch_resolution() -> None:
             r.returncode == 3 and r.stdout.startswith("INVALID\t"),
             r.stdout + r.stderr,
         )
-    ledger.clear_base_branch_cache()
+    gitinfo.clear_base_branch_cache()
 
 
 @weight(12)
@@ -698,7 +699,7 @@ def test_full_cycle_on_master_repo() -> None:
 
         r = run_task(wt1, "claim", "T-100")
         check("claim が master から feature 枝を切る", r.returncode == 0 and "branch=feature/T-100" in r.stdout, r.stdout + r.stderr)
-        check("いまの枝は feature/T-100", ledger.current_branch(cwd=wt1) == "feature/T-100")
+        check("いまの枝は feature/T-100", gitinfo.current_branch(cwd=wt1) == "feature/T-100")
 
         _claim_work_and_done(wt1, "T-100")
         r = run_task(wt1, "ship")

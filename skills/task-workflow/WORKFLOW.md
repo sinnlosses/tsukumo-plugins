@@ -89,7 +89,7 @@ merge commit を作る運用は選べない。**主ブランチへの ff マー�
 push は含まない）。
 
 **主ブランチの名前は `main` に固定しない**（`master`・`trunk` のリポジトリでも動く）。`tw` は
-この順で決める（`ledger.base_branch`。1回の実行で1度だけ問い合わせて覚える）:
+この順で決める（`gitinfo.base_branch`。1回の実行で1度だけ問い合わせて覚える）:
 
 1. 設定の `base_branch`——**任意**で、保護ブランチや複数リモートの逃げ道
 2. `git symbolic-ref --short refs/remotes/origin/HEAD` の枝名。**見るのは `origin` だけ**
