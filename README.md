@@ -18,10 +18,8 @@ tsukumo のワークフローの契約に型の合う1つの例だが、tsukumo 
 
 スキルは `tsukumo-workflow:<name>`、エージェント定義は `tsukumo-workflow:no-delegate`・
 `tsukumo-workflow:acceptor` の名前で入る。`bin/tw` はプラグインが有効なあいだ Bash の PATH に入る。
-プラグインに入れたエージェント定義の frontmatter の `hooks` は無視されるので、`no-delegate` の hook
-（`tw commit-guard`・`tw handback-guard`）は `hooks/hooks.json` が `"${CLAUDE_PLUGIN_ROOT}/bin/tw"` を
-`--agent-scoped` 付きで呼び、`agent_type` の末尾が `no-delegate` のときだけ掛かる。
-`loopable: Y` の着手中の質問を拒む hook（`tw ask-guard`）は `--agent-scoped` なしで呼び、主のセッションにも掛かる。
+プラグインに入れたエージェント定義の frontmatter の `hooks` は無視されるので、hook は `hooks/hooks.json` が掛ける。
+hook の掛かり方は `skills/task-workflow/tw-reference.md`「hook の関門」節。
 
 開発中は `claude --plugin-dir .`（このリポジトリの根）で読ませ、`claude plugin validate .` で検査する。
 
@@ -30,10 +28,8 @@ tsukumo のワークフローの契約に型の合う1つの例だが、tsukumo 
 マーケットプレイスの代わりに、`./install.sh` で `~/.claude/skills/<name>` へスキルを、`~/.claude/agents/` へ
 エージェント定義を、`~/.local/bin/tw` へ `tw` をシンボリックリンクで張る。入れ方はどちらか一方だけにする
 （両方で入れると同じスキルが二重に見える）。
-リンクだけで入れると `hooks/hooks.json` は読まれないので、主のセッションに `tw ask-guard` は掛からない
-（`no-delegate` の hook はエージェント定義の frontmatter が掛ける）。
-やむを得ず plugin と併用したときは、`no-delegate` への委譲で frontmatter と `hooks.json` の両方の hook が走る。
-PATH の `tw` と plugin の `bin/tw` の版が違うと `tw verify` のあとの関門が `NOT_VERIFIED scheme` で止まるので、2つを同じチェックアウトに揃える。
+リンクだけで入れると `hooks/hooks.json` は読まれず、hook はエージェント定義の frontmatter が掛ける。
+hook の掛かり方と、やむを得ず plugin と併用したときの注意は `skills/task-workflow/tw-reference.md`「hook の関門」節。
 
 - 張る先は `--dest DIR` → `CLAUDE_CONFIG_DIR`（設定されていればその下の `skills/`）→ `$HOME/.claude/skills`
   の順で決まる。`tw` の張る先は `--bin-dir DIR`（無ければ `~/.local/bin`）

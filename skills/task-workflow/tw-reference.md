@@ -29,12 +29,12 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | `metrics [--days N] [--stages]` | 流れの数と段ごとの所要時間を読むだけで見るとき（振り返り） | `PERIOD`、続けて `shipped`・`lead_median_seconds`・`verify_per_task` など。`--stages` は `STAGE`・`OPEN`。`SKIPPED`・`EMPTY` |
 | `config` | 解けた設定を読むだけで見るとき | `CONFIG`、続けて `<キー>\t<値>\t<config\|default>`。設定が無ければ `MISSING`（終了コード6） |
 | `config-doctor` | リポジトリが今の読み取りに合っているかを読むだけで点検するとき（`--fix` は無い） | `base_branch`・`config`・`python`・`git`・`bd`・`dolt`・`gh`・`tw`・`store`・`beads`・`tracker` の行（2語目が `OK`・`MISSING`・`INVALID`、前提の行は `OPTIONAL` も） |
-| `commit-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。着手の印が立った作業ツリーで、委譲先のコミット・シェルでのファイルの書き換え・検証コマンドの直打ちを拒む | 拒むときだけ deny の JSON 1行。通すときは何も出さない |
+| `commit-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ deny の JSON 1行。通すときは何も出さない |
 | `pause [T-xxx [<n>]]` | 判断が要って止める・目視待ち・計画を作業の後に書いた返却の直前に打つ（委譲先。並列の段の担当は ID と段の番号を付ける） | `PAUSED`・`NOT_OWNER` |
 | `step T-xxx <n>` | 最後でない段を済ませて返す直前に打つ（委譲先。着手した作業ツリーで打つ） | `STEPPED`・`LAST_STEP`（終了コード4。最後の段は `tw verify` を通して返す）・`NOT_OWNER` |
 | `lap T-xxx <段> [start\|end]` | `/next-task` の段の頭と終わりを記録するとき（メイン。段は `direct`・`delegate`・`accept`・`review`・`retro`・`land`・`sync`） | `LAPPED`・`NOT_CLAIMED` |
-| `handback-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。作業があるのに計画・検証が欠けた委譲先の返却を拒む。段が2つ以上の計画で `tw step` の控えが1つも無い返却も拒む。最後の段の返却の本文（`PreToolUse` の `SubagentHandback`）に `## 構造の変更` の節が無いときも拒む。控えた `tw` と照らす `tw` の版が違うと `NOT_VERIFIED scheme` で止まるので、第3列のチェックアウトの `bin/tw` で `tw verify` を打ち直す | 拒むときだけ JSON 1行（`SubagentStop` は `block`、`PreToolUse` は deny）。通すときは何も出さない |
-| `ask-guard` | hook が呼ぶ（手で打たない）。`loopable: Y` のタスクの着手中に、振り返り以外で `AskUserQuestion` を拒む | 拒むときだけ deny の JSON 1行（理由はタスクIDと次の一手）。通すときは何も出さない |
+| `handback-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ JSON 1行（`SubagentStop` は `block`、`PreToolUse` は deny）。通すときは何も出さない |
+| `ask-guard` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ deny の JSON 1行（理由はタスクIDと次の一手）。通すときは何も出さない |
 
 | 終了コード | 先頭語 | 意味 | スキルがすること |
 | --- | --- | --- | --- |
@@ -58,7 +58,39 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 
 **`config-doctor` だけは終了コード1の意味が違う**（「直すものがある」。環境の故障ではない）。検査の最悪値を返し、`INVALID` があれば3、直すもの（必須の前提の欠落・古さを含む）があれば1、全部OKで0。点検のコマンドなので、1で止まっても報告するだけでよい。
 
+### hook の関門
+
+hook 3種の仕様の正典はこの節。判定の細部（何をコミット・書き換えとみなすか、通す書き方、読む控えの順）は `tw commit-guard --help`・`tw handback-guard --help`・`tw ask-guard --help` が持つ。
+
+| hook | 掛かる場面 | 拒むもの | 拒まれた側の次の一手 |
+| --- | --- | --- | --- |
+| `commit-guard` | 着手の印（`.tw/local/task-open-claims/T-xxx`）が立ってから `done` を打つまでの作業ツリーで、`no-delegate` の委譲先の Bash | コミットを作る git のサブコマンド・シェルでのファイルの書き換え・設定の検証コマンドの直打ち。タスクの `### 作業先` が別のリポジトリなら、作業先の作業ツリー（枝の名前がタスクIDの小文字）での書き換えと検証コマンドの直打ちも拒む（そこでのコミットは拒まない） | 回避しない。書き換えは `Edit`・`Write` で、検証は `tw verify` で打つ。コミットはせず、変更を作業ツリーに残して返す |
+| `handback-guard` | 同じ作業ツリーで、`no-delegate` の委譲先の返却（`SubagentStop` と、`PreToolUse` の `SubagentHandback`） | 作業（着手より後のコミットか、タスクのファイル以外の変更）があるのに、`plan-check` が `PLAN_FIRST`・`PLAN_REGISTERED` でないか、`verify-check` が `VERIFIED_SAME` でない返却。段が2つ以上の計画で `tw step` の控えが1つも無い返却。最後の段の返却の本文（`SubagentHandback`）に `## 構造の変更` の節が無いもの。作業の無い返却（前提が誤り・`dropped`・計画だけの回）は通す。作業先が別のリポジトリなら、枝の名前がタスクIDの小文字の作業先の作業ツリーにも同じ判定を当てる（別の名前の枝は見ない。作業先で `tw verify` が `MISSING`・`INVALID` を返すか、設定に検証コマンドが無ければ検証を求めずに通す） | 理由に従って直してから返す（計画は `tw edit`、検証は `tw verify`、途中の段は `tw step`、止める返却は `tw pause`）。`NOT_VERIFIED scheme <パス>` なら、第3列（照らした側のチェックアウトの `tw_verify.py` のパス）のチェックアウトの `bin/tw`（またはそこへ解決される PATH の `tw`）で `tw verify` を打ち直す |
+| `ask-guard` | 着手の印が立った作業ツリーでの `AskUserQuestion`（主のセッションにも委譲先にも掛かる） | 控えのタスクが `loopable: Y` で、振り返り（最後の `claim` より後の `tw lap T-xxx retro`）の前の質問。`report` の `favor`・許可確認・道具を呼ばずにターンを終える止まり方は捕まえない（WORKFLOW.md「loopable（`/loop` に載せてよいか）」節の表で先に防ぐ） | `tw edit T-xxx --loopable N` で `N` に直し、`## 注意` に理由を書いて `tw release T-xxx` で止める |
+
+**掛かる口**: plugin で入れると、`hooks/hooks.json` が `"${CLAUDE_PLUGIN_ROOT}/bin/tw"` を呼ぶ（plugin のエージェント定義は frontmatter の `hooks` を無視するため）。
+`commit-guard`・`handback-guard` は `--agent-scoped` 付きで、`agent_type` の末尾が `no-delegate` のときだけ掛かる。`ask-guard` は付けずに呼び、主のセッションにも掛かる。
+`install.sh` のリンクだけで入れると `hooks/hooks.json` は読まれず、`agents/no-delegate.md` の frontmatter の hook が PATH の `tw` で `commit-guard`・`handback-guard` を掛ける（`ask-guard` は掛からない）。
+リンクと plugin を併用すると、`no-delegate` への委譲で両方の口が走り、PATH の `tw` と plugin の `bin/tw` の版が違うと `tw verify` のあとの関門が `NOT_VERIFIED scheme` で止まるので、2つを同じチェックアウトに揃える。
+`general-purpose` への委譲と、Bash のコマンド文字列に `git` が出ないコミット（`sh -c`・スクリプト越し）には効かず、`finish`・`done` の `COMMITS_SINCE_CLAIM` と受け入れの `plan-check`・`verify-check` が事後に拾う。
+
 **`commit-guard`・`handback-guard`・`ask-guard` は Claude Code の hook の取り決めに従う**: 出力は TSV でなく JSON で、終了コードはいつも0。
 読めない入力も何も出さずに通す。タスク運用を始めていないリポジトリ・git の外でも打てる。
 
-この3つの hook を `tools`・`permissions.deny` で置き換えられない理由は `agents/no-delegate.md`「hook を tools・permissions.deny で置き換えられない理由」節。
+#### tools・permissions.deny で置き換えられない理由
+
+**この3つの hook は、サブエージェント定義の `tools`・`disallowedTools` や設定の `permissions.deny` では置き換えられない**
+（公式の説明: https://code.claude.com/docs/en/sub-agents ・ https://code.claude.com/docs/en/permissions ）。
+`disallowedTools` に `Bash(git push *)` のような指定子を書いても、Bash というツールごと外れ、コマンド単位の拒否にならない。
+コマンド単位で拒むには `permissions.deny` の `Bash(...)` か hook になるが、`permissions.deny` は設定にパターンで静的に書く規則で、
+着手の印や `loopable` のような状態によって拒むかを変えられず、`sh -c '…'`・フルパスの呼び出しは素通しする。
+plugin のサブエージェントは frontmatter の `hooks`・`permissionMode` を無視する。
+すでに `disallowedTools` でやっているのは、`agents/no-delegate.md` の `Agent` の除去と、`agents/acceptor.md` の `Agent`・`Edit`・`Write`・`NotebookEdit` の除去だけ。
+
+| 関門 | tools・`permissions.deny` で防げるか | 理由 |
+| --- | --- | --- |
+| `commit-guard` のコミット拒否 | 一部だけ | `Bash(git commit *)` の deny は書けるが、`sh -c` とフルパスは素通しし、着手の印の有無で出し分けられない |
+| `commit-guard` の Bash での書き換え拒否 | 不可 | 委譲先は `tw verify` と git の読み取りに Bash が要り、Bash を外せない |
+| `commit-guard` の検証コマンドの直打ち拒否 | 不可 | 検証コマンドはプロジェクトの設定にあり静的に書けない。`tw verify` の内部実行との区別もできない |
+| `handback-guard` の返却の関門 | 不可 | 作業の有無と `plan-check`・`verify-check` の結果という状態を見る検査 |
+| `ask-guard` | 不可 | 着手したタスクの `loopable` で拒むかが変わる |

@@ -24,7 +24,7 @@
 | ## 結果の書き方と知見の置き場 | `## 結果` に書くこと、知見の置き場 |
 | ## コミットメッセージ | タスクIDの付け方 |
 | ## ドラフトの課題 | 指示の入口、承認ゲート、ドラフトの書式 |
-| `tw-reference.md` | `## `tw` コマンドの参照`: サブコマンドと出力、終了コードの表、hook の注記 |
+| `tw-reference.md` | `## `tw` コマンドの参照`: サブコマンドと出力、終了コードの表、hook の関門（拒むもの・掛かる口・tools・deny で置き換えられない理由） |
 | ## Beads とトラッカー | ID の決まり方、設定のキー、トラッカーの失敗はタスクの操作を止めないこと、`TRACKER.md` への参照 |
 | `legacy.md` | 移行前の旧形式でいまも読むもの（アーカイブ・`pending`・`root`・`store`・`project-items`）と消せる条件 |
 | `TRACKER.md` | 用意、タスクの要素と Beads の置き場の対応、サイクルの各段で Beads に起きること、トラッカー（GitHub・Jira）、Status 欄の控え、GitHub との双方向、Jira の方式との違い、バックアップ |
@@ -211,12 +211,8 @@ front matter（`id`・`summary`・`status`・`difficulty`・`loopable`・近道�
   で閉じる
 - **依存の解決**: `done`・`dropped`（`ship` で `bd close` したもの）と、Beads に無い ID（旧アーカイブ由来）は解決済み。
   `todo`・`hold` は未解決。後から変えるのは `tw edit T-xxx --add-deps T-yyy` と `--remove-deps`（本文の `## 注意` に書くだけでは Beads の依存に入らず、BLOCKED に出ない）
-- **委譲先を hook が拒む**: 印を立ててから `done` を打つまで、その作業ツリーで `no-delegate`（plugin で入れたときは `tsukumo-workflow:no-delegate`）の委譲先が
-  コミットを作る git のサブコマンド・シェルでのファイルの書き換え・検証コマンドの直打ちをすると `tw commit-guard` が拒み、
-  作業があるのに計画か検証が欠けた返却をすると `tw handback-guard` が拒む。委譲先は `Edit`・`Write` で書き、
-  検証は `tw verify` で打ち、最後でない段は `tw step T-xxx <n>`、止める返却は `tw pause` を返す直前に打つ。
-  作業先が別のリポジトリなら、作業先の作業ツリー（枝の名前がタスクIDの小文字）での書き換えと検証コマンドの直打ちも拒む（コミットは拒まない）。
-  判定の詳細は `tw commit-guard --help`・`tw handback-guard --help`
+- **委譲先を hook が拒む**: 印を立ててから `done` を打つまで `no-delegate` の委譲先に掛かる関門（拒むもの・掛かる口）は `tw-reference.md`「hook の関門」節。
+  委譲先は `Edit`・`Write` で書き、検証は `tw verify` で打ち、最後でない段は `tw step T-xxx <n>`、止める返却は `tw pause` を返す直前に打つ
 - **取り残し**（前提: 1つの作業ツリーでは同時に1セッション）:
 
 | 状態 | 表示 | 誰が何をする |
@@ -328,9 +324,8 @@ Beads の label・各スキルの本文は触らない）:
 | 作業の途中で人の手が要る（`### 人がやること` のうち検証より前に要るもの） | 解けない → `N`（`ship` のあとでよいものは `Y` のまま `## 結果` に残す） |
 | ツールの許可確認 | タスクの性質でなく、セッションの許可モードで決まるので `loopable` の判断に入れない |
 
-取りこぼしは hook（`tw ask-guard`）が実行中の `AskUserQuestion` で捕まえる。着手の控えのタスクが `Y` なら
-質問を拒み、`N` に直して `## 注意` に理由を書き、`tw release` で止めさせる（振り返りの `tw lap T-xxx retro` のあとの質問は通す）。
-`report` の `favor`・許可確認・道具を呼ばずにターンを終える止まり方は捕まえないので、この表で先に防ぐ。
+取りこぼしは hook（`tw ask-guard`）が実行中の `AskUserQuestion` で捕まえる。拒むもの・捕まえないものは `tw-reference.md`「hook の関門」節で、
+捕まえないものはこの表で先に防ぐ。
 
 **`hold` との違い**: `N` は「人がいれば誰でも進められる」、`hold` は「人が決めるまで誰も進められない」
 （決まっていない判断そのものが待っている）。`hold` は `/loop` の `/next-task` が選ばない。ユーザーが

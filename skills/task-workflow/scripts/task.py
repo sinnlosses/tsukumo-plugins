@@ -46,7 +46,7 @@ import tw_verify
 HOOK_NOTE = """commit-guard・handback-guard・ask-guard は Claude Code の hook の取り決めに従う: 出力は TSV でなく JSON で、終了コードはいつも0。
 読めない入力も何も出さずに通す。タスク運用を始めていないリポジトリ・git の外でも打てる。
 
-この3つの hook を `tools`・`permissions.deny` で置き換えられない理由は `agents/no-delegate.md`「hook を tools・permissions.deny で置き換えられない理由」節。"""
+この3つの hook を `tools`・`permissions.deny` で置き換えられない理由と、3つが拒むもの・掛かる口は task-workflow の tw-reference.md「hook の関門」節。"""
 
 SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     "status": (
