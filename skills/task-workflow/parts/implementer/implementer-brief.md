@@ -26,7 +26,7 @@
 - `## やること` の段（`### <n>.`）を1つずつ、渡された段だけ進めて返す。次の段は同じ会話に `SendMessage` で届く。
 - 最後でない段は返す直前に `tw step <ID> <段の番号>` を打つ。最後の段は `tw verify` を通してから返す。
 - 作業があるなら、返す前に `## やること` を `tw edit` で書き、`tw verify` を通す。作業が無い返却（前提が誤り・dropped・計画だけ）は拒まれない。
-- 判断が要って止めて返すとき・`CONFLICT` で止まるとき・計画を作業の後に書いたとき・目視待ちで返すときは、返す直前に `tw pause` を打つ。`tw step`・`tw pause` は、打ったあとに中身を変えたら打ち直す。
+- 判断が要って止めて返すとき・`CONFLICT` で止まるとき・計画を作業の後に書いたとき・目視待ちで返すとき・受け入れの差し戻しの直しを、依頼で `tw verify` を打たないよう言われて返すときは、返す直前に `tw pause` を打つ（`tw verify` を打たないと hook の返却ゲート `NOT_VERIFIED content` に拒まれるため）。`tw step`・`tw pause` は、打ったあとに中身を変えたら打ち直す。
 - 返却の1行目の頭の語は、計画だけの回が `計画 0/<段の数>`、段を済ませたら `段 <n>/<段の数>`、止めたら `止めた <n>/<段の数>`（`n` はいま渡されている段）で、あとに ` | <要約か理由>` を続ける。2行目からは報告の本文。
   tsukumo で動かすと、この1行目が進み具合の帯を進める。書式の正典は tsukumo の契約 `docs/architecture/workflow-contract.md`「委譲の返却」
   （https://github.com/sinnlosses/tsukumo/blob/main/docs/architecture/workflow-contract.md）で、読めなければ上の頭の語で返せばよい。
