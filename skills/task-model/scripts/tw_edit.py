@@ -122,7 +122,7 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
 def cmd_plan_check(toplevel: str, task_id: str) -> None:
     bd_id = tw_base.bd_task_id(task_id)
     shown = beads.to_task_id(bd_id)
-    issue = beads.show(toplevel, bd_id) if tw_base.owns(toplevel, shown) else None
+    issue = beads.listed(toplevel, bd_id) if tw_base.owns(toplevel, shown) else None
     if issue is None or issue.status != "in_progress" or issue.assignee != tw_base.actor(toplevel):
         print(f"NOT_OWNER\t{shown}")
         raise SystemExit(4)

@@ -104,17 +104,18 @@ def record(
     ledger.record_event(toplevel, event, shown, _task_difficulty(toplevel, task_id, issue), **fields)
 
 
-def claimed_here(toplevel: str) -> list[str]:
-    """この作業ツリーが着手の印を持つタスク（`done` にしたあと `ship` までのものも含む）。引けなければ空。"""
+def claimed_issues(toplevel: str) -> list[beads.Issue]:
+    """`claimed_here` の課題そのもの（一覧の読みから引く。`raw` は `show` と形が違う項目がある）。引けなければ空。"""
     try:
         me = actor(toplevel)
-        return [
-            beads.to_task_id(i.bd_id)
-            for i in beads.list_issues(toplevel)
-            if i.status == "in_progress" and i.assignee == me
-        ]
+        return [i for i in beads.list_issues(toplevel) if i.status == "in_progress" and i.assignee == me]
     except Exception:
         return []
+
+
+def claimed_here(toplevel: str) -> list[str]:
+    """この作業ツリーが着手の印を持つタスク（`done` にしたあと `ship` までのものも含む）。引けなければ空。"""
+    return [beads.to_task_id(i.bd_id) for i in claimed_issues(toplevel)]
 
 
 def owns(toplevel: str, shown: str) -> bool:
@@ -143,8 +144,8 @@ def require_claimed(toplevel: str, task_id: str) -> None:
 
 
 def record_claimed(toplevel: str, event: str, **fields: str | int | bool) -> None:
-    for task_id in claimed_here(toplevel):
-        record(toplevel, event, task_id, **fields)
+    for issue in claimed_issues(toplevel):
+        record(toplevel, event, beads.to_task_id(issue.bd_id), issue, **fields)
 
 
 def print_lines(lines: list[str]) -> None:
