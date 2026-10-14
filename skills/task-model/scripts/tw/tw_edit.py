@@ -53,7 +53,6 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
     )
     body = current
     if body_files:
-        body = current
         for name, path in zip(sections or [None], body_files):
             given = tw_base.read_body(path)
             if not given.strip():

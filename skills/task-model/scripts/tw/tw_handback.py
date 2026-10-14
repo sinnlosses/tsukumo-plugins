@@ -208,7 +208,7 @@ def _handback_gaps(toplevel: str, task_id: str, last_stage: list[str] | None = N
     gaps: list[str] = []
     for tree in task_trees(toplevel, task_id):
         work_head = head if tree == toplevel else _fork_point(tree)
-        if tw_plan.plan_state(tree, work_head, "-") == tw_plan.PLAN_FIRST:
+        if tw_plan.plan_state(tree, work_head, ()) == tw_plan.PLAN_FIRST:
             continue
         stamped = _current_stamp_kinds(toplevel, tree, task_id)
         if "pause" in stamped:

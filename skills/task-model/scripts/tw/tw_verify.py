@@ -133,6 +133,6 @@ def _unplanned_work(toplevel: str) -> list[str]:
             continue
         metadata = issue.raw.get("metadata")
         head = metadata.get(beads.CLAIM_HEAD_KEY) if isinstance(metadata, dict) else None
-        if tw_plan.plan_state(toplevel, head, "-") == tw_plan.PLAN_AFTER_WORK:
+        if tw_plan.plan_state(toplevel, head, ()) == tw_plan.PLAN_AFTER_WORK:
             found.append(beads.to_task_id(issue.bd_id))
     return found
