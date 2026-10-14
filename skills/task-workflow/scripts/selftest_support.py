@@ -205,6 +205,6 @@ def finish(outputs: list[list[str]]) -> None:
     print("すべて通った")
 
 
-def refuse_direct_run() -> None:
-    sys.stderr.write("部品は直に打てない。`python3 selftest_task.py`（絞るならテスト名を渡す）で打つ\n")
+def refuse_direct_run(entry: str = "selftest_task.py") -> None:
+    sys.stderr.write(f"部品は直に打てない。`python3 {entry}`（絞るならテスト名を渡す）で打つ\n")
     raise SystemExit(2)

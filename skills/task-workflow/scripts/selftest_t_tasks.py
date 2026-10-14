@@ -455,17 +455,21 @@ def test_draft_dropped() -> None:
 
 
 def test_part_direct_run_refused() -> None:
-    say("selftest_t_*.py を直に打ったときの案内（部品を glob で全部引く）")
+    say("selftest_t_*.py・selftest_b_*.py を直に打ったときの案内（部品を glob で全部引く）")
     here = os.path.dirname(os.path.abspath(__file__))
-    parts = sorted(glob.glob(os.path.join(here, "selftest_t_*.py")))
-    check("部品が1本以上ある", len(parts) > 0)
-    for part in parts:
-        r = subprocess.run([sys.executable, part], capture_output=True, text=True)
-        check(
-            f"{os.path.basename(part)} は selftest_task.py を案内して 2 で終わる",
-            r.returncode == 2 and "selftest_task.py" in r.stderr,
-            detail=f"exit={r.returncode}",
-        )
+    for prefix, entry in (("selftest_t_", "selftest_task.py"), ("selftest_b_", "selftest_beads.py")):
+        parts = [
+            p for p in sorted(glob.glob(os.path.join(here, f"{prefix}*.py")))
+            if "refuse_direct_run(" in open(p, encoding="utf-8").read()
+        ]
+        check(f"{prefix}* の部品が1本以上ある", len(parts) > 0)
+        for part in parts:
+            r = subprocess.run([sys.executable, part], capture_output=True, text=True)
+            check(
+                f"{os.path.basename(part)} は {entry} を案内して 2 で終わる",
+                r.returncode == 2 and entry in r.stderr,
+                detail=f"exit={r.returncode}",
+            )
 
 
 def test_subcommand_help_complete() -> None:
