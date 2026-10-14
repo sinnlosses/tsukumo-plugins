@@ -13,6 +13,7 @@ from selftest_support import check, git, refuse_direct_run, say, weight, write  
 import beads  # noqa: E402
 import gitinfo  # noqa: E402
 import ledger  # noqa: E402
+import stamps  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_fixtures import BODY, TASK_PY, commit_task, flow_rows, hook_env, make_repo, metadata, readonly_git, run_guard, run_handback_guard, run_task, snapshot  # noqa: E402
 
@@ -473,7 +474,7 @@ def test_handback_guard() -> None:
         r = run_task(wt1, "verify")
         check("plan-check が PLAN_FIRST で tw verify が通れば通す",
               r.returncode == 0 and run_handback_guard(tmp, wt1) is None, r.stdout + r.stderr)
-        stamp_path = os.path.join(ledger.worktree_state_dir(wt1), ledger.VERIFY_STAMP_FILE_NAME)
+        stamp_path = os.path.join(stamps.worktree_state_dir(wt1), stamps.VERIFY_STAMP_FILE_NAME)
         with open(stamp_path, encoding="utf-8") as f:
             stamp_lines = f.read().splitlines()
         write(stamp_path, "\n".join([*stamp_lines[:-1], "scheme:other"]) + "\n")
@@ -665,7 +666,7 @@ def test_handback_guard_parallel_steps() -> None:
               "NOT_VERIFIED" in _block_reason(run_handback_guard(tmp, wt1)))
         run_task(wt1, "step", "T-100", "1")
         r = run_task(wt1, "step", "T-100", "2")
-        steps = sorted(s.step for s in ledger.read_step_stamps(cwd=wt1) if s.task_id == "T-100")
+        steps = sorted(s.step for s in stamps.read_step_stamps(cwd=wt1) if s.task_id == "T-100")
         check("段2の担当の tw step は段1の控えを上書きせず、段ごとに残る", r.returncode == 0 and steps == [1, 2]
               and run_handback_guard(tmp, wt1) is None, r.stdout + r.stderr + repr(steps))
         write(os.path.join(wt1, "c.txt"), "1\n")
@@ -689,10 +690,10 @@ def test_handback_guard_parallel_steps() -> None:
         r = run_task(wt1, "pause", "T-999")
         check("tw pause <ID>（着手していない）は NOT_OWNER（終了コード4）", r.returncode == 4
               and r.stdout.strip() == "NOT_OWNER\tT-999", r.stdout + r.stderr)
-        ledger.write_step_stamp(ledger.StepStamp(ledger.content_key("", cwd=wt1), "T-999", 1), cwd=wt1)
+        stamps.write_step_stamp(stamps.StepStamp(stamps.content_key("", cwd=wt1), "T-999", 1), cwd=wt1)
         run_task(wt1, "step", "T-100", "1")
         check("着手中でないタスクの段の控えは tw step が消す",
-              all(s.task_id == "T-100" for s in ledger.read_step_stamps(cwd=wt1)))
+              all(s.task_id == "T-100" for s in stamps.read_step_stamps(cwd=wt1)))
 
 
 @weight(18)
@@ -853,7 +854,7 @@ def test_worktree_state_dir() -> None:
               r.returncode == 0 and os.path.isfile(os.path.join(local2, "task-verify-stamp"))
               and os.path.isfile(os.path.join(local2, "task-open-claims", "T-101"))
               and os.path.isfile(os.path.join(local2, "task-verify.log"))
-              and ledger.legacy_state_entries(tw2) == []
+              and stamps.legacy_state_entries(tw2) == []
               and run_task(wt2, "verify-check").stdout.startswith("VERIFIED_SAME\t"), r.stdout + r.stderr)
         with open(os.path.join(tw2, ".gitignore"), encoding="utf-8") as f:
             check("旧い .tw/.gitignore は書き換えない", f.read() == "*\n")
@@ -899,7 +900,7 @@ def test_readonly_git() -> None:
             check("verify-check が VERIFIED_SAME", r.stdout.startswith("VERIFIED_SAME\t"), r.stdout + r.stderr)
         tree = verified.split("\t")[1] if verified.count("\t") >= 1 else ""
         check("読み取り専用で取った鍵の木の SHA が、書ける .git で取った木と同じ",
-              tree != "" and tree == ledger.content_tree(wt1), tree)
+              tree != "" and tree == stamps.content_tree(wt1), tree)
 
         write(os.path.join(main_path, "shared.txt"), "line2\n")
         git(main_path, "commit", "-q", "-am", "主ブランチを進める")

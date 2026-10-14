@@ -11,6 +11,7 @@ from typing import Callable
 import beads
 import gitinfo
 import ledger
+import stamps
 import ship
 import taskfile
 import tw_base
@@ -41,10 +42,10 @@ def cmd_pause(toplevel: str, task_id: str | None = None, step: str | None = None
             print(f"PAUSED\t{key.tree}")
             return
     key = _current_key(toplevel)
-    ledger.write_pause_stamp(key, cwd=toplevel)
+    stamps.write_pause_stamp(key, cwd=toplevel)
     others = [tree for task_id in tw_base.claimed_here(toplevel) for tree in task_trees(toplevel, task_id)[1:]]
     for tree in dict.fromkeys(others):
-        ledger.write_pause_stamp(_current_key(tree), cwd=tree)
+        stamps.write_pause_stamp(_current_key(tree), cwd=tree)
     tw_base.record_claimed(toplevel, "pause")
     print(f"PAUSED\t{key.tree}")
 
@@ -78,7 +79,7 @@ def _owned_step(toplevel: str, task_id: str, step: str) -> tuple[str, tuple[task
 
 def _write_step_stamps(
     toplevel: str, shown: str, specs: tuple[taskfile.PlanStep, ...], n: int, kind: str
-) -> ledger.ContentKey:
+) -> stamps.ContentKey:
     """段 `n` の控えを、タスクの作業ツリー（`task_trees`）それぞれに、段 `n` と並列の組になる段の触るファイルを
     外したいまの鍵で書き、着手中でないタスクの段の控えを消す。着手した作業ツリーの鍵を返す。"""
     excluded = taskfile.parallel_files(specs, n)
@@ -86,9 +87,9 @@ def _write_step_stamps(
     key = _current_key(toplevel, excluded)
     for tree in task_trees(toplevel, shown):
         tree_key = key if tree == toplevel else _current_key(tree, excluded)
-        ledger.write_step_stamp(ledger.StepStamp(tree_key, shown, n, kind), cwd=tree)
-        stale = [s.task_id for s in ledger.read_step_stamps(cwd=tree) if s.task_id not in claimed]
-        ledger.remove_step_stamps(stale, cwd=tree)
+        stamps.write_step_stamp(stamps.StepStamp(tree_key, shown, n, kind), cwd=tree)
+        stale = [s.task_id for s in stamps.read_step_stamps(cwd=tree) if s.task_id not in claimed]
+        stamps.remove_step_stamps(stale, cwd=tree)
     return key
 
 
@@ -133,9 +134,9 @@ def task_trees(toplevel: str, task_id: str) -> list[str]:
     return [toplevel, *(w.path for w in worktrees if w.branch == task_id.lower())]
 
 
-def _current_key(tree: str, excluded: tuple[str, ...] = ()) -> ledger.ContentKey:
+def _current_key(tree: str, excluded: tuple[str, ...] = ()) -> stamps.ContentKey:
     """`tree` のいまの中身の鍵（検証コマンドは `tree` の設定ファイルのもの）。`excluded` のパスを木から外す。"""
-    return ledger.content_key(ship.read_stamp_command(tree) or "", cwd=tree, excluded=excluded)
+    return stamps.content_key(ship.read_stamp_command(tree) or "", cwd=tree, excluded=excluded)
 
 
 def _claimed_plan_body(toplevel: str, task_id: str) -> str:
@@ -234,7 +235,7 @@ def _handback_gaps(toplevel: str, task_id: str, last_stage: list[str] | None = N
 def _skipped_steps(toplevel: str, tree: str, task_id: str) -> bool:
     """計画の段が2つ以上なのに、`tree` にこのタスクの段の控えが1つも無い。"""
     specs, _ = taskfile.plan_step_specs(_claimed_plan_body(toplevel, task_id))
-    return len(specs) >= 2 and not any(s.task_id == task_id for s in ledger.read_step_stamps(cwd=tree))
+    return len(specs) >= 2 and not any(s.task_id == task_id for s in stamps.read_step_stamps(cwd=tree))
 
 
 def _tree_verify_line(tree: str) -> str:
@@ -256,22 +257,22 @@ def _current_stamp_kinds(toplevel: str, tree: str, task_id: str) -> set[str]:
     `tw pause` の控えはいまの鍵と、段の控えはその段と並列の組になる段の触るファイルを外したいまの鍵と照らす。
     段の `step` の控えは段がいまの計画の最後より前のときだけ効く。
     """
-    keys: dict[tuple[str, ...], ledger.ContentKey] = {}
+    keys: dict[tuple[str, ...], stamps.ContentKey] = {}
 
-    def key(excluded: tuple[str, ...]) -> ledger.ContentKey:
+    def key(excluded: tuple[str, ...]) -> stamps.ContentKey:
         if excluded not in keys:
             keys[excluded] = _current_key(tree, excluded)
         return keys[excluded]
 
     kinds: set[str] = set()
-    pause = ledger.read_pause_stamp(cwd=tree)
+    pause = stamps.read_pause_stamp(cwd=tree)
     if pause is not None and pause == key(()):
         kinds.add("pause")
-    stamps = [s for s in ledger.read_step_stamps(cwd=tree) if s.task_id == task_id]
-    if not stamps:
+    task_stamps = [s for s in stamps.read_step_stamps(cwd=tree) if s.task_id == task_id]
+    if not task_stamps:
         return kinds
     specs, _ = taskfile.plan_step_specs(_claimed_plan_body(toplevel, task_id))
-    for stamp in stamps:
+    for stamp in task_stamps:
         if stamp.kind in kinds or stamp.step > len(specs) or (stamp.kind == "step" and stamp.step == len(specs)):
             continue
         if stamp.key == key(taskfile.parallel_files(specs, stamp.step)):

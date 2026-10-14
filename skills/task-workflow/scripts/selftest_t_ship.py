@@ -7,6 +7,7 @@ import tempfile
 from selftest_support import check, git, refuse_direct_run, say, weight, write  # noqa: E402
 import gitinfo  # noqa: E402
 import ledger  # noqa: E402
+import stamps  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_fixtures import BODY, FILE_PROTOCOL, FILE_PROTOCOL_ENV, _claim_work_and_done, advance_submodule, body_file, commit_task, flow_rows, make_repo, make_submodule_repo, run_task  # noqa: E402
 
@@ -87,7 +88,7 @@ def test_ship_forces_verify_after_verify_failed_without_new_rebase() -> None:
         check("1回目はVERIFY_FAILEDで終了コード8", r1.returncode == 8 and r1.stdout.startswith("VERIFY_FAILED\t"), r1.stdout + r1.stderr)
         check(
             "検証の借りの印が立つ",
-            ledger.is_verify_owed(cwd=wt1),
+            stamps.is_verify_owed(cwd=wt1),
         )
         check("rebaseはabortされず作業ツリーはきれい", git(wt1, "status", "--porcelain").stdout.strip() == "")
 
@@ -96,7 +97,7 @@ def test_ship_forces_verify_after_verify_failed_without_new_rebase() -> None:
         check("打ち直しはSHIPPEDで返る", r2.returncode == 0 and r2.stdout.startswith("SHIPPED\t"), r2.stdout + r2.stderr)
         check("rebasedはno（付け替えは起きていない）", "rebased=no" in r2.stdout, r2.stdout)
         check("それでも検証はran（借りを飛ばさない）", "verify=ran" in r2.stdout, r2.stdout)
-        check("検証の借りの印は消える", not ledger.is_verify_owed(cwd=wt1))
+        check("検証の借りの印は消える", not stamps.is_verify_owed(cwd=wt1))
         check("main にmerge commitが無い", _no_merge_commits(main_path).strip() == "")
 
         r3 = run_task(wt1, "ship")
@@ -124,7 +125,7 @@ def test_ship_verify_failed_keeps_full_log_in_order() -> None:
         check("VERIFY_FAILED で終了コード8", r.returncode == 8 and first.startswith("VERIFY_FAILED\t"), r.stdout + r.stderr)
         log_path = first.split("\t")[-1]
         check("行の末尾が落ちた回を残したログのパス",
-              os.path.dirname(log_path) == os.path.dirname(ledger.ship_verify_log_path(cwd=wt1))
+              os.path.dirname(log_path) == os.path.dirname(stamps.ship_verify_log_path(cwd=wt1))
               and os.path.basename(log_path).startswith("task-ship-verify.failed-"), first)
         with open(log_path, encoding="utf-8") as f:
             log = f.read()
@@ -137,13 +138,13 @@ def test_ship_stale_verify_owed_does_not_block_nothing_or_main_worktree() -> Non
         main_path, wt1, _wt2 = make_repo(tmp, branch="切らない", verify="`false`")
 
         # 送るものが無い（NOTHING）側: 古い印が残っていても検証コマンド（`false`）は打たれない。
-        ledger.mark_verify_owed("`false`", cwd=wt1)
+        stamps.mark_verify_owed("`false`", cwd=wt1)
         r1 = run_task(wt1, "ship")
         check("NOTHINGで返る（検証は打たれない）", r1.returncode == 0 and r1.stdout.startswith("NOTHING\t"), r1.stdout + r1.stderr)
-        check("古い印は消える", not ledger.is_verify_owed(cwd=wt1))
+        check("古い印は消える", not stamps.is_verify_owed(cwd=wt1))
 
         # main の作業ツリーで起こした（送る段なし）側。
-        ledger.mark_verify_owed("`false`", cwd=main_path)
+        stamps.mark_verify_owed("`false`", cwd=main_path)
         commit_task(main_path, taskfile.Task("T-100", "本体で完結", "todo", "sonnet", "Y", (), BODY))
         run_task(main_path, "claim", "T-100")
         _claim_work_and_done(main_path, "T-100")
@@ -153,7 +154,7 @@ def test_ship_stale_verify_owed_does_not_block_nothing_or_main_worktree() -> Non
             r2.returncode == 0 and r2.stdout.startswith("SHIPPED\tmain\t(送る段なし)"),
             r2.stdout + r2.stderr,
         )
-        check("古い印は消える", not ledger.is_verify_owed(cwd=main_path))
+        check("古い印は消える", not stamps.is_verify_owed(cwd=main_path))
 
 
 def test_ship_nothing_records_ship_event() -> None:

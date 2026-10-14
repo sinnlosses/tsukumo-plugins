@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 import gitcmd
 import layout
 import gitinfo
-import ledger
+import stamps
 
 MAX_TRIES = 3
 
@@ -50,13 +50,13 @@ def find_base_worktree(
 
 def _run_logged(toplevel: str, command: str) -> tuple[int, str, str]:
     """検証を打ち、stdout と stderr を出た順に1本のログへ書く。(終了コード, ログのパス, 末尾40行)。"""
-    log_path = ledger.ship_verify_log_path(toplevel)
+    log_path = stamps.ship_verify_log_path(toplevel)
     with open(log_path, "w") as log:
         rc = subprocess.run(["sh", "-c", command], cwd=toplevel, stdout=log, stderr=subprocess.STDOUT).returncode
     with open(log_path, errors="replace") as log:
         tail = "\n".join(log.read().splitlines()[-40:])
     if rc != 0:
-        log_path = ledger.keep_failed_log(log_path)
+        log_path = stamps.keep_failed_log(log_path)
     return rc, log_path, tail
 
 
@@ -79,7 +79,7 @@ def attempt(
     `git -C <本体> merge --ff-only <HEAD のコミット>`、無ければ比較付きの `git update-ref`。
     失敗（相手に先を越された）は次の回の rebase からやり直す。
 
-    `verify_owed` は前回の `ship` が `VERIFY_FAILED` で終わった印（`ledger.is_verify_owed`）。
+    `verify_owed` は前回の `ship` が `VERIFY_FAILED` で終わった印（`stamps.is_verify_owed`）。
     立っていれば、1回目の試行で付け替えが起きなくても検証を打つ——付け替え済みのまま次の
     `ship` を打つと、そのままでは検証を素通りして送ってしまうため（T-777）。
 

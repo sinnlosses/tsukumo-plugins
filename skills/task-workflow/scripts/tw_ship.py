@@ -12,6 +12,7 @@ import beads
 import layout
 import gitinfo
 import ledger
+import stamps
 import ship
 import tracker
 import tw_base
@@ -28,7 +29,7 @@ def cmd_ship(toplevel: str) -> None:
 
     if branch == base:
         # 4.4: 主ブランチを出している作業ツリーで起こしたときは送る段が無い。
-        ledger.clear_verify_owed(cwd=toplevel)
+        stamps.clear_verify_owed(cwd=toplevel)
         released, not_closed = _close_shipped(toplevel)
         after = _after_send(toplevel, released, "SHIPPED")
         print(f"SHIPPED\t{base}\t(送る段なし)\treleased={','.join(released) or '-'}")
@@ -38,7 +39,7 @@ def cmd_ship(toplevel: str) -> None:
     ahead = tw_base.run_git(toplevel, ["rev-list", "--count", f"{base}..HEAD"])
     ahead_count = int(ahead.stdout.strip()) if ahead.returncode == 0 and ahead.stdout.strip().isdigit() else 0
     if ahead_count == 0:
-        ledger.clear_verify_owed(cwd=toplevel)
+        stamps.clear_verify_owed(cwd=toplevel)
         released, not_closed = _close_shipped(toplevel)
         after = _after_send(toplevel, released, "NOTHING")
         print(f"NOTHING\t({base} に無いコミットが無い)")
@@ -55,14 +56,14 @@ def cmd_ship(toplevel: str) -> None:
     old_base = tw_base.run_git(toplevel, ["rev-parse", base]).stdout.strip()
     config = layout.read_config(toplevel)
     verify_command = config.verify
-    verify_owed = ledger.is_verify_owed(cwd=toplevel)
+    verify_owed = stamps.is_verify_owed(cwd=toplevel)
     preship_command = config.verify_before_ship
-    stamp = ledger.read_verify_stamp(cwd=toplevel)
+    stamp = stamps.read_verify_stamp(cwd=toplevel)
     preship_stamped = (
         preship_command is not None
         and stamp is not None
         and stamp.verify_command == preship_command
-        and stamp.tree == ledger.content_tree(toplevel)
+        and stamp.tree == stamps.content_tree(toplevel)
     )
     outcome = ship.attempt(
         toplevel,
@@ -81,7 +82,7 @@ def cmd_ship(toplevel: str) -> None:
         raise SystemExit(7)
     if outcome.kind == "VERIFY_FAILED":
         # 付け替え済みのまま送っていない。次の `ship` は打ち直しでも検証を飛ばさない（T-777）。
-        ledger.mark_verify_owed(outcome.verify_command or "", cwd=toplevel)
+        stamps.mark_verify_owed(outcome.verify_command or "", cwd=toplevel)
         print(f"VERIFY_FAILED\t{outcome.verify_command}\t{outcome.verify_log}")
         if outcome.verify_tail:
             print(outcome.verify_tail)
@@ -92,7 +93,7 @@ def cmd_ship(toplevel: str) -> None:
 
     # ここに来るのは `SENT` だけ（`attempt` は借りがあれば検証を通してからでないと
     # `SENT` を返さない）。送れたので借りは無い。
-    ledger.clear_verify_owed(cwd=toplevel)
+    stamps.clear_verify_owed(cwd=toplevel)
 
     branch_note = f"branch={branch}"
     if branch_setting in ("既定", "作業ブランチを切る") and FEATURE_BRANCH.fullmatch(branch):

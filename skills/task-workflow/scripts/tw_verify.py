@@ -10,7 +10,7 @@ import beads
 import fold
 import layout
 import gitinfo
-import ledger
+import stamps
 import ship
 import taskfile
 import tw_base
@@ -29,7 +29,7 @@ def cmd_verify(toplevel: str, task_id: str | None = None) -> None:
         return
     unplanned = _unplanned_work(toplevel) if beads.is_initialized(toplevel) else []
     if unplanned:
-        ledger.clear_verify_stamp(cwd=toplevel)
+        stamps.clear_verify_stamp(cwd=toplevel)
         for shown in unplanned:
             print(
                 f"PLAN_MISSING\t{shown}\t検証コマンドを打っていない。"
@@ -38,18 +38,18 @@ def cmd_verify(toplevel: str, task_id: str | None = None) -> None:
         raise SystemExit(10)
     base = gitinfo.base_branch(toplevel)
     if fold.can_fold(toplevel, base):
-        ledger.clear_verify_stamp(cwd=toplevel)
+        stamps.clear_verify_stamp(cwd=toplevel)
         gitinfo.require_git_writable(toplevel)
     folded = fold.fold_base(toplevel, base)
     if folded.kind == "CONFLICT":
-        ledger.clear_verify_stamp(cwd=toplevel)
+        stamps.clear_verify_stamp(cwd=toplevel)
         print("CONFLICT\t" + (",".join(folded.conflict_files) or "?"))
         raise SystemExit(7)
     folded_line = ""
     if folded.kind == "FOLDED":
         folded_line = f"FOLDED\t{folded.old_base}..{folded.new_base}"
         print(folded_line)
-    log_path = ledger.verify_log_path(cwd=toplevel)
+    log_path = stamps.verify_log_path(cwd=toplevel)
     format_command = layout.read_config(toplevel).format
     started = time.monotonic()
     open(log_path, "w", encoding="utf-8").close()
@@ -57,27 +57,27 @@ def cmd_verify(toplevel: str, task_id: str | None = None) -> None:
         with open(log_path, "a", encoding="utf-8") as log:
             formatted = subprocess.run(["sh", "-c", format_command], cwd=toplevel, stdout=log, stderr=subprocess.STDOUT)
         if formatted.returncode != 0:
-            ledger.clear_verify_stamp(cwd=toplevel)
+            stamps.clear_verify_stamp(cwd=toplevel)
             with open(log_path, encoding="utf-8", errors="replace") as f:
                 format_tail = "\n".join(f.read().splitlines()[-VERIFY_TAIL_LINES:])
             tw_base.record_claimed(toplevel, "verify", result="FORMAT_FAILED", seconds=round(time.monotonic() - started))
             _print_verify_end(folded_line, f"FORMAT_FAILED\t{log_path}", format_tail)
             raise SystemExit(10)
-    before = ledger.content_key(verify_command, cwd=toplevel)
+    before = stamps.content_key(verify_command, cwd=toplevel)
     with open(log_path, "a", encoding="utf-8") as log:
         r = subprocess.run(["sh", "-c", verify_command], cwd=toplevel, stdout=log, stderr=subprocess.STDOUT)
     with open(log_path, encoding="utf-8", errors="replace") as f:
         tail = "\n".join(f.read().splitlines()[-VERIFY_TAIL_LINES:])
     if r.returncode != 0:
-        ledger.clear_verify_stamp(cwd=toplevel)
+        stamps.clear_verify_stamp(cwd=toplevel)
         tw_base.record_claimed(toplevel, "verify", result="VERIFY_NOT_PASSED", seconds=round(time.monotonic() - started))
-        _print_verify_end(folded_line, f"VERIFY_NOT_PASSED\t{ledger.keep_failed_log(log_path)}", tail)
+        _print_verify_end(folded_line, f"VERIFY_NOT_PASSED\t{stamps.keep_failed_log(log_path)}", tail)
         raise SystemExit(10)
-    if ledger.content_key(verify_command, cwd=toplevel) != before:
-        ledger.clear_verify_stamp(cwd=toplevel)
+    if stamps.content_key(verify_command, cwd=toplevel) != before:
+        stamps.clear_verify_stamp(cwd=toplevel)
         verdict = f"VERIFIED_UNSTAMPED\t{log_path}"
     else:
-        ledger.write_verify_stamp(before, cwd=toplevel)
+        stamps.write_verify_stamp(before, cwd=toplevel)
         verdict = f"VERIFIED\t{before.tree}\t{log_path}"
     tw_base.record_claimed(toplevel, "verify", result=verdict.split("\t")[0], seconds=round(time.monotonic() - started))
     _print_verify_end(folded_line, verdict, tail)
@@ -88,7 +88,7 @@ def cmd_verify_check(toplevel: str) -> None:
     if verify_command is None:
         print("NOTHING\t(検証コマンドが無い)")
         return
-    stamp = ledger.read_verify_stamp(cwd=toplevel)
+    stamp = stamps.read_verify_stamp(cwd=toplevel)
     if stamp is None:
         print("NOT_VERIFIED\tnone")
         return
@@ -98,7 +98,7 @@ def cmd_verify_check(toplevel: str) -> None:
     ):
         print("NOT_VERIFIED\tbase")
         return
-    now = ledger.content_key(verify_command, cwd=toplevel)
+    now = stamps.content_key(verify_command, cwd=toplevel)
     if now == stamp:
         print(f"VERIFIED_SAME\t{now.tree}")
         return

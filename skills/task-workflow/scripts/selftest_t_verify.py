@@ -9,7 +9,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 from selftest_support import check, git, refuse_direct_run, say, weight, write  # noqa: E402
-import ledger  # noqa: E402
+import stamps  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
 from selftest_fixtures import BODY, commit_task, make_repo, readonly_git, run_handback_guard, run_task  # noqa: E402
@@ -307,7 +307,7 @@ def test_verify_keeps_failed_logs() -> None:
         r1, p1 = verify_with("echo fail-1\nexit 1\n")
         r2, p2 = verify_with("echo fail-2\nexit 1\n")
         r3, p3 = verify_with("echo pass-3\n")
-        tw = ledger.worktree_state_dir(wt1)
+        tw = stamps.worktree_state_dir(wt1)
         failed = lambda: sorted(n for n in os.listdir(tw) if n.startswith("task-verify.failed-"))
         check("落ちた2回は終了コード10で、別々の失敗ログのパスが判定行に出る",
               r1.returncode == 10 and r2.returncode == 10 and p1 != p2
@@ -315,7 +315,7 @@ def test_verify_keeps_failed_logs() -> None:
         check("失敗ログが2本残り中身は各回の出力", len(failed()) == 2
               and "fail-1" in read(p1) and "fail-2" in read(p2) and "fail-2" not in read(p1), str(failed()))
         check("通った回は task-verify.log を上書きし、整形の出力と検証の出力が並ぶ",
-              r3.returncode == 0 and p3 == ledger.verify_log_path(cwd=wt1)
+              r3.returncode == 0 and p3 == stamps.verify_log_path(cwd=wt1)
               and read(p3).split() == ["fmt-out", "pass-3"], read(p3))
         check("通った回は失敗ログを増やさない", len(failed()) == 2)
         _r4, p4 = verify_with("echo fail-4\nexit 1\n")
@@ -519,11 +519,11 @@ def test_ship_skips_preship_verify_when_stamp_matches() -> None:
         _main, wt1 = prepare(tmp)
         write(os.path.join(wt1, "work.txt"), "x\n")
         run_task(wt1, "verify")
-        ledger.mark_verify_owed("sh ../preship.sh", cwd=wt1)
+        stamps.mark_verify_owed("sh ../preship.sh", cwd=wt1)
         r = _commit_work_and_ship(wt1, "work.txt")
         check("借りがあれば控えが同じでも preship=ran", "preship=ran" in r.stdout, r.stdout + r.stderr)
         check("借りの回の送る前の検証コマンドは1回（合計2回）", _preship_count(tmp) == 2, str(_preship_count(tmp)))
-        check("借りの印は消える", not ledger.is_verify_owed(cwd=wt1))
+        check("借りの印は消える", not stamps.is_verify_owed(cwd=wt1))
 
 
 @weight(5)
@@ -562,7 +562,7 @@ def test_ship_runs_preship_verify_when_work_changes_tree() -> None:
 
 
 def test_worktree_tree_sees_same_size_edit_after_second_boundary() -> None:
-    say("ledger.worktree_tree: index の書き込みと同じ秒にした同サイズの書き換えを、秒をまたいでから測っても拾う")
+    say("stamps.worktree_tree: index の書き込みと同じ秒にした同サイズの書き換えを、秒をまたいでから測っても拾う")
     with tempfile.TemporaryDirectory() as tmp:
         git(tmp, "init", "-q")
         write(os.path.join(tmp, "n"), NOTES)
@@ -573,7 +573,7 @@ def test_worktree_tree_sees_same_size_edit_after_second_boundary() -> None:
         write(os.path.join(tmp, "n"), NOTES.replace("e\n", "E\n"))
         time.sleep(1.2)
         head_tree = git(tmp, "rev-parse", "HEAD^{tree}").stdout.strip()
-        check("書き換えた木は HEAD の木と違う", ledger.worktree_tree(tmp) != head_tree)
+        check("書き換えた木は HEAD の木と違う", stamps.worktree_tree(tmp) != head_tree)
 
 
 def test_verify_conflict_before_check() -> None:
@@ -660,21 +660,21 @@ def test_content_key_scheme_roundtrip() -> None:
     say("ledger: 中身の鍵の scheme を控えに書いて読み直せる。scheme 行の無い古い控えは scheme が空で、段の控えも壊れない")
     with tempfile.TemporaryDirectory() as tmp:
         _main, wt1, _wt2 = make_repo(tmp, branch="切らない", verify="`true`")
-        key = ledger.content_key("true", cwd=wt1)
-        check("鍵は scheme を持つ", key.scheme == ledger.CONTENT_SCHEME and len(key.scheme) == 12, key.scheme)
-        ledger.write_verify_stamp(key, cwd=wt1)
-        check("書いて読み直した鍵が等しい", ledger.read_verify_stamp(cwd=wt1) == key)
-        path = os.path.join(ledger.worktree_state_dir(wt1), ledger.VERIFY_STAMP_FILE_NAME)
+        key = stamps.content_key("true", cwd=wt1)
+        check("鍵は scheme を持つ", key.scheme == stamps.CONTENT_SCHEME and len(key.scheme) == 12, key.scheme)
+        stamps.write_verify_stamp(key, cwd=wt1)
+        check("書いて読み直した鍵が等しい", stamps.read_verify_stamp(cwd=wt1) == key)
+        path = os.path.join(stamps.worktree_state_dir(wt1), stamps.VERIFY_STAMP_FILE_NAME)
         with open(path, encoding="utf-8") as f:
             check("控えの最後の行が scheme:<値>", f.read().splitlines()[-1] == f"scheme:{key.scheme}")
         write(path, f"{key.head}\n{key.tree}\n{key.verify_command}\n")
-        old = ledger.read_verify_stamp(cwd=wt1)
+        old = stamps.read_verify_stamp(cwd=wt1)
         check("scheme 行の無い古い控えは読めて scheme が空", old is not None and old.scheme == ""
               and (old.head, old.tree, old.verify_command) == (key.head, key.tree, key.verify_command))
         check("scheme が違う鍵は等しくない", old != key)
-        stamp = ledger.StepStamp(key, "T-100", 2, "pause")
-        ledger.write_step_stamp(stamp, cwd=wt1)
-        check("段の控えは scheme 行の追加で壊れない", ledger.read_step_stamps(cwd=wt1) == [stamp])
+        stamp = stamps.StepStamp(key, "T-100", 2, "pause")
+        stamps.write_step_stamp(stamp, cwd=wt1)
+        check("段の控えは scheme 行の追加で壊れない", stamps.read_step_stamps(cwd=wt1) == [stamp])
 
 
 @weight(5)
@@ -686,7 +686,7 @@ def test_verify_check_reports_scheme() -> None:
         check("verify が通る", r.stdout.startswith("VERIFIED\t"), r.stdout + r.stderr)
         tree = r.stdout.split("\t")[1]
         check("同じ版なら VERIFIED_SAME", run_task(wt1, "verify-check").stdout.strip() == f"VERIFIED_SAME\t{tree}")
-        path = os.path.join(ledger.worktree_state_dir(wt1), ledger.VERIFY_STAMP_FILE_NAME)
+        path = os.path.join(stamps.worktree_state_dir(wt1), stamps.VERIFY_STAMP_FILE_NAME)
         with open(path, encoding="utf-8") as f:
             lines = f.read().splitlines()
         write(path, "\n".join([*lines[:-1], "scheme:other"]) + "\n")

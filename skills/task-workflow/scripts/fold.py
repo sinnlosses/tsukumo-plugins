@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 import gitcmd
 import gitinfo
-import ledger
+import stamps
 
 
 @dataclass(frozen=True)
@@ -49,13 +49,13 @@ def folds_cleanly(toplevel: str, base: str) -> bool:
     if not can_fold(toplevel, base):
         return False
     with tempfile.TemporaryDirectory() as scratch:
-        env = ledger.scratch_object_env(toplevel, scratch)
+        env = stamps.scratch_object_env(toplevel, scratch)
         return _merge_tree(toplevel, _checked(toplevel, ["rev-parse", base]), env).kind != "CONFLICT"
 
 
 def _merge_tree(toplevel: str, new_base: str, object_env: dict[str, str] | None = None) -> FoldOutcome:
     """`object_env` があれば object を `.git` でなくそこへ書く。"""
-    tree = ledger.worktree_tree(toplevel, object_env=object_env)
+    tree = stamps.worktree_tree(toplevel, object_env=object_env)
     work = _checked(toplevel, ["commit-tree", tree, "-p", "HEAD", "-m", "tw verify"], object_env)
     merged = _git(toplevel, ["merge-tree", "--write-tree", "--name-only", "--no-messages", work, new_base], object_env)
     lines = [line for line in merged.stdout.splitlines() if line]
