@@ -28,6 +28,8 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | `finish T-xxx [--dropped] --result-file <path\|-> --message <件名> [--add <ファイル>]…` | 結果・コミット・送りを一度に打つとき（`done` → `git add` → コミット → `ship`） | `done` の行、`COMMITTED`・`NO_COMMIT`、`ship` の行。`COMMITS_SINCE_CLAIM` が出れば終了コード12で止まる |
 | `metrics [--days N] [--stages]` | 流れの数と段ごとの所要時間を読むだけで見るとき（振り返り） | `PERIOD`、続けて `shipped`・`lead_median_seconds`・`verify_per_task` など。`--stages` は `STAGE`・`OPEN`。`SKIPPED`・`EMPTY` |
 | `config` | 解けた設定を読むだけで見るとき | `CONFIG`、続けて `<キー>\t<値>\t<config\|default>`。設定が無ければ `MISSING`（終了コード6） |
+| `config --schema` | 設定の欄の形（`flow` の語彙・`[parts]` の枠・枠ごとの既定・`なし` を許すか・説明）を読むだけで見るとき（設定画面が欄を描く口。設定にも git にもよらない） | 1行の JSON（TSV の例外）。`{"schema": <形の版>, "default_word", "none_word", "keys": [...]}`。欄の中身は `task.py config --help` |
+| `config set <キー> <値>` | `flow`・`parts.<枠>` を検査してから `.tw/config.toml` に書くとき（ほかの行・並び・コメントは変えない） | `SET\t<キー>\t<値>`。知らないキー・語彙の外の値は終了コード2（ファイルは変えない）。`MISSING`（終了コード6）・`INVALID`（終了コード3） |
 | `config-doctor` | リポジトリが今の読み取りに合っているかを読むだけで点検するとき（`--fix` は無い） | `base_branch`・`config`・`python`・`git`・`bd`・`dolt`・`gh`・`tw`・`store`・`beads`・`tracker` の行（2語目が `OK`・`MISSING`・`INVALID`、前提の行は `OPTIONAL` も） |
 | `commit-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ deny の JSON 1行。通すときは何も出さない |
 | `pause [T-xxx [<n>]]` | 判断が要って止める・目視待ち・計画を作業の後に書いた返却の直前に打つ（委譲先。並列の段の担当は ID と段の番号を付ける） | `PAUSED`・`NOT_OWNER` |

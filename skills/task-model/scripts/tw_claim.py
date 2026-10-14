@@ -16,6 +16,7 @@ import tw_plan
 
 
 REFLECTION_SKIPPED_LINE = "- 振り返り: 近道（省いた）"
+REFLECTION_OFF_LINE = "- 振り返り: 設定で外した"
 
 
 def cmd_claim(toplevel: str, task_id: str) -> None:
@@ -235,10 +236,10 @@ def _clear_open_claim_in(worktree: str, task_id: str) -> None:
 
 
 def _reflection_of(result: str) -> str:
-    """`## 結果` の `- 振り返り:` の行が `none`（兆候なし）・`skipped`（近道で省いた）・`some`・`unknown`（行が無い）。"""
+    """`## 結果` の `- 振り返り:` の行が `none`（兆候なし）・`skipped`（近道か設定で省いた）・`some`・`unknown`（行が無い）。"""
     for line in result.splitlines():
         if line.startswith("- 振り返り:"):
-            if line.strip() == REFLECTION_SKIPPED_LINE:
+            if line.strip() in (REFLECTION_SKIPPED_LINE, REFLECTION_OFF_LINE):
                 return "skipped"
             return "none" if "兆候なし" in line else "some"
     return "unknown"

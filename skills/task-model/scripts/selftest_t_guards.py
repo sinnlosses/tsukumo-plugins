@@ -628,6 +628,10 @@ def test_lap() -> None:
         done = [e for e in flow_rows(wt1) if e["event"] == "done" and e["task"] == "T-101"]
         check("通常の道の振り返りの行が「近道」を含んでも reflection は some",
               len(done) == 1 and done[0]["reflection"] == "some", repr(done))
+    import tw_claim
+
+    check("振り返りの行が設定で外したなら reflection は skipped",
+          tw_claim._reflection_of("- 検証: x\n- 振り返り: 設定で外した\n") == "skipped")
 
 
 @weight(11)

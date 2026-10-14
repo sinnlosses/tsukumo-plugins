@@ -136,15 +136,17 @@ lap はパーツではなくオーケストレーターが段の前後で打つ�
 **値の正は `.tw/config.toml` に置き、tsukumo の画面はその上に載せるだけにする。** tsukumo が値を持つと、tsukumo の ADR 0025（リポジトリに属する値の置き場は作らない）と ADR 0024（tsukumo はスキルの名前を知らない）の両方にぶつかり、素の Claude Code では差し替えが効かない。
 
 ```toml
-# .tw/config.toml に足す形（案）
-flow = "delegate"              # delegate / direct / main
+# .tw/config.toml に足す形（段階6で入れた。書かなければ flow は delegate、枠は "既定"）
+flow = "delegate"              # delegate / main
 
 [parts]
-implementer = "tsukumo-workflow:no-delegate"
-acceptor = "tsukumo-workflow:acceptor"
-retrospect = "tsukumo-workflow:retrospect"   # "なし" で外す
-ship = "tw"                     # 今は tw finish だけ
+implementer = "既定"           # 既定 = 同梱のパーツを一覧の末尾一致で探す
+acceptor = "my-plugin:acceptor"   # 全名で書くと完全一致で呼ぶ
+retrospect = "なし"            # "なし" で外せるのはこの枠だけ
+ship = "既定"                  # 既定は tw finish の手順
 ```
+
+`direct`（近道）と `hold` は、タスクごとに近道の印と status で決まるので `flow` の値にしない（リポジトリ全体を近道にすると、WORKFLOW.md「委譲しない近道」の基準の表を素通りする）。
 
 - **選べるのは流れの種類と、各枠のパーツだけ。** 段を自由に並べ替える形にはしない。受け入れは実装の後・送り出しは最後という順の制約と関門は段の意味に依るので、自由に並べられると壊れた流れが作れ、制約を画面と `tw` の両方で守ることになる
 - **`tw` が設定の口を2つ持つ。** `tw config --schema`（流れの種類・枠の名前・枠ごとの既定・`なし` を許すか、を JSON で出す）と `tw config set <キー> <値>`（検査してから書く）。オーケストレーターは今までどおり `tw config` で解けた値を読む
@@ -202,7 +204,7 @@ ship = "tw"                     # 今は tw finish だけ
 | 3. 関門を名前と段から外す | lap はオーケストレーターが打つと正典に書く。`ask-guard` の境を「lap `retro` の後」から「作業の段（委譲・受け入れ）を終えた後」に替える。`commit-guard`・`handback-guard` を `agent_type` の末尾ではなく「着手の控えがある作業ツリーで動くサブエージェント」に掛ける | 振り返りの lap を打たない流れでも受け入れの後の質問が通る selftest と、`no-delegate` 以外の名前の委譲先でも拒む selftest | 試す価値あり |
 | 4. 名前を組み替える | `task-workflow` を `task-model` に改名し、`next-task` の手順5〜8と副ファイルを新しい `task-workflow` へ、変種を `flows/`、パーツを `parts/` へ移す。`next-task` は印を立てたら `task-workflow` を呼ぶ | `next-task/SKILL.md` が手順0〜4だけ。実タスク1件を `/next-task` で送り出せる。tsukumo の `vendor/tsukumo-plugins` を上げて `pnpm run check --full` が通る | 試す価値あり（GH-779 で組み替えた。手順の番号4a〜8は `task-workflow/SKILL.md` に残し、`check_repo.py` に依存の辺と `task-model` の名指しの検査を足した。実タスクでの送り出しと tsukumo 側の追随は残り） |
 | 5. ふんわりした指定 | `next-task` が頼み文の語と `tw status` の summary・label から `READY` を絞り、1件に決まらなければ候補を見せて聞く（`/loop` からは使わない） | 「不具合修正のどれか」で候補が絞られる | 試す価値あり |
-| 6. 差し込みの設定 | `.tw/config.toml` に `flow` と `[parts]` を足し、`tw config` が解いて出す。`tw config --schema`・`tw config set` を足す。オーケストレーターは「名前で呼ぶ決まり」に沿って設定の名前で呼ぶ | 既定と違う受け入れ役を設定だけで当てられる。`--schema` の出力を selftest が固定する | 試す価値あり |
+| 6. 差し込みの設定 | `.tw/config.toml` に `flow` と `[parts]` を足し、`tw config` が解いて出す。`tw config --schema`・`tw config set` を足す。オーケストレーターは「名前で呼ぶ決まり」に沿って設定の名前で呼ぶ | 既定と違う受け入れ役を設定だけで当てられる。`--schema` の出力を selftest が固定する | 試す価値あり（GH-782 で入れた。`--schema` は版の欄 `schema` と、欄ごとの `label`・`description`・`candidates`〔`agent`／`skill`〕・`allow_none` を持つ1行の JSON で、説明文の正は `layout.py` の表。`set` は行で書き換え、ほかの行とコメントを変えない。流れの語彙は `tw` に持ち、`check_repo.py` が `flows/` と `SKILL.md` との対応を見る。`既定` の末尾一致が複数当たったら止めて `tw config set` で全名を選ばせる。実際に別の受け入れ役で1件送るのは残り） |
 | 7. tsukumo の設定画面 | tsukumo 側で ADR 0024・0025 と `workflow-contract.md` に「設定の口」を足し、歯車の設定に、`tw config --schema` から描いて `tw config set` で書く欄を置く | 画面で受け入れ役を替えると `.tw/config.toml` が変わり、次の `/next-task` で効く | 推測 |
 
 ## 6. 採らなかった案

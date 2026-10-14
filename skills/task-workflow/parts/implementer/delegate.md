@@ -29,9 +29,12 @@
 
    **(d) 委譲先の選び方と依頼**: Agent ツールで `difficulty` と同じモデルのサブエージェントへ（メインのモデルは
    判断材料にしない。一致していても委譲する。正典「difficulty とモデルの切り替え」）。
-   `subagent_type` は、Agent ツールの説明に並ぶエージェント末尾が `no-delegate` の行
+   `subagent_type` は `tw config` の `parts.implementer` の行で決める。全名なら、Agent ツールの説明に並ぶエージェントのうち
+   その名前と完全一致するものを使う（一覧に無ければ代えずに、行を添えて人に預け `tw release T-xxx` する）。
+   `既定` なら、Agent ツールの説明に並ぶエージェント末尾が `no-delegate` の行
    （`no-delegate`（リンクで入れたとき）か `tsukumo-workflow:no-delegate`（plugin で入れたとき）。`Agent` を
    外したエージェント定義で、tsukumo-plugins の `agents/no-delegate.md`）があれば、一覧に出ている名前のまま使う。
+   末尾一致が複数当たったら選ばずに止め、`tw config set parts.implementer <全名>` で選ぶよう人に案内して `tw release T-xxx` する。
    一覧に無ければ、まだ入れていない（人がやること）とみなして、これまでどおり `general-purpose` を使う。hook の関門は、リンクで入れたときは
    `no-delegate` の定義が、plugin で入れたときは `hooks/hooks.json` が名前を問わずサブエージェントに掛ける（正典の `tw-reference.md`「hook の関門」節）。一覧に無くて `general-purpose` に
    落ちたときは関門が掛からず、手順6の `COMMITS_SINCE_CLAIM` と手順5bの `plan-check`・手順6の

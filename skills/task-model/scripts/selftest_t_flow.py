@@ -476,6 +476,34 @@ def test_config_doctor() -> None:
                                       for l in r.stdout.splitlines()),
             r.stdout + r.stderr,
         )
+        write(os.path.join(repo, ".tw", "config.toml"),
+              'verify = "なし"\nflow = "main"\n\n[parts]\nacceptor = "my-plugin:acceptor"\nretrospect = "なし"\n')
+        r = run_task(repo, "config-doctor")
+        check("正しい flow と [parts] なら config は OK",
+              r.returncode == 0 and any(l.startswith("config\tOK\t.tw/config.toml") for l in r.stdout.splitlines()),
+              r.stdout + r.stderr)
+        write(os.path.join(repo, ".tw", "config.toml"), 'verify = "なし"\n[parts]\nimplementer = "なし"\n')
+        r = run_task(repo, "config-doctor")
+        check(
+            "外せない枠の なし は行番号付きで config INVALID（終了コード3）",
+            r.returncode == 3 and any(l.startswith("config\tINVALID\t.tw/config.toml\t") and ":3:" in l
+                                      for l in r.stdout.splitlines()),
+            r.stdout + r.stderr,
+        )
+        for body, lineno, what in (
+            ('verify = "なし"\nflow = "direct"\n', 2, "語彙の外の flow"),
+            ('verify = "なし"\n[foo]\n', 2, "知らない表"),
+            ('verify = "なし"\n[parts]\nreviewer = "x"\n', 3, "[parts] の知らない枠"),
+            ('verify = "なし"\n[parts]\nacceptor = "a b"\n', 3, "全名の形でない値"),
+            ('verify = "なし"\n[parts]\nacceptor = ""\n', 3, "空の値"),
+            ('verify = "なし"\n[parts]\nship = "x"\n[parts]\n', 4, "2つ目の [parts]"),
+            ('verify = "なし"\n[parts]\nflow = "main"\n', 3, "[parts] の後ろの flow"),
+        ):
+            write(os.path.join(repo, ".tw", "config.toml"), body)
+            r = run_task(repo, "config")
+            check(f"{what} は config が行番号付きの INVALID（終了コード3）",
+                  r.returncode == 3 and r.stdout.startswith(f"INVALID\t.tw/config.toml:{lineno}:"), r.stdout + r.stderr)
+        check("[parts] の後ろの flow には表より前に書くと添える", "より前に書く" in r.stdout, r.stdout)
 
 
 def test_config_doctor_prerequisites() -> None:
@@ -602,6 +630,32 @@ def test_config_command() -> None:
             and "format\tなし\tdefault" in lines,
             r.stdout + r.stderr,
         )
+        check(
+            "flow・[parts] が無ければ既定を default で出し、枠は決まった順",
+            "flow\tdelegate\tdefault" in lines
+            and lines[-4:] == [f"parts.{s}\t既定\tdefault" for s in ("implementer", "acceptor", "retrospect", "ship")],
+            r.stdout,
+        )
+
+        write(
+            os.path.join(repo, ".tw", "config.toml"),
+            'verify = "./check.sh"\nflow = "main"  # 説明\n\n[parts]\n'
+            'acceptor = "my-plugin:acceptor"  # 自前\nretrospect = "なし"\n',
+        )
+        r = run_task(repo, "config")
+        lines = r.stdout.splitlines()
+        check(
+            "flow・[parts] を書いたら解けた値を config で出し、書いていない枠は既定",
+            r.returncode == 0
+            and "flow\tmain\tconfig" in lines
+            and lines[-4:] == [
+                "parts.implementer\t既定\tdefault",
+                "parts.acceptor\tmy-plugin:acceptor\tconfig",
+                "parts.retrospect\tなし\tconfig",
+                "parts.ship\t既定\tdefault",
+            ],
+            r.stdout + r.stderr,
+        )
         r = run_task(repo, "status")
         check("config.toml があれば status は old_layout の行を出さない",
               r.returncode == 0 and "old_layout" not in r.stdout, r.stdout + r.stderr)
@@ -610,6 +664,93 @@ def test_config_command() -> None:
         r = run_task(repo, "config")
         check("読めなければ INVALID（終了コード3）", r.returncode == 3 and r.stdout.startswith("INVALID\t.tw/config.toml:2:"),
               r.stdout + r.stderr)
+
+
+def test_config_schema() -> None:
+    say("task.py config --schema: 欄の形を1行の JSON で出す（設定にも git にもよらない）")
+    with tempfile.TemporaryDirectory() as tmp:
+        r = run_task(tmp, "config", "--schema")
+        check("git の外でも終了コード0で1行", r.returncode == 0 and len(r.stdout.splitlines()) == 1, r.stdout + r.stderr)
+        schema = json.loads(r.stdout)
+        keys = schema["keys"]
+        by_key = {k["key"]: k for k in keys}
+        slots = ("implementer", "acceptor", "retrospect", "ship")
+        check("形の版は1で、既定・なしの語を持つ",
+              schema["schema"] == 1 and schema["default_word"] == "既定" and schema["none_word"] == "なし", repr(schema))
+        check("欄は flow と parts.<枠> の決まった順",
+              [k["key"] for k in keys] == ["flow", *(f"parts.{s}" for s in slots)], repr([k["key"] for k in keys]))
+        flow = by_key["flow"]
+        check("flow は delegate・main から選び、既定は delegate",
+              flow["kind"] == "choice" and flow["default"] == "delegate"
+              and [v["value"] for v in flow["values"]] == ["delegate", "main"]
+              and all(v["label"] and v["description"] for v in flow["values"]), repr(flow))
+        parts = [by_key[f"parts.{s}"] for s in slots]
+        check("枠は part で既定は 既定",
+              all(p["kind"] == "part" and p["default"] == "既定" for p in parts), repr(parts))
+        check("なし を許すのは parts.retrospect だけ",
+              [p["key"] for p in parts if p["allow_none"]] == ["parts.retrospect"], repr(parts))
+        check("候補の出どころは実装役・受け入れ役が agent、ほかが skill",
+              [p["candidates"] for p in parts] == ["agent", "agent", "skill", "skill"], repr(parts))
+        check("どの欄も label と description を持つ", all(k["label"] and k["description"] for k in keys), repr(keys))
+
+
+def test_config_set() -> None:
+    say("task.py config set: 検査してから .tw/config.toml に書き、ほかの行・並び・コメントを変えない")
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = _make_config_doctor_repo(tmp, "set")
+        path = os.path.join(repo, ".tw", "config.toml")
+
+        def read_config_file() -> str:
+            with open(path, encoding="utf-8") as f:
+                return f.read()
+
+        original = '# 設定\nverify = "なし"  # 検証\n\nbranch = "切らない"\n'
+        write(path, original)
+        r = run_task(repo, "config", "set", "flow", "main")
+        check("flow を足すと SET", r.returncode == 0 and r.stdout == "SET\tflow\tmain\n", r.stdout + r.stderr)
+        check("flow は最上位の最後のキーの次に1行増え、ほかの行はそのまま",
+              read_config_file() == original + 'flow = "main"\n', read_config_file())
+
+        r = run_task(repo, "config", "set", "parts.acceptor", "my-plugin:acceptor")
+        check("[parts] が無ければ末尾に表ごと足す",
+              r.returncode == 0 and read_config_file() == original + 'flow = "main"\n\n[parts]\nacceptor = "my-plugin:acceptor"\n',
+              read_config_file() + r.stderr)
+        write(path, read_config_file().replace('acceptor = "my-plugin:acceptor"', 'acceptor = "my-plugin:acceptor"  # 自前'))
+        r = run_task(repo, "config", "set", "parts.acceptor", "other:acceptor")
+        check("同じキーは値だけ変わり、行末のコメントが残る",
+              r.returncode == 0 and 'acceptor = "other:acceptor"  # 自前\n' in read_config_file()
+              and read_config_file().count("acceptor =") == 1, read_config_file())
+        r = run_task(repo, "config", "set", "parts.retrospect", "なし")
+        check("[parts] の最後のキーの次に足す",
+              r.returncode == 0 and read_config_file().endswith('acceptor = "other:acceptor"  # 自前\nretrospect = "なし"\n'),
+              read_config_file())
+        r = run_task(repo, "config", "set", "flow", "delegate")
+        check("[parts] があっても flow は表より前の行を差し替える",
+              r.returncode == 0 and 'flow = "delegate"\n\n[parts]\n' in read_config_file(), read_config_file())
+        lines = run_task(repo, "config").stdout.splitlines()
+        check("tw config が書いた値を config で出す",
+              "flow\tdelegate\tconfig" in lines and "parts.acceptor\tother:acceptor\tconfig" in lines
+              and "parts.retrospect\tなし\tconfig" in lines, repr(lines))
+
+        before = read_config_file()
+        for args in (
+            ("verify", "x"),
+            ("parts.foo", "x"),
+            ("parts.acceptor", "なし"),
+            ("flow", "direct"),
+            ("parts.ship", "a b"),
+        ):
+            r = run_task(repo, "config", "set", *args)
+            check(f"set {' '.join(args)} は終了コード2で理由を stderr に出し、ファイルを変えない",
+                  r.returncode == 2 and r.stdout == "" and r.stderr.strip() != "" and read_config_file() == before,
+                  r.stdout + r.stderr)
+        r = run_task(repo, "config", "set", "flow")
+        check("値の無い set は終了コード2", r.returncode == 2, r.stdout + r.stderr)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = _make_config_doctor_repo(tmp, "no-config", with_config=False)
+        r = run_task(repo, "config", "set", "flow", "main")
+        check("設定が無ければ MISSING（終了コード6）", r.returncode == 6 and r.stdout.startswith("MISSING"), r.stdout + r.stderr)
 
 
 def test_open_stages() -> None:
@@ -666,6 +807,8 @@ TESTS = (
     test_config_doctor_prerequisites,
     test_bin_tw_python_floor,
     test_config_command,
+    test_config_schema,
+    test_config_set,
     test_metrics_stages,
     test_metrics_stages_parallel_steps,
     test_metrics_stages_edge,

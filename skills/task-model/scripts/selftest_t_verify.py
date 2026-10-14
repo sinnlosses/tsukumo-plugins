@@ -377,7 +377,7 @@ def readonly_subcommands() -> list[str]:
     names = []
     for row in section.splitlines():
         cells = re.split(r" (?<!\\)\| ", row)
-        m = re.match(r"\| `([a-z-]+)", cells[0])
+        m = re.match(r"\| `([a-z-]+(?: --[a-z-]+)*)", cells[0])
         if m and len(cells) > 1 and "読むだけ" in cells[1]:
             names.append(m.group(1))
     return names
@@ -398,6 +398,7 @@ def test_readonly_commands_stay_out_of_git() -> None:
         "verify-check": ["verify-check"],
         "metrics": ["metrics"],
         "config": ["config"],
+        "config --schema": ["config", "--schema"],
         "config-doctor": ["config-doctor"],
     }
     names = readonly_subcommands()

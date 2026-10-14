@@ -33,6 +33,7 @@ import tracker
 import tw_accept
 import tw_base
 import tw_claim
+import tw_config
 import tw_edit
 import tw_finish
 import tw_handback
@@ -158,10 +159,14 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
 出力: `VERIFIED_SAME\t<木の SHA>`（検証を省いてよい）、そうでなければ `NOT_VERIFIED\t<理由>`（`none`＝控えが無い／`base`＝主ブランチが進んでいて `verify` が取り込める。`verify_before_ship` があり取り込みが衝突しないときは、この理由にせず鍵で照らす／`head`／`scheme`＝別の版の `tw` が控えた。第3列にこの `tw` のチェックアウトの `tw_verify.py` の実パス／`content`／`command`）。どちらも終了コード0。検証コマンドが無ければ `NOTHING`""",
     ),
     "config": (
-        "解けた設定を出す（読むだけ）。",
-        r"""解けた設定を出す（読むだけ）
+        "解けた設定を出す（読むだけ）。`--schema` で欄の形、`set <キー> <値>` で書く。",
+        r"""解けた設定を出す（読むだけ）。`--schema` は欄の形を出し（読むだけ）、`set <キー> <値>` は検査してから `.tw/config.toml` に書く
 
-出力: 1行目 `CONFIG\t.tw/config.toml`、続けて全キーを `<キー>\t<解けた値>\t<config|default>`（`config` は設定に書いてある、`default` は既定。コマンドのキーで値が無ければ `なし`、ほかは `-`。`base_branch` を書いていなければ git で決めた主ブランチ）。設定が無ければ `MISSING`（終了コード6）。`.beads` が無くても打てる""",
+`--schema`: 設定にも git にもよらず、1行の JSON を出す（`tw` の「stdout は先頭語の TSV」の、hook の口に続く例外）。形は `{"schema": <形の版>, "default_word": "既定", "none_word": "なし", "keys": [...]}` で、`keys` は画面に出す順の欄。各欄は `key`（`flow`・`parts.<枠>`）・`label`・`description`・`kind`（`choice`＝`values` の `{"value","label","description"}` から選ぶ／`part`＝パーツの全名を書く）・`default`、`part` の欄は加えて `candidates`（`agent`＝Agent ツールの一覧から／`skill`＝スキルの一覧から）と `allow_none`（`なし` を許すか）。`schema` は欄を消す・意味を変えるときだけ上がる。パーツの候補は出さない。
+
+`set <キー> <値>`: 書けるキーは `flow` と `parts.<枠>` だけ。キーの行があれば値だけを差し替え（行末のコメントは残す）、無ければ `flow` は最初の表より前、`parts.<枠>` は `[parts]` の表の最後（表が無ければ末尾に表ごと）へ足す。ほかの行と並びは変えない。出力 `SET\t<キー>\t<値>`。知らないキー・語彙の外の値は stderr に理由を出して終了コード2（ファイルは変えない）。設定が無ければ `MISSING`（終了コード6）、読めなければ `INVALID`（終了コード3）
+
+出力: 1行目 `CONFIG\t.tw/config.toml`、続けて全キーを `<キー>\t<解けた値>\t<config|default>`（`config` は設定に書いてある、`default` は既定。コマンドのキーで値が無ければ `なし`、ほかは `-`。`base_branch` を書いていなければ git で決めた主ブランチ。`flow` は無ければ `delegate`）、そのあと `[parts]` の枠ごとに `parts.implementer`・`parts.acceptor`・`parts.retrospect`・`parts.ship` の順で `parts.<枠>\t<既定|なし|全名>\t<config|default>`。設定が無ければ `MISSING`（終了コード6）。`.beads` が無くても打てる""",
     ),
     "config-doctor": (
         "このリポジトリが今の読み取りに合っているかを点検する（読むだけ。`--fix` は無い）。",
@@ -175,7 +180,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
         "台帳の `flow/` の記録から、直近 N 日と前の同じ長さの期間の数を並べる（読むだけ）。",
         r"""台帳の `flow/` の記録（`claim`・`release`・`verify`・`pause`・`step`・`lap`・`ship`・`done` のたびに `tw` が1行足す。書けなくても元のサブコマンドの出力と終了コードは変わらず、標準エラーに1行出るだけ）から、直近 N 日（既定 7）と、その前の同じ長さの期間の数を並べる（読むだけ）。`verify` は着手の印を持つタスクごと、`ship` は送れたタスクごと（`NOTHING` も着手の印を持つタスクごとに1行足すが、出力の `shipped` の数は `SHIPPED` だけ。`VERIFY_FAILED`・`CONFLICT`・`RACE` は印を持つタスクごと）に1行
 
-出力: 1行目 `PERIOD\t<N>d\tcurrent\tprevious`、続けて `shipped`（送り出した件数）・`lead_median_seconds`・`lead_max_seconds`（着手から送り出しまで）・`verify_per_task`（1件あたりの `verify` の回数の平均）・`verify_failed`（`FORMAT_FAILED`・`VERIFY_NOT_PASSED` の件数）・`ship_verify_failed`（`ship` の `VERIFY_FAILED`）・`reclaim`（`release` のあとの `claim`）・`reflection_none_ratio`（`done` のうち振り返りが兆候なしの割合。`dropped` と、近道で振り返りを省いた `done`〔`reflection` が `skipped`〕は除く）の各行が `<名前>\t<今>\t<前>`（無ければ `-`）。壊れた行は読み飛ばし `SKIPPED\t<件数>`。記録が無ければ `EMPTY`。`--stages` を付けるとこの出力の代わりに、直近 N 日に送り出したタスク〔`ship` が `SHIPPED`〕と、`done` したが `ship` が `NOTHING` だったタスク〔作業先が別のリポジトリのもの〕の段ごとの所要時間を `STAGE\t<段>\t<difficulty>\t<道>\t<件数>\t<中央値秒>\t<最大秒>` の行で出す（道は、着手から送り出しまでに `direct` の `lap` があり `delegate` の `lap` が無ければ `direct`〔委譲しない近道〕、ほかは `normal`。段は計画〔`claim`〕・直し〔`direct` の `lap`〕・委譲〔`delegate` の `lap`・`step`〕・検証〔`verify`。記録された所要秒〕・受け入れ・レビュー・振り返り〔それぞれの `lap`〕・合流〔`land` の `lap`〕・送り出し〔`done`〕・反映〔`sync` の `lap`〕の順。`edge` 付きの `lap` の段は同じタスクの同じ段の `end` の時刻 − `start` の時刻（検証の秒は引かない）で、`end` の無い `start` は所要に入れず、`STAGE` の行のあとに `OPEN\t<段>\t<件数>` の行で数を出す（`edge` の無い旧い `lap` は次の規則）。検証でない段の時間は、次の検証でない出来事までの差から、検証の区間〔記録の時刻から記録の秒だけ前まで〕と重なった秒を引く。並列の段の返却が重なっても区間は時刻順に切れて重ならないので、委譲の時間は段ごとの和でなく壁時計の長さになる。前の期間との比較は付けない。材料が無ければ `EMPTY`）""",
+出力: 1行目 `PERIOD\t<N>d\tcurrent\tprevious`、続けて `shipped`（送り出した件数）・`lead_median_seconds`・`lead_max_seconds`（着手から送り出しまで）・`verify_per_task`（1件あたりの `verify` の回数の平均）・`verify_failed`（`FORMAT_FAILED`・`VERIFY_NOT_PASSED` の件数）・`ship_verify_failed`（`ship` の `VERIFY_FAILED`）・`reclaim`（`release` のあとの `claim`）・`reflection_none_ratio`（`done` のうち振り返りが兆候なしの割合。`dropped` と、近道か設定で振り返りを省いた `done`〔`reflection` が `skipped`〕は除く）の各行が `<名前>\t<今>\t<前>`（無ければ `-`）。壊れた行は読み飛ばし `SKIPPED\t<件数>`。記録が無ければ `EMPTY`。`--stages` を付けるとこの出力の代わりに、直近 N 日に送り出したタスク〔`ship` が `SHIPPED`〕と、`done` したが `ship` が `NOTHING` だったタスク〔作業先が別のリポジトリのもの〕の段ごとの所要時間を `STAGE\t<段>\t<difficulty>\t<道>\t<件数>\t<中央値秒>\t<最大秒>` の行で出す（道は、着手から送り出しまでに `direct` の `lap` があり `delegate` の `lap` が無ければ `direct`〔委譲しない近道〕、ほかは `normal`。段は計画〔`claim`〕・直し〔`direct` の `lap`〕・委譲〔`delegate` の `lap`・`step`〕・検証〔`verify`。記録された所要秒〕・受け入れ・レビュー・振り返り〔それぞれの `lap`〕・合流〔`land` の `lap`〕・送り出し〔`done`〕・反映〔`sync` の `lap`〕の順。`edge` 付きの `lap` の段は同じタスクの同じ段の `end` の時刻 − `start` の時刻（検証の秒は引かない）で、`end` の無い `start` は所要に入れず、`STAGE` の行のあとに `OPEN\t<段>\t<件数>` の行で数を出す（`edge` の無い旧い `lap` は次の規則）。検証でない段の時間は、次の検証でない出来事までの差から、検証の区間〔記録の時刻から記録の秒だけ前まで〕と重なった秒を引く。並列の段の返却が重なっても区間は時刻順に切れて重ならないので、委譲の時間は段ごとの和でなく壁時計の長さになる。前の期間との比較は付けない。材料が無ければ `EMPTY`）""",
     ),
     "sync": (
         "トラッカーと同期する（`github` は双方向、`jira` は取り込み、打ち直しも兼ねる）。",
@@ -281,7 +286,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("land").add_argument("branch")
 
     sub.add_parser("config-doctor")
-    sub.add_parser("config")
+    p_config = sub.add_parser("config")
+    p_config.add_argument("--schema", action="store_true")
+    p_config.add_argument("action", nargs="?", choices=("set",))
+    p_config.add_argument("key", nargs="?")
+    p_config.add_argument("value", nargs="?")
 
     p_show = sub.add_parser("show")
     p_show.add_argument("task_id")
@@ -344,7 +353,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> None:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if args.command == "config":
+        if args.schema and args.action is not None:
+            parser.error("config: --schema と set は一緒に打てない")
+        if args.action == "set" and (args.key is None or args.value is None):
+            parser.error("config set: <キー> と <値> が要る")
+        if args.action is None and args.key is not None:
+            parser.error("config: 引数は set <キー> <値> だけ")
+        if args.schema:
+            tw_config.cmd_config_schema()
+            return
 
     if args.command == "commit-guard":
         commit_guard.run(sys.stdin, sys.stdout, args.agent_scoped)
@@ -378,7 +399,10 @@ def main(argv: list[str] | None = None) -> None:
             return
         layout.read_config(toplevel)  # 読めない設定はどのサブコマンドでも先に INVALID にする
         if args.command == "config":
-            tw_status.cmd_config(toplevel)
+            if args.action == "set":
+                tw_config.cmd_config_set(toplevel, args.key, args.value)
+            else:
+                tw_status.cmd_config(toplevel)
             return
         _run(toplevel, args)
     except (gitinfo.NoBaseBranch, layout.ConfigError) as e:

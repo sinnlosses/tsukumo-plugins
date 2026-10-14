@@ -115,6 +115,21 @@ def main() -> int:
     check_repo.check_task_model_names(skills, agents)
     check("実物の task-model はスキル名とエージェント名を書かない", check_repo.problems == [])
 
+    check_repo.problems.clear()
+    check_repo.check_flow_and_part_names()
+    check("実物の flows/ と SKILL.md は tw の流れの語彙・パーツの枠と合う", check_repo.problems == [])
+    flow_problems = check_repo.flow_and_part_problems
+    skill_text = "`parts.implementer` `parts.acceptor`"
+    keys = ["parts.implementer", "parts.acceptor"]
+    check("語彙と flows/ が合い、枠が SKILL.md に出れば問題なし",
+          flow_problems(["delegate", "main"], "delegate", keys, ["direct", "hold", "main"], skill_text) == [])
+    check("語彙に無い flows/ のファイルを落とす",
+          len(flow_problems(["delegate", "main"], "delegate", keys, ["hold", "main", "extra"], skill_text)) == 1)
+    check("flows/ に無い語彙の値を落とす",
+          len(flow_problems(["delegate", "main"], "delegate", keys, ["hold"], skill_text)) == 1)
+    check("SKILL.md に出ない枠を落とす",
+          len(flow_problems(["delegate"], "delegate", [*keys, "parts.ship"], [], skill_text)) == 1)
+
     if failures:
         print(f"\n{len(failures)} 件落ちた: {', '.join(failures)}")
         return 1
