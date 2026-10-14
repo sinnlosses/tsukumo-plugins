@@ -61,6 +61,15 @@ def main() -> int:
     check_repo.check_sibling_path_references(skills)
     check("実物のリポジトリは兄弟のパスで task-workflow しか指さない", check_repo.problems == [])
 
+    entry = check_repo.RETROSPECT_ENTRY_REFERENCE
+    check("retrospect/SKILL.md の指し方を拾う", entry.search("`retrospect/SKILL.md` の出典") is not None)
+    check("retrospect の SKILL.md の指し方を拾う", entry.search("`retrospect` の SKILL.md の節") is not None)
+    check("detail.md の指し方は拾わない", entry.search("`retrospect/detail.md` の出典") is None)
+
+    check_repo.problems.clear()
+    check_repo.check_retrospect_entry_references(skills)
+    check("実物のリポジトリは retrospect の本文を detail.md で指す", check_repo.problems == [])
+
     if failures:
         print(f"\n{len(failures)} 件落ちた: {', '.join(failures)}")
         return 1

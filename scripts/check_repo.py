@@ -23,6 +23,7 @@
 - 本文が `${CLAUDE_SKILL_DIR}/../<兄弟>` で兄弟スキルを指しているなら、`REQUIRES` にその兄弟スキル名があること
 - 兄弟のパス `${CLAUDE_SKILL_DIR}/../<兄弟>` で指してよいのは `task-workflow` と自分自身だけであること
   （ほかのパーツは Skill ツールで名前を指して呼び、そのパーツの道具は置き場〔Base directory〕から打つ）
+- retrospect の本文を `retrospect/SKILL.md` で指す文言が無いこと（本文は `detail.md`）
 """
 
 from __future__ import annotations
@@ -523,6 +524,17 @@ def check_sibling_path_references(names: list[str]) -> None:
                 fail(f"{os.path.relpath(md, ROOT)}: `{dep}` を兄弟のパスで指している（Skill ツールで名前を指して呼ぶ）")
 
 
+RETROSPECT_ENTRY_REFERENCE = re.compile(r"retrospect/SKILL\.md|`retrospect` の SKILL\.md|retrospect の SKILL\.md")
+
+
+def check_retrospect_entry_references(names: list[str]) -> None:
+    """retrospect の本文は `detail.md` にあり、`SKILL.md` は入口だけ。本文を `SKILL.md` で指す文言を落とす。"""
+    for n in names:
+        for md in markdown_files(n):
+            if RETROSPECT_ENTRY_REFERENCE.search(read(md)):
+                fail(f"{os.path.relpath(md, ROOT)}: retrospect の本文を `SKILL.md` で指している（本文は `detail.md`）")
+
+
 def check_sibling_references(names: list[str]) -> None:
     """本文が `${CLAUDE_SKILL_DIR}/../<兄弟>` で指す兄弟が、そのスキルの `REQUIRES` にあるか。"""
     for n in names:
@@ -620,6 +632,7 @@ def main() -> None:
     check_requires(names)
     check_sibling_references(names)
     check_sibling_path_references(names)
+    check_retrospect_entry_references(names)
     check_sibling_imports(names)
     check_python_syntax(names)
     check_task_workflow_layout()
