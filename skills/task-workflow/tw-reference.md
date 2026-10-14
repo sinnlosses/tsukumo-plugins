@@ -31,7 +31,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | `config-doctor` | リポジトリが今の読み取りに合っているかを読むだけで点検するとき（`--fix` は無い） | `base_branch`・`config`・`python`・`git`・`bd`・`dolt`・`gh`・`tw`・`store`・`beads`・`tracker` の行（2語目が `OK`・`MISSING`・`INVALID`、前提の行は `OPTIONAL` も） |
 | `commit-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ deny の JSON 1行。通すときは何も出さない |
 | `pause [T-xxx [<n>]]` | 判断が要って止める・目視待ち・計画を作業の後に書いた返却の直前に打つ（委譲先。並列の段の担当は ID と段の番号を付ける） | `PAUSED`・`NOT_OWNER` |
-| `step T-xxx <n>` | 最後でない段を済ませて返す直前に打つ（委譲先。着手した作業ツリーで打つ） | `STEPPED`・`LAST_STEP`（終了コード4。最後の段は `tw verify` を通して返す）・`NOT_OWNER` |
+| `step T-xxx <n>` | 最後でない段を済ませて返す直前に打つ（委譲先。着手した作業ツリーで打つ。別のリポジトリのタスクでは、出力の鍵は着手側のもの。作業先の作業ツリーの控えは作業先の中身の鍵で別に書かれる） | `STEPPED`・`LAST_STEP`（終了コード4。最後の段は `tw verify` を通して返す）・`NOT_OWNER` |
 | `lap T-xxx <段> [start\|end]` | `/next-task` の段の頭と終わりを記録するとき（メイン。段は `direct`・`delegate`・`accept`・`review`・`retro`・`land`・`sync`） | `LAPPED`・`NOT_CLAIMED` |
 | `handback-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ JSON 1行（`SubagentStop` は `block`、`PreToolUse` は deny）。通すときは何も出さない |
 | `ask-guard` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ deny の JSON 1行（理由はタスクIDと次の一手）。通すときは何も出さない |
