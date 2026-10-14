@@ -26,7 +26,7 @@
 
    受け入れ役は Agent ツールで起こす。`subagent_type` は、Agent ツールの説明に並ぶエージェント末尾が `acceptor` の行
    （`acceptor` か `tsukumo-workflow:acceptor`。tsukumo-plugins の `agents/acceptor.md`。モデルは Opus 固定で、
-   読むだけの定義。返却を拒む hook を持たない）があれば、一覧に出ている名前のまま `model` を渡さずに起こす。
+   読むだけの定義。書き換えないので返却は `tw handback-guard` に判定されない）があれば、一覧に出ている名前のまま `model` を渡さずに起こす。
    無ければ手順5の `subagent_type` の選び方と同じにして `model: opus` を渡す。決まりの本文は貼らず、
    渡すのは次だけ（受け入れ役は `${CLAUDE_SKILL_DIR}` を持たないので、パスは解決した絶対パスにする）:
    - 作業ツリーのパス・差分を出すコマンド（`git diff HEAD` と、未追跡の新しいファイルを並べる

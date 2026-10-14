@@ -32,8 +32,8 @@
    `subagent_type` は、Agent ツールの説明に並ぶエージェント末尾が `no-delegate` の行
    （`no-delegate`（リンクで入れたとき）か `tsukumo-workflow:no-delegate`（plugin で入れたとき）。`Agent` を
    外したエージェント定義で、tsukumo-plugins の `agents/no-delegate.md`）があれば、一覧に出ている名前のまま使う。
-   一覧に無ければ、まだ入れていない（人がやること）とみなして、これまでどおり `general-purpose` を使う。`no-delegate` は hook の関門が
-   掛かる定義でもある（正典の `tw-reference.md`「hook の関門」節）。`general-purpose` に
+   一覧に無ければ、まだ入れていない（人がやること）とみなして、これまでどおり `general-purpose` を使う。hook の関門は、リンクで入れたときは
+   `no-delegate` の定義が、plugin で入れたときは `hooks/hooks.json` が名前を問わずサブエージェントに掛ける（正典の `tw-reference.md`「hook の関門」節）。一覧に無くて `general-purpose` に
    落ちたときは関門が掛からず、手順6の `COMMITS_SINCE_CLAIM` と手順5bの `plan-check`・手順6の
    `verify-check` だけが頼りになる。
    決まりの本文は貼らず、次を渡す（委譲先は `${CLAUDE_SKILL_DIR}` を持たないので、パスは解決した絶対パスにする）:

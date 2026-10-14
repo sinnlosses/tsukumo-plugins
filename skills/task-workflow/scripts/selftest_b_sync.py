@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import time
 
@@ -13,6 +14,7 @@ sys.path.insert(0, HERE)
 import beads  # noqa: E402
 import ledger  # noqa: E402
 import tracker  # noqa: E402
+import tracker_github  # noqa: E402
 from selftest_b_fakegithub import github  # noqa: E402
 from selftest_b_support import bd, new, num, rows  # noqa: E402
 from selftest_fixtures import run_task, start_task  # noqa: E402
@@ -40,6 +42,64 @@ def test_tracker_github_bidirectional() -> None:
         check("取り込みで GitHub の本文が入り、錠の持ち主（assignee）は戻る", issue is not None
               and "GitHub で直した本文" in str(issue.raw.get("description"))
               and issue.assignee == "wt1" and issue.status == "in_progress", r.stdout + str(issue and issue.raw))
+
+
+def test_tracker_deadline_counted_per_gh_call() -> None:
+    say("トラッカー github・gh を打つたびに残りを数え直し、尽きたらそれ以降は打たない")
+    calls: list[list[str]] = []
+    reply: dict = {}
+
+    def stub_gh(_toplevel: str, args: list[str], _timeout: float | None = None) -> subprocess.CompletedProcess:
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, json.dumps(reply), "")
+
+    def budget(allowed: int):
+        count = [0]
+
+        def remaining() -> float | None:
+            count[0] += 1
+            if count[0] > allowed:
+                raise tracker_github._Failed("トラッカーへの反映が上限の秒数を超えた")
+            return 1.0
+
+        return remaining
+
+    real_gh = tracker_github._gh
+    tracker_github._gh = stub_gh
+    try:
+        reply.update({"number": 1})
+        session = tracker.Session("/nonexistent", tracker.Tracker("github"))
+        session._prefix, session._repo, session._remaining = beads.PREFIX_GITHUB, "o/r", budget(1)
+        lines = session.before(["gh-1", "gh-2", "gh-3"])
+        check("before: 2件目の前で尽きたら FAILED の行を返す", any("TRACKER\tFAILED\tgithub" in x for x in lines), str(lines))
+        check("before: 尽きたあとの Issue は引かない", len(calls) == 1, str(calls))
+
+        calls.clear()
+        reply.clear()
+        reply["data"] = {"node": {"items": {"nodes": [], "pageInfo": {"hasNextPage": True, "endCursor": "c"}}}}
+        failed = False
+        try:
+            tracker_github.fill_items("/nonexistent", {"id": "P"}, {}, set(), "o/r", budget(2))
+        except tracker_github._Failed:
+            failed = True
+        check("Project を一巡するページ送りも、3ページ目の前で尽きたら打たない", failed and len(calls) == 2, str(calls))
+
+        calls.clear()
+        reply.clear()
+        reply["errors"] = ["選択肢が無い"]
+        project = {"id": "P", "field": "F", "options": {"Todo": "o"}}
+        failed = False
+        try:
+            tracker_github.write_status(
+                "/nonexistent", tracker.Tracker("github", "u", "1"), project,
+                {"https://github.com/o/r/issues/1": {"item": "I"}}, set(), "https://github.com/o/r/issues/1", "Todo",
+                budget(1),
+            )
+        except tracker_github._Failed:
+            failed = True
+        check("Status を書く失敗のあとの読み直しも、尽きていたら打たない", failed and len(calls) == 1, str(calls))
+    finally:
+        tracker_github._gh = real_gh
 
 
 def test_tracker_timeout() -> None:
@@ -111,7 +171,7 @@ def _kv(cwd: str) -> dict[str, str]:
 
 def test_tracker_project_items_per_issue() -> None:
     say("トラッカー github・Project の控えは課題ごとのキー（旧い1つの塊は最初の読み込みで移して消す）")
-    prefix, legacy_key = tracker.ITEMS_KEY_PREFIX, tracker.LEGACY_ITEMS_KEY
+    prefix, legacy_key = tracker_github.ITEMS_KEY_PREFIX, tracker_github.LEGACY_ITEMS_KEY
     with github() as (fake, _tmp, main_path, _wt1):
         a, b = new(main_path, "控えを移す1"), new(main_path, "控えを移す2")
         na, nb = num(a), num(b)
@@ -293,6 +353,7 @@ TESTS = (
     test_tracker_github_draft,
     test_tracker_sync_pushes_only_changed,
     test_tracker_timeout,
+    test_tracker_deadline_counted_per_gh_call,
     test_tracker_register_timeout_no_duplicate,
     test_tracker_pull_reports_duplicate,
     test_tracker_project_items_per_issue,

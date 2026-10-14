@@ -10,6 +10,7 @@ import contextlib
 import hashlib
 import json
 import os
+import shutil
 import sys
 from collections.abc import Iterator
 from datetime import datetime, timezone
@@ -19,6 +20,7 @@ import stamps
 
 LEDGER_DIR_NAME = "task-workflow"
 STATE_DIR_ENV = "TW_STATE_DIR"
+AGENT_WRITERS_DIR_NAME = "task-agent-writers"
 
 
 def ledger_root(cwd: str | None = None) -> str:
@@ -132,9 +134,12 @@ def mark_open_claim(task_id: str, cwd: str | None = None) -> None:
 
 
 def clear_open_claim(task_id: str, cwd: str | None = None) -> None:
+    """控えが1つも残らなければ、書いた印（`mark_agent_writer`）も消す。"""
     path = os.path.join(stamps.worktree_state_dir(cwd), stamps.OPEN_CLAIMS_DIR_NAME, task_id)
     if os.path.exists(path):
         os.remove(path)
+    if not open_claims(cwd):
+        shutil.rmtree(os.path.join(stamps.worktree_state_dir(cwd), AGENT_WRITERS_DIR_NAME), ignore_errors=True)
 
 
 def open_claims(cwd: str | None = None) -> list[str]:
@@ -142,3 +147,18 @@ def open_claims(cwd: str | None = None) -> list[str]:
     if not os.path.isdir(d):
         return []
     return sorted(os.listdir(d))
+
+
+# --- agent-writers（作業ツリーを書き換える道具を使ったサブエージェントの印）------------
+
+
+def mark_agent_writer(agent_id: str, cwd: str | None = None) -> None:
+    """`agent_id` はファイル名に使える文字だけのもの（`agent_scope.agent_id`）を渡す。"""
+    d = os.path.join(stamps.worktree_state_dir(cwd), AGENT_WRITERS_DIR_NAME)
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, agent_id), "w", encoding="utf-8"):
+        pass
+
+
+def is_agent_writer(agent_id: str, cwd: str | None = None) -> bool:
+    return os.path.isfile(os.path.join(stamps.worktree_state_read_dir(cwd), AGENT_WRITERS_DIR_NAME, agent_id))

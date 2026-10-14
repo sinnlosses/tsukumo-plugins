@@ -4,17 +4,24 @@
 
 拒むときだけ stdout に JSON を1行出す（`SubagentStop` は `decision: block`、`PreToolUse` は deny）。
 通すときは何も出さない。終了コードはいつも0（hook の取り決め。`tw` の「stdout は先頭語の TSV」の例外）。
+
+`--agent-scoped` では、サブエージェントが `Edit`・`Write`・`NotebookEdit` を使う `PreToolUse` で、`cwd` の作業ツリーに
+着手の控えがあれば `agent_id` ごとの書いた印を残し、返却はその印のあるサブエージェントのものだけを判定する。
 """
 
 from __future__ import annotations
 
 import json
+import os
 from typing import IO, Callable
 
 import agent_scope
+import gitinfo
+import ledger
 
 HANDBACK_TOOL = "SubagentHandback"
 STOP_EVENTS = ("SubagentStop", "Stop")
+WRITE_TOOLS = ("Edit", "Write", "NotebookEdit")
 
 
 def run(
@@ -26,9 +33,27 @@ def run(
         return
     if not isinstance(payload, dict) or not agent_scope.applies(payload, agent_scoped):
         return
+    if agent_scoped and not _is_writer(payload):
+        return
     out = decide(payload, refusal)
     if out is not None:
         stdout.write(json.dumps(out, ensure_ascii=False) + "\n")
+
+
+def _is_writer(payload: dict) -> bool:
+    """書き換える道具の `PreToolUse` なら印を残して `False`（判定しない）。ほかは印があるか。"""
+    agent_id = agent_scope.agent_id(payload)
+    cwd = payload.get("cwd")
+    if agent_id is None or not isinstance(cwd, str) or not os.path.isdir(cwd):
+        return False
+    try:
+        if payload.get("hook_event_name") == "PreToolUse" and payload.get("tool_name") in WRITE_TOOLS:
+            if ledger.open_claims(cwd=cwd):
+                ledger.mark_agent_writer(agent_id, cwd=cwd)
+            return False
+        return ledger.is_agent_writer(agent_id, cwd=cwd)
+    except (gitinfo.GitCommandError, OSError):
+        return False
 
 
 def _handback_body(payload: dict) -> str | None:

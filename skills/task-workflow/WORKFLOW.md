@@ -40,7 +40,7 @@
 | `docs/history/retrospect.md` | 横断の振り返りの記録（1回ごとに先頭へ `## YYYY-MM-DD（開始日〜終了日）` の見出しを足す。`retrospect` の SKILL.md「週ごとに振り返る」）。`tw status` が見出しの日付から `retrospect_due` を決める |
 | 台帳 `$(git rev-parse --path-format=absolute --git-common-dir)/task-workflow/`（環境変数 `TW_STATE_DIR` があれば `$TW_STATE_DIR/<本体の作業ツリーの名前>-<共有の git dir の realpath の sha1 の先頭12桁>/`） | 着手から送り出しまでの出来事（`flow/<YYYY-MM>.jsonl`。1行1出来事。`tw metrics` が読む。会話・コマンド・パスは入れない。消えない）。コミットしない。全作業ツリーで1つ。`TW_STATE_DIR` を付けると、そのあとの記録はその下に書き、共有の git dir の台帳は読まない（写さない）。書けなければ標準エラーに1行出すだけで、元のサブコマンドの出力と終了コードは変わらない |
 | 作業ツリーの根の `.tw/local/task-open-claims/T-xxx` | `claim` から `done`・`release`・`ship` までの控え（中身は空）。`tw commit-guard`・`tw handback-guard`・`tw ask-guard` が読む。コミットしない。作業ツリーごと |
-| 作業ツリーの根の `.tw/local/` | `tw verify`・`tw pause`・`tw step` を打った時点の中身の鍵、`ship` の検証の借り、検証のログ。コミットしない。作業ツリーごと。初めて書くときに `tw` が作り、中身 `*` の `.tw/local/.gitignore` を置く |
+| 作業ツリーの根の `.tw/local/` | `tw verify`・`tw pause`・`tw step` を打った時点の中身の鍵、`ship` の検証の借り、検証のログ、書き換える道具を使ったサブエージェントの印（`task-agent-writers/<agent_id>`。着手の控えが無くなると消える）。コミットしない。作業ツリーごと。初めて書くときに `tw` が作り、中身 `*` の `.tw/local/.gitignore` を置く |
 
 **プロジェクトごとに変わる値は `.tw/config.toml` に置く**（コミットする。`AGENTS.md`・`CLAUDE.md` には
 書かない）。`tw` は `layout.read_config` の1つの口で読み、`tw config` が解けた値を出す（スキルはこれを読む）。
@@ -211,7 +211,7 @@ front matter（`id`・`summary`・`status`・`difficulty`・`loopable`・近道�
   で閉じる
 - **依存の解決**: `done`・`dropped`（`ship` で `bd close` したもの）と、Beads に無い ID（旧アーカイブ由来）は解決済み。
   `todo`・`hold` は未解決。後から変えるのは `tw edit T-xxx --add-deps T-yyy` と `--remove-deps`（本文の `## 注意` に書くだけでは Beads の依存に入らず、BLOCKED に出ない）
-- **委譲先を hook が拒む**: 印を立ててから `done` を打つまで `no-delegate` の委譲先に掛かる関門（拒むもの・掛かる口）は `tw-reference.md`「hook の関門」節。
+- **委譲先を hook が拒む**: 印を立ててから `done` を打つまで委譲先（サブエージェント。plugin で入れたときは名前を問わず、リンクだけで入れたときは `no-delegate`）に掛かる関門（拒むもの・掛かる口）は `tw-reference.md`「hook の関門」節。
   委譲先は `Edit`・`Write` で書き、検証は `tw verify` で打ち、最後でない段は `tw step T-xxx <n>`、止める返却は `tw pause` を返す直前に打つ
 - **取り残し**（前提: 1つの作業ツリーでは同時に1セッション）:
 
@@ -324,8 +324,10 @@ Beads の label・各スキルの本文は触らない）:
 | 作業の途中で人の手が要る（`### 人がやること` のうち検証より前に要るもの） | 解けない → `N`（`ship` のあとでよいものは `Y` のまま `## 結果` に残す） |
 | ツールの許可確認 | タスクの性質でなく、セッションの許可モードで決まるので `loopable` の判断に入れない |
 
-取りこぼしは hook（`tw ask-guard`）が実行中の `AskUserQuestion` で捕まえる。拒むもの・捕まえないものは `tw-reference.md`「hook の関門」節で、
-捕まえないものはこの表で先に防ぐ。
+取りこぼしは hook（`tw ask-guard`）が実行中の `AskUserQuestion` で捕まえる。境は流れの段で決まり、主のセッションの質問は
+作業の段（`direct`・`delegate`・`accept`・`review`）を終えた後なら通し、サブエージェントの質問は段によらず拒む。
+段の lap はパーツではなくオーケストレーター（今は `next-task`）が打つので、振り返りを外した流れでも受け入れの後の質問は通る。
+拒むもの・捕まえないものは `tw-reference.md`「hook の関門」節で、捕まえないものはこの表で先に防ぐ。
 
 **`hold` との違い**: `N` は「人がいれば誰でも進められる」、`hold` は「人が決めるまで誰も進められない」
 （決まっていない判断そのものが待っている）。`hold` は `/loop` の `/next-task` が選ばない。ユーザーが
@@ -347,7 +349,7 @@ Beads の label・各スキルの本文は触らない）:
 | 項目 | 条件 | 読む・渡す・検査する側 |
 | --- | --- | --- |
 | 選ばれ方 | Agent ツールの一覧で名前の末尾が `acceptor`。あれば `model` を渡さずに起こし、無ければ手順5の選び方（`no-delegate` があればそれ、無ければ `general-purpose`）に `model: opus` を渡して代える。末尾が `acceptor` の行が複数並んだときの選び方は定めが無い | 手順6 |
-| 持たない道具 | `Agent`・`Edit`・`Write`・`NotebookEdit` を持たず、frontmatter に `hooks` を持たない（返却を拒む `tw handback-guard` もコミットを拒む `tw commit-guard` も掛からない） | 手順6、`check_repo.py`（同梱の定義だけ） |
+| 持たない道具 | `Agent`・`Edit`・`Write`・`NotebookEdit` を持たず、frontmatter に `hooks` を持たない（書き換えないので返却は `tw handback-guard` に判定されない。コミットを拒む `tw commit-guard` は、plugin で入れたときは名前を問わず掛かり、リンクだけで入れたときは掛からない） | 手順6、`check_repo.py`（同梱の定義だけ） |
 | 依頼 | `受け入れ`（差分のレビュー・目視・材料）と `目視待ち`（目視だけ）の2種類。渡すものは手順6の列挙と `visual-review.md`。どちらにも `acceptor-brief.md` の絶対パスが載る。レビューの要否は `tw accept`（作業先が別のリポジトリなら `review_needed.py`。`other-repo.md`）の `REVIEW\t…` と木の SHA か、`SKIP`・`NOTHING`・`NO_RANGE`。`目視待ち` を受けた受け入れ役は、最後の `受け入れ` も `SendMessage` で続けて受ける（`visual-review.md`）。差し戻しのあとの2・3回目も同じ受け入れ役が `SendMessage` で2つの木の SHA と、メインが取り下げた指摘の行を受ける。呼び戻せないときだけ新しい受け入れ役が、前の回の指摘の原文・2つの木の SHA・手順6の渡すものを受ける（`review-rounds.md`） | 手順6、`visual-review.md`、`review-rounds.md`、`other-repo.md`、`tw accept` |
 | 返却の1行目 | `受け入れ <判定> \| <1文>`。判定は下の3語のどれか。形が違えば `SendMessage` で返し直させる | 手順6 |
 | `- 指摘: <種類>: <中身>` | 種類は `正しさ`・`完了条件`・`規約`・`簡素化`。委譲先が直せるものだけを1指摘1行で。3回目に残る指摘で直し方が1つに決まるものは `直し: <どう直すか>` を添える | 手順6（差し戻しで委譲先へ渡す。`正しさ` に一文を添え、`簡素化` を取り下げの対象にする）、手順6a、手順7（`規約:` で始まる行を数える）、`review-rounds.md`、`retrospect` |
