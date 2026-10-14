@@ -147,9 +147,10 @@ description: "会話での明示の指示、引数のファイル、エージェ
 
    **ドラフトを進める**（承認を得たドラフトの課題）: `tw new` は打たず、同じ課題を書き足す。`## 目的・背景` は
    ドラフトの書いたまま残し（変えるなら `--change-frame`）、`## 完了条件`・`## やること` などを
-   `tw edit <ID> --section '<節名>' --body-file -` で1節ずつ書く（ドラフトの空の節を初めて書く編集は `FRAME_CHANGED` にならない）。
+   `tw edit <ID> --section '<節名>' --body-file -` で書く（ドラフトの空の節を初めて書く編集は `FRAME_CHANGED` にならない）。
+   複数の節は `--section` と `--body-file` の組を繰り返して1回で打つ（`-` は1回だけなので、2節目からはファイル）。呼び出しごとにトラッカーへの反映の待ちがかかる。
    見立ての `difficulty`・`loopable` は `tw edit <ID> --difficulty … --loopable …` で直す。書けたら
-   `tw edit <ID> --status todo`（判断待ちが残るなら `hold`）。出力が `NOT_READY\t<ID>\tDRAFT\t<理由>` なら、
+   `tw edit <ID> --status todo`（判断待ちが残るなら `hold`。節と同じ呼び出しに付けてもよい）。出力が `NOT_READY\t<ID>\tDRAFT\t<理由>` なら、
    本文が `tw new` の検査を通っていない（状態は変わっていない）ので、理由のとおり直して打ち直す。
 
    **ドラフトを却下する**: 却下の理由を `## 結果` にして `tw done <ID> --dropped --result-file -`。
