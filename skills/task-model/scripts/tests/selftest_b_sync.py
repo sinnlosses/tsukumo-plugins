@@ -131,8 +131,8 @@ def test_tracker_register_timeout_no_duplicate() -> None:
         fake.clock_offset = -3600
         old = fake.open_issue("ずっと前からある Issue", [])
         fake.clock_offset = 0
-        local.env[tracker.OP_TIMEOUT_ENV] = "2"
-        fake.delay = 5
+        local.env[tracker.OP_TIMEOUT_ENV] = "12"
+        fake.delay = 120
         fake.delay_post_only = True
         fake.listed.clear()
         a = new(main_path, "立てた直後に落ちる")

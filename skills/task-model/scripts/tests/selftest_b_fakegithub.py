@@ -46,6 +46,7 @@ class FakeGitHub:
         self.delay = 0.0  # 秒。応答を遅らせる
         self.delay_post_only = False  # 立てる POST の応答だけ遅らせる
         self.lock = threading.Lock()
+        self.closing = threading.Event()  # 立つと、遅らせている応答をすぐ返す
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -66,8 +67,9 @@ class FakeGitHub:
                 with fake.lock:
                     code, obj = fake.route(self.command, self.path, body)
                 if not fake.delay_post_only or self.command == "POST":
-                    time.sleep(fake.delay)
-                self._reply(code, obj)
+                    fake.closing.wait(fake.delay)
+                with contextlib.suppress(ConnectionError):
+                    self._reply(code, obj)
 
             do_GET = do_POST = do_PATCH = do_PUT = do_DELETE = _handle
 
@@ -76,6 +78,7 @@ class FakeGitHub:
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
     def close(self) -> None:
+        self.closing.set()
         self.server.shutdown()
         self.server.server_close()
 
