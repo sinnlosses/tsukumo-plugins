@@ -24,11 +24,11 @@ import shlex
 import subprocess
 import sys
 
-_TASK_WORKFLOW_SCRIPTS = os.path.normpath(
+_TASK_MODEL_SCRIPTS = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "task-model", "scripts")
 )
-if _TASK_WORKFLOW_SCRIPTS not in sys.path:
-    sys.path.insert(0, _TASK_WORKFLOW_SCRIPTS)
+if _TASK_MODEL_SCRIPTS not in sys.path:
+    sys.path.insert(0, _TASK_MODEL_SCRIPTS)
 
 import gitcmd  # noqa: E402
 
@@ -61,7 +61,7 @@ CHECK_PATH = re.compile(
 COMMENT_AUDIT_RELATIVE = os.path.join("comment-audit", "scripts", "diff_added_comment_lines.py")
 
 QUESTIONS = {
-    "comment": "足されたコメント行のそれぞれに comment-audit の SKILL.md の「判定の1問」を当てて、消す・縮める・正典へ移すものが無いか",
+    "comment": "足されたコメント行のそれぞれに comment-audit スキル（Skill ツールで名前を指して読む）の「判定の1問」を当てて、消す・縮める・正典へ移すものが無いか",
     "type-shape": "変えた型・定数の推論された型が前より緩んでいないか（readonly・リテラル・タプルが広がっていないか）",
     "repeat-shape": "足した関数・ループと同じ形の処理が、出力に並んだ同じファイルの中に既にないか（あれば寄せられないか）",
     "doc-vs-check": "変えた文書が言う範囲と、変えた検査が拾う範囲が合っているか",

@@ -32,9 +32,9 @@ import sys
 from datetime import date, datetime, timedelta, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-_TASK_WORKFLOW_SCRIPTS = os.path.normpath(os.path.join(HERE, "..", "..", "task-model", "scripts"))
-if _TASK_WORKFLOW_SCRIPTS not in sys.path:
-    sys.path.insert(0, _TASK_WORKFLOW_SCRIPTS)
+_TASK_MODEL_SCRIPTS = os.path.normpath(os.path.join(HERE, "..", "..", "task-model", "scripts"))
+if _TASK_MODEL_SCRIPTS not in sys.path:
+    sys.path.insert(0, _TASK_MODEL_SCRIPTS)
 
 import cross_review  # noqa: E402
 import draft_fate  # noqa: E402
