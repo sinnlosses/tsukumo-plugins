@@ -59,7 +59,7 @@ def test_direct_mark() -> None:
 
 def test_difficulty_loopable_metadata() -> None:
     say("difficulty・loopable: new・edit は metadata に書き、読みは metadata だけで、取り込みで消えたら戻す")
-    import tracker  # noqa: PLC0415
+    import tracker_claims  # noqa: PLC0415
 
     def issue(status: str = "open", labels: tuple[str, ...] = (), metadata: dict | None = None) -> beads.Issue:
         return beads.Issue("t-005", "題", status, labels, (), None, None, None, {"metadata": metadata or {}})
@@ -79,14 +79,14 @@ def test_difficulty_loopable_metadata() -> None:
 
     marks = {"difficulty": "opus", "loopable": "N"}
     check("取り込みで metadata が消えたら2キーを戻す",
-          tracker._claim_restore_args(issue(metadata=marks), issue(), None, None)
+          tracker_claims._claim_restore_args(issue(metadata=marks), issue(), None, None)
           == ["--set-metadata", "difficulty=opus", "--set-metadata", "loopable=N"])
     check("片方だけ消えたらその1つだけ戻す",
-          tracker._claim_restore_args(issue(metadata=marks), issue(metadata={"difficulty": "opus"}), None, None)
+          tracker_claims._claim_restore_args(issue(metadata=marks), issue(metadata={"difficulty": "opus"}), None, None)
           == ["--set-metadata", "loopable=N"])
     closed_marks = {**marks, "task_branch": "b", "draft": "Y", "from_draft": "道案内"}
     check("閉じた課題は difficulty・loopable とドラフトの出自（draft・from_draft）だけ戻す",
-          tracker._claim_restore_args(issue(metadata=closed_marks), issue("closed"), None, None)
+          tracker_claims._claim_restore_args(issue(metadata=closed_marks), issue("closed"), None, None)
           == ["--set-metadata", "difficulty=opus", "--set-metadata", "loopable=N",
               "--set-metadata", "draft=Y", "--set-metadata", "from_draft=道案内"])
 
