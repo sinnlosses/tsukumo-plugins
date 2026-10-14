@@ -307,22 +307,6 @@ def test_taskfile_draft_viewpoint() -> None:
               repr(taskfile.draft_viewpoint(body)))
 
 
-def test_taskfile_set_result_section() -> None:
-    say("taskfile.set_result_section")
-    body = BODY
-    out = taskfile.set_result_section(body, "結果その1")
-    check("結果が無ければ末尾に足す", out.endswith("## 結果\n\n結果その1\n"), out)
-    check("元の節は残る", "## 目的・背景" in out and "## 参考情報" in out, out)
-
-    out2 = taskfile.set_result_section(out, "結果その2（差し替え）")
-    check(
-        "既存の結果は置き換わる",
-        "結果その1" not in out2 and "結果その2（差し替え）" in out2,
-        out2,
-    )
-    check("置き換え後も節は1つだけ", out2.count("## 結果") == 1, out2)
-
-
 def test_done_single_worktree() -> None:
     say("task.py done（単独の作業ツリー）")
     with tempfile.TemporaryDirectory() as tmp:
@@ -513,7 +497,6 @@ TESTS = (
     test_new_avoids_history_ids,
     test_taskfile_body,
     test_taskfile_draft_viewpoint,
-    test_taskfile_set_result_section,
 )
 
 

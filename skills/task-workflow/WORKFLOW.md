@@ -18,7 +18,7 @@
 | ## summary（一行要約） | 一行に収める理由 |
 | ## difficulty とモデルの切り替え | 基準表、委譲の規則と、一致していても委譲する根拠の実測、委譲しない近道の基準の表 |
 | ## loopable（`/loop` に載せてよいか） | `Y`/`N` の基準、決める前に止まる要因を洗い出す表と `tw ask-guard`、`hold` との違い |
-| ## 1サイクル | claim → やること → 作業 → 受け入れ → 振り返り → done → コミット → ship |
+| ## 1サイクル | `/next-task` の SKILL.md の手順1〜8への案内 |
 | ## 受け入れ役の契約 | 自前の受け入れ役が満たす条件（選ばれ方・持たない道具・依頼・返却の行・材料の値）と読む側 |
 | ## 送り出し | `ship` の送り方、検証コマンドを打つ時点、作業ブランチの後始末 |
 | ## 結果の書き方と知見の置き場 | `## 結果` に書くこと、知見の置き場 |
@@ -26,6 +26,7 @@
 | ## ドラフトの課題 | 指示の入口、承認ゲート、ドラフトの書式 |
 | `tw-reference.md` | `## `tw` コマンドの参照`: サブコマンドと出力、終了コードの表、hook の注記 |
 | ## Beads とトラッカー | ID の決まり方、設定のキー、トラッカーの失敗はタスクの操作を止めないこと、`TRACKER.md` への参照 |
+| `legacy.md` | 移行前の旧形式でいまも読むもの（アーカイブ・`pending`・`root`・`store`・`project-items`）と消せる条件 |
 | `TRACKER.md` | 用意、タスクの要素と Beads の置き場の対応、サイクルの各段で Beads に起きること、トラッカー（GitHub・Jira）、Status 欄の控え、GitHub との双方向、Jira の方式との違い、バックアップ |
 
 ## ファイル配置と設定ファイル
@@ -61,7 +62,7 @@ verify = "pnpm check"        # 受け入れ判定に使う。打つものが無�
 | `format` | 整形コマンド。`tw verify` が検証の前に打つ（`tw-reference.md` の `verify`） |
 | `branch` | `既定`・`作業ブランチを切る`・`切らない`（下の表） |
 | `base_branch` | 主ブランチの名前（下の順1） |
-| `store` | `beads` だけ（ほかの値は `files` も `INVALID`） |
+| `store` | `beads` だけ（ほかの値は `INVALID`。[legacy.md](legacy.md)） |
 | `tracker` | `なし`・`github`・`jira`（「Beads とトラッカー」） |
 | `github_project` | `"<owner>/<番号>"`（Status 欄を書く Project）。`tracker = "github"` なら必須 |
 | `backup` | Beads のバックアップの置き場（git の外） |
@@ -341,18 +342,7 @@ Beads の label・各スキルの本文は触らない）:
 
 ## 1サイクル
 
-`/next-task` の1回。各段で打つものと、止まる出力は `skills/next-task/SKILL.md`。番号は `next-task/SKILL.md` の手順の番号と同じ。
-
-| 手順 | 目的 | 参照先（`skills/next-task/SKILL.md` の手順と副ファイル） |
-| --- | --- | --- |
-| 1〜3 | `tw status` で見渡し、`READY` を1件選ぶ。`retrospect_due` の行があれば選ぶ前に横断の振り返りを1回行う | 手順1〜3、`weekly-retrospect.md` |
-| 4 | `tw claim` で主ブランチへ追い付いて印を立て、`tw plan-check` で `## やること` の状態を見る | 手順4 |
-| 5 | `## やること` が `## 完了条件` を覆うか確かめ、段ごとに委譲する。計画が古いか覆っていなければ書き直しから委譲する。`direct=Y` で `PLAN_REGISTERED` なら委譲せず近道（手順5〜6b を通らない） | 手順5・5b・5c・5d、`rewrite-plan.md`、`direct-run.md`、`visual-review.md`、正典「difficulty とモデルの切り替え」の「委譲しない近道」 |
-| 6 | 受け入れ役の判定を受け、整形と `tw verify-check` で検証を省くか決める。`tw accept` が準備を束ねる | 手順6、`other-repo.md`、`review-rounds.md`、正典「受け入れ役の契約」 |
-| 6a | 材料が観点に当たり物差しを通ったときだけ、`tw new --draft` でドラフトを積む | 手順6a、`retrospect` の「1件だけ振り返る」 |
-| 6b | 背景の `tw verify` の結果を読み、落ちていれば直して打ち直す | 手順6b、`verify-merge.md` |
-| 7 | `tw finish` が `tw done`・1コミット・`tw ship` を順に打つ | 手順7、`commits-since-claim.md` |
-| 8 | `tw ship` の判定で分ける | 手順8、`ship-stopped.md` |
+`/next-task` の SKILL.md（`skills/next-task/SKILL.md`）の手順1〜8。
 
 ## 受け入れ役の契約
 
@@ -455,7 +445,7 @@ Beads の label・各スキルの本文は触らない）:
 ## コミットメッセージ
 
 - タスクのコミットは**件名の先頭にタスクID**（`T-110: コミットメッセージにタスクIDを振る`）。
-  1タスク＝1コミットは「1サイクル」の7で守られる。分けられない場合だけ
+  1タスク＝1コミットは `/next-task` の SKILL.md の手順7で守られる。分けられない場合だけ
   `T-105, T-108: 〜`
 - **IDを持たない作業には付けない**（登録・振り返り・`hold` の切り替え・移行・typo修正）
 - 過去のコミットは書き換えない。末尾の署名は、利用者の `CLAUDE.md`（グローバル・プロジェクト）に定めがあればそれに従い（署名を省く定めなら付けない）、無ければセッションの attribution の指示に従う
@@ -509,7 +499,7 @@ Beads の label・各スキルの本文は触らない）:
 Beads の中は `proj-123`）も同じ ID として読む。読む形はトラッカーで切り替えず常に3つを受け、`T-<n>`・
 `GH-<n>` を先に当てるので Jira のキーとは取り違えない。`status` の並びは `T-<n>` → `GH-<n>` → Jira のキー
 （キー名・番号の順）→ 仮の ID。`tw` が採番する番号（`last-id` の候補）に Jira のキーは数えない。
-過去の `T-xxx`（git の履歴と `docs/history/`）は動かさない。
+過去の `T-xxx`（git の履歴と旧いアーカイブ）は動かさない（[legacy.md](legacy.md)）。
 
 **設定のキー**は `tracker`・`github_project`・`backup`（値は「ファイル配置と設定ファイル」の表）。
 
