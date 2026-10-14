@@ -21,7 +21,7 @@ import tw_edit
 import tw_handback
 import tw_verify
 
-SCRIPTS = os.path.dirname(os.path.abspath(__file__))
+SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "core")
 STOP_WORDS = ("NOT_CLAIMED", "NOT_OWNER")
 FORMAT_TAIL_LINES = 40
 

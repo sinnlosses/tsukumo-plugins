@@ -244,7 +244,7 @@ def check_shell_embeds(names: list[str]) -> None:
             fail(f"{rel}:{fence_start}: ```! のフェンスが閉じていない")
 
 
-TW_TARGET = os.path.join(SKILLS, "task-model", "scripts", "task.py")
+TW_TARGET = os.path.join(SKILLS, "task-model", "scripts", "tw", "task.py")
 
 
 def check_tw_entry(names: list[str]) -> None:
@@ -255,7 +255,7 @@ def check_tw_entry(names: list[str]) -> None:
             fail(f"{os.path.relpath(TW_TARGET, ROOT)} に実行ビットが無い（tw から起こせない）")
         if not read(TW_TARGET).startswith("#!/usr/bin/env python3\n"):
             fail(f"{os.path.relpath(TW_TARGET, ROOT)} の1行目が #!/usr/bin/env python3 でない")
-    long_form = re.compile(r"python3 [^\n`]*task-(workflow|model)/scripts/task\.py")
+    long_form = re.compile(r"python3 [^\n`]*task-(workflow|model)/scripts/(tw/)?task\.py")
     old_abbrev = re.compile(
         r"`task (status|new|claim|release|done|ship|finish|land|config|config-doctor|show|edit|plan-check|verify|verify-check|accept|pause|step|lap|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|ask-guard)[ `]"
     )
@@ -351,24 +351,27 @@ def check_python_syntax(names: list[str]) -> None:
                     fail(f"{os.path.relpath(p, ROOT)}: `from __future__ import annotations` が無い（Python 3.9 で型注釈が読めない）")
 
 
-# T-018: 履歴の置き場・IDの形は skills/task-model/scripts/layout.py に
+# T-018: 履歴の置き場・IDの形は skills/task-model/scripts/core/layout.py に
 # 1箇所だけ書き、読む側は直書きしない（正典は task-model の WORKFLOW.md「ファイル配置と
 # 設定ファイル（AGENTS.md → CLAUDE.md の順）」）。ここでは layout.py 自身は対象から外し、
 # 読む側のファイルだけを見る。
 _TASK_MODEL_SCRIPTS = os.path.join(SKILLS, "task-model", "scripts")
+_TASK_MODEL_TW = os.path.join(_TASK_MODEL_SCRIPTS, "tw")
+_TASK_MODEL_CORE = os.path.join(_TASK_MODEL_SCRIPTS, "core")
+_TASK_MODEL_TESTS = os.path.join(_TASK_MODEL_SCRIPTS, "tests")
 _RETROSPECT_SCRIPTS = os.path.join(SKILLS, "retrospect", "scripts")
-LAYOUT_PATH = os.path.join(_TASK_MODEL_SCRIPTS, "layout.py")
+LAYOUT_PATH = os.path.join(_TASK_MODEL_CORE, "layout.py")
 LAYOUT_CONSUMERS = (
-    os.path.join(_TASK_MODEL_SCRIPTS, "task.py"),
-    os.path.join(_TASK_MODEL_SCRIPTS, "tw_base.py"),
-    os.path.join(_TASK_MODEL_SCRIPTS, "tw_claim.py"),
-    os.path.join(_TASK_MODEL_SCRIPTS, "tw_edit.py"),
-    os.path.join(_TASK_MODEL_SCRIPTS, "tw_maint.py"),
-    os.path.join(_TASK_MODEL_SCRIPTS, "tw_new.py"),
-    os.path.join(_TASK_MODEL_SCRIPTS, "tw_ship.py"),
-    os.path.join(_TASK_MODEL_SCRIPTS, "tw_status.py"),
-    os.path.join(_TASK_MODEL_SCRIPTS, "tw_verify.py"),
-    os.path.join(_TASK_MODEL_SCRIPTS, "init.py"),
+    os.path.join(_TASK_MODEL_TW, "task.py"),
+    os.path.join(_TASK_MODEL_TW, "tw_base.py"),
+    os.path.join(_TASK_MODEL_TW, "tw_claim.py"),
+    os.path.join(_TASK_MODEL_TW, "tw_edit.py"),
+    os.path.join(_TASK_MODEL_TW, "tw_maint.py"),
+    os.path.join(_TASK_MODEL_TW, "tw_new.py"),
+    os.path.join(_TASK_MODEL_TW, "tw_ship.py"),
+    os.path.join(_TASK_MODEL_TW, "tw_status.py"),
+    os.path.join(_TASK_MODEL_TW, "tw_verify.py"),
+    os.path.join(_TASK_MODEL_CORE, "init.py"),
     os.path.join(_RETROSPECT_SCRIPTS, "material.py"),
     os.path.join(_RETROSPECT_SCRIPTS, "transcript.py"),
 )
@@ -433,7 +436,7 @@ def _trailing_literal_segments(args: list[ast.expr]) -> list[str]:
 def check_task_model_layout() -> None:
     """`layout.py` の値が読む側のファイルに直書きで戻っていないか（T-018）。"""
     if not os.path.exists(LAYOUT_PATH):
-        fail("skills/task-model/scripts/layout.py が無い")
+        fail("skills/task-model/scripts/core/layout.py が無い")
         return
     for path in LAYOUT_CONSUMERS:
         rel = os.path.relpath(path, ROOT)
@@ -507,10 +510,10 @@ def check_flow_and_part_names() -> None:
 
 def check_selftest_body_literal() -> None:
     """自己テストが `### 名指すファイル` を直書きして本文を組んでいないか（`selftest_body.task_body` で組む）。"""
-    for fname in sorted(os.listdir(_TASK_MODEL_SCRIPTS)):
+    for fname in sorted(os.listdir(_TASK_MODEL_TESTS)):
         if not (fname.startswith("selftest") and fname.endswith(".py")) or fname == "selftest_body.py":
             continue
-        path = os.path.join(_TASK_MODEL_SCRIPTS, fname)
+        path = os.path.join(_TASK_MODEL_TESTS, fname)
         tree = ast.parse(read(path))
         docstring_ids = _docstring_constant_ids(tree)
         for node in ast.walk(tree):
@@ -706,9 +709,9 @@ def check_sibling_imports(names: list[str]) -> None:
 
     見るのは `sys.path.insert(0, X)` / `sys.path.append(X)` の `X` だけ。`X` が変数なら
     同じファイル内の代入までたどる。`os.path.join(dirname(__file__), "..", "..", "<skill>",
-    "scripts")`（`os.path.normpath` で包んでもよい）の形で、二階層上がって別スキルの
-    `scripts` を指しているものだけを「兄弟スキルへの依存」として扱う。依存先の並びの取り方は
-    「`..`,`..` の次の要素を見る」で、この1形しか今のリポジトリに無いのでそれで十分。
+    "scripts")`（`os.path.normpath` で包んでもよい。`"scripts"` の後ろに置き場の名前が1つ続いてもよい）
+    の形で、二階層上がって別スキルの `scripts` を指しているものだけを「兄弟スキルへの依存」として扱う。
+    依存先の並びの取り方は「`..`,`..` の次の要素を見る」で、この1形しか今のリポジトリに無いのでそれで十分。
 
     `sys.path.insert(0, HERE)`（`HERE = os.path.dirname(...)`）のように `..` を挟まず
     自分の `scripts/` を指すものは同一スキル内の兄弟モジュール読み込みで、依存ではないので
@@ -750,7 +753,7 @@ def check_sibling_imports(names: list[str]) -> None:
                 if _is_os_path_join(expr):
                     segments = _trailing_literal_segments(expr.args)
                     if (
-                        len(segments) == 4
+                        len(segments) in (4, 5)
                         and segments[0] == ".."
                         and segments[1] == ".."
                         and segments[3] == "scripts"

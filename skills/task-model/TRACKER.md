@@ -3,7 +3,7 @@
 WORKFLOW.md「Beads とトラッカー」から切り出した。トラッカーの同期（`tracker.py`・`beads.py`）を直すときに読む。
 断りのない「…」の節名は WORKFLOW.md の節を指す。
 
-**用意**: 用意の入口（WORKFLOW.md の用語）が打つ `scripts/init.py` が、主ブランチを出している作業ツリー（本体）で
+**用意**: 用意の入口（WORKFLOW.md の用語）が打つ `scripts/core/init.py` が、主ブランチを出している作業ツリー（本体）で
 `bd init --stealth -p gh`（トラッカーが `github`）か `-p t`（それ以外）を打つ。`hold` は組み込みの
 状態 `deferred` に置く（独自の状態は GitHub との往復で `open` に戻るので使わない）。ドラフトも `deferred` に置き、
 metadata `draft` で `hold` と見分ける（独自の状態 `draft` は `status::` の label を持たない `open` の Issue として出て、

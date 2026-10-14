@@ -82,7 +82,7 @@
 
 ```
 tsukumo-plugins/
-├── bin/tw                    住む: tw の入口（task-model/scripts/task.py へ渡すだけ）
+├── bin/tw                    住む: tw の入口（task-model/scripts/tw/task.py へ渡すだけ）
 │                             置かない: 処理
 ├── hooks/hooks.json          住む: tw の関門を hook に結ぶ設定
 │                             置かない: 判定（tw が持つ）

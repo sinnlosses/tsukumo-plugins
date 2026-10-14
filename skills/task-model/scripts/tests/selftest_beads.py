@@ -16,6 +16,8 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(1, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "core"))
+sys.path.insert(1, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tw"))
 
 import beads  # noqa: E402
 import selftest_b_claims  # noqa: E402

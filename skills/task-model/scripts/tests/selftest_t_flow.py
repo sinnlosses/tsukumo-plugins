@@ -555,7 +555,7 @@ def test_config_doctor_prerequisites() -> None:
         import task
 
         help_body = task.SUBCOMMAND_HELP["config-doctor"][1].splitlines()[-1]
-        with open(os.path.join(os.path.dirname(os.path.abspath(task.__file__)), "..", "tw-reference.md"), encoding="utf-8") as f:
+        with open(os.path.join(os.path.dirname(os.path.abspath(task.__file__)), "..", "..", "tw-reference.md"), encoding="utf-8") as f:
             row = next(l for l in f if l.startswith("| `config-doctor` |"))
         check(
             "config-doctor が実際に出す2語目は、help の最後の一文と tw-reference の行の両方に書いてある",
@@ -570,7 +570,7 @@ def test_bin_tw_python_floor() -> None:
 
     from selftest_fixtures import TASK_PY
 
-    plugin_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(TASK_PY))))
+    plugin_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(TASK_PY)))))
     bin_tw = os.path.join(plugin_root, "bin", "tw")
     with tempfile.TemporaryDirectory() as tmp:
         old = os.path.join(tmp, "old")

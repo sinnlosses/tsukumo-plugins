@@ -19,7 +19,7 @@ import sys
 from collections import Counter
 
 _TASK_MODEL_SCRIPTS = os.path.normpath(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "task-model", "scripts")
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "task-model", "scripts", "core")
 )
 if _TASK_MODEL_SCRIPTS not in sys.path:
     sys.path.insert(0, _TASK_MODEL_SCRIPTS)

@@ -15,7 +15,7 @@
      作業先の作業ツリーの `tw verify-check` が `VERIFIED_SAME` でなければ hook に拒まれる。**`main` へ入れず、
      作業ツリーと枝を消さずに残して**、作業ツリーのパスと `tw verify` の判定行（`VERIFIED`・
      `VERIFY_NOT_PASSED` など）を報告に書く。作業先に `.tw/config.toml` があれば台帳（`.beads`）が無くても
-     `tw verify` は打てる。設定が無く `tw verify` が `MISSING` を返すときは、検証コマンドを自分で打って通し、打ったコマンドと終了コードを報告に書く。作業先が tsukumo-plugins で `skills/task-model/scripts/` を直すタスク（tw 自身を直すタスク）のときは、`tw` を打たず（グローバルの `tw` は本体の旧い版を指すため）、作業ツリーの `skills/task-model/scripts/task.py <サブコマンド>` を直に実行して確かめる」。
+     `tw verify` は打てる。設定が無く `tw verify` が `MISSING` を返すときは、検証コマンドを自分で打って通し、打ったコマンドと終了コードを報告に書く。作業先が tsukumo-plugins で `skills/task-model/scripts/` を直すタスク（tw 自身を直すタスク）のときは、`tw` を打たず（グローバルの `tw` は本体の旧い版を指すため）、作業ツリーの `skills/task-model/scripts/tw/task.py <サブコマンド>` を直に実行して確かめる」。
      `<枝>` と `<パス>` は依頼文に書いて渡す。枝の名前が違うと関門が作業先を見ない（正典の `tw-reference.md`「hook の関門」節）。
      関門が作業先の検証を求めずに通したとき（同じ節）は、受け入れで検証コマンドを打つ
    - 同じく作業先が別のリポジトリのときだけ渡す: 「作業先の本体の作業ツリー（`git worktree list` の
@@ -49,7 +49,7 @@
    cwd の作業ツリーごとに別なので、`tw verify-check` は、委譲先が残した作業先の作業ツリー
    （報告のパス。枝はタスクIDを小文字にした `<枝>`）で `cd <パス> && tw verify-check` と打つ（自分の作業ツリーで打つと `NOT_VERIFIED none`
    になるだけ）。レビューの判定も同じ作業ツリーで、主ブランチから委譲先の枝までの範囲を渡して打ち
-   （`python3 ${CLAUDE_SKILL_DIR}/../task-model/scripts/review_needed.py --difficulty <difficulty> main..<枝>`）、
+   （`python3 ${CLAUDE_SKILL_DIR}/../task-model/scripts/core/review_needed.py --difficulty <difficulty> main..<枝>`）、
    受け入れ役に渡す差分のコマンドも `git diff main...<枝>` に、コメント行を拾うコマンドの範囲も
    `main..<枝>` にする。範囲を渡さず本体で打つと `NO_RANGE` が返る（`NOTHING` ではない）ので、出たら範囲を付けて打ち直す。表は同じに読む。`VERIFIED_SAME` なら、検証コマンドを打たずに同じ作業ツリーで
    `cd <パス> && tw land <枝>` を打つ。`tw land` は作業先の本体で `<枝>` を ff-only で主ブランチへ合流し、

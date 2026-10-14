@@ -82,19 +82,19 @@ fi
 
 if stage "task-model: scripts・task コマンドの自己テスト" \
   'skills/task-model/scripts/*' 'agents/*' 'hooks/*' 'bin/*' 'skills/retrospect/scripts/*'; then
-  python3 "$here/skills/task-model/scripts/selftest.py"
-  python3 "$here/skills/task-model/scripts/selftest_review_needed.py"
-  python3 "$here/skills/task-model/scripts/selftest_review_snapshot.py"
+  python3 "$here/skills/task-model/scripts/tests/selftest.py"
+  python3 "$here/skills/task-model/scripts/tests/selftest_review_needed.py"
+  python3 "$here/skills/task-model/scripts/tests/selftest_review_snapshot.py"
   echo
   echo "-- task コマンド（develop/task/ + 台帳） --"
-  python3 "$here/skills/task-model/scripts/selftest_task.py"
+  python3 "$here/skills/task-model/scripts/tests/selftest_task.py"
   echo
   echo "-- task コマンド（Beads 方式。bd が無ければ飛ばす） --"
-  python3 "$here/skills/task-model/scripts/selftest_beads.py"
+  python3 "$here/skills/task-model/scripts/tests/selftest_beads.py"
 fi
 
 if stage "task-model: WORKFLOW.md・tw-reference.md を読む検査" skills/task-model/WORKFLOW.md skills/task-model/tw-reference.md; then
-  python3 "$here/skills/task-model/scripts/selftest_task.py" test_readonly_commands_stay_out_of_git
+  python3 "$here/skills/task-model/scripts/tests/selftest_task.py" test_readonly_commands_stay_out_of_git
 fi
 
 if stage "retrospect scripts の自己テスト" \
@@ -110,7 +110,7 @@ if stage "comment-audit scripts の自己テスト" 'skills/comment-audit/*'; th
   python3 "$here/skills/comment-audit/scripts/selftest_diff_added_comment_lines.py"
 fi
 
-if stage "task-workflow scripts の自己テスト" 'skills/task-workflow/scripts/*' 'skills/task-model/scripts/gitcmd.py' 'skills/comment-audit/*'; then
+if stage "task-workflow scripts の自己テスト" 'skills/task-workflow/scripts/*' 'skills/task-model/scripts/core/gitcmd.py' 'skills/comment-audit/*'; then
   python3 "$here/skills/task-workflow/scripts/selftest_context_size.py"
   python3 "$here/skills/task-workflow/scripts/selftest_self_review.py"
 fi

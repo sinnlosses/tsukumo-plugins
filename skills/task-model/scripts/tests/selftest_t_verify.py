@@ -371,7 +371,7 @@ def test_verify_folds_base_before_check() -> None:
 
 def readonly_subcommands() -> list[str]:
     """tw-reference.md の「`tw` コマンドの参照」の表で、すること欄に「読むだけ」と書かれた行のサブコマンド名。"""
-    with open(os.path.join(HERE, "..", "tw-reference.md"), encoding="utf-8") as f:
+    with open(os.path.join(HERE, "..", "..", "tw-reference.md"), encoding="utf-8") as f:
         text = f.read()
     section = ("\n" + text).split("\n## `tw` コマンドの参照\n", 1)[1].split("\n## ", 1)[0]
     names = []

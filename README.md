@@ -130,7 +130,7 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
 
 1. `install.sh`・`uninstall.sh`・`scripts/links.sh` の構文
 2. `install.sh`・`uninstall.sh` の自己テスト（`scripts/selftest_links.sh`）
-3. `task-model` のスクリプトの自己テスト（`selftest.py`・`selftest_review_needed.py`・`selftest_review_snapshot.py`・`selftest_task.py`・`selftest_beads.py`。
+3. `task-model` のスクリプトの自己テスト（`scripts/tests/` の `selftest.py`・`selftest_review_needed.py`・`selftest_review_snapshot.py`・`selftest_task.py`・`selftest_beads.py`。
    後ろの2つは入口で、テストの本体は `selftest_t_*.py`・`selftest_b_*.py` にある。
    `bd` が無ければ非0で終わる）
 4. `retrospect` の自己テスト

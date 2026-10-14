@@ -18,7 +18,7 @@ import taskfile  # noqa: E402
 from selftest_fixtures import BODY, TASK_PY, commit_task, flow_rows, hook_env, make_repo, metadata, readonly_git, run_guard, run_handback_guard, run_task, snapshot  # noqa: E402
 
 
-NO_DELEGATE = os.path.join(HERE, "..", "..", "..", "agents", "no-delegate.md")
+NO_DELEGATE = os.path.join(HERE, "..", "..", "..", "..", "agents", "no-delegate.md")
 
 
 def _hook_command(subcommand: str) -> str:
@@ -276,7 +276,7 @@ def test_commit_guard_verify() -> None:
             ("tw verify", wt1),
             ("tw verify T-100", wt1),
             ("./check.sh path/to/one.test.ts", wt1),
-            ("python3 skills/task-model/scripts/selftest_task.py test_x", wt1),
+            ("python3 skills/task-model/scripts/tests/selftest_task.py test_x", wt1),
             ("bash ./check.sh", wt1),
             ("echo ./check.sh", wt1),
             ("git log -- ./check.sh", wt1),
@@ -346,7 +346,7 @@ def test_commit_guard_other_repo() -> None:
             check(f"拒む: {command}", run_guard(tmp, wt1, command) is not None)
         for command, where in (
             (f"cd {work_tree} && tw verify", wt1),
-            (f"cd {work_tree} && python3 skills/task-model/scripts/task.py verify", wt1),
+            (f"cd {work_tree} && python3 skills/task-model/scripts/tw/task.py verify", wt1),
             (f"git -C {work_tree} status", wt1),
             (f"cd {work_tree} && git log -1 && git diff", wt1),
             (f"git -C {work_tree} commit -m x", wt1),
@@ -364,7 +364,7 @@ def test_commit_guard_other_repo() -> None:
               and run_guard(tmp, wt1, f"cd {work_tree} && ./check.sh") is None)
 
 
-HOOKS_JSON = os.path.join(HERE, "..", "..", "..", "hooks", "hooks.json")
+HOOKS_JSON = os.path.join(HERE, "..", "..", "..", "..", "hooks", "hooks.json")
 
 
 def _plugin_hook_commands() -> list[str]:
@@ -426,7 +426,7 @@ def test_agent_scoped_guard() -> None:
               str(all_hooks))
         env = {
             **hook_env(tmp, f"{os.path.dirname(sys.executable)}:/usr/bin:/bin"),
-            "CLAUDE_PLUGIN_ROOT": os.path.abspath(os.path.join(HERE, "..", "..", "..")),
+            "CLAUDE_PLUGIN_ROOT": os.path.abspath(os.path.join(HERE, "..", "..", "..", "..")),
         }
         for hook in ask_hooks:
             payload = {"tool_name": "AskUserQuestion", "tool_input": {}, "cwd": wt1}

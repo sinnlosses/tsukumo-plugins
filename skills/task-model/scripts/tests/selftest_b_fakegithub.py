@@ -22,6 +22,8 @@ from urllib.parse import parse_qs, urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+sys.path.insert(1, os.path.join(HERE, "..", "core"))
+sys.path.insert(1, os.path.join(HERE, "..", "tw"))
 
 import beads  # noqa: E402
 from selftest_b_support import bd, make_repo  # noqa: E402

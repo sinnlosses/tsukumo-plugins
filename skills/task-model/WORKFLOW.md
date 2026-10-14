@@ -5,7 +5,7 @@
 
 タスク運用のスキル（下の用語の入口・流れ・パーツ）が従うルール。このファイルとこのスキルの副ファイルは、
 個々のスキルの名前を書かず、役の名で書く。
-**手順は `tw` コマンドが持ち、自己テスト（`scripts/selftest_task.py`）で守る。** スキルの本文は
+**手順は `tw` コマンドが持ち、自己テスト（`scripts/tests/selftest_task.py`）で守る。** スキルの本文は
 「どのサブコマンドをいつ打つか」と「人が判断する点」だけで、プロジェクト側で手順を上書きする
 仕組みは無い。
 
@@ -283,7 +283,7 @@ Beads の label・各スキルの本文は触らない）:
 **委譲しない近道**: 色1つの直しのような小さいタスクは、段の出入り（計画・委譲・受け入れのレビュー・振り返り）の
 ほうが中身の作業より長い。登録時に登録の入口が下の基準に当たるタスクに印（label `direct:Y`。`tw show` の front matter では `direct: Y`。`tw new --direct`・`tw edit --direct Y|N`・`tw adopt --direct`）を付け、
 入口と流れは印を見るだけで、着手時に「これは近道か」を判断しない。**基準の値の置き場はこの表だけ**で、
-読むコードは `scripts/taskfile.py` の定数 `DIRECT_DIFFICULTY`・`DIRECT_MAX_STEPS`・`DIRECT_MAX_PLAN_FILES`
+読むコードは `scripts/core/taskfile.py` の定数 `DIRECT_DIFFICULTY`・`DIRECT_MAX_STEPS`・`DIRECT_MAX_PLAN_FILES`
 （値を変えるときは表と定数を同じコミットで直す）:
 
 | 条件 | 基準 | 誰が見るか |

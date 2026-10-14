@@ -78,7 +78,7 @@ if [ "$filtered" -eq 1 ]; then
   fi
 fi
 if [ "$link_tw" -eq 1 ]; then
-  tw_target="$here/skills/task-model/scripts/task.py"
+  tw_target="$here/skills/task-model/scripts/tw/task.py"
   link="$bin_dest/tw"
   mkdir -p "$bin_dest"
   if link_refuse "$link" tw "$here/skills/" "触らない"; then

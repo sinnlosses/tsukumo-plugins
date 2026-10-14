@@ -62,7 +62,7 @@ def test_init() -> None:
 
         def run(*args: str) -> subprocess.CompletedProcess:
             return subprocess.run(
-                [sys.executable, os.path.join(HERE, "init.py"), *args],
+                [sys.executable, os.path.join(HERE, "..", "core", "init.py"), *args],
                 capture_output=True,
                 text=True,
                 env=env,

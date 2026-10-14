@@ -9,7 +9,7 @@ description: "タスク運用に要る .tw/ （.gitignore）をプロジェク�
 
 ## 手順
 
-0. **依存を確かめる**: `${CLAUDE_SKILL_DIR}/../task-model/scripts/task.py` が無ければ、
+0. **依存を確かめる**: `${CLAUDE_SKILL_DIR}/../task-model/scripts/tw/task.py` が無ければ、
    `task-model` スキルが張られていないとして `MISSING` を報告して終了する（plugin で入れるなら
    `/plugin install tsukumo-workflow@tsukumo-plugins`、リンクで入れるなら `install.sh` で
    `task-model` も一緒に張るよう案内する。以下の手順で打つ `task-model` の各スクリプトは
@@ -19,7 +19,7 @@ description: "タスク運用に要る .tw/ （.gitignore）をプロジェク�
    「未対応の指示がある」と誤判定する）:
 
    ```bash
-   python3 ${CLAUDE_SKILL_DIR}/../task-model/scripts/init.py
+   python3 ${CLAUDE_SKILL_DIR}/../task-model/scripts/core/init.py
    ```
 
    | 行 | 意味 |

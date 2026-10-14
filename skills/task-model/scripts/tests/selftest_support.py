@@ -12,6 +12,11 @@ import threading
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _d in ("tw", "core"):
+    if os.path.join(_HERE, "..", _d) not in sys.path:
+        sys.path.insert(1, os.path.join(_HERE, "..", _d))
+
 failures: list[str] = []
 local = threading.local()
 

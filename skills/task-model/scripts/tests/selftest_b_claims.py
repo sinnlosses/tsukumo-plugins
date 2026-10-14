@@ -12,6 +12,8 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+sys.path.insert(1, os.path.join(HERE, "..", "core"))
+sys.path.insert(1, os.path.join(HERE, "..", "tw"))
 
 import beads  # noqa: E402
 import ledger  # noqa: E402

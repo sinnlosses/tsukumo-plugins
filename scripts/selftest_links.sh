@@ -67,7 +67,7 @@ rm -rf "$dest" "$bin"
 mkdir "$dest" "$bin"
 ln -s "$here/skills/task-workflow/scripts/task.py" "$bin/tw"
 inst task-model >"$tmp/out" 2>"$tmp/err"
-[ "$(readlink "$bin/tw")" = "$here/skills/task-model/scripts/task.py" ] && ! grep -q "skipped tw" "$tmp/err"
+[ "$(readlink "$bin/tw")" = "$here/skills/task-model/scripts/tw/task.py" ] && ! grep -q "skipped tw" "$tmp/err"
 check "改名前の置き場を指す tw を張り替える" $?
 
 [ "$fails" -eq 0 ] || { echo "$fails 件落ちた"; exit 1; }

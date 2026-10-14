@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+sys.path.insert(1, os.path.join(HERE, "..", "core"))
+sys.path.insert(1, os.path.join(HERE, "..", "tw"))
 
 import beads  # noqa: E402
 import layout  # noqa: E402
@@ -24,7 +26,7 @@ from selftest_body import task_body  # noqa: E402
 from selftest_fixtures import run_guard, run_handback_guard, run_task, start_task  # noqa: E402
 from selftest_support import check, git, refuse_direct_run, say, write  # noqa: E402
 
-MATERIAL_PY = os.path.join(HERE, "..", "..", "retrospect", "scripts", "material.py")
+MATERIAL_PY = os.path.join(HERE, "..", "..", "..", "retrospect", "scripts", "material.py")
 
 
 def test_direct_mark() -> None:

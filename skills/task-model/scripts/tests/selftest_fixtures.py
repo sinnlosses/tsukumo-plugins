@@ -24,7 +24,7 @@ from selftest_body import task_body  # noqa: E402
 os.environ.pop(ledger.STATE_DIR_ENV, None)
 
 
-TASK_PY = os.path.join(HERE, "task.py")
+TASK_PY = os.path.normpath(os.path.join(HERE, "..", "tw", "task.py"))
 
 BODY = task_body()
 
@@ -112,7 +112,7 @@ def make_repo(
     write(os.path.join(main_path, "shared.txt"), "line1\n")
     if init:
         r = subprocess.run(
-            [sys.executable, os.path.join(HERE, "init.py")], cwd=main_path, capture_output=True, text=True, env=child_env()
+            [sys.executable, os.path.join(HERE, "..", "core", "init.py")], cwd=main_path, capture_output=True, text=True, env=child_env()
         )
         if r.returncode != 0:
             raise RuntimeError(f"init.py 失敗: {r.stdout}{r.stderr}")

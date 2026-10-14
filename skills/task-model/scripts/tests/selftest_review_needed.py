@@ -14,7 +14,7 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SCRIPT = os.path.join(HERE, "review_needed.py")
+SCRIPT = os.path.join(HERE, "..", "core", "review_needed.py")
 
 from selftest_review_support import git, write  # noqa: E402
 
