@@ -71,6 +71,35 @@ def main() -> int:
     check_repo.check_retrospect_entry_references(skills)
     check("実物のリポジトリは retrospect の本文を detail.md で指す", check_repo.problems == [])
 
+    edges = check_repo.forbidden_edges
+    check("next-task から task-model のファイルは許す", edges("next-task", "`skills/task-model/WORKFLOW.md`", skills) == [])
+    check("plan-tasks から next-task のファイルは返す",
+          edges("plan-tasks", "`next-task` スキルの `ship-stopped.md` の表", skills) == ["next-task"])
+    check("retrospect から task-workflow のパーツのファイルは返す",
+          edges("retrospect", "task-workflow/parts/retrospect.md を読む", skills) == ["task-workflow"])
+    check("task-model からほかのスキルのファイルは返す", edges("task-model", "`next-task` の `SKILL.md`", skills) == ["next-task"])
+    check("retro から retrospect のファイルは許す", edges("retro", "`retrospect` の `detail.md`", skills) == [])
+    check("自分自身のファイルは許す", edges("plan-tasks", "skills/plan-tasks/SKILL.md", skills) == [])
+    check("名前で呼ぶだけなら拾わない", edges("next-task", "`task-workflow` を Skill ツールで呼ぶ", skills) == [])
+    check("台帳の置き場は拾わない",
+          edges("task-model", "`$(git rev-parse --git-common-dir)/task-workflow/flow/<ID>.md`", skills) == [])
+
+    mentions = check_repo.task_model_name_mentions
+    agents = check_repo.agent_names()
+    check("データの名前は拾わない",
+          mentions("`task-workflow.last-id`・`/task-workflow/<ID>`・`docs/history/retrospect.md`・`retrospect_due`・lap の段 retro",
+                   skills, agents) == [])
+    check("スキル名とエージェント名を拾う",
+          mentions("`/next-task` から `no-delegate` に委譲し `/retro` を呼ぶ", skills, agents) == ["next-task", "no-delegate", "retro"])
+
+    check_repo.problems.clear()
+    check_repo.check_dependency_edges(skills)
+    check("実物のリポジトリは許す辺に収まる", check_repo.problems == [])
+
+    check_repo.problems.clear()
+    check_repo.check_task_model_names(skills, agents)
+    check("実物の task-model はスキル名とエージェント名を書かない", check_repo.problems == [])
+
     if failures:
         print(f"\n{len(failures)} 件落ちた: {', '.join(failures)}")
         return 1

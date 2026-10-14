@@ -24,6 +24,10 @@
 - 兄弟のパス `${CLAUDE_SKILL_DIR}/../<兄弟>` で指してよいのは `task-model` と自分自身だけであること
   （ほかのパーツは Skill ツールで名前を指して呼び、そのパーツの道具は置き場〔Base directory〕から打つ）
 - retrospect の本文を `retrospect/SKILL.md` で指す文言が無いこと（本文は `detail.md`）
+- 各スキルの `.md` がファイルを指す先（`skills/<名>/`・`<名>/<ファイル>.md|py`・`` `<名>` スキルの `…` ``・
+  `` `<名>` の `<ファイル>.md` ``）が、`DEPENDENCY_EDGES` の許す辺に収まること
+- `task-model` の `.md` が、ほかのスキル名とエージェント名を書いていないこと（データの名前の
+  `task-workflow.` の kv キー・`/task-workflow/` の台帳・`docs/history/retrospect.md`・`retrospect_due` は除く）
 """
 
 from __future__ import annotations
@@ -535,6 +539,78 @@ def check_retrospect_entry_references(names: list[str]) -> None:
                 fail(f"{os.path.relpath(md, ROOT)}: retrospect の本文を `SKILL.md` で指している（本文は `detail.md`）")
 
 
+# 本文がファイルを指してよいスキル（自分自身は常に許す）。ここに無いスキルは見ない。
+# 入口が流れのオーケストレーターを、オーケストレーターがパーツを呼ぶのは Skill ツールの名前で、ファイルは指さない。
+DEPENDENCY_EDGES = {
+    "next-task": ("task-model",),
+    "task-workflow": ("task-model",),
+    "retrospect": ("task-model",),
+    "comment-audit": ("task-model",),
+    "plan-tasks": ("task-model",),
+    "list-tasks": ("task-model",),
+    "setup-tasks": ("task-model",),
+    "retro": ("retrospect", "task-model"),
+    "task-model": (),
+}
+
+
+def _file_reference_patterns(names: list[str]) -> list[re.Pattern[str]]:
+    alt = "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True))
+    return [
+        re.compile(rf"(?:skills/|\.\./)({alt})/"),
+        re.compile(rf"(?<![\w./$-])({alt})/[\w./-]*\.(?:md|py)\b"),
+        re.compile(rf"`({alt})` スキルの `[^`\n]+`"),
+        re.compile(rf"`({alt})` の `[\w./-]+\.(?:md|py)`"),
+    ]
+
+
+def file_references(text: str, names: list[str]) -> list[str]:
+    """本文がファイルを指しているスキル名（出てきた順、重複なし）。"""
+    found: list[tuple[int, str]] = []
+    for pat in _file_reference_patterns(names):
+        found += [(m.start(), m.group(1)) for m in pat.finditer(text)]
+    return list(dict.fromkeys(name for _, name in sorted(found)))
+
+
+def forbidden_edges(owner: str, text: str, names: list[str]) -> list[str]:
+    """`DEPENDENCY_EDGES` が許さない、ファイルを指す先のスキル名。表に無い `owner` は見ない。"""
+    if owner not in DEPENDENCY_EDGES:
+        return []
+    allowed = set(DEPENDENCY_EDGES[owner]) | {owner}
+    return [dep for dep in file_references(text, names) if dep not in allowed]
+
+
+def check_dependency_edges(names: list[str]) -> None:
+    """各スキルの `.md` がファイルを指す先のスキルが、`DEPENDENCY_EDGES` の許す辺に収まるか。"""
+    for n in names:
+        for md in markdown_files(n):
+            for dep in forbidden_edges(n, read(md), names):
+                fail(f"{os.path.relpath(md, ROOT)}: `{dep}` のファイルを指している（{n} から許す先は DEPENDENCY_EDGES）")
+
+
+# task-model の文書に出てよいデータの名前（kv キー・台帳の置き場・振り返りの記録・`tw status` の行の名前）。
+TASK_MODEL_DATA_NAMES = re.compile(r"task-workflow\.[\w.<>-]+|/task-workflow/|docs/history/retrospect\.md|retrospect_due")
+
+
+def task_model_name_mentions(text: str, names: list[str], agents: list[str]) -> list[str]:
+    """task-model の文書が書いているほかのスキル名とエージェント名（出てきた順、重複なし）。
+    `retro` は lap の段の名と重なるので `/retro` の形だけを見る。"""
+    body = TASK_MODEL_DATA_NAMES.sub("", text)
+    others = [n for n in names if n not in ("task-model", "retro")] + list(agents)
+    alt = "|".join(re.escape(n) for n in sorted(others, key=len, reverse=True))
+    found = [(m.start(), m.group(1)) for m in re.finditer(rf"(?<![\w-])({alt})(?![\w-])", body)]
+    if "retro" in names:
+        found += [(m.start(), "retro") for m in re.finditer(r"/retro(?![\w-])", body)]
+    return list(dict.fromkeys(name for _, name in sorted(found)))
+
+
+def check_task_model_names(names: list[str], agents: list[str]) -> None:
+    """task-model は役の名で書き、ほかのスキルとエージェントを名指さない（WORKFLOW.md の用語）。"""
+    for md in markdown_files("task-model"):
+        for name in task_model_name_mentions(read(md), names, agents):
+            fail(f"{os.path.relpath(md, ROOT)}: `{name}` を名指している（task-model は役の名で書く）")
+
+
 def check_sibling_references(names: list[str]) -> None:
     """本文が `${CLAUDE_SKILL_DIR}/../<兄弟>` で指す兄弟が、そのスキルの `REQUIRES` にあるか。"""
     for n in names:
@@ -633,6 +709,8 @@ def main() -> None:
     check_sibling_references(names)
     check_sibling_path_references(names)
     check_retrospect_entry_references(names)
+    check_dependency_edges(names)
+    check_task_model_names(names, agent_names())
     check_sibling_imports(names)
     check_python_syntax(names)
     check_task_model_layout()

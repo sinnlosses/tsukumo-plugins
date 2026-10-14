@@ -20,7 +20,7 @@
 
 `comment-audit` を Skill ツールで名前を指して呼ぶ（一覧の末尾が `comment-audit` の行）。呼べない・一覧に無いときは飛ばす。
 
-- 呼んだときに渡される置き場（Base directory）で `python3 <Base directory>/scripts/diff_added_comment_lines.py HEAD` を打ち、拾った行1つずつに `comment-audit` の `SKILL.md` の「判定の1問」を当てる。消す・正典へ移す対象に当たる行は規約の指摘に入れる。
+- 呼んだときに渡される置き場（Base directory）で `python3 <Base directory>/scripts/diff_added_comment_lines.py HEAD` を打ち、拾った行1つずつに、呼んで読んだ本文の「判定の1問」を当てる。消す・正典へ移す対象に当たる行は規約の指摘に入れる。
 - 差分と一緒に並べられた未追跡の新しいファイルはコマンドに出ないので、そのファイルのコメント行も読んで同じ判定の1問を当てる。
 
 ## 目視

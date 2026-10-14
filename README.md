@@ -138,7 +138,8 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
 6. `comment-audit` の自己テスト
 7. `task-workflow` の自己テスト
 8. リポジトリの整合（`scripts/check_repo.py`。frontmatter、この README の由来一覧と `skills/` の一致、
-   参照先の実在、プラグインの名前と `bin/tw`・`hooks/hooks.json`、エージェント定義）
+   参照先の実在、スキル間の依存の辺と `task-model` が役の名で書かれていること、
+   プラグインの名前と `bin/tw`・`hooks/hooks.json`、エージェント定義）
 
 由来の一覧が索引なので、スキルを足したり消したりしたらここも直す（直し忘れは `./check.sh` が落とす）。
 
