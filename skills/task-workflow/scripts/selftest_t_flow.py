@@ -523,6 +523,18 @@ def test_config_doctor_prerequisites() -> None:
             r.stdout + r.stderr,
         )
 
+        words = {l.split("\t")[1] for l in r.stdout.splitlines() if "\t" in l}
+        import task
+
+        help_body = task.SUBCOMMAND_HELP["config-doctor"][1].splitlines()[-1]
+        with open(os.path.join(os.path.dirname(os.path.abspath(task.__file__)), "..", "tw-reference.md"), encoding="utf-8") as f:
+            row = next(l for l in f if l.startswith("| `config-doctor` |"))
+        check(
+            "config-doctor が実際に出す2語目は、help の最後の一文と tw-reference の行の両方に書いてある",
+            "OPTIONAL" in words and all(w in help_body and w in row for w in words | {"INVALID"}),
+            f"{words} / {help_body} / {row}",
+        )
+
 
 def test_bin_tw_python_floor() -> None:
     say("bin/tw: Python の下限を検査し、hooks は前提の欠落だけ1行警告する")
