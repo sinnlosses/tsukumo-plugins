@@ -28,7 +28,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | `finish T-xxx [--dropped] --result-file <path\|-> --message <件名> [--add <ファイル>]…` | 結果・コミット・送りを一度に打つとき（`done` → `git add` → コミット → `ship`） | `done` の行、`COMMITTED`・`NO_COMMIT`、`ship` の行。`COMMITS_SINCE_CLAIM` が出れば終了コード12で止まる |
 | `metrics [--days N] [--stages]` | 流れの数と段ごとの所要時間を読むだけで見るとき（振り返り） | `PERIOD`、続けて `shipped`・`lead_median_seconds`・`verify_per_task` など。`--stages` は `STAGE`・`OPEN`。`SKIPPED`・`EMPTY` |
 | `config` | 解けた設定を読むだけで見るとき | `CONFIG`、続けて `<キー>\t<値>\t<config\|default>`。設定が無ければ `MISSING`（終了コード6） |
-| `config-doctor` | リポジトリが今の読み取りに合っているかを読むだけで点検するとき（`--fix` は無い） | `base_branch`・`config`・`store`・`beads`・`tracker` の行（2語目が `OK`・`MISSING`・`INVALID`） |
+| `config-doctor` | リポジトリが今の読み取りに合っているかを読むだけで点検するとき（`--fix` は無い） | `base_branch`・`config`・`python`・`git`・`bd`・`dolt`・`gh`・`tw`・`store`・`beads`・`tracker` の行（2語目が `OK`・`MISSING`・`INVALID`、前提の行は `OPTIONAL` も） |
 | `commit-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。着手の印が立った作業ツリーで、委譲先のコミット・シェルでのファイルの書き換え・検証コマンドの直打ちを拒む | 拒むときだけ deny の JSON 1行。通すときは何も出さない |
 | `pause [T-xxx [<n>]]` | 判断が要って止める・目視待ち・計画を作業の後に書いた返却の直前に打つ（委譲先。並列の段の担当は ID と段の番号を付ける） | `PAUSED`・`NOT_OWNER` |
 | `step T-xxx <n>` | 最後でない段を済ませて返す直前に打つ（委譲先。着手した作業ツリーで打つ） | `STEPPED`・`LAST_STEP`（終了コード4。最後の段は `tw verify` を通して返す）・`NOT_OWNER` |
@@ -56,7 +56,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 
 `.git` が読み取り専用の sandbox で打つときは `README.md`「`.git` が読み取り専用の sandbox で打つとき」節。
 
-**`config-doctor` だけは終了コード1の意味が違う**（「直すものがある」。環境の故障ではない）。検査の最悪値を返し、`INVALID` があれば3、直すものがあれば1、全部OKで0。点検のコマンドなので、1で止まっても報告するだけでよい。
+**`config-doctor` だけは終了コード1の意味が違う**（「直すものがある」。環境の故障ではない）。検査の最悪値を返し、`INVALID` があれば3、直すもの（必須の前提の欠落・古さを含む）があれば1、全部OKで0。点検のコマンドなので、1で止まっても報告するだけでよい。
 
 **`commit-guard`・`handback-guard`・`ask-guard` は Claude Code の hook の取り決めに従う**: 出力は TSV でなく JSON で、終了コードはいつも0。
 読めない入力も何も出さずに通す。タスク運用を始めていないリポジトリ・git の外でも打てる。

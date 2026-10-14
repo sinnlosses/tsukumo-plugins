@@ -165,11 +165,11 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     ),
     "config-doctor": (
         "このリポジトリが今の読み取りに合っているかを点検する（読むだけ。`--fix` は無い）。",
-        r"""このリポジトリが今の読み取りに合っているかを点検する（**読むだけ。`--fix` は無い**）。主ブランチが何で決まったか・設定が読めるか、の2検査を必ず1行ずつ出し、設定が読めれば Beads の用意とトラッカーの行を足す
+        r"""このリポジトリが今の読み取りに合っているかを点検する（**読むだけ。`--fix` は無い**）。主ブランチが何で決まったか・設定が読めるか、の2検査を必ず1行ずつ出し、続けて前提のコマンド（python・git・bd・dolt・gh・tw）の行を出し、設定が読めれば Beads の用意とトラッカーの行を足す
 
-終了コード1の意味が他と違う（「直すものがある」。環境の故障ではない）。検査の最悪値を返し、`INVALID` があれば3、直すものがあれば1、全部OKで0。点検のコマンドなので、1で止まっても報告するだけでよい。
+終了コード1の意味が他と違う（「直すものがある」。環境の故障ではない）。検査の最悪値を返し、`INVALID` があれば3、直すもの（必須の前提の欠落・古さを含む）があれば1、全部OKで0。点検のコマンドなので、1で止まっても報告するだけでよい。
 
-出力: `base_branch`・`config` の2行。`config\t<OK|MISSING|INVALID>\t<ファイル>\t<詳細>`（読めない・語彙の外は `INVALID`、設定が無い・検証コマンドが無いは `MISSING`）。設定が読めれば続けて `store\tOK\tbeads`・`beads\t<OK|MISSING>\t<.beads のパス>`（`MISSING` は直すもの）・`tracker\tOK\t<なし|github|jira>`。各行の2語目が `OK`／`MISSING`／`INVALID`""",
+出力: `base_branch`・`config` の2行。`config\t<OK|MISSING|INVALID>\t<ファイル>\t<詳細>`（読めない・語彙の外は `INVALID`、設定が無い・検証コマンドが無いは `MISSING`）。前提の行は `<python|git|bd|dolt|gh|tw>\t<OK|MISSING|OPTIONAL>\t<必須|任意>\t<版・詳細>`（必須の欠落と最低版未満が `MISSING`。`gh` はトラッカーが github のときだけ必須、`tw` は任意）。設定が読めれば続けて `store\tOK\tbeads`・`beads\t<OK|MISSING>\t<.beads のパス>`（`MISSING` は直すもの）・`tracker\tOK\t<なし|github|jira>`。各行の2語目が `OK`／`MISSING`／`INVALID`""",
     ),
     "metrics": (
         "台帳の `flow/` の記録から、直近 N 日と前の同じ長さの期間の数を並べる（読むだけ）。",

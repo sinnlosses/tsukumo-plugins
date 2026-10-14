@@ -478,6 +478,95 @@ def test_config_doctor() -> None:
         )
 
 
+def test_config_doctor_prerequisites() -> None:
+    say("task.py config-doctor: 前提のコマンドの行（必須・任意）")
+    import tw_maint
+
+    rows = tw_maint.prerequisite_rows((3, 8, 10), {"git": "2.40", "bd": "1.3.1", "dolt": "1.0", "gh": None, "tw": None}, False)
+    check(
+        "Python 3.9 未満は python MISSING、gh（トラッカーが github でない）と tw は OPTIONAL",
+        rows[0].startswith("python\tMISSING\t必須\t3.8.10")
+        and "gh\tOPTIONAL\t任意\tPATH に無い" in rows and "tw\tOPTIONAL\t任意\tPATH に無い" in rows,
+        repr(rows),
+    )
+    rows = tw_maint.prerequisite_rows((3, 9, 6), {"git": "2.40", "bd": "1.2.9", "dolt": "1.0", "gh": None, "tw": "x"}, True)
+    check(
+        "bd が最低版未満なら bd MISSING、トラッカーが github なら gh は必須で MISSING、Python 3.9 は OK",
+        rows[0].startswith("python\tOK\t") and any(l.startswith("bd\tMISSING\t必須\t1.2.9") for l in rows)
+        and "gh\tMISSING\t必須\tPATH に無い" in rows,
+        repr(rows),
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        only_git = os.path.join(tmp, "bin")
+        os.makedirs(only_git)
+        os.symlink(shutil.which("git"), os.path.join(only_git, "git"))
+        repo = _make_config_doctor_repo(tmp, "no-bd")
+        r = run_task(repo, "config-doctor", env={"PATH": only_git})
+        lines = r.stdout.splitlines()
+        check(
+            "bd・dolt が PATH に無ければ MISSING 必須で終了コード1、gh は OPTIONAL",
+            r.returncode == 1
+            and "bd\tMISSING\t必須\tPATH に無い" in lines
+            and "dolt\tMISSING\t必須\tPATH に無い" in lines
+            and "gh\tOPTIONAL\t任意\tPATH に無い" in lines
+            and any(l.startswith("git\tOK\t必須\t") for l in lines),
+            r.stdout + r.stderr,
+        )
+
+        write(os.path.join(repo, ".tw", "config.toml"),
+              'verify = "なし"\nbranch = "既定"\ntracker = "github"\ngithub_project = "o/1"\n')
+        r = run_task(repo, "config-doctor", env={"PATH": only_git})
+        check(
+            "tracker = github で gh が無ければ gh MISSING 必須",
+            "gh\tMISSING\t必須\tPATH に無い" in r.stdout.splitlines(),
+            r.stdout + r.stderr,
+        )
+
+
+def test_bin_tw_python_floor() -> None:
+    say("bin/tw: Python の下限を検査し、hooks は前提の欠落だけ1行警告する")
+    import subprocess
+
+    from selftest_fixtures import TASK_PY
+
+    plugin_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(TASK_PY))))
+    bin_tw = os.path.join(plugin_root, "bin", "tw")
+    with tempfile.TemporaryDirectory() as tmp:
+        old = os.path.join(tmp, "old")
+        os.makedirs(old)
+        write(os.path.join(old, "python3"), '#!/bin/sh\n[ "$1" = "-c" ] && exit 1\necho "Python 3.8.10"\n')
+        os.chmod(os.path.join(old, "python3"), 0o755)
+        base_path = "/usr/bin:/bin"
+        r = subprocess.run([bin_tw, "--help"], capture_output=True, text=True, env={"PATH": f"{old}:{base_path}"})
+        check(
+            "Python 3.9 未満なら日本語で案内して終了コード78",
+            r.returncode == 78 and "Python 3.9 以上が要る" in r.stderr and "3.8.10" in r.stderr,
+            r.stdout + r.stderr,
+        )
+
+        empty = os.path.join(tmp, "empty")
+        os.makedirs(empty)
+        r = subprocess.run(["/bin/sh", bin_tw, "--help"], capture_output=True, text=True, env={"PATH": empty})
+        check("python3 が無ければ案内して終了コード78", r.returncode == 78 and "python3 が見つからない" in r.stderr,
+              r.stdout + r.stderr)
+
+        import json
+
+        with open(os.path.join(plugin_root, "hooks", "hooks.json"), encoding="utf-8") as f:
+            commands = [h["command"] for gs in json.load(f)["hooks"].values() for g in gs for h in g["hooks"]]
+        r = subprocess.run(["/bin/sh", "-c", commands[0]], capture_output=True, text=True,
+                           env={"PATH": f"{old}:{base_path}", "CLAUDE_PLUGIN_ROOT": plugin_root})
+        check(
+            "hook は前提の欠落で1行警告し、終了コードは0（コミットや委譲を塞がない）",
+            r.returncode == 0 and r.stdout == "" and r.stderr.count("\n") == 1 and "前提が欠けている" in r.stderr,
+            r.stdout + r.stderr,
+        )
+        r = subprocess.run(["/bin/sh", "-c", commands[0]], capture_output=True, text=True,
+                           env={"PATH": os.environ["PATH"], "CLAUDE_PLUGIN_ROOT": plugin_root}, input="{}")
+        check("前提が揃っていれば hook は警告を出さず終了コード0", r.returncode == 0 and r.stderr == "", r.stdout + r.stderr)
+
+
 def test_config_command() -> None:
     say("task.py config: 解けた設定を出す")
     with tempfile.TemporaryDirectory() as tmp:
@@ -562,6 +651,8 @@ TESTS = (
     test_config_file_agents_md_and_conflict,
     test_retrospect_due,
     test_config_doctor,
+    test_config_doctor_prerequisites,
+    test_bin_tw_python_floor,
     test_config_command,
     test_metrics_stages,
     test_metrics_stages_parallel_steps,

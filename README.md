@@ -58,9 +58,16 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
 
 ## 要るもの
 
-- `python3`（`tw` とスキルのスクリプト。標準ライブラリだけ）と `git`
-- `bd`（Beads）と Dolt（タスクの置き場。`tw` は `bd` が無いと動かない）。
-  トラッカーが `github` なら `gh` も要る（`skills/task-workflow/TRACKER.md`「トラッカー」）
+| 前提 | 必須・任意 | 最低版 | 用途・無いとき |
+| --- | --- | --- | --- |
+| `python3` | 必須 | 3.9 | `tw` とスキルのスクリプト（標準ライブラリだけ）。`bin/tw` が足りなければ案内して終了コード78で止まる |
+| `git` | 必須 | - | 作業ツリーと主ブランチの取り込み |
+| `bd`（Beads） | 必須 | 1.3.0 | タスクの置き場。無いと `tw` は動かない |
+| `dolt` | 必須 | - | `bd` の置き場の実体とバックアップ |
+| `gh` | トラッカーが `github` のときだけ必須 | - | Issue と Project の同期（`skills/task-workflow/TRACKER.md`「トラッカー」） |
+| `tw`（PATH 上） | 任意 | - | スキルや hook がサブエージェントの中から `tw` と打つとき |
+
+`tw config-doctor` が前提ごとに `OK`・`MISSING`・`OPTIONAL` を出す（必須が欠ければ終了コード1）。
 
 使うプロジェクトの側は、検証コマンドを書いた `.tw/config.toml` を置く。用意するのは `/setup-tasks`。
 

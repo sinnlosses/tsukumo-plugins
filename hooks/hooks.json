@@ -4,26 +4,26 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/tw\" commit-guard --agent-scoped 2>/dev/null || true" }
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/tw\" commit-guard --agent-scoped 2>/dev/null || { case $? in 78|127) echo 'tsukumo-workflow: 前提が欠けている（tw config-doctor で確かめる）' >&2;; esac; true; }" }
         ]
       },
       {
         "matcher": "SubagentHandback",
         "hooks": [
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/tw\" handback-guard --agent-scoped 2>/dev/null || true" }
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/tw\" handback-guard --agent-scoped 2>/dev/null || { case $? in 78|127) echo 'tsukumo-workflow: 前提が欠けている（tw config-doctor で確かめる）' >&2;; esac; true; }" }
         ]
       },
       {
         "matcher": "AskUserQuestion",
         "hooks": [
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/tw\" ask-guard 2>/dev/null || true" }
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/tw\" ask-guard 2>/dev/null || { case $? in 78|127) echo 'tsukumo-workflow: 前提が欠けている（tw config-doctor で確かめる）' >&2;; esac; true; }" }
         ]
       }
     ],
     "SubagentStop": [
       {
         "hooks": [
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/tw\" handback-guard --agent-scoped 2>/dev/null || true" }
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/tw\" handback-guard --agent-scoped 2>/dev/null || { case $? in 78|127) echo 'tsukumo-workflow: 前提が欠けている（tw config-doctor で確かめる）' >&2;; esac; true; }" }
         ]
       }
     ]

@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import ast
 import os
 import sys
 
@@ -37,6 +38,15 @@ def main() -> int:
     check("REQUIRES に無い兄弟を返す", unrequired("a", text, {"x"}) == ["y"])
     check("全部 REQUIRES にあれば空", unrequired("a", text, {"x", "y"}) == [])
     check("REQUIRES が空なら全部返す", unrequired("a", text, set()) == ["x", "y"])
+
+    parse = ast.parse
+    check("from __future__ import annotations があれば真", check_repo.has_future_annotations(parse("from __future__ import annotations\nx = 1\n")))
+    check("無ければ偽", not check_repo.has_future_annotations(parse("import os\n")))
+    check("annotations 以外の __future__ だけなら偽", not check_repo.has_future_annotations(parse("from __future__ import division\n")))
+
+    check_repo.problems.clear()
+    check_repo.check_python_syntax(skills)
+    check("実物の .py は全部 from __future__ import annotations を持つ", check_repo.problems == [])
 
     check_repo.problems.clear()
     check_repo.check_sibling_references(skills)

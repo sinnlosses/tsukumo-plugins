@@ -52,6 +52,12 @@ NO_DELEGATE_HOOK_LINES = (
     "command: tw handback-guard 2>/dev/null || true",
 )
 
+# hook の command の末尾。前提の欠落（78・127）だけ1行警告し、どんな終了でも真で終える。
+HOOK_TAIL = (
+    "2>/dev/null || { case $? in 78|127) "
+    "echo 'tsukumo-workflow: 前提が欠けている（tw config-doctor で確かめる）' >&2;; esac; true; }"
+)
+
 ACCEPTOR_DISALLOWED_TOOLS = ("Agent", "Edit", "Write", "NotebookEdit")
 
 problems: list[str] = []
@@ -278,10 +284,10 @@ def check_plugin() -> None:
         fail("hooks/hooks.json を読めない（hooks.<イベント>[].hooks[].command の形）")
         return
     for subcommand in ("commit-guard", "handback-guard"):
-        want = f'"${{CLAUDE_PLUGIN_ROOT}}/bin/tw" {subcommand} --agent-scoped 2>/dev/null || true'
+        want = f'"${{CLAUDE_PLUGIN_ROOT}}/bin/tw" {subcommand} --agent-scoped {HOOK_TAIL}'
         if want not in commands:
             fail(f"hooks/hooks.json に hook {want!r} が無い")
-    want = '"${CLAUDE_PLUGIN_ROOT}/bin/tw" ask-guard 2>/dev/null || true'
+    want = f'"${{CLAUDE_PLUGIN_ROOT}}/bin/tw" ask-guard {HOOK_TAIL}'
     if want not in commands:
         fail(f"hooks/hooks.json に hook {want!r} が無い")
 
@@ -311,6 +317,13 @@ def check_requires(names: list[str]) -> None:
                 fail(f"{n}/REQUIRES: 依存先 `{dep}` は実在しない")
 
 
+def has_future_annotations(tree: ast.Module) -> bool:
+    return any(
+        isinstance(node, ast.ImportFrom) and node.module == "__future__" and any(a.name == "annotations" for a in node.names)
+        for node in tree.body
+    )
+
+
 def check_python_syntax(names: list[str]) -> None:
     for n in names:
         for dirpath, _, files in os.walk(os.path.join(SKILLS, n)):
@@ -319,9 +332,12 @@ def check_python_syntax(names: list[str]) -> None:
                     continue
                 p = os.path.join(dirpath, f)
                 try:
-                    ast.parse(read(p))
+                    tree = ast.parse(read(p))
                 except SyntaxError as e:
                     fail(f"{os.path.relpath(p, ROOT)}: 構文エラー（{e}）")
+                    continue
+                if not has_future_annotations(tree):
+                    fail(f"{os.path.relpath(p, ROOT)}: `from __future__ import annotations` が無い（Python 3.9 で型注釈が読めない）")
 
 
 # T-018: 履歴の置き場・IDの形は skills/task-workflow/scripts/layout.py に

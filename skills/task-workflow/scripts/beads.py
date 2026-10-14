@@ -1,6 +1,6 @@
 """Beads（`bd`）の包み。タスクの読み書きを1箇所に閉じ込める。
 
-正典は WORKFLOW.md「Beads とトラッカー」。`bd` は Beads の CLI（1.3.0 で確かめた）で、`.beads` は
+正典は WORKFLOW.md「Beads とトラッカー」。`bd` は Beads の CLI（`MIN_BD_VERSION` 以上）で、`.beads` は
 主ブランチを出している作業ツリーの根にあり、どの作業ツリーから打っても同じデータベースを読む。
 
 タスクID の対応: Beads の中の ID の接頭辞は小文字だけなので、外に見せる ID は大文字にする
@@ -44,6 +44,7 @@ import layout
 import taskfile
 
 BD = "bd"
+MIN_BD_VERSION = (1, 3, 0)
 # `issue_prefix` の値。`gh` は GitHub の Issue 番号、`t` は `task` の採番。
 PREFIX_GITHUB = "gh"
 PREFIX_LOCAL = "t"

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import re
+import shutil
+import subprocess
 import sys
 import time
 
@@ -44,13 +47,70 @@ def cmd_config_doctor(toplevel: str) -> None:
     elif kind != "OK":
         exit_code = max(exit_code, 1)
 
-    # 検査3: Beads の用意とトラッカー。
+    # 検査3: 前提のコマンド（設定が読めなくても出す）。
+    github = config is not None and config.tracker == "github"
+    rows = prerequisite_rows(sys.version_info[:3], _tool_versions(), github)
+    for row in rows:
+        print(row)
+    if any(r.split("\t")[1] == "MISSING" for r in rows):
+        exit_code = max(exit_code, 1)
+
+    # 検査4: Beads の用意とトラッカー。
     if config is not None and config.source is not None:
         store_code = _doctor_store(toplevel, config)
         exit_code = 3 if 3 in (exit_code, store_code) else max(exit_code, store_code)
 
     if exit_code:
         raise SystemExit(exit_code)
+
+
+MIN_PYTHON = (3, 9)
+
+
+def _tool_versions() -> dict[str, str | None]:
+    """PATH 上の各コマンドの版の文字列。コマンドが無ければ `None`、版が読めなければ `""`。"""
+    found: dict[str, str | None] = {}
+    for name in ("git", "bd", "dolt", "gh", "tw"):
+        if shutil.which(name) is None:
+            found[name] = None
+            continue
+        try:
+            r = subprocess.run([name, "--version"], capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.TimeoutExpired):
+            found[name] = ""
+            continue
+        m = re.search(r"\d+(?:\.\d+)+", r.stdout + r.stderr)
+        found[name] = m.group(0) if m else ""
+    return found
+
+
+def _version_tuple(text: str) -> tuple[int, ...]:
+    return tuple(int(p) for p in text.split("."))
+
+
+def prerequisite_rows(
+    python_version: tuple[int, ...], versions: dict[str, str | None], github: bool
+) -> list[str]:
+    """前提ごとの行 `<名>\\t<OK|MISSING|OPTIONAL>\\t<必須|任意>\\t<詳細>`。必須の欠落・古さが `MISSING`。"""
+    rows = []
+    py = ".".join(map(str, python_version))
+    if python_version[:2] >= MIN_PYTHON:
+        rows.append(f"python\tOK\t必須\t{py}")
+    else:
+        rows.append(f"python\tMISSING\t必須\t{py}（{'.'.join(map(str, MIN_PYTHON))} 以上が要る）")
+    needs = {"git": True, "bd": True, "dolt": True, "gh": github, "tw": False}
+    minimum = {"bd": beads.MIN_BD_VERSION}
+    for name, required in needs.items():
+        kind = "必須" if required else "任意"
+        version = versions.get(name)
+        if version is None:
+            rows.append(f"{name}\t{'MISSING' if required else 'OPTIONAL'}\t{kind}\tPATH に無い")
+        elif name in minimum and version and _version_tuple(version) < minimum[name]:
+            low = ".".join(map(str, minimum[name]))
+            rows.append(f"{name}\tMISSING\t{kind}\t{version}（{low} 以上が要る）")
+        else:
+            rows.append(f"{name}\tOK\t{kind}\t{version}")
+    return rows
 
 
 BUSY_EXIT = 5

@@ -1,3 +1,11 @@
 #!/bin/sh
 here=$(cd "$(dirname "$0")" && pwd)
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "tsukumo-workflow: python3 が見つからない。Python 3.9 以上を入れる（tw config-doctor で前提を確かめる）" >&2
+  exit 78
+fi
+if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then
+  echo "tsukumo-workflow: Python 3.9 以上が要る（いまは $(python3 -V 2>&1)）。tw config-doctor で前提を確かめる" >&2
+  exit 78
+fi
 exec python3 "$here/../skills/task-workflow/scripts/task.py" "$@"
