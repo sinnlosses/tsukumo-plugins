@@ -5,7 +5,7 @@
 
 1. **性質**: LLM が読む手順書（スキル）と、状態と関門を持つ CLI `tw` の2本立て。流れは `next-task` が1つのスキルの中で分岐ごとに抱え、パーツ（受け入れ・振り返り）を兄弟のパスで直に呼んでいる。規則の正典 `WORKFLOW.md` には、全スキル共有のタスクのモデルと、`next-task` だけが読む流れの契約が混ざっている。
 2. **様式**: 核と拡張点。入口 `next-task`（1件を決める）・オーケストレーター `task-workflow`（段を並べてパーツを呼ぶ）・パーツ（実装役・受け入れ役・振り返り・送り出し）に分け、パーツは名前と契約で呼ぶ。規則の正典は参照専用の `task-model`（仮）へ移す。境界を先に作り、そのうえで `.tw/config.toml` で差し込む仕組みと、それを描く tsukumo の設定画面を足す。
-3. **最初の段階**（7段のうち1）: ファイルを動かさず、`WORKFLOW.md` から流れの節（「1サイクル」「受け入れ役の契約」「送り出し」）を `next-task` 側へ移す。
+3. **最初の段階**（7段のうち1）: ファイルを動かさず、`WORKFLOW.md` から流れの節（「1サイクル」「受け入れ役の契約」）を `next-task` 側へ移す。
 
 ## 1. アプリの性質
 
@@ -42,7 +42,7 @@
 
 ### いま痛んでいる兆候
 
-- **正典の中で層が混ざる。** `WORKFLOW.md` の14節のうち「1サイクル」「受け入れ役の契約」「送り出し」は `next-task` とその部品だけが読む流れの話で、残りは5つのスキルが読むタスクのモデル。スキルの名前が `task-workflow` なので、流れを担う側に見える
+- **正典の中で層が混ざる。** `WORKFLOW.md` の14節のうち「1サイクル」「受け入れ役の契約」は `next-task` とその部品だけが読む流れの話で、残りは5つのスキルが読むタスクのモデル。「送り出し」は `tw ship` の振る舞いで、`plan-tasks` などタスクに紐付かない送り出しにも効くのでモデルの側に残る。スキルの名前が `task-workflow` なので、流れを担う側に見える
 - **パーツをパスで呼ぶ。** `next-task` が `retrospect` と `comment-audit` を兄弟のパスで直に指す。差し替えるには、兄弟の位置に同じ形のファイルを置くしかない
 - **流れの変種が1つのスキルの分岐になっている。** 委譲・近道（`direct-run.md`）・メインで行う（`main-run.md`）・hold（`hold.md`）が `next-task` の手順5の中の分岐。流れを1つ足すと `SKILL.md` と副ファイル（今27本・848行）が増える
 - **関門が段の名前を知っている。** `ask-guard` は lap `retro` を境にしているので、振り返りを外した流れでは `loopable: Y` のタスクの質問がずっと拒まれる
@@ -178,7 +178,7 @@ ship = "tw"                     # 今は tw finish だけ
 
 | 今 | 目標 |
 | --- | --- |
-| `skills/task-workflow/`（`WORKFLOW.md`・`TRACKER.md`・`tw-reference.md`・`preflight.md`・`scripts/`） | `skills/task-model/` へ改名。`WORKFLOW.md` の「1サイクル」「受け入れ役の契約」「送り出し」は抜く |
+| `skills/task-workflow/`（`WORKFLOW.md`・`TRACKER.md`・`tw-reference.md`・`preflight.md`・`scripts/`） | `skills/task-model/` へ改名。`WORKFLOW.md` の「1サイクル」「受け入れ役の契約」は抜く |
 | `skills/next-task/SKILL.md` の手順5〜8 | `skills/task-workflow/SKILL.md` |
 | `next-task/` の `delegate.md`・`implementer-brief.md`・`rewrite-plan.md`・`handback-read.md`・`unresponsive.md`・`return-abnormal.md`・`other-repo.md` | `task-workflow/parts/implementer.md` と、流れに共通の手順（`other-repo.md`）は `task-workflow/` 直下 |
 | `next-task/` の `accept.md`・`acceptor-brief.md`・`review-criteria.md`・`review-rounds.md`・`visual-review.md`・`verify-check.md`・`verify-merge.md` | `task-workflow/parts/acceptor.md`（と副ファイル） |
@@ -197,7 +197,7 @@ ship = "tw"                     # 今は tw finish だけ
 
 | 段階 | すること | 終わったと分かる証拠 | 確度 |
 | --- | --- | --- | --- |
-| 1. 正典を割る | ファイルを動かさず、`WORKFLOW.md` の「1サイクル」「受け入れ役の契約」「送り出し」を `next-task` の副ファイルへ移す | `plan-tasks`・`list-tasks`・`setup-tasks`・`retrospect` から移した節への参照が0件。`./check.sh --full` が通る | 固い |
+| 1. 正典を割る | ファイルを動かさず、`WORKFLOW.md` の「受け入れ役の契約」を `next-task` の副ファイルへ移す（「1サイクル」は先行のタスクが SKILL への1行にする） | `plan-tasks`・`list-tasks`・`setup-tasks`・`retrospect` から移した節への参照が0件。`./check.sh --full` が通る | 固い |
 | 2. パスで呼ぶのをやめる | `material.py` を `tw` のサブコマンドにし、`comment-audit` は名前で読ませる。tsukumo の `sdk-ask-guard.ts` を `bin/tw ask-guard` に替える。`check_repo.py` に兄弟の参照の検査を足す | `grep -rn 'CLAUDE_SKILL_DIR}/\.\./' skills` が `task-workflow`（段4の後は `task-model`）だけ。tsukumo の `pnpm run check` が通る | 固い |
 | 3. 関門を名前と段から外す | lap はオーケストレーターが打つと正典に書く。`ask-guard` の境を「lap `retro` の後」から「作業の段（委譲・受け入れ）を終えた後」に替える。`commit-guard`・`handback-guard` を `agent_type` の末尾ではなく「着手の控えがある作業ツリーで動くサブエージェント」に掛ける | 振り返りの lap を打たない流れでも受け入れの後の質問が通る selftest と、`no-delegate` 以外の名前の委譲先でも拒む selftest | 試す価値あり |
 | 4. 名前を組み替える | `task-workflow` を `task-model` に改名し、`next-task` の手順5〜8と副ファイルを新しい `task-workflow` へ、変種を `flows/`、パーツを `parts/` へ移す。`next-task` は印を立てたら `task-workflow` を呼ぶ | `next-task/SKILL.md` が手順0〜4だけ。実タスク1件を `/next-task` で送り出せる。tsukumo の `vendor/tsukumo-plugins` を上げて `pnpm run check --full` が通る | 試す価値あり |
