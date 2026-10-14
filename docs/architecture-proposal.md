@@ -129,7 +129,7 @@ lap はパーツではなくオーケストレーターが段の前後で打つ�
 | パーツは `disable-model-invocation: true` にしない | モデルから呼べなくなる（例: claude-skills の `implement`） |
 | 関門はパーツの名前に結ばない | 下の段落 |
 
-**関門がいま実装役の名前に結ばれている。** `hooks/hooks.json` の `commit-guard`・`handback-guard` は `--agent-scoped` で、`agent_type` の末尾が `no-delegate` のときだけ掛かる（`task.py` の `commit-guard` の説明）。リンクで入れたときは `agents/no-delegate.md` の frontmatter の hook が掛ける。どちらでも、実装役を別のエージェントに替えると関門が黙って外れる。関門は「着手の控えがある作業ツリーで動くサブエージェント」に名前を問わず掛ける形に替える。受け入れ役は作業ツリーを書き換えないので、この形でも拒まれる操作は無い。`hooks.json` が読まれるのは plugin で入れたときだけなので、リンクで入れた人が自作の実装役を使うときに関門をどう掛けるかは 7. に残す。
+**関門がいま実装役の名前に結ばれている。** `hooks/hooks.json` の `commit-guard`・`handback-guard` は `--agent-scoped` で、`agent_type` の末尾が `no-delegate` のときだけ掛かる（`task.py` の `commit-guard` の説明）。リンクで入れたときは `agents/no-delegate.md` の frontmatter の hook が掛ける。どちらでも、実装役を別のエージェントに替えると関門が黙って外れる。関門は「着手の控えがある作業ツリーで動くサブエージェント」に名前を問わず掛ける形に替える。名前を問わず掛けるだけだと、受け入れ役の返却も「最後の段の返却」の判定（`## 構造の変更` の欠け）や検証の欠けで拒まれるので、`handback-guard` は `Edit`・`Write`・`NotebookEdit` を一度でも使ったサブエージェント（`agent_id` ごとの印）の返却だけを判定する（段階3で入れた。`tw-reference.md`「hook の関門」）。`hooks.json` が読まれるのは plugin で入れたときだけなので、リンクで入れた人が自作の実装役を使うときに関門をどう掛けるかは 7. に残す。
 
 ### 差し替えの方法
 
@@ -218,7 +218,6 @@ ship = "tw"                     # 今は tw finish だけ
 ## 7. 未決事項
 
 - **`task-model` の名前**: 本文は `task-model` で書いた。`task-rules`・`task-store` を採っても、変わるのは段階4の改名先と参照の追随だけ
-- **`ask-guard` の境の読み方**: `WORKFLOW.md`「loopable」は「振り返りの `tw lap T-xxx retro` のあとの質問は通す」とだけ書き、理由を書いていない。本文は「作業の段を終えたら質問してよい」と読んだ。振り返りそのものに質問を許す意図だったなら、段階3の境は `retro` のまま残し、振り返りを外す流れが代わりの lap を打つ形になる
 - **「他の人が使う」前提**: tsukumo の `docs/requirements.md` は対象ユーザーを作者本人だけとしている。このプラグインを他の人に向けるなら、tsukumo 側の記述をどう扱うかを決める必要がある
 - **tsukumo 側の追随の範囲**: 段階4で `vendor/tsukumo-plugins` を上げるとき、tsukumo の文書（`workflow-contract.md`・`CLAUDE.md` の手順の参照など）のどこが `task-workflow` を規則の正典として指しているかは数えていない
 - **パーツの選びの置き場**: 本文はリポジトリごと（`.tw/config.toml`。コミットされ、同じリポジトリの人と流れを共有できる）にした。利用者ごとの好み（受け入れ役だけ替えたい、など）を許すなら、利用者単位の設定を重ねる層が要る

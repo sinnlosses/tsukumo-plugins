@@ -16,7 +16,7 @@
 - 各 SKILL.md の `!` 埋め込み（インラインとフェンス）が `|| true`・`|| :`・`; true` で終わること
 - 同梱スクリプトが構文として読めること
 - `.claude-plugin/plugin.json` の `name` が `tsukumo-workflow` であること、`bin/tw` が実行でき `task.py` を
-  呼ぶこと、`hooks/hooks.json` が `${CLAUDE_PLUGIN_ROOT}/bin/tw` を呼ぶ `--agent-scoped` 付きの hook 3つと `ask-guard` の hook 1つを持つこと
+  呼ぶこと、`hooks/hooks.json` が `${CLAUDE_PLUGIN_ROOT}/bin/tw` を呼ぶ `commit-guard`・`handback-guard` の `--agent-scoped` 付きの hook と `ask-guard` の hook を持つこと
 - `tw` の指す `task.py` が実行でき、スキルの Markdown が `task.py` を `python3` で呼ぶ形や `` `task …` `` の略記で書いていないこと
 - 兄弟スキルの `scripts/` を `sys.path` に足して `import` しているなら、`REQUIRES` にその
   兄弟スキル名があること

@@ -217,6 +217,7 @@ SHIP_VERIFY_LOG_FILE_NAME = "task-ship-verify.log"
 PAUSE_STAMP_FILE_NAME = "task-pause-stamp"
 STEP_STAMPS_DIR_NAME = "task-step-stamps"
 OPEN_CLAIMS_DIR_NAME = "task-open-claims"
+AGENT_WRITERS_DIR_NAME = "task-agent-writers"
 # `.tw/local/` を作るときに旧い置き場（`.tw/` 直下、無ければ `git_dir`）から移すもの。
 _CARRIED_OVER = (
     VERIFY_OWED_FILE_NAME,
@@ -608,9 +609,12 @@ def mark_open_claim(task_id: str, cwd: str | None = None) -> None:
 
 
 def clear_open_claim(task_id: str, cwd: str | None = None) -> None:
+    """控えが1つも残らなければ、書いた印（`mark_agent_writer`）も消す。"""
     path = os.path.join(worktree_state_dir(cwd), OPEN_CLAIMS_DIR_NAME, task_id)
     if os.path.exists(path):
         os.remove(path)
+    if not open_claims(cwd):
+        shutil.rmtree(os.path.join(worktree_state_dir(cwd), AGENT_WRITERS_DIR_NAME), ignore_errors=True)
 
 
 def open_claims(cwd: str | None = None) -> list[str]:
@@ -618,3 +622,18 @@ def open_claims(cwd: str | None = None) -> list[str]:
     if not os.path.isdir(d):
         return []
     return sorted(os.listdir(d))
+
+
+# --- agent-writers（作業ツリーを書き換える道具を使ったサブエージェントの印）------------
+
+
+def mark_agent_writer(agent_id: str, cwd: str | None = None) -> None:
+    """`agent_id` はファイル名に使える文字だけのもの（`agent_scope.agent_id`）を渡す。"""
+    d = os.path.join(worktree_state_dir(cwd), AGENT_WRITERS_DIR_NAME)
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, agent_id), "w", encoding="utf-8"):
+        pass
+
+
+def is_agent_writer(agent_id: str, cwd: str | None = None) -> bool:
+    return os.path.isfile(os.path.join(_worktree_state_read_dir(cwd), AGENT_WRITERS_DIR_NAME, agent_id))

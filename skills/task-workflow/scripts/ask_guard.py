@@ -1,7 +1,8 @@
 """`tw ask-guard`: Claude Code の PreToolUse hook の入力（stdin の JSON）を読み、`AskUserQuestion` を、
 入力の `cwd` の作業ツリーに着手の控え（`ledger.open_claims`）があり、控えのタスクのどれかが `loopable: Y` で、
-台帳 `flow/` にそのタスクの最後の `claim` より後の `lap`（`stage` が `retro`）が無いときに拒む。
-`agent_type` は見ない（主のセッションにも委譲先にも掛かる）。
+作業の段の後でないときに拒む。作業の段の後とは、主のセッション（入力に `agent_id` が無い）で、台帳 `flow/` の
+そのタスクの最後の `claim` より後の最後の `lap` が `accept` の `end` か、段 `retro`・`land`・`sync` のとき。
+サブエージェント（`agent_id` がある）は段によらず拒む。名前（`agent_type`）は見ない。
 
 拒むときだけ stdout に deny の JSON を1行出す。通すときは何も出さない。終了コードはいつも0
 （hook の取り決め。`tw` の「stdout は先頭語の TSV」の例外）。
@@ -13,12 +14,14 @@ import json
 import os
 from typing import IO
 
+import agent_scope
 import beads
 import ledger
 import metrics
 
 ASK_TOOL = "AskUserQuestion"
-RETRO_STAGE = "retro"
+ACCEPT_STAGE = "accept"
+AFTER_WORK_STAGES = ("retro", "land", "sync")
 
 
 def run(stdin: IO[str], stdout: IO[str]) -> None:
@@ -57,8 +60,8 @@ def decide(payload: dict) -> str | None:
     loopable = [task_id for task_id in claims if _is_loopable(toplevel, task_id)]
     if not loopable:
         return None
-    retro = _in_retro(root, loopable)
-    refused = [task_id for task_id in loopable if task_id not in retro]
+    after_work = set() if agent_scope.agent_id(payload) is not None else _after_work(root, loopable)
+    refused = [task_id for task_id in loopable if task_id not in after_work]
     if not refused:
         return None
     shown = ",".join(refused)
@@ -81,18 +84,22 @@ def _is_loopable(toplevel: str, task_id: str) -> bool:
     return task is not None and task.loopable == "Y"
 
 
-def _in_retro(root: str, task_ids: list[str]) -> set[str]:
-    """最後の `claim` より後に振り返りの `lap` があるタスク。"""
+def _after_work(root: str, task_ids: list[str]) -> set[str]:
+    """最後の `claim` より後の最後の `lap` が、作業の段の後（`accept` の `end`、または `AFTER_WORK_STAGES`）のタスク。"""
     try:
         events = metrics.read_events(root)[0]
     except OSError:
         return set()
-    started: set[str] = set()
+    done: set[str] = set()
     for event in events:
         if event.task not in task_ids:
             continue
         if event.kind == "claim":
-            started.discard(event.task)
-        elif event.kind == "lap" and event.fields.get("stage") == RETRO_STAGE:
-            started.add(event.task)
-    return started
+            done.discard(event.task)
+        elif event.kind == "lap":
+            stage = event.fields.get("stage")
+            if stage in AFTER_WORK_STAGES or (stage == ACCEPT_STAGE and event.fields.get("edge") == "end"):
+                done.add(event.task)
+            else:
+                done.discard(event.task)
+    return done

@@ -110,18 +110,37 @@ def test_ask_guard() -> None:
               reason is not None and "T-100" in reason and "tw edit T-100 --loopable N" in reason
               and "tw release T-100" in reason,
               str(reason))
-        check("agent_type が no-delegate でも拒む",
-              run_ask_guard(tmp, wt1, extra={"agent_type": "no-delegate"}) is not None)
+        subagent = {"agent_id": "a-implementer", "agent_type": "my-implementer"}
+        check("サブエージェント（agent_id）は名前を問わず拒む", run_ask_guard(tmp, wt1, extra=subagent) is not None)
         for tool in ("Bash", "mcp__tsukumo__speak"):
             check(f"ほかのツール（{tool}）は通す", run_ask_guard(tmp, wt1, tool) is None)
         check("控えの無い作業ツリーは通す", run_ask_guard(tmp, wt2) is None)
         r = run_task(tmp, "ask-guard", stdin="not json")
         check("読めない入力は何も出さずに通す", r.returncode == 0 and r.stdout == "", r.stdout + r.stderr)
 
-        run_task(wt1, "lap", "T-100", "retro")
-        check("振り返りの lap のあとは通す", run_ask_guard(tmp, wt1) is None)
+        for lap, refused in (
+            (("delegate", "start"), True),
+            (("accept", "start"), True),
+            (("review", "start"), True),
+            (("review", "end"), True),
+            (("accept", "end"), False),
+            (("delegate", "start"), True),
+            (("direct",), True),
+            (("accept", "end"), False),
+            (("retro", "start"), False),
+            (("retro", "end"), False),
+            (("land", "start"), False),
+            (("sync", "end"), False),
+        ):
+            run_task(wt1, "lap", "T-100", *lap)
+            check(f"主のセッションは最後の lap が {' '.join(lap)} なら{'拒む' if refused else '通す'}",
+                  (run_ask_guard(tmp, wt1) is not None) == refused)
+        check("作業の段の後でもサブエージェントは拒む", run_ask_guard(tmp, wt1, extra=subagent) is not None)
         run_task(wt1, "release", "T-100")
         check("release のあとは通す", run_ask_guard(tmp, wt1) is None)
+        run_task(wt1, "claim", "T-100")
+        check("claim し直すと前の accept end より後の lap が無いので拒む", run_ask_guard(tmp, wt1) is not None)
+        run_task(wt1, "release", "T-100")
 
         run_task(wt2, "claim", "T-101")
         check("loopable: N の控えは通す", run_ask_guard(tmp, wt2) is None)
@@ -209,12 +228,12 @@ def test_commit_guard_shell_edit() -> None:
         ):
             check(f"通す: {command.splitlines()[0]}", run_guard(tmp, where, command) is None)
 
-        for agent_type, refused in ((None, False), ("tsukumo-workflow:no-delegate", True)):
+        for agent_id, refused in ((None, False), ("a-implementer", True)):
             payload = {"tool_name": "Bash", "tool_input": {"command": "echo x > f.txt"}, "cwd": wt1}
-            if agent_type is not None:
-                payload["agent_type"] = agent_type
+            if agent_id is not None:
+                payload["agent_id"] = agent_id
             r = run_task(tmp, "commit-guard", "--agent-scoped", stdin=json.dumps(payload))
-            check(f"--agent-scoped の書き換えの拒否は agent_type={agent_type} で{'拒む' if refused else '通す'}",
+            check(f"--agent-scoped の書き換えの拒否は agent_id={agent_id} で{'拒む' if refused else '通す'}",
                   r.returncode == 0 and (r.stdout != "") == refused, r.stdout + r.stderr)
 
         result_path = write(os.path.join(tmp, "result.md"), "結果\n")
@@ -284,12 +303,12 @@ def test_commit_guard_verify() -> None:
                   (run_guard(tmp, wt1, command) is not None) == refused)
 
         write(os.path.join(wt1, ".tw", "config.toml"), 'verify = "./check.sh"\n')
-        for agent_type, refused in ((None, False), ("tsukumo-workflow:no-delegate", True)):
+        for agent_id, refused in ((None, False), ("a-implementer", True)):
             payload = {"tool_name": "Bash", "tool_input": {"command": "./check.sh"}, "cwd": wt1}
-            if agent_type is not None:
-                payload["agent_type"] = agent_type
+            if agent_id is not None:
+                payload["agent_id"] = agent_id
             r = run_task(tmp, "commit-guard", "--agent-scoped", stdin=json.dumps(payload))
-            check(f"--agent-scoped の検証コマンドの拒否は agent_type={agent_type} で{'拒む' if refused else '通す'}",
+            check(f"--agent-scoped の検証コマンドの拒否は agent_id={agent_id} で{'拒む' if refused else '通す'}",
                   r.returncode == 0 and (r.stdout != "") == refused, r.stdout + r.stderr)
 
         result_path = write(os.path.join(tmp, "result.md"), "結果\n")
@@ -354,7 +373,7 @@ def _plugin_hook_commands() -> list[str]:
 
 @weight(6)
 def test_agent_scoped_guard() -> None:
-    say("task.py commit-guard・handback-guard --agent-scoped: no-delegate のときだけ関門を掛ける")
+    say("task.py commit-guard・handback-guard --agent-scoped: 名前を問わずサブエージェント（agent_id）に関門を掛ける")
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, _wt2 = make_repo(tmp, verify="`true`")
         commit_task(main_path, taskfile.Task("T-100", "拒む", "todo", "sonnet", "Y", (), BODY))
@@ -362,27 +381,43 @@ def test_agent_scoped_guard() -> None:
         write(os.path.join(wt1, "work.txt"), "x\n")
         commit = {"tool_name": "Bash", "tool_input": {"command": "git commit -m x"}, "cwd": wt1}
         stop = {"hook_event_name": "SubagentStop", "cwd": wt1}
+        for agent_id in ("a-writer-1", "a-writer-2", "a-writer-3"):
+            _send_edit(tmp, wt1, agent_id)
         for subcommand, fields in (("commit-guard", commit), ("handback-guard", stop)):
-            for flags, agent_type, refused in (
-                ((), None, True),
-                ((), "general-purpose", True),
-                (("--agent-scoped",), None, False),
-                (("--agent-scoped",), "general-purpose", False),
-                (("--agent-scoped",), "no-delegate", True),
-                (("--agent-scoped",), "tsukumo-workflow:no-delegate", True),
+            for flags, agent_id, agent_type, refused in (
+                ((), None, None, True),
+                ((), None, "general-purpose", True),
+                (("--agent-scoped",), None, None, False),
+                (("--agent-scoped",), None, "no-delegate", False),
+                (("--agent-scoped",), "a-writer-1", "general-purpose", True),
+                (("--agent-scoped",), "a-writer-2", "my-implementer", True),
+                (("--agent-scoped",), "a-writer-3", "tsukumo-workflow:no-delegate", True),
+                (("--agent-scoped",), "../escape", "no-delegate", False),
             ):
-                payload = {**fields, **({} if agent_type is None else {"agent_type": agent_type})}
+                ids = {"agent_id": agent_id} if agent_id is not None else {}
+                payload = {**fields, **ids, **({} if agent_type is None else {"agent_type": agent_type})}
                 r = run_task(tmp, subcommand, *flags, stdin=json.dumps(payload))
-                check(f"{subcommand} {' '.join(flags)} agent_type={agent_type} は{'拒む' if refused else '通す'}",
+                check(f"{subcommand} {' '.join(flags)} agent_id={agent_id} agent_type={agent_type} は"
+                      f"{'拒む' if refused else '通す'}",
                       r.returncode == 0 and (r.stdout != "") == refused, r.stdout + r.stderr)
+        r = run_task(tmp, "commit-guard", "--agent-scoped",
+                     stdin=json.dumps({**commit, "agent_id": "a-reader", "agent_type": "acceptor"}))
+        check("commit-guard --agent-scoped は書いた印の無いサブエージェントも拒む",
+              r.returncode == 0 and r.stdout != "", r.stdout + r.stderr)
 
         all_hooks = _plugin_hook_commands()
         hooks = [h for h in all_hooks if " ask-guard" not in h]
         ask_hooks = [h for h in all_hooks if " ask-guard" in h]
-        check("hooks/hooks.json は --agent-scoped 付きで ${CLAUDE_PLUGIN_ROOT}/bin/tw を呼ぶ hook を3つ持つ",
-              len(hooks) == 3 and all(
+        check("hooks/hooks.json は --agent-scoped 付きで ${CLAUDE_PLUGIN_ROOT}/bin/tw を呼ぶ hook を4つ持つ",
+              len(hooks) == 4 and all(
                   h.startswith('"${CLAUDE_PLUGIN_ROOT}/bin/tw" ') and " --agent-scoped " in h for h in hooks),
               str(all_hooks))
+        with open(HOOKS_JSON, encoding="utf-8") as f:
+            pre = json.load(f)["hooks"]["PreToolUse"]
+        check("hooks/hooks.json は Edit・Write・NotebookEdit の PreToolUse で handback-guard を呼ぶ",
+              any(g.get("matcher") == "Edit|Write|NotebookEdit"
+                  and all(" handback-guard --agent-scoped " in h["command"] for h in g["hooks"]) for g in pre),
+              str(pre))
         check("hooks/hooks.json は --agent-scoped なしで ${CLAUDE_PLUGIN_ROOT}/bin/tw ask-guard を呼ぶ hook を1つ持つ",
               len(ask_hooks) == 1 and ask_hooks[0].startswith('"${CLAUDE_PLUGIN_ROOT}/bin/tw" ask-guard ')
               and "--agent-scoped" not in ask_hooks[0],
@@ -398,11 +433,65 @@ def test_agent_scoped_guard() -> None:
                   r.returncode == 0 and '"deny"' in r.stdout, r.stdout + r.stderr)
         for hook in hooks:
             fields = commit if "commit-guard" in hook else stop
-            for agent_type, refused in (("tsukumo-workflow:no-delegate", True), (None, False)):
-                payload = {**fields, **({} if agent_type is None else {"agent_type": agent_type})}
+            for agent_id, refused in (("a-writer-1", True), (None, False)):
+                payload = {**fields, **({} if agent_id is None else {"agent_id": agent_id, "agent_type": "my-implementer"})}
                 r = subprocess.run(["sh", "-c", hook], input=json.dumps(payload), capture_output=True, text=True, env=env)
-                check(f"hooks.json の {hook} は agent_type={agent_type} で{'拒む' if refused else '通す'}",
+                check(f"hooks.json の {hook} は agent_id={agent_id} で{'拒む' if refused else '通す'}",
                       r.returncode == 0 and (r.stdout != "") == refused, r.stdout + r.stderr)
+
+
+def _send_edit(tmp: str, where: str, agent_id: str) -> None:
+    """サブエージェントの `Edit` の `PreToolUse` を `handback-guard --agent-scoped` に渡す（書いた印を残させる）。"""
+    payload = {"hook_event_name": "PreToolUse", "tool_name": "Edit", "tool_input": {}, "cwd": where, "agent_id": agent_id}
+    r = run_task(tmp, "handback-guard", "--agent-scoped", stdin=json.dumps(payload))
+    if r.returncode != 0 or r.stdout != "":
+        raise RuntimeError(f"handback-guard の Edit が {r.returncode} で {r.stdout!r} を出した: {r.stderr}")
+
+
+def _scoped_handback(tmp: str, where: str, agent_id: str, body: str | None = None) -> str:
+    """`handback-guard --agent-scoped` にサブエージェントの返却を渡す。`body` があれば `SubagentHandback`、無ければ `SubagentStop`。"""
+    if body is None:
+        payload: dict = {"hook_event_name": "SubagentStop", "cwd": where}
+    else:
+        payload = {"hook_event_name": "PreToolUse", "tool_name": "SubagentHandback", "tool_input": {"message": body}, "cwd": where}
+    r = run_task(tmp, "handback-guard", "--agent-scoped", stdin=json.dumps({**payload, "agent_id": agent_id, "agent_type": "acceptor"}))
+    if r.returncode != 0:
+        raise RuntimeError(f"handback-guard が {r.returncode} で終わった: {r.stderr}")
+    return r.stdout
+
+
+@weight(6)
+def test_agent_scoped_reader_handback() -> None:
+    say("task.py handback-guard --agent-scoped: 書き換える道具を使っていないサブエージェント（受け入れ役）の返却は判定しない")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(tmp, verify="`true`")
+        commit_task(main_path, taskfile.Task("T-100", "受け入れ", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-", stdin="### 1. 書く\n")
+        write(os.path.join(wt1, "work.txt"), "x\n")
+        r = run_task(wt1, "verify")
+        verdict = "受け入れ 受け入れ | 指摘なし\n"
+
+        check("検証が通った最後の段の状態で、書いていない受け入れ役の返却は ## 構造の変更 が無くても通す",
+              r.returncode == 0 and _scoped_handback(tmp, wt1, "a-reader", verdict) == "", r.stdout + r.stderr)
+        write(os.path.join(wt1, "work.txt"), "formatted\n")
+        check("検証が欠けた作業（SKIP の整形のあと）でも、書いていない受け入れ役の SubagentStop は通す",
+              _scoped_handback(tmp, wt1, "a-reader") == "")
+        _send_edit(tmp, wt1, "a-writer")
+        check("Edit を使ったサブエージェントの SubagentStop は検証の欠けで拒む",
+              '"block"' in _scoped_handback(tmp, wt1, "a-writer"))
+        run_task(wt1, "verify")
+        check("Edit を使ったサブエージェントの最後の段の返却は ## 構造の変更 の欠けで拒む",
+              "構造の変更" in _scoped_handback(tmp, wt1, "a-writer", verdict))
+        check("同じ agent_id の再開（SendMessage）でも印は残る",
+              ledger.is_agent_writer("a-writer", cwd=wt1) and not ledger.is_agent_writer("a-reader", cwd=wt1))
+
+        _send_edit(tmp, wt2, "a-elsewhere")
+        check("着手の控えの無い作業ツリーでは印を書かない",
+              not os.path.exists(os.path.join(wt2, ".tw", "local", ledger.AGENT_WRITERS_DIR_NAME)))
+        run_task(wt1, "release", "T-100")
+        check("控えが無くなると印も消える",
+              not os.path.exists(os.path.join(wt1, ".tw", "local", ledger.AGENT_WRITERS_DIR_NAME)))
 
 
 def _check_hook_line(
@@ -1004,6 +1093,7 @@ TESTS = (
     test_commit_guard_verify,
     test_commit_guard_other_repo,
     test_agent_scoped_guard,
+    test_agent_scoped_reader_handback,
     test_readonly_git,
     test_lap,
     test_readonly_git_stops_writers,
