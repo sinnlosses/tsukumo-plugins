@@ -104,7 +104,8 @@ def cmd_show(toplevel: str, task_id: str) -> None:
         raise SystemExit(3)
     if task is None:
         task = taskfile.Task(beads.to_task_id(bd_id), issue.title or "-", "todo", "-", "-", (), "")
-    result = beads.last_result(beads.comments(toplevel, bd_id))
+    no_comments = issue.raw.get("comment_count") == 0
+    result = None if no_comments else beads.last_result(beads.comments(toplevel, bd_id))
     sys.stdout.write(beads.render_task(task, issue, result))
 
 

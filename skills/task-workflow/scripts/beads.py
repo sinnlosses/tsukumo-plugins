@@ -156,6 +156,7 @@ def read_prefix(toplevel: str) -> str:
 # 使い回さない。
 _READS = ("list", "show", "comments", "history", "config get")
 _KV_READS = ("kv get", "kv list")
+_KEEP_READS_AFTER =("backup status", "backup sync")
 READ_REUSE_SECONDS = 10.0
 _read_cache: dict[tuple[str, tuple[str, ...]], tuple[float, subprocess.CompletedProcess]] = {}
 
@@ -169,7 +170,9 @@ def _forget_after(args: list[str]) -> None:
     head = " ".join(args[:2])
     if head in _KV_READS:
         return
-    if head == "kv set":
+    if head in _KEEP_READS_AFTER or args[:1] == ["export"]:
+        return
+    if head == "kv set" or head == "backup init":
         for key in [k for k in _read_cache if k[1][:2] == ("config", "get")]:
             del _read_cache[key]
         return
@@ -231,6 +234,11 @@ def is_initialized(toplevel: str) -> bool:
 def list_issues(toplevel: str) -> list[Issue]:
     data = run_json(toplevel, ["list", "--all", "-n", "0", "--flat"])
     return [_issue(d) for d in data if isinstance(d, dict) and "id" in d]
+
+
+def listed(toplevel: str, bd_id: str) -> Issue | None:
+    """一覧の読みから1件を引く（`_issue` が読む項目は `show` と同じ。`raw` の `revision`・`dependencies` の形・`comments_omitted` は違う）。一覧に無ければ `None`。"""
+    return next((i for i in list_issues(toplevel) if i.bd_id == bd_id), None)
 
 
 def show(toplevel: str, bd_id: str) -> Issue | None:
