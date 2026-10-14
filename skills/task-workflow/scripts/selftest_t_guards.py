@@ -879,6 +879,51 @@ def test_handback_guard_other_repo() -> None:
         check("控えのあとに中身を変えると block", "NOT_VERIFIED" in _block_reason(run_handback_guard(tmp, main_wt3)))
 
 
+@weight(15)
+def test_step_stamps_other_repo() -> None:
+    say("task.py step: 作業先が別のリポジトリなら、作業先の作業ツリーの段の控えは作業先の中身の鍵で段ごとに書かれる")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _ = make_repo(os.path.join(tmp, "own"), verify="`true`")
+        work_repo, _, _ = make_repo(os.path.join(tmp, "work"), verify="`true`")
+        commit_task(main_path, taskfile.Task("T-100", "作業先で直す", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        plan = f"### 1. 書く\n\n### 2. 試す\n\n### 3. 直す\n\n### 作業先\n- `{work_repo}`\n"
+        run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-", stdin=plan)
+        work_tree = os.path.join(tmp, "work-t-100")
+        git(work_repo, "worktree", "add", "-q", "-b", "t-100", work_tree, "main")
+
+        outs = []
+        for n, text in ((1, "x\n"), (2, "y\n")):
+            write(os.path.join(work_tree, "work.txt"), text)
+            git(work_tree, "add", "work.txt")
+            git(work_tree, "commit", "-q", "-m", f"段{n}")
+            r = run_task(wt1, "step", "T-100", str(n))
+            outs.append(r.stdout.strip().split("\t"))
+            check(f"段{n}の tw step が STEPPED", r.returncode == 0 and outs[-1][0] == "STEPPED", r.stdout + r.stderr)
+        by_step = {s.step: s for s in stamps.read_step_stamps(cwd=work_tree)}
+        own_by_step = {s.step: s for s in stamps.read_step_stamps(cwd=wt1)}
+        table = "\n".join(
+            f"段{n}\t着手側 {outs[n - 1][3]}\t作業先 {by_step[n].key.tree}" for n in (1, 2) if n in by_step
+        )
+        check("STEPPED の鍵は着手側のもので、着手側を触らないと段1・2で同じ", outs[0][3] == outs[1][3], table)
+        check("作業先の控えは段ごとに別のファイルで、鍵が段ごとに違う",
+              sorted(by_step) == [1, 2] and by_step[1].key != by_step[2].key, table)
+        check("作業先の控えの鍵は着手側のものと違う",
+              by_step[1].key.tree != own_by_step[1].key.tree and by_step[2].key.tree != own_by_step[2].key.tree, table)
+        measured = stamps.content_key("true", cwd=work_tree)
+        check("段2の控えの鍵は段2を打った時点の作業先の中身", by_step[2].key.tree == measured.tree, table)
+        r = run_task(wt1, "step", "T-100", "3")
+        check("最後の段の tw step は LAST_STEP", r.returncode == 4 and r.stdout.startswith("LAST_STEP"), r.stdout + r.stderr)
+        check("作業先の中身が段2のままなら返却を通す", run_handback_guard(tmp, wt1) is None, _block_reason(run_handback_guard(tmp, wt1)))
+
+        run_task(work_tree, "verify")
+        run_task(wt1, "verify")
+        stamps.remove_step_stamps(["T-100"], cwd=work_tree)
+        stamps.remove_step_stamps(["T-100"], cwd=wt1)
+        reason = _block_reason(run_handback_guard(tmp, wt1))
+        check("段の控えが無ければ、検証が通っていても拒む", "段の控えが無い" in reason, reason)
+
+
 @weight(17)
 def test_worktree_state_dir() -> None:
     say("stamps.py .tw/local/: 作業ツリーごとの控えとログを .tw/local/ に置き、旧い置き場の控えも読んで移す")
@@ -1083,6 +1128,7 @@ def test_state_dir() -> None:
 TESTS = (
     test_handback_guard,
     test_handback_guard_other_repo,
+    test_step_stamps_other_repo,
     test_worktree_state_dir,
     test_state_dir,
     test_handback_guard_parallel_steps,
