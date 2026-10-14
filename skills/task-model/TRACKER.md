@@ -3,7 +3,7 @@
 WORKFLOW.md「Beads とトラッカー」から切り出した。トラッカーの同期（`tracker.py`・`beads.py`）を直すときに読む。
 断りのない「…」の節名は WORKFLOW.md の節を指す。
 
-**用意**: `/setup-tasks` の `init.py` が、主ブランチを出している作業ツリー（本体）で
+**用意**: 用意の入口（WORKFLOW.md の用語）が打つ `scripts/init.py` が、主ブランチを出している作業ツリー（本体）で
 `bd init --stealth -p gh`（トラッカーが `github`）か `-p t`（それ以外）を打つ。`hold` は組み込みの
 状態 `deferred` に置く（独自の状態は GitHub との往復で `open` に戻るので使わない）。ドラフトも `deferred` に置き、
 metadata `draft` で `hold` と見分ける（独自の状態 `draft` は `status::` の label を持たない `open` の Issue として出て、
@@ -39,10 +39,10 @@ GitHub で本文を直したあとの取り込みで `open` に戻る。`deferre
 | 登録時に `## やること` を書いたときの SHA と、着手時に比べた主ブランチの先端 | metadata `task_plan_base`・`task_plan_tip` |
 | `## 目的・背景`・`## 決まっていること`・`## 解くべき論点`・`## 注意`・`## 参考情報` | `description`（見出しのまま）。`tw show` は枠の7節を空でもこの順に出す |
 | `## 結果`（`- 振り返り:` を含む） | `## 結果` で始まる comment（最後のものが正） |
-| 登録から完了までの本文の差（`retrospect` の材料） | `bd history`（`material.py` が最初と最後の版の差を出す） |
+| 登録から完了までの本文の差（振り返りの材料） | `bd history`（振り返りのパーツが最初と最後の版の差を出す） |
 | git に残る過去の `develop/task/` と `docs/history/` | 動かさない（[legacy.md](legacy.md)） |
 
-**サイクルの各段で Beads に起きること**（`skills/next-task/SKILL.md` の手順と tw-reference.md の「`tw` コマンドの参照」の補足）:
+**サイクルの各段で Beads に起きること**（入口と流れの手順と tw-reference.md の「`tw` コマンドの参照」の補足）:
 
 - **読む・書く**: `tw show T-xxx` で読み、`tw edit T-xxx` で直す（コミットも `ship` も要らない。引数は `tw edit --help`）
 - **`done`・`ship`**: `done` は `## 結果` を comment に入れて label `ship:done`／`ship:dropped` を立てるだけで、

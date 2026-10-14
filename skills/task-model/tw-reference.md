@@ -32,7 +32,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | `commit-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ deny の JSON 1行。通すときは何も出さない |
 | `pause [T-xxx [<n>]]` | 判断が要って止める・目視待ち・計画を作業の後に書いた返却の直前に打つ（委譲先。並列の段の担当は ID と段の番号を付ける） | `PAUSED`・`NOT_OWNER` |
 | `step T-xxx <n>` | 最後でない段を済ませて返す直前に打つ（委譲先。着手した作業ツリーで打つ。別のリポジトリのタスクでは、出力の鍵は着手側のもの。作業先の作業ツリーの控えは作業先の中身の鍵で別に書かれる） | `STEPPED`・`LAST_STEP`（終了コード4。最後の段は `tw verify` を通して返す）・`NOT_OWNER` |
-| `lap T-xxx <段> [start\|end]` | `/next-task` の段の頭と終わりを記録するとき（メイン。段は `direct`・`delegate`・`accept`・`review`・`retro`・`land`・`sync`） | `LAPPED`・`NOT_CLAIMED` |
+| `lap T-xxx <段> [start\|end]` | オーケストレーターの段の頭と終わりを記録するとき（メイン。段は `direct`・`delegate`・`accept`・`review`・`retro`・`land`・`sync`） | `LAPPED`・`NOT_CLAIMED` |
 | `handback-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ JSON 1行（`SubagentStop` は `block`、`PreToolUse` は deny）。通すときは何も出さない |
 | `ask-guard` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ deny の JSON 1行（理由はタスクIDと次の一手）。通すときは何も出さない |
 
@@ -44,15 +44,15 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | 3 | `INVALID` | データの不備（読めない課題〔label の語彙の外など〕、設定が読めない、主ブランチが決まらない、`--check` の重複、トラッカーの付け替え先が既にある） | 理由をそのまま報告して止まる。**直しに行かない** |
 | 4 | `TAKEN`・`NOT_READY`・`DIRTY`・`MAIN_DIRTY`・`UNSHIPPED`・`LOCKED`・`NOT_OWNER`・`WORK_BEFORE_PLAN`・`FRAME_CHANGED`・`LAST_STEP`・`NOT_LANDED`・`NOT_REMOVED` | いまの状態では進めない | 各スキルの表のとおり（別の1件を選ぶか止まる） |
 | 5 | `BUSY`（`sync` だけ） | 別の `tw sync` が台帳の錠を持っている（待たずに返った。何も書き換えていない）。持ち主のプロセスが無い古い錠なら、行にその旨が添えてある | 少し置いて打ち直す。古い錠の注記があれば、行を添えて人に預ける（錠のファイルは人が確かめて消す） |
-| 6 | `MISSING`・`MISSING\t<.beads のパス>` | タスク運用を始めていない（`.tw/config.toml` が無い）／設定はあるのに `.beads` が無い | `/setup-tasks` を案内して止まる |
+| 6 | `MISSING`・`MISSING\t<.beads のパス>` | タスク運用を始めていない（`.tw/config.toml` が無い）／設定はあるのに `.beads` が無い | 用意の入口（WORKFLOW.md の用語）を案内して止まる |
 | 7 | `CONFLICT` | `ship` の rebase が衝突した（`--abort` 済み）か、`verify` の主ブランチの取り込みが衝突した（何も書き換えていない） | 衝突したファイルを添えて人に預ける。`verify` の衝突を解いたあとは `tw verify` を打ち直す |
 | 8 | `VERIFY_FAILED` | 付け替えのあとの検証が落ちた（送っていない）。行は `VERIFY_FAILED\t<コマンド>\t<ログのパス>` で、続けて出力の末尾40行。ログは stdout と stderr を出た順に残した全文で、落ちた回のものを時刻つきの別名（`task-ship-verify.failed-<時刻>.log`）に写したもの。打ち直しても上書きされない | ログを読み、落ちた箇所を添えて人に預ける |
 | 9 | `RACE` | `--ff-only` が3回続けて落ちた | 人に預ける |
 | 10 | `VERIFY_NOT_PASSED`・`FORMAT_FAILED`・`PLAN_MISSING`・`TRACKER\tFAILED`・`BACKUP\tFAILED`（後ろ2つは `sync`・`backup` だけ） | `verify` の検証コマンドが落ちた／整形コマンドが落ちた（検証は打っていない）／`## やること` が空のまま作業があるので打たなかった（どちらも控えは消えた）／トラッカー・バックアップに届かない | `VERIFY_NOT_PASSED`・`FORMAT_FAILED` は出力の末尾（全体はログ）を読んで直し、`PLAN_MISSING` は `## やること` を書いて `tw edit T-xxx --after-work` で渡し、打ち直す。`TRACKER`・`BACKUP` は行を添えて報告する（タスクの操作は済んでいる） |
 | 11 | `GIT_READ_ONLY` | `.git` に書けない（`EACCES`・`EPERM`・`EROFS`）のに、git に書く操作が要る（`ship`・`land`、追い付くか枝を切る `claim`、取り込む `verify`）。行は `GIT_READ_ONLY\t<書けない git dir>\t<次の一手>`。打つ前に確かめるので、作業ツリーも Beads も変わっていない | sandbox の外で同じコマンドを打ち直す（`README.md`「`.git` が読み取り専用の sandbox で打つとき」節）。打ち直せなければ行を添えて人に預ける |
-| 12 | `COMMITS_SINCE_CLAIM`（`finish` だけ） | `done` は済んだが、`claim` のあとに委譲先が作ったコミットの合図が出たので、コミットと `ship` を打たずに止めた | `next-task/commits-since-claim.md` に従って判断し、個別に `git add`・`git commit`・`tw ship` を打つ |
+| 12 | `COMMITS_SINCE_CLAIM`（`finish` だけ） | `done` は済んだが、`claim` のあとに委譲先が作ったコミットの合図が出たので、コミットと `ship` を打たずに止めた | 送り出しのパーツの `COMMITS_SINCE_CLAIM` の扱いに従って判断し、個別に `git add`・`git commit`・`tw ship` を打つ |
 
-`/loop` を続けるかは、`skills/next-task/SKILL.md` の「`/loop` の続行判断」で決める（終了コードの一覧はここに持たない）。
+`/loop` を続けるかは、オーケストレーターの「`/loop` の続行判断」で決める（終了コードの一覧はここに持たない）。
 
 `.git` が読み取り専用の sandbox で打つときは `README.md`「`.git` が読み取り専用の sandbox で打つとき」節。
 
@@ -70,11 +70,11 @@ hook 3種の仕様の正典はこの節。判定の細部（何をコミット�
 
 **掛かる口**: plugin で入れると、`hooks/hooks.json` が `"${CLAUDE_PLUGIN_ROOT}/bin/tw"` を呼ぶ（plugin のエージェント定義は frontmatter の `hooks` を無視するため）。
 `commit-guard`・`handback-guard` は `--agent-scoped` 付きで、入力に `agent_id` があるときだけ掛かる（`agent_type` は `--agent` で起こした主のセッションにも入るので見ない）。`handback-guard` は `Edit`・`Write`・`NotebookEdit` の `PreToolUse` でも呼ばれ、書いた印を残す。`ask-guard` は付けずに呼び、主のセッションにも掛かる。
-`install.sh` のリンクだけで入れると `hooks/hooks.json` は読まれず、`agents/no-delegate.md` の frontmatter の hook が PATH の `tw` で `commit-guard`・`handback-guard` を掛ける（`ask-guard` は掛からない）。この口は `no-delegate` にしか掛からず、frontmatter に hook を持たない自作の実装役には掛からない（導入経路の一本化 GH-771 の結論に任せる）。
-リンクと plugin を併用すると、`no-delegate` への委譲で両方の口が走り、PATH の `tw` と plugin の `bin/tw` の版が違うと `tw verify` のあとの関門が `NOT_VERIFIED scheme` で止まるので、2つを同じチェックアウトに揃える。
+`install.sh` のリンクだけで入れると `hooks/hooks.json` は読まれず、同梱の実装役のエージェント定義（`agents/` の下）の frontmatter の hook が PATH の `tw` で `commit-guard`・`handback-guard` を掛ける（`ask-guard` は掛からない）。この口は同梱の実装役にしか掛からず、frontmatter に hook を持たない自作の実装役には掛からない（導入経路の一本化 GH-771 の結論に任せる）。
+リンクと plugin を併用すると、同梱の実装役への委譲で両方の口が走り、PATH の `tw` と plugin の `bin/tw` の版が違うと `tw verify` のあとの関門が `NOT_VERIFIED scheme` で止まるので、2つを同じチェックアウトに揃える。
 Bash のコマンド文字列に `git` が出ないコミット（`sh -c`・スクリプト越し）と、`Edit`・`Write`・`NotebookEdit` を使わずに書き換えたサブエージェントの返却には効かず、`finish`・`done` の `COMMITS_SINCE_CLAIM` と受け入れの `plan-check`・`verify-check` が事後に拾う。
 
-**lap はパーツではなくオーケストレーター（今は `next-task`）が段の前後で打つ**（`tw lap`。段の名前は `direct`・`delegate`・`accept`・`review`・`retro`・`land`・`sync` で固定）。`ask-guard` はこの段で境を決め、パーツの名前は見ない。
+**lap はパーツではなくオーケストレーターが段の前後で打つ**（`tw lap`。段の名前は `direct`・`delegate`・`accept`・`review`・`retro`・`land`・`sync` で固定）。`ask-guard` はこの段で境を決め、パーツの名前は見ない。
 
 **`commit-guard`・`handback-guard`・`ask-guard` は Claude Code の hook の取り決めに従う**: 出力は TSV でなく JSON で、終了コードはいつも0。
 読めない入力も何も出さずに通す。タスク運用を始めていないリポジトリ・git の外でも打てる。
@@ -87,7 +87,7 @@ Bash のコマンド文字列に `git` が出ないコミット（`sh -c`・ス�
 コマンド単位で拒むには `permissions.deny` の `Bash(...)` か hook になるが、`permissions.deny` は設定にパターンで静的に書く規則で、
 着手の印や `loopable` のような状態によって拒むかを変えられず、`sh -c '…'`・フルパスの呼び出しは素通しする。
 plugin のサブエージェントは frontmatter の `hooks`・`permissionMode` を無視する。
-すでに `disallowedTools` でやっているのは、`agents/no-delegate.md` の `Agent` の除去と、`agents/acceptor.md` の `Agent`・`Edit`・`Write`・`NotebookEdit` の除去だけ。
+すでに `disallowedTools` でやっているのは、同梱の実装役のエージェント定義の `Agent` の除去と、同梱の受け入れ役のエージェント定義の `Agent`・`Edit`・`Write`・`NotebookEdit` の除去だけ。
 
 | 関門 | tools・`permissions.deny` で防げるか | 理由 |
 | --- | --- | --- |

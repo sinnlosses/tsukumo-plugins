@@ -1,4 +1,4 @@
-# 起動前の確認（next-task・plan-tasks・list-tasks 共通）
+# 起動前の確認（入口・登録の入口・一覧の入口に共通）
 
 ## 依存を確かめる
 
@@ -11,4 +11,4 @@
 ## 設定が読めないとき
 
 `` !`tw config 2>&1 || true` `` の出力が `MISSING` の行か、`tw config` を打てない旨（git の外など）なら、
-`/setup-tasks` を案内して終了する。
+用意の入口（`WORKFLOW.md` の用語）を案内して終了する。

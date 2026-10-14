@@ -34,7 +34,7 @@
 （作業が残っていれば次の `claim` が `DIRTY` で止まるので続行しない）。
 
 続行するときは、ツール一覧に文脈を空にして依頼を送り直すツールがあれば、`context_size.py` を打たず、
-次の1件に着手せず、`/loop /next-task` を渡して呼び、`/loop` を止めてターンを終える
+次の1件に着手せず、呼ばれたときに渡された `/loop` の依頼文をそのまま渡して呼び、`/loop` を止めてターンを終える
 （そのツールが文脈を空にしてから送り直す）。
 
 無ければ、先に `python3 ${CLAUDE_SKILL_DIR}/scripts/context_size.py ${CLAUDE_SESSION_ID}` を打つ

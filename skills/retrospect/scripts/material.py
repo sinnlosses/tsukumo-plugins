@@ -5,7 +5,7 @@
        material.py <リポジトリの根> <T-XXX> --gate --friction none|some|missing
            --reverify N --fixes N --human N --review skip|clean|found
 
-出すのは6つ（`--signals` のときは「手数」だけ。`/next-task` の中の1件ごとの振り返りが、
+出すのは6つ（`--signals` のときは「手数」だけ。流れの中の1件ごとの振り返りが、
 材料を観点に当てるときに、当たりの目安を数だけで見るのに使う。本文と diff はメインが受け入れで読み終えている）。
 
 `--gate` のときは判定だけを出す。5つの答えと手数の当たりの目安のどれにも当たらなければ `QUIET` の1行、
