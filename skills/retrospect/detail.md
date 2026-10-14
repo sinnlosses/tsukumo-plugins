@@ -139,7 +139,7 @@ python3 <Base directory>/scripts/material.py . T-XXX --gate --friction … --rev
 **ドラフトに積む**（手順5で積むと決まったものだけ。絞り中の観点は手順3で落ちているので積まない）:
 
 1件ごとに `tw new --draft` でドラフトの課題を1つ作る（作業ツリーのファイルは足さない。
-`task-workflow` の `WORKFLOW.md`「ドラフトの課題」）。`--difficulty`・`--loopable` は見立てで付ける
+`task-model` の `WORKFLOW.md`「ドラフトの課題」）。`--difficulty`・`--loopable` は見立てで付ける
 （承認して計画するときに直す）:
 
 ```bash
@@ -160,12 +160,12 @@ EOF
 ファイルの置き場所の規則。節「改善の7観点」の「コーディング規約」）。規約・手順の文書に足すのは、
 どの検査にも置き換えられない判断ものだけ。
 
-ここに積んだものは、ユーザーの承認を得てから `/plan-tasks` が `todo` に進める（`task-workflow` の `WORKFLOW.md`「ドラフトの課題」）。
+ここに積んだものは、ユーザーの承認を得てから `/plan-tasks` が `todo` に進める（`task-model` の `WORKFLOW.md`「ドラフトの課題」）。
 
 `## 結果` には `- 振り返り: <当たった材料・観点>（ドラフト N件: <積んだ ID, …>）` を足す（物差しで落とした・利用者が
 1件も採らなかったら `0件`）。
 行頭の `- 振り返り:` は機械が読む（`tw done` がこの行から `flow/` の `reflection` を決める。
-`task-workflow` の `WORKFLOW.md`「結果の書き方と知見の置き場」）ので形を変えない。ドラフトは Beads にあるので、
+`task-model` の `WORKFLOW.md`「結果の書き方と知見の置き場」）ので形を変えない。ドラフトは Beads にあるので、
 コミットに入れるものは無い。
 
 ## 週ごとに振り返る（`/next-task` の頭から）
@@ -189,7 +189,7 @@ EOF
    | 観点 | 材料の行 | 当たりの目安 | 出し先にするもの |
    | --- | --- | --- | --- |
    | 流れの数 | `WORSE`・`CHANGE` | `WORSE` がある（良くなった・変わらない数は書かない） | 悪くなった数と、同じ期間に入ったやり方の変更（`CHANGE`）を並べた原因の候補と、それを確かめる・戻す手 |
-   | 段の所要時間 | `STAGE`（4列目が道 `direct`／`normal`） | 1つの段の中央値が、同じ `difficulty`・道の着手から送り出しまで（流れの数の `lead_median_seconds`）の半分以上。または同じ `difficulty` で `direct` の段の合計が `normal` より縮んでいない | その段を縮める手（検証を絞る、など）。`direct` と `normal` の比較からは、委譲しない近道の基準の表（task-workflow の正典「difficulty とモデルの切り替え」）を狭めるか広げる手 |
+   | 段の所要時間 | `STAGE`（4列目が道 `direct`／`normal`） | 1つの段の中央値が、同じ `difficulty`・道の着手から送り出しまで（流れの数の `lead_median_seconds`）の半分以上。または同じ `difficulty` で `direct` の段の合計が `normal` より縮んでいない | その段を縮める手（検証を絞る、など）。`direct` と `normal` の比較からは、委譲しない近道の基準の表（task-model の正典「difficulty とモデルの切り替え」）を狭めるか広げる手 |
    | 規則の棚卸し | 規則の発火の集計の出力 | 期間（30日）に1度も拒んでいない hook がある／拒んだ回数が多い hook がある | 0回の hook は消す候補、多い hook は規則か道具の側を変える候補（拒まれる前に正しい形が手に入るようにする） |
 
    規則の棚卸しの材料は、`tw config` の `hook_tally` の行の
@@ -244,7 +244,7 @@ EOF
 
 ## 他のプロジェクトで使うとき
 
-**前提は `task-workflow` の運用**（`tw`・ドラフトの課題と `docs/history/`、
+**前提は `task-model` の運用**（`tw`・ドラフトの課題と `docs/history/`、
 **コミットの件名にタスクIDを置く**）。この運用のプロジェクトなら、置き場も
 IDの形も同じなので何も変えずに動く。
 

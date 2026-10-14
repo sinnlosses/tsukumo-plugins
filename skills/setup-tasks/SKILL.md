@@ -4,22 +4,22 @@ description: "タスク運用に要る .tw/ （.gitignore）をプロジェク�
 ---
 
 `/next-task` `/plan-tasks` `/list-tasks` が読む**プロジェクト側のファイルを用意する**。置き場と役割は
-`task-workflow` スキルの `WORKFLOW.md`（以下「正典」）「ファイル配置と設定ファイル」。
+`task-model` スキルの `WORKFLOW.md`（以下「正典」）「ファイル配置と設定ファイル」。
 **タスクは登録しない。既にあるファイルは上書きしない**（点検結果を出し、直すかは下で決める）。
 
 ## 手順
 
-0. **依存を確かめる**: `${CLAUDE_SKILL_DIR}/../task-workflow/scripts/task.py` が無ければ、
-   `task-workflow` スキルが張られていないとして `MISSING` を報告して終了する（plugin で入れるなら
+0. **依存を確かめる**: `${CLAUDE_SKILL_DIR}/../task-model/scripts/task.py` が無ければ、
+   `task-model` スキルが張られていないとして `MISSING` を報告して終了する（plugin で入れるなら
    `/plugin install tsukumo-workflow@tsukumo-plugins`、リンクで入れるなら `install.sh` で
-   `task-workflow` も一緒に張るよう案内する。以下の手順で打つ `task-workflow` の各スクリプトは
+   `task-model` も一緒に張るよう案内する。以下の手順で打つ `task-model` の各スクリプトは
    これが前提）。`command -v tw` が何も返さないときも同じく `MISSING` として、同じ2つの入れ方を案内する。
 
 1. **`.tw/` を用意する**。骨組みは決まりきっているので手で書かない（見出し以外の行が混ざると `/plan-tasks` が
    「未対応の指示がある」と誤判定する）:
 
    ```bash
-   python3 ${CLAUDE_SKILL_DIR}/../task-workflow/scripts/init.py
+   python3 ${CLAUDE_SKILL_DIR}/../task-model/scripts/init.py
    ```
 
    | 行 | 意味 |

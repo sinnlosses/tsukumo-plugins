@@ -15,8 +15,9 @@
 #   （対象外のスキルを消さないため）。エージェント定義の掃除は絞り込みの対象が無いので常に走る
 # - **対象を絞ったときは依存も見る**（`skills/<name>/REQUIRES` に1行で書かれた兄弟スキル名）。
 #   張る先に依存先が無ければ警告するだけで、自動では足さない（絞り込みの意図を守るため）
-# - `task-workflow` が対象なら、`task.py` を指す1語のコマンド `tw` を `--bin-dir DIR`（無ければ
-#   `$HOME/.local/bin`）に張る。`--dest`・`CLAUDE_CONFIG_DIR` の影響は受けない。実ファイル・他所を
+# - `task-model` が対象なら、`task.py` を指す1語のコマンド `tw` を `--bin-dir DIR`（無ければ
+#   `$HOME/.local/bin`）に張る。`--dest`・`CLAUDE_CONFIG_DIR` の影響は受けない。このリポジトリの
+#   `skills/` の下を指すリンク（改名前の置き場を指すものも）は張り替える。実ファイル・他所を
 #   指すリンクは触らず警告し、張る先が PATH に無い・別の `tw` が先に見つかるときも警告する
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
@@ -72,15 +73,15 @@ fi
 link_tw=1
 if [ "$filtered" -eq 1 ]; then
   link_tw=0
-  if name_in task-workflow "$@"; then
+  if name_in task-model "$@"; then
     link_tw=1
   fi
 fi
 if [ "$link_tw" -eq 1 ]; then
-  tw_target="$here/skills/task-workflow/scripts/task.py"
+  tw_target="$here/skills/task-model/scripts/task.py"
   link="$bin_dest/tw"
   mkdir -p "$bin_dest"
-  if link_refuse "$link" tw "$tw_target" "触らない"; then
+  if link_refuse "$link" tw "$here/skills/" "触らない"; then
     :
   else
     ln -sfn "$tw_target" "$link"

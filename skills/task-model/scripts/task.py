@@ -8,7 +8,7 @@
 `install.sh` が PATH 上に張る `tw` と、plugin の `bin/tw` から呼ぶ。`commit-guard`・`handback-guard` の
 `--agent-scoped` は plugin の `hooks/hooks.json` が付け、入力に `agent_id` があるとき（サブエージェント）だけ関門を掛ける。
 `ask-guard` は `--agent-scoped` を持たず、主のセッションにもサブエージェントにも掛かる。
-スキル側の呼び方の正典は task-workflow の tw-reference.md「`tw` コマンドの参照」。
+スキル側の呼び方の正典は task-model の tw-reference.md「`tw` コマンドの参照」。
 
 出力は常に stdout（先頭語で種類を判定する TSV）、stderr は使い方の誤りだけ、
 終了コードは tw-reference.md の表のとおり。データの不備で traceback を出さない
@@ -46,7 +46,7 @@ import tw_verify
 HOOK_NOTE = """commit-guard・handback-guard・ask-guard は Claude Code の hook の取り決めに従う: 出力は TSV でなく JSON で、終了コードはいつも0。
 読めない入力も何も出さずに通す。タスク運用を始めていないリポジトリ・git の外でも打てる。
 
-この3つの hook を `tools`・`permissions.deny` で置き換えられない理由と、3つが拒むもの・掛かる口は task-workflow の tw-reference.md「hook の関門」節。"""
+この3つの hook を `tools`・`permissions.deny` で置き換えられない理由と、3つが拒むもの・掛かる口は task-model の tw-reference.md「hook の関門」節。"""
 
 SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     "status": (

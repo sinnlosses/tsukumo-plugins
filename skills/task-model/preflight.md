@@ -6,7 +6,7 @@
 入れ方は次のとおり案内する。
 
 - plugin で入れるなら `/plugin install tsukumo-workflow@tsukumo-plugins`
-- リンクで入れるなら `task-workflow` を含めて `./install.sh` を打ち直す
+- リンクで入れるなら `task-model` を含めて `./install.sh` を打ち直す
 
 ## 設定が読めないとき
 

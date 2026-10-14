@@ -5,7 +5,7 @@
 
 タスクは Beads（`bd`）に置き、`/plan-tasks` で指示をタスクにし、`/next-task` で
 1件ずつ difficulty のモデルのサブエージェントへ委譲して、受け入れてから主ブランチへ送る。手順はコマンド `tw`
-が持ち、スキルは「どのサブコマンドをいつ打つか」だけを書く（正典は `skills/task-workflow/WORKFLOW.md`、サブコマンドの表は `skills/task-workflow/tw-reference.md`）。
+が持ち、スキルは「どのサブコマンドをいつ打つか」だけを書く（正典は `skills/task-model/WORKFLOW.md`、サブコマンドの表は `skills/task-model/tw-reference.md`）。
 
 tsukumo のワークフローの契約に型の合う1つの例だが、tsukumo がいなくても素の Claude Code で動く。
 
@@ -19,7 +19,7 @@ tsukumo のワークフローの契約に型の合う1つの例だが、tsukumo 
 スキルは `tsukumo-workflow:<name>`、エージェント定義は `tsukumo-workflow:no-delegate`・
 `tsukumo-workflow:acceptor` の名前で入る。`bin/tw` はプラグインが有効なあいだ Bash の PATH に入る。
 プラグインに入れたエージェント定義の frontmatter の `hooks` は無視されるので、hook は `hooks/hooks.json` が掛ける。
-hook の掛かり方は `skills/task-workflow/tw-reference.md`「hook の関門」節。
+hook の掛かり方は `skills/task-model/tw-reference.md`「hook の関門」節。
 
 開発中は `claude --plugin-dir .`（このリポジトリの根）で読ませ、`claude plugin validate .` で検査する。
 
@@ -29,7 +29,7 @@ hook の掛かり方は `skills/task-workflow/tw-reference.md`「hook の関門�
 エージェント定義を、`~/.local/bin/tw` へ `tw` をシンボリックリンクで張る。入れ方はどちらか一方だけにする
 （両方で入れると同じスキルが二重に見える）。
 リンクだけで入れると `hooks/hooks.json` は読まれず、hook はエージェント定義の frontmatter が掛ける。
-hook の掛かり方と、やむを得ず plugin と併用したときの注意は `skills/task-workflow/tw-reference.md`「hook の関門」節。
+hook の掛かり方と、やむを得ず plugin と併用したときの注意は `skills/task-model/tw-reference.md`「hook の関門」節。
 
 - 張る先は `--dest DIR` → `CLAUDE_CONFIG_DIR`（設定されていればその下の `skills/`）→ `$HOME/.claude/skills`
   の順で決まる。`tw` の張る先は `--bin-dir DIR`（無ければ `~/.local/bin`）
@@ -60,7 +60,7 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
 | `git` | 必須 | - | 作業ツリーと主ブランチの取り込み |
 | `bd`（Beads） | 必須 | 1.3.0 | タスクの置き場。無いと `tw` は動かない |
 | `dolt` | 必須 | - | `bd` の置き場の実体とバックアップ |
-| `gh` | トラッカーが `github` のときだけ必須 | - | Issue と Project の同期（`skills/task-workflow/TRACKER.md`「トラッカー」） |
+| `gh` | トラッカーが `github` のときだけ必須 | - | Issue と Project の同期（`skills/task-model/TRACKER.md`「トラッカー」） |
 | `tw`（PATH 上） | 任意 | - | スキルや hook がサブエージェントの中から `tw` と打つとき |
 
 `tw config-doctor` が前提ごとに `OK`・`MISSING`・`OPTIONAL` を出す（必須が欠ければ終了コード1）。
@@ -84,7 +84,7 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
 
 全8スキル。`skills/` にあるものが全てで、この一覧がその索引。
 
-- 自作（7件）: `task-workflow`（運用の正典・参照専用）、`setup-tasks` `plan-tasks` `next-task` `list-tasks`、
+- 自作（7件）: `task-model`（タスクの規則の正典と `tw` の実装・参照専用）、`setup-tasks` `plan-tasks` `next-task` `list-tasks`、
   `retrospect`（`/next-task` の中で1件ごと・7日おきに振り返り、改善候補をドラフトの課題〔`tw new --draft`〕として積む。正典・参照専用）、
   `comment-audit`（コメントの種類を判定して消す・縮める・正典へ移す。`next-task` の受け入れ役に渡す）
 - [mattpocock/skills](https://github.com/mattpocock/skills) を日本語化したもの（1件）: `retro`
@@ -105,7 +105,7 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
      （「Plugin dependencies」）
    - マーケットプレイスから入れたプラグインはキャッシュへ別々に写され、プラグインの根より上（`../`）は
      届かない（「Plugin loading reference」）。`${CLAUDE_SKILL_DIR}/../<外のスキル>` は在るときだけ使う
-   - claude-skills に残る `maintenance-docs` は `task-workflow` の `scripts/layout.py` を import している。
+   - claude-skills に残る `maintenance-docs` は `task-workflow`（このリポジトリでは `task-model` に改名した）の `scripts/layout.py` を import している。
      claude-skills から `task-workflow` を消すときに、`tw` コマンド越しに読み、無ければその検査を飛ばす形に直す
 2. **歴史は持ち込まず、新しい歴史で始める。** 最初のコミットに写し元（claude-skills の main の SHA）を書いた。
    それまでの歴史は claude-skills に残る。`git filter-repo` は使える外部コマンドに無く、持ち込むコミットの題は
@@ -128,7 +128,7 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
 
 1. `install.sh`・`uninstall.sh`・`scripts/links.sh` の構文
 2. `install.sh`・`uninstall.sh` の自己テスト（`scripts/selftest_links.sh`）
-3. `task-workflow` のスクリプトの自己テスト（`selftest.py`・`selftest_task.py`・`selftest_beads.py`。
+3. `task-model` のスクリプトの自己テスト（`selftest.py`・`selftest_task.py`・`selftest_beads.py`。
    後ろの2つは入口で、テストの本体は `selftest_t_*.py`・`selftest_b_*.py` にある。
    `bd` が無ければ非0で終わる）
 4. `retrospect` の自己テスト

@@ -3,9 +3,9 @@ name: plan-tasks
 description: "会話での明示の指示、引数のファイル、エージェントのドラフトの課題〔tw status の DRAFT の行〕のうち承認を得たもの、トラッカーから取り込んだ振り分け前の課題〔triage の行〕を tw new でタスクに分解して登録し（ドラフトの課題は tw edit で todo に進め、却下は tw done --dropped で閉じる）、main へ送る。引数にファイルのパスを渡すと、そのファイルを指示として読む。ユーザーが「指示をタスクにして」「これタスクにして」「ドラフトを処理して」と言ったときに使う。"
 ---
 
-会話の明示の指示と、引数 `<パス>` のファイルと、エージェントのドラフト（`tw status` の着手可否が `DRAFT` の課題）をタスクにする。ルールは `task-workflow` スキルの
+会話の明示の指示と、引数 `<パス>` のファイルと、エージェントのドラフト（`tw status` の着手可否が `DRAFT` の課題）をタスクにする。ルールは `task-model` スキルの
 `WORKFLOW.md`（以下「正典」）。`tw` は
-`task-workflow` のタスク運用のコマンド（`tw-reference.md`「`tw` コマンドの参照」）。
+`task-model` のタスク運用のコマンド（`tw-reference.md`「`tw` コマンドの参照」）。
 
 **登録までで止め、実行はしない**（実行は `/next-task`）。分解は方針決めを含むので、**委譲せず
 ユーザーがいるセッションで行い**、`/loop` や `/next-task` からは呼ばない。
@@ -17,11 +17,11 @@ description: "会話での明示の指示、引数のファイル、エージェ
 タスクは Beads に置かれている（正典「Beads とトラッカー」）。トラッカーが `github` なら、タスクID は
 `tw new` が返す Issue 番号の `GH-<n>` で、`T-xxx` をそう読み替える。`--deps` にもその形で渡す。
 `## 完了条件` に書く**検証コマンド**は `verify` の行の値。`なし` なら完了条件は検証可能な言葉だけで書く。
-`MISSING` の行などで設定が読めないときは `task-workflow` スキルの `preflight.md` に従う。
+`MISSING` の行などで設定が読めないときは `task-model` スキルの `preflight.md` に従う。
 
 ## 手順
 
-0. **依存を確かめる**: `task-workflow` スキルの `preflight.md` に従う。
+0. **依存を確かめる**: `task-model` スキルの `preflight.md` に従う。
 
 1. **読む**: `tw status` で既存の一覧を見る（本文は読まない。重なりそうな1件があるときだけ
    `tw show T-xxx` で読む）。終了コード6（`MISSING`）なら

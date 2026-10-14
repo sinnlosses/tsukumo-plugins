@@ -2,7 +2,7 @@
 
 `tw <サブコマンド>` で打つ。`tw` は plugin の `bin/tw`（plugin が有効なあいだ Bash の PATH に入る）か、`install.sh` が PATH 上
 （既定は `~/.local/bin`）に張る `scripts/task.py` へのシンボリックリンクで、どちらもロジックを持たない。
-PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`task-workflow` を対象に含める）。どのディレクトリから打ってもリポジトリの根で動く。
+PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`task-model` を対象に含める）。どのディレクトリから打ってもリポジトリの根で動く。
 出力は常に stdout の TSV で、1行目の先頭語が種類。
 表は「いつ打つか」と出力の先頭語だけを持ち、引数・内部の動き・例外・出力の列は `tw <サブコマンド> --help` が持つ。
 

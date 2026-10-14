@@ -4,7 +4,7 @@
 使い方: init.py   （プロジェクトの根で打つ）
 
 作るのは `.tw/local/` を外す `.tw/.gitignore`（中身 `local/`。旧い形のものは `local/` に書き換える）だけ
-（正典は task-workflow の WORKFLOW.md「ファイル配置と設定ファイル」）。
+（正典は task-model の WORKFLOW.md「ファイル配置と設定ファイル」）。
 
 **既存ファイルは上書きしない。**
 設定（`.tw/config.toml`）は**点検するだけで書かない**（値は検証コマンドの選定そのもので、

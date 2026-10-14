@@ -5,7 +5,7 @@
 # - 外すのは**このリポジトリを指すリンクだけ**。実ファイル・実ディレクトリ・他所を指すリンクは
 #   触らず警告する
 # - スキル名を省けば、全スキルと `agents/` のリンクと `tw` を外し、このリポジトリを指していて
-#   解決できなくなったリンクも消す。名前を渡せばそのスキルだけを外し（`task-workflow` を含む
+#   解決できなくなったリンクも消す。名前を渡せばそのスキルだけを外し（`task-model` を含む
 #   ときは `tw` も）、エージェント定義には触らない
 # - 名前を渡したとき、外したスキルに `REQUIRES` で依存するスキルが張る先に残っていれば警告する
 #   （自動では外さない）
@@ -62,14 +62,14 @@ fi
 unlink_tw=1
 if [ "$filtered" -eq 1 ]; then
   unlink_tw=0
-  if name_in task-workflow "$@"; then
+  if name_in task-model "$@"; then
     unlink_tw=1
   fi
 fi
 if [ "$unlink_tw" -eq 1 ]; then
   link="$bin_dest/tw"
   if [ -e "$link" ] || [ -L "$link" ]; then
-    if link_refuse "$link" tw "$here/skills/task-workflow/scripts/task.py" "触らない"; then
+    if link_refuse "$link" tw "$here/skills/" "触らない"; then
       :
     else
       rm "$link"

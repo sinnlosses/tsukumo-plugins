@@ -3,7 +3,7 @@
 正典は WORKFLOW.md「ファイル配置と設定ファイル」。
 
 別のスキルのスクリプトは、`sys.path` にこのファイルのディレクトリを足してから `import layout` する。
-`task-workflow` が入っていない環境では
+`task-model` が入っていない環境では
 `ImportError` で止まる（データの不備ではなく環境の不備として扱う。他のスクリプトの docstring の
 「環境の故障」の扱いと同じ）。
 """

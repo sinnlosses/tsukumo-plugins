@@ -45,7 +45,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 _TASK_WORKFLOW_SCRIPTS = os.path.normpath(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "task-workflow", "scripts")
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "task-model", "scripts")
 )
 if _TASK_WORKFLOW_SCRIPTS not in sys.path:
     sys.path.insert(0, _TASK_WORKFLOW_SCRIPTS)
@@ -234,7 +234,7 @@ def find_progress_section(path: str, task_id: str) -> str:
 
 def print_commits(root: str, task_id: str, want_diff: bool, diff_bytes: int) -> list[str]:
     # **件名だけ**で照合する（`--grep` は本文にも当たるので、タスクIDに言及しただけの
-    # 別のコミットを拾ってしまう）。件名にIDを置く運用は task-workflow の
+    # 別のコミットを拾ってしまう）。件名にIDを置く運用は task-model の
     # 「コミットメッセージ」が決めている。
     out, err = git_out(root, "log", "--reverse", "--no-merges",
                        "--pretty=format:%h\t%ad\t%s", "--date=short")

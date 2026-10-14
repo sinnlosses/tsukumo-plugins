@@ -21,7 +21,7 @@
 - 兄弟スキルの `scripts/` を `sys.path` に足して `import` しているなら、`REQUIRES` にその
   兄弟スキル名があること
 - 本文が `${CLAUDE_SKILL_DIR}/../<兄弟>` で兄弟スキルを指しているなら、`REQUIRES` にその兄弟スキル名があること
-- 兄弟のパス `${CLAUDE_SKILL_DIR}/../<兄弟>` で指してよいのは `task-workflow` と自分自身だけであること
+- 兄弟のパス `${CLAUDE_SKILL_DIR}/../<兄弟>` で指してよいのは `task-model` と自分自身だけであること
   （ほかのパーツは Skill ツールで名前を指して呼び、そのパーツの道具は置き場〔Base directory〕から打つ）
 - retrospect の本文を `retrospect/SKILL.md` で指す文言が無いこと（本文は `detail.md`）
 """
@@ -195,7 +195,7 @@ def check_script_paths(names: list[str]) -> None:
     for n in names:
         for md in markdown_files(n):
             body = read(md)
-            for bad in ("<このスキルのパス>", "<task-workflowスキルのディレクトリ>"):
+            for bad in ("<このスキルのパス>", "<task-workflowスキルのディレクトリ>", "<task-modelスキルのディレクトリ>"):
                 if bad in body:
                     fail(f"{os.path.relpath(md, ROOT)}: {bad} は ${{CLAUDE_SKILL_DIR}} で書く")
             if re.search(r"python3 [^\n`]*/Users/", body):
@@ -236,7 +236,7 @@ def check_shell_embeds(names: list[str]) -> None:
             fail(f"{rel}:{fence_start}: ```! のフェンスが閉じていない")
 
 
-TW_TARGET = os.path.join(SKILLS, "task-workflow", "scripts", "task.py")
+TW_TARGET = os.path.join(SKILLS, "task-model", "scripts", "task.py")
 
 
 def check_tw_entry(names: list[str]) -> None:
@@ -247,7 +247,7 @@ def check_tw_entry(names: list[str]) -> None:
             fail(f"{os.path.relpath(TW_TARGET, ROOT)} に実行ビットが無い（tw から起こせない）")
         if not read(TW_TARGET).startswith("#!/usr/bin/env python3\n"):
             fail(f"{os.path.relpath(TW_TARGET, ROOT)} の1行目が #!/usr/bin/env python3 でない")
-    long_form = re.compile(r"python3 [^\n`]*task-workflow/scripts/task\.py")
+    long_form = re.compile(r"python3 [^\n`]*task-(workflow|model)/scripts/task\.py")
     old_abbrev = re.compile(
         r"`task (status|new|claim|release|done|ship|finish|land|config|config-doctor|show|edit|plan-check|verify|verify-check|accept|pause|step|lap|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|ask-guard)[ `]"
     )
@@ -343,24 +343,24 @@ def check_python_syntax(names: list[str]) -> None:
                     fail(f"{os.path.relpath(p, ROOT)}: `from __future__ import annotations` が無い（Python 3.9 で型注釈が読めない）")
 
 
-# T-018: 履歴の置き場・IDの形は skills/task-workflow/scripts/layout.py に
-# 1箇所だけ書き、読む側は直書きしない（正典は task-workflow の WORKFLOW.md「ファイル配置と
+# T-018: 履歴の置き場・IDの形は skills/task-model/scripts/layout.py に
+# 1箇所だけ書き、読む側は直書きしない（正典は task-model の WORKFLOW.md「ファイル配置と
 # 設定ファイル（AGENTS.md → CLAUDE.md の順）」）。ここでは layout.py 自身は対象から外し、
 # 読む側のファイルだけを見る。
-_TASK_WORKFLOW_SCRIPTS = os.path.join(SKILLS, "task-workflow", "scripts")
+_TASK_MODEL_SCRIPTS = os.path.join(SKILLS, "task-model", "scripts")
 _RETROSPECT_SCRIPTS = os.path.join(SKILLS, "retrospect", "scripts")
-LAYOUT_PATH = os.path.join(_TASK_WORKFLOW_SCRIPTS, "layout.py")
+LAYOUT_PATH = os.path.join(_TASK_MODEL_SCRIPTS, "layout.py")
 LAYOUT_CONSUMERS = (
-    os.path.join(_TASK_WORKFLOW_SCRIPTS, "task.py"),
-    os.path.join(_TASK_WORKFLOW_SCRIPTS, "tw_base.py"),
-    os.path.join(_TASK_WORKFLOW_SCRIPTS, "tw_claim.py"),
-    os.path.join(_TASK_WORKFLOW_SCRIPTS, "tw_edit.py"),
-    os.path.join(_TASK_WORKFLOW_SCRIPTS, "tw_maint.py"),
-    os.path.join(_TASK_WORKFLOW_SCRIPTS, "tw_new.py"),
-    os.path.join(_TASK_WORKFLOW_SCRIPTS, "tw_ship.py"),
-    os.path.join(_TASK_WORKFLOW_SCRIPTS, "tw_status.py"),
-    os.path.join(_TASK_WORKFLOW_SCRIPTS, "tw_verify.py"),
-    os.path.join(_TASK_WORKFLOW_SCRIPTS, "init.py"),
+    os.path.join(_TASK_MODEL_SCRIPTS, "task.py"),
+    os.path.join(_TASK_MODEL_SCRIPTS, "tw_base.py"),
+    os.path.join(_TASK_MODEL_SCRIPTS, "tw_claim.py"),
+    os.path.join(_TASK_MODEL_SCRIPTS, "tw_edit.py"),
+    os.path.join(_TASK_MODEL_SCRIPTS, "tw_maint.py"),
+    os.path.join(_TASK_MODEL_SCRIPTS, "tw_new.py"),
+    os.path.join(_TASK_MODEL_SCRIPTS, "tw_ship.py"),
+    os.path.join(_TASK_MODEL_SCRIPTS, "tw_status.py"),
+    os.path.join(_TASK_MODEL_SCRIPTS, "tw_verify.py"),
+    os.path.join(_TASK_MODEL_SCRIPTS, "init.py"),
     os.path.join(_RETROSPECT_SCRIPTS, "material.py"),
     os.path.join(_RETROSPECT_SCRIPTS, "transcript.py"),
 )
@@ -422,10 +422,10 @@ def _trailing_literal_segments(args: list[ast.expr]) -> list[str]:
     return segments
 
 
-def check_task_workflow_layout() -> None:
+def check_task_model_layout() -> None:
     """`layout.py` の値が読む側のファイルに直書きで戻っていないか（T-018）。"""
     if not os.path.exists(LAYOUT_PATH):
-        fail("skills/task-workflow/scripts/layout.py が無い")
+        fail("skills/task-model/scripts/layout.py が無い")
         return
     for path in LAYOUT_CONSUMERS:
         rel = os.path.relpath(path, ROOT)
@@ -456,10 +456,10 @@ def check_task_workflow_layout() -> None:
 
 def check_selftest_body_literal() -> None:
     """自己テストが `### 名指すファイル` を直書きして本文を組んでいないか（`selftest_body.task_body` で組む）。"""
-    for fname in sorted(os.listdir(_TASK_WORKFLOW_SCRIPTS)):
+    for fname in sorted(os.listdir(_TASK_MODEL_SCRIPTS)):
         if not (fname.startswith("selftest") and fname.endswith(".py")) or fname == "selftest_body.py":
             continue
-        path = os.path.join(_TASK_WORKFLOW_SCRIPTS, fname)
+        path = os.path.join(_TASK_MODEL_SCRIPTS, fname)
         tree = ast.parse(read(path))
         docstring_ids = _docstring_constant_ids(tree)
         for node in ast.walk(tree):
@@ -508,7 +508,7 @@ def unrequired_references(owner: str, text: str, required: set[str]) -> list[str
     return [dep for dep in sibling_references(owner, text) if dep not in required]
 
 
-PATH_REFERENCE_ALLOWED = ("task-workflow",)
+PATH_REFERENCE_ALLOWED = ("task-model",)
 
 
 def forbidden_path_references(owner: str, text: str) -> list[str]:
@@ -516,7 +516,7 @@ def forbidden_path_references(owner: str, text: str) -> list[str]:
 
 
 def check_sibling_path_references(names: list[str]) -> None:
-    """兄弟のパス `${CLAUDE_SKILL_DIR}/../<兄弟>` で指してよいのは `task-workflow` と自分自身だけ。
+    """兄弟のパス `${CLAUDE_SKILL_DIR}/../<兄弟>` で指してよいのは `task-model` と自分自身だけ。
     ほかのパーツは Skill ツールで名前を指して呼ぶ。"""
     for n in names:
         for md in markdown_files(n):
@@ -635,7 +635,7 @@ def main() -> None:
     check_retrospect_entry_references(names)
     check_sibling_imports(names)
     check_python_syntax(names)
-    check_task_workflow_layout()
+    check_task_model_layout()
     check_selftest_body_literal()
     check_agent_frontmatter(agent_names())
 

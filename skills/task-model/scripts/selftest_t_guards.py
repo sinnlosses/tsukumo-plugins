@@ -276,7 +276,7 @@ def test_commit_guard_verify() -> None:
             ("tw verify", wt1),
             ("tw verify T-100", wt1),
             ("./check.sh path/to/one.test.ts", wt1),
-            ("python3 skills/task-workflow/scripts/selftest_task.py test_x", wt1),
+            ("python3 skills/task-model/scripts/selftest_task.py test_x", wt1),
             ("bash ./check.sh", wt1),
             ("echo ./check.sh", wt1),
             ("git log -- ./check.sh", wt1),
@@ -346,7 +346,7 @@ def test_commit_guard_other_repo() -> None:
             check(f"拒む: {command}", run_guard(tmp, wt1, command) is not None)
         for command, where in (
             (f"cd {work_tree} && tw verify", wt1),
-            (f"cd {work_tree} && python3 skills/task-workflow/scripts/task.py verify", wt1),
+            (f"cd {work_tree} && python3 skills/task-model/scripts/task.py verify", wt1),
             (f"git -C {work_tree} status", wt1),
             (f"cd {work_tree} && git log -1 && git diff", wt1),
             (f"git -C {work_tree} commit -m x", wt1),

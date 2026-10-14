@@ -26,7 +26,7 @@ hooks:
 設定の検証コマンド（`./check.sh` など）は直に打たず `tw verify` で打つ。対象を絞った単体テストの実行は打ってよい。
 
 着手の印（`tw claim`）が立った作業ツリーでは、hook（`tw commit-guard`・`tw handback-guard`）が次を拒む。
-拒まれたら回避しない。拒むものの全体は task-workflow の `tw-reference.md`「hook の関門」節。
+拒まれたら回避しない。拒むものの全体は task-model の `tw-reference.md`「hook の関門」節。
 
 - シェルでの書き換えと検証コマンドの直打ち。拒まれたら `Edit`・`Write` で書き、`tw verify` で打つ
 - `git commit` などコミットを作る git のサブコマンド。拒まれたら、コミットせずに変更を作業ツリーに残したまま報告で返す

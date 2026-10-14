@@ -4,8 +4,8 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
 ---
 
 タスクを1サイクルぶん前に進めて終わる（全件進めたいときは `/loop /next-task`。続行/停止は `/loop` が
-決める）。ルールは `task-workflow` スキルの `WORKFLOW.md`（以下「正典」）。`tw` は
-`task-workflow` のタスク運用のコマンド（`tw-reference.md`「`tw` コマンドの参照」）。
+決める）。ルールは `task-model` スキルの `WORKFLOW.md`（以下「正典」）。`tw` は
+`task-model` のタスク運用のコマンド（`tw-reference.md`「`tw` コマンドの参照」）。
 **`tw` の代わりに `bd` や台帳を手で操作しない。**
 
 ## このプロジェクトの設定（`tw config`）
@@ -17,11 +17,11 @@ description: "Beads に置いた未着手タスクを1件選び、tw コマン�
 `T-xxx` とコミットの件名の `T-xxx:` をそう読み替える）。
 以下の**検証コマンド**は `verify` の行、**整形コマンド**は `format` の行の値に読み替える。`verify` が `なし` なら打たず、`## 完了条件`
 だけで受け入れを判定してその旨を報告に書く。`format` が `なし` なら整形は打たない。
-`MISSING` の行などで設定が読めないときは `task-workflow` スキルの `preflight.md` に従う。
+`MISSING` の行などで設定が読めないときは `task-model` スキルの `preflight.md` に従う。
 
 ## 手順
 
-0. **依存を確かめる**: `task-workflow` スキルの `preflight.md` に従う。
+0. **依存を確かめる**: `task-model` スキルの `preflight.md` に従う。
 
 1. **見渡す**: `tw status`（手順8のあとに取り直した `tw status` が同じ会話に残っていて、その後に状態を変える `tw` を打っていなければ打ち直さない。トラッカーが `jira`・`github` なら、先に `tw sync` で取り込む。
    `TRACKER\tFAILED` は報告に添えて先へ進む）。終了コードが 6 `MISSING`・1・3 なら、

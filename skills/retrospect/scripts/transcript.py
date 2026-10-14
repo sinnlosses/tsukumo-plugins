@@ -18,7 +18,7 @@ from collections import Counter
 from datetime import datetime
 
 _TASK_WORKFLOW_SCRIPTS = os.path.normpath(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "task-workflow", "scripts")
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "task-model", "scripts")
 )
 if _TASK_WORKFLOW_SCRIPTS not in sys.path:
     sys.path.insert(0, _TASK_WORKFLOW_SCRIPTS)

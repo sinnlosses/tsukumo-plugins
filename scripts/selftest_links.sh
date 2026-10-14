@@ -45,22 +45,29 @@ rm -rf "$dest" "$bin"
 mkdir "$dest"
 inst >/dev/null 2>&1
 uninst list-tasks >"$tmp/out" 2>"$tmp/err"
-[ ! -e "$dest/list-tasks" ] && [ -L "$dest/setup-tasks" ] && [ -L "$dest/task-workflow" ] && [ -L "$bin/tw" ]
+[ ! -e "$dest/list-tasks" ] && [ -L "$dest/setup-tasks" ] && [ -L "$dest/task-model" ] && [ -L "$bin/tw" ]
 check "名前を渡すとそのスキルだけ消える（tw は残る）" $?
 ls "$CLAUDE_CONFIG_DIR/agents"/*.md >/dev/null 2>&1
 check "名前を渡してもエージェント定義は残る" $?
 
-uninst task-workflow >"$tmp/out" 2>"$tmp/err"
-[ ! -e "$dest/task-workflow" ] && [ ! -e "$bin/tw" ]
-check "task-workflow を渡すと tw も消える" $?
-grep -q "warning: retrospect は task-workflow に依存" "$tmp/err"
+uninst task-model >"$tmp/out" 2>"$tmp/err"
+[ ! -e "$dest/task-model" ] && [ ! -e "$bin/tw" ]
+check "task-model を渡すと tw も消える" $?
+grep -q "warning: retrospect は task-model に依存" "$tmp/err"
 check "依存元が残るときに警告が出る" $?
 
 rm -rf "$dest" "$bin"
 mkdir "$dest"
 inst >/dev/null 2>&1
-uninst retrospect task-workflow >"$tmp/out" 2>"$tmp/err"
+uninst retrospect task-model >"$tmp/out" 2>"$tmp/err"
 ! grep -q "warning: retrospect" "$tmp/err"
 check "依存元も一緒に外せば、その依存元の警告は出ない" $?
+
+rm -rf "$dest" "$bin"
+mkdir "$dest" "$bin"
+ln -s "$here/skills/task-workflow/scripts/task.py" "$bin/tw"
+inst task-model >"$tmp/out" 2>"$tmp/err"
+[ "$(readlink "$bin/tw")" = "$here/skills/task-model/scripts/task.py" ] && ! grep -q "skipped tw" "$tmp/err"
+check "改名前の置き場を指す tw を張り替える" $?
 
 [ "$fails" -eq 0 ] || { echo "$fails 件落ちた"; exit 1; }

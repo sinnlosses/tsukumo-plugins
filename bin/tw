@@ -8,4 +8,4 @@ if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' 2
   echo "tsukumo-workflow: Python 3.9 以上が要る（いまは $(python3 -V 2>&1)）。tw config-doctor で前提を確かめる" >&2
   exit 78
 fi
-exec python3 "$here/../skills/task-workflow/scripts/task.py" "$@"
+exec python3 "$here/../skills/task-model/scripts/task.py" "$@"

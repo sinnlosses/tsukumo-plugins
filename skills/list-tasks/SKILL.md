@@ -4,7 +4,7 @@ description: "tw status の出力から、タスクの置き場に登録され�
 ---
 
 未完了タスクを**テーブル1つに要約し、次の1件を推薦する**。**何も書き換えない・実行しない**（実行は
-`/next-task`、登録は `/plan-tasks`）。ルールは `task-workflow` スキルの `WORKFLOW.md`（以下「正典」）。
+`/next-task`、登録は `/plan-tasks`）。ルールは `task-model` スキルの `WORKFLOW.md`（以下「正典」）。
 タスクの本文は読まない（要約は `summary` にある）。
 
 ```bash
@@ -18,7 +18,7 @@ tw status
 
 ## 表示のしかた
 
-0. **依存を確かめる**: `task-workflow` スキルの `preflight.md` に従う。
+0. **依存を確かめる**: `task-model` スキルの `preflight.md` に従う。
 
 1. 終了コードが0でなければ表を出さずに終わる: 6（`MISSING`）は「タスク運用を始めていない
    （`/setup-tasks`）」、3 は `INVALID` の理由、1 はエラー出力をそのまま添える。

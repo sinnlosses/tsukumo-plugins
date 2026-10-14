@@ -2,7 +2,7 @@
 
 タスクを段に分けて委譲し、受け入れて送り出すワークフロー（Claude Code のプラグイン `tsukumo-workflow`）のソース。
 構成・入れ方・決めたことは [README.md](README.md)。ワークフローの規則の正典は
-[skills/task-workflow/WORKFLOW.md](skills/task-workflow/WORKFLOW.md)。
+[skills/task-model/WORKFLOW.md](skills/task-model/WORKFLOW.md)。
 
 ## タスク運用
 

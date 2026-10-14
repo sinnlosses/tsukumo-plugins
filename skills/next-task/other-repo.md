@@ -15,7 +15,7 @@
      作業先の作業ツリーの `tw verify-check` が `VERIFIED_SAME` でなければ hook に拒まれる。**`main` へ入れず、
      作業ツリーと枝を消さずに残して**、作業ツリーのパスと `tw verify` の判定行（`VERIFIED`・
      `VERIFY_NOT_PASSED` など）を報告に書く。作業先に `.tw/config.toml` があれば台帳（`.beads`）が無くても
-     `tw verify` は打てる。設定が無く `tw verify` が `MISSING` を返すときは、検証コマンドを自分で打って通し、打ったコマンドと終了コードを報告に書く。作業先が tsukumo-plugins で `skills/task-workflow/scripts/` を直すタスク（tw 自身を直すタスク）のときは、`tw` を打たず（グローバルの `tw` は本体の旧い版を指すため）、作業ツリーの `skills/task-workflow/scripts/task.py <サブコマンド>` を直に実行して確かめる」。
+     `tw verify` は打てる。設定が無く `tw verify` が `MISSING` を返すときは、検証コマンドを自分で打って通し、打ったコマンドと終了コードを報告に書く。作業先が tsukumo-plugins で `skills/task-model/scripts/` を直すタスク（tw 自身を直すタスク）のときは、`tw` を打たず（グローバルの `tw` は本体の旧い版を指すため）、作業ツリーの `skills/task-model/scripts/task.py <サブコマンド>` を直に実行して確かめる」。
      `<枝>` と `<パス>` は依頼文に書いて渡す。枝の名前が違うと関門が作業先を見ない（正典の `tw-reference.md`「hook の関門」節）。
      関門が作業先の検証を求めずに通したとき（同じ節）は、受け入れで検証コマンドを打つ
    - 同じく作業先が別のリポジトリのときだけ渡す: 「作業先の本体の作業ツリー（`git worktree list` の
@@ -64,7 +64,7 @@
    | `LANDED` に続けて `REMOVED`・`DELETED` | 次へ |
    | `NOT_LANDED`（何も変えていない） | 理由が「ff-only で合流できない」なら、作業先の主ブランチが先へ進んでいる。その作業ツリーで主ブランチを取り込んで `tw verify` を打ち直してから、もう一度打つ。ほかの理由は行を添えて人に預けて終了する |
    | `NOT_REMOVED`（合流は済んでいる） | 残った作業ツリーか枝を報告に書いて次へ進む（消すのは人に預ける） |
-   | `GIT_READ_ONLY` | `task-workflow` の tw-reference.md の終了コード表のとおり |
+   | `GIT_READ_ONLY` | `task-model` の tw-reference.md の終了コード表のとおり |
 
    **許可規則**: auto mode の分類器は、作業先の本体の主ブランチへ合流するコマンドを [Modify Shared Resources]
    として拒むことがある。`tw land` も許可規則が無ければ拒まれうるので、利用者が `settings.json` の
