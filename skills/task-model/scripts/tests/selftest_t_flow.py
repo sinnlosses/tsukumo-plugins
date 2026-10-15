@@ -694,6 +694,93 @@ def test_config_schema() -> None:
         check("どの欄も label と description を持つ", all(k["label"] and k["description"] for k in keys), repr(keys))
 
 
+def _skill(root: str, name: str, mark: str | None, description: str = "説明") -> str:
+    """`root/<name>/SKILL.md` を書く。`mark` は `metadata` に置く `workflow-step` の値（None なら metadata を置かない）。"""
+    meta = f'metadata:\n  workflow-step: "{mark}"\n' if mark is not None else ""
+    return write(
+        os.path.join(root, name, "SKILL.md"),
+        f"---\nname: {name}\ndescription: >\n  {description}\n  続き\n{meta}---\n本文\n",
+    )
+
+
+def test_step_candidates() -> None:
+    say("layout.step_candidates: 印のあるスキルだけを3つの走査先から拾い、実体が同じものは1つにする")
+    import layout
+
+    with tempfile.TemporaryDirectory() as tmp:
+        project = os.path.join(tmp, "project")
+        home = os.path.join(tmp, "home")
+        plugin_root = os.path.join(tmp, "plugin")
+        _skill(os.path.join(project, ".claude", "skills"), "proj-step", "true")
+        _skill(os.path.join(project, ".claude", "skills"), "proj-plain", None)
+        _skill(os.path.join(project, ".claude", "skills"), "proj-false", "false")
+        _skill(os.path.join(home, ".claude", "skills"), "home-step", "true")
+        plugin_skills = os.path.join(plugin_root, "skills")
+        _skill(plugin_skills, "plug-a", "true", "プラグインの説明")
+        _skill(plugin_skills, "plug-b", "true")
+        _skill(plugin_skills, "plug-plain", None)
+        os.symlink(os.path.join(plugin_skills, "plug-b"), os.path.join(home, ".claude", "skills", "plug-b"))
+        got = layout.step_candidates(project, home, (plugin_root, "my-plugin"))
+        check("印のあるスキルだけが、作業ツリー・ホーム・plugin の順に並ぶ",
+              [c.value for c in got] == ["proj-step", "home-step", "plug-b", "my-plugin:plug-a"],
+              repr([c.value for c in got]))
+        check("リンクで入れた plugin のスキルは重ねず、リンクの名前（<名前>）で1つになる",
+              [c.value for c in got].count("plug-b") == 1 and "my-plugin:plug-b" not in [c.value for c in got])
+        plug_a = next(c for c in got if c.value == "my-plugin:plug-a")
+        check("label は frontmatter の name、description は複数行を1行に畳んだもの",
+              plug_a.label == "plug-a" and plug_a.description == "プラグインの説明 続き", repr(plug_a))
+        check("plugin の実体のスキルは own（リンク経由も）、ほかは違う",
+              {c.value: c.own for c in got} == {"proj-step": False, "home-step": False, "plug-b": True, "my-plugin:plug-a": True},
+              repr(got))
+        check("走査先が無ければ空", layout.step_candidates(None, None, None) == [])
+        check("走査先のディレクトリが無くても空", layout.step_candidates(os.path.join(tmp, "none"), None, None) == [])
+
+        quoted = os.path.join(tmp, "quoted", "skills")
+        write(os.path.join(quoted, "q", "SKILL.md"),
+              '---\nname: "q-name"\ndescription: "引用: 説明"\nmetadata:\n  workflow-step: \'true\'\n  other: x\n---\n')
+        write(os.path.join(quoted, "broken", "SKILL.md"), "frontmatter が無い\n")
+        got = layout.step_candidates(None, None, (os.path.join(tmp, "quoted"), "p"))
+        check("引用符つきの値を読み、frontmatter の無いスキルは飛ばす",
+              [(c.value, c.label, c.description) for c in got] == [("p:q-name", "q-name", "引用: 説明")], repr(got))
+
+
+def test_config_schema_version() -> None:
+    say("task.py config --schema --version: 2 は並びの欄、引数なしは schema 1、知らない版は終了コード2")
+    with tempfile.TemporaryDirectory() as tmp:
+        home = os.path.join(tmp, "home")
+        repo = os.path.join(tmp, "repo")
+        os.makedirs(repo)
+        git(repo, "init", "-q")
+        _skill(os.path.join(repo, ".claude", "skills"), "my-step", "true", "作業ツリーのスキル")
+        _skill(os.path.join(home, ".claude", "skills"), "my-step", "true", "ホームの同名")
+        _skill(os.path.join(home, ".claude", "skills"), "other", "true")
+        env = {"HOME": home}
+        r = run_task(repo, "config", "--schema", "--version", "2", env=env)
+        check("--version 2 は終了コード0で1行", r.returncode == 0 and len(r.stdout.splitlines()) == 1, r.stdout + r.stderr)
+        schema = json.loads(r.stdout)
+        steps = schema["keys"][0]
+        values = [v["value"] for v in steps["values"]]
+        check("schema 2 は steps の1欄だけ", schema["schema"] == 2 and [k["key"] for k in schema["keys"]] == ["steps"]
+              and steps["kind"] == "steps" and steps["label"] and steps["description"], repr(schema))
+        check("作業ツリーとホームの印つきスキルが候補になり、全名が同じものは先の1つ",
+              values[:2] == ["my-step", "other"]
+              and steps["values"][0]["description"] == "作業ツリーのスキル 続き" and values.count("my-step") == 1, repr(values))
+        check("default は全名の配列で、候補の中の名前だけ",
+              isinstance(steps["default"], list) and all(d in values for d in steps["default"]), repr(steps))
+        r = run_task(repo, "config", "--schema", "--version", "1", env=env)
+        check("--version 1 は schema 1", r.returncode == 0 and json.loads(r.stdout)["schema"] == 1, r.stdout + r.stderr)
+        r = run_task(repo, "config", "--schema", env=env)
+        check("引数なしは schema 1 のまま", r.returncode == 0 and json.loads(r.stdout)["schema"] == 1, r.stdout + r.stderr)
+        r = run_task(repo, "config", "--schema", "--version", "3", env=env)
+        check("知らない版は終了コード2で stdout は空", r.returncode == 2 and r.stdout == "" and "3" in r.stderr, r.stdout + r.stderr)
+        r = run_task(repo, "config", "--version", "2", env=env)
+        check("--schema の無い --version は終了コード2", r.returncode == 2, r.stdout + r.stderr)
+        r = run_task(tmp, "config", "--schema", "--version", "2", env=env)
+        check("git の外でも打てる（ホームの候補だけ）",
+              r.returncode == 0 and [v["value"] for v in json.loads(r.stdout)["keys"][0]["values"]][:1] == ["my-step"],
+              r.stdout + r.stderr)
+
+
 def test_config_set() -> None:
     say("task.py config set: 検査してから .tw/config.toml に書き、ほかの行・並び・コメントを変えない")
     with tempfile.TemporaryDirectory() as tmp:
@@ -753,6 +840,73 @@ def test_config_set() -> None:
         check("設定が無ければ MISSING（終了コード6）", r.returncode == 6 and r.stdout.startswith("MISSING"), r.stdout + r.stderr)
 
 
+def test_config_steps() -> None:
+    say("task.py config set steps: 1行の JSON の配列を検査して steps = [...] に書き、tw config が同じ形で出す")
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = _make_config_doctor_repo(tmp, "steps")
+        home = os.path.join(tmp, "home")
+        _skill(os.path.join(home, ".claude", "skills"), "step-a", "true")
+        _skill(os.path.join(home, ".claude", "skills"), "step-b", "true")
+        _skill(os.path.join(home, ".claude", "skills"), "step-plain", None)
+        env = {"HOME": home}
+        path = os.path.join(repo, ".tw", "config.toml")
+
+        def read_config_file() -> str:
+            with open(path, encoding="utf-8") as f:
+                return f.read()
+
+        original = '# 設定\nverify = "なし"  # 検証\n\nbranch = "切らない"\n\n[parts]\nretrospect = "なし"\n'
+        write(path, original)
+        lines = run_task(repo, "config", env=env).stdout.splitlines()
+        check("書いていなければ steps の行は default で、値は JSON の配列",
+              any(l.startswith("steps\t[") and l.endswith("\tdefault") for l in lines), repr(lines))
+        r = run_task(repo, "config", "set", "steps", '["step-b","step-a"]', env=env)
+        check("候補の並びを書くと SET と同じ形の値を返す",
+              r.returncode == 0 and r.stdout == 'SET\tsteps\t["step-b","step-a"]\n', r.stdout + r.stderr)
+        check("最上位の最後のキーの次に steps = [...] の1行が増え、ほかの行はそのまま",
+              read_config_file() == original.replace('branch = "切らない"\n', 'branch = "切らない"\nsteps = ["step-b", "step-a"]\n'),
+              read_config_file())
+        lines = run_task(repo, "config", env=env).stdout.splitlines()
+        check("tw config が書いた並びを config で出す", 'steps\t["step-b","step-a"]\tconfig' in lines, repr(lines))
+        write(path, read_config_file().replace('["step-b", "step-a"]', '["step-b", "step-a"]  # 順'))
+        r = run_task(repo, "config", "set", "steps", '["step-a"]', env=env)
+        check("同じキーは値だけ変わり、行末のコメントが残る",
+              r.returncode == 0 and 'steps = ["step-a"]  # 順\n' in read_config_file()
+              and read_config_file().count("steps =") == 1, read_config_file())
+
+        write(path, read_config_file().replace('["step-a"]', '["gone", "step-a"]'))
+        r = run_task(repo, "config", "set", "steps", '["step-a", "gone"]', env=env)
+        check("候補に無くても今の値にある名前は並べ替えて書ける",
+              r.returncode == 0 and 'steps = ["step-a", "gone"]' in read_config_file(), r.stdout + r.stderr + read_config_file())
+
+        before = read_config_file()
+        for label, arg in (
+            ("空", "[]"),
+            ("重複", '["step-a","step-a"]'),
+            ("候補にも今の値にも無い名前", '["step-a","nope"]'),
+            ("印の無いスキル", '["step-plain"]'),
+            ("JSON でない", "step-a"),
+            ("配列でない", '"step-a"'),
+            ("文字列でない要素", "[1]"),
+            ("空の名前", '[""]'),
+        ):
+            r = run_task(repo, "config", "set", "steps", arg, env=env)
+            check(f"{label}は終了コード2で理由を stderr に出し、ファイルを変えない",
+                  r.returncode == 2 and r.stdout == "" and r.stderr.strip() != "" and read_config_file() == before,
+                  r.stdout + r.stderr)
+
+        write(path, 'verify = "なし"\nsteps = []\n')
+        r = run_task(repo, "config", env=env)
+        check("ファイルに空の steps があれば INVALID（終了コード3）", r.returncode == 3 and r.stdout.startswith("INVALID\t"), r.stdout + r.stderr)
+        write(path, 'verify = "なし"\n[parts]\nsteps = ["a"]\n')
+        r = run_task(repo, "config", env=env)
+        check("[parts] の中の steps は INVALID", r.returncode == 3, r.stdout + r.stderr)
+
+        write(path, 'verify = "なし"\n')
+        r = run_task(repo, "config", "set", "flow", "main", env=env)
+        check("flow の set は今までどおり", r.returncode == 0 and 'flow = "main"' in read_config_file(), r.stdout + r.stderr)
+
+
 def test_open_stages() -> None:
     say("metrics.open_stages: start だけの段を返し、対の揃った段と前の claim の run は数えない")
     t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -808,7 +962,10 @@ TESTS = (
     test_bin_tw_python_floor,
     test_config_command,
     test_config_schema,
+    test_step_candidates,
+    test_config_schema_version,
     test_config_set,
+    test_config_steps,
     test_metrics_stages,
     test_metrics_stages_parallel_steps,
     test_metrics_stages_edge,

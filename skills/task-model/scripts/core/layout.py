@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from dataclasses import dataclass
@@ -49,6 +50,7 @@ FEATURE_BRANCH_PATTERN = re.compile(rf"{FEATURE_BRANCH_PREFIX}({ANY_ID_FRAGMENT}
 # --- 設定（`.tw/config.toml`。正典「ファイル配置と設定ファイル」） ---------------
 
 CONFIG_PATH = ".tw/config.toml"
+STEPS_KEY = "steps"
 
 STORE_BEADS = "beads"
 STORE_VALUES = (STORE_BEADS,)
@@ -69,6 +71,7 @@ CONFIG_KEYS = (
     "backup",
     "hook_tally",
     "flow",
+    "steps",
 )
 
 # 流れの種類（`flow`）。近道と `hold` はタスクごとに決まるので入れない。
@@ -145,6 +148,7 @@ class Config:
     backup: str | None = None
     hook_tally: str | None = None
     flow: str = DEFAULT_FLOW
+    steps: tuple[str, ...] | None = None
     parts: tuple[tuple[str, str], ...] = tuple((slot.name, PART_DEFAULT) for slot in PART_SLOTS)
     written: frozenset = frozenset()
 
@@ -229,10 +233,30 @@ def parse_config_text(text: str, label: str) -> list[tuple[int, str, str]]:
         if key in seen:
             raise ConfigError(f"{label}:{lineno}: キー {key!r} が {seen[key]} 行目にもある")
         seen[key] = lineno
-        value = _parse_string(rest, f"{label}:{lineno}")
+        if key == STEPS_KEY:
+            value = _parse_steps_array(rest, f"{label}:{lineno}")
+        else:
+            value = _parse_string(rest, f"{label}:{lineno}")
         if key not in IGNORED_KEYS:
             entries.append((lineno, key, value))
     return entries
+
+
+def _parse_steps_array(rest: str, where: str) -> str:
+    """`steps = ["…", "…"]` の右辺を、1行の JSON の配列（`steps_text`）にして返す。"""
+    if not rest.startswith("["):
+        raise ConfigError(f"{where}: steps の値は [\"…\", \"…\"] の文字列の配列だけ: {rest}")
+    try:
+        items, end = json.JSONDecoder().raw_decode(rest)
+    except ValueError:
+        raise ConfigError(f"{where}: steps の配列が読めない: {rest}")
+    tail = rest[end:].strip()
+    if tail and not tail.startswith("#"):
+        raise ConfigError(f"{where}: 値の後ろに続きがある（説明は # コメントに書く）: {tail}")
+    problem = steps_problem(items)
+    if problem is not None:
+        raise ConfigError(f"{where}: {problem}")
+    return steps_text(items)
 
 
 def _parse_string(rest: str, where: str) -> str:
@@ -316,6 +340,7 @@ def build_config(source: str | None, values: dict[str, str | None]) -> Config:
         backup=values.get("backup"),
         hook_tally=values.get("hook_tally"),
         flow=values.get("flow") or defaults.flow,
+        steps=tuple(json.loads(values["steps"])) if values.get("steps") else None,
         parts=tuple((slot.name, values.get(slot.key) or PART_DEFAULT) for slot in PART_SLOTS),
         written=frozenset(values),
     )
@@ -329,7 +354,7 @@ def build_config(source: str | None, values: dict[str, str | None]) -> Config:
 # --- 設定の欄の形（`tw config --schema`）と書く口（`tw config set`） -----------------
 
 SCHEMA_VERSION = 1
-SETTABLE_KEYS = ("flow", *PART_KEYS)
+SETTABLE_KEYS = ("flow", STEPS_KEY, *PART_KEYS)
 
 
 class ConfigValueError(ValueError):
@@ -363,7 +388,193 @@ def config_schema() -> dict:
     return {"schema": SCHEMA_VERSION, "default_word": PART_DEFAULT, "none_word": PART_NONE, "keys": keys}
 
 
-_VALUE_LINE_PATTERN = re.compile(r"""([ \t]*([A-Za-z0-9_-]+)[ \t]*=[ \t]*)("(?:[^"\\]|\\.)*"|'[^']*')(.*)""", re.DOTALL)
+# --- 並び（schema 2 の `steps`）。候補は frontmatter の `metadata` に `workflow-step: "true"` を持つスキル ---
+
+SCHEMA_VERSIONS = (1, 2)
+STEP_MARK_KEY = "workflow-step"
+PLUGIN_MANIFEST_PATH = os.path.join(".claude-plugin", "plugin.json")
+
+
+@dataclass(frozen=True)
+class StepCandidate:
+    value: str  # Skill ツールで呼ぶ全名
+    label: str
+    description: str
+    own: bool  # `tw` と同じチェックアウトの plugin のスキルか
+
+
+def _scalar(text: str) -> str:
+    text = text.strip()
+    if len(text) >= 2 and text[0] == '"' and text[-1] == '"':
+        try:
+            return json.loads(text)
+        except ValueError:
+            return text[1:-1]
+    if len(text) >= 2 and text[0] == "'" and text[-1] == "'":
+        return text[1:-1].replace("''", "'")
+    return text
+
+
+def parse_skill_frontmatter(text: str) -> dict[str, str | dict[str, str]]:
+    """SKILL.md 先頭の frontmatter を、最上位は文字列、`metadata` のような入れ子は文字列の対応にして返す。
+
+    読むのは YAML の部分集合（`key: 値`・`>`／`|` の複数行・字下げした `k: v` の入れ子）。frontmatter が無ければ空。
+    """
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return {}
+    try:
+        end = next(i for i in range(1, len(lines)) if lines[i].strip() == "---")
+    except StopIteration:
+        return {}
+    out: dict[str, str | dict[str, str]] = {}
+    i = 1
+    while i < end:
+        m = re.fullmatch(r"([A-Za-z0-9_-]+):[ \t]*(.*)", lines[i])
+        i += 1
+        if m is None:
+            continue
+        children: list[str] = []
+        while i < end and (not lines[i].strip() or lines[i][0] in " \t"):
+            children.append(lines[i])
+            i += 1
+        key, rest = m.group(1), m.group(2).strip()
+        if rest == "":
+            nested = {}
+            for child in children:
+                cm = re.fullmatch(r"[ \t]+([A-Za-z0-9_-]+):[ \t]*(.*)", child)
+                if cm is not None:
+                    nested[cm.group(1)] = _scalar(cm.group(2))
+            out[key] = nested
+        elif rest[0] in ">|":
+            out[key] = " ".join(c.strip() for c in children if c.strip())
+        else:
+            out[key] = _scalar(" ".join([rest, *(c.strip() for c in children if c.strip())]))
+    return out
+
+
+def _skill_dirs(skills_root: str) -> list[str]:
+    try:
+        names = sorted(os.listdir(skills_root))
+    except OSError:
+        return []
+    return [os.path.join(skills_root, n) for n in names if os.path.isfile(os.path.join(skills_root, n, "SKILL.md"))]
+
+
+def _read_skill(skill_dir: str) -> tuple[str, str, bool] | None:
+    """`(name, description, 印があるか)`。読めなければ `None`。"""
+    try:
+        with open(os.path.join(skill_dir, "SKILL.md"), encoding="utf-8") as f:
+            front = parse_skill_frontmatter(f.read())
+    except (OSError, UnicodeDecodeError):
+        return None
+    name = front.get("name")
+    description = front.get("description")
+    metadata = front.get("metadata")
+    marked = isinstance(metadata, dict) and metadata.get(STEP_MARK_KEY) == "true"
+    return (
+        name if isinstance(name, str) and name else os.path.basename(skill_dir),
+        description if isinstance(description, str) else "",
+        marked,
+    )
+
+
+def own_plugin_root() -> tuple[str, str] | None:
+    """このファイルと同じチェックアウトの plugin の `(根, plugin の名前)`。上へたどって `.claude-plugin/plugin.json` が無ければ `None`。"""
+    here = os.path.dirname(os.path.realpath(__file__))
+    while True:
+        manifest = os.path.join(here, PLUGIN_MANIFEST_PATH)
+        if os.path.isfile(manifest):
+            try:
+                with open(manifest, encoding="utf-8") as f:
+                    name = json.load(f).get("name")
+            except (OSError, ValueError, AttributeError):
+                return None
+            return (here, name) if isinstance(name, str) and name else None
+        parent = os.path.dirname(here)
+        if parent == here:
+            return None
+        here = parent
+
+
+def step_candidates(
+    project_root: str | None,
+    home: str | None,
+    plugin: tuple[str, str] | None,
+) -> list[StepCandidate]:
+    """並びに置ける候補。走査先は作業ツリー・`home` の `.claude/skills/` と plugin の `skills/` の順。
+
+    同じスキル（実体が同じ）は先に見つけた1つにする。リンクで入れたものは `.claude/skills/` で先に当たるので `<名前>`、
+    入っていなければ plugin の `<プラグイン>:<名前>`。全名が同じで実体が違うものも先の1つだけ。
+    """
+    roots: list[tuple[str, str | None]] = []
+    if project_root is not None:
+        roots.append((os.path.join(project_root, ".claude", "skills"), None))
+    if home is not None:
+        roots.append((os.path.join(home, ".claude", "skills"), None))
+    if plugin is not None:
+        roots.append((os.path.join(plugin[0], "skills"), plugin[1]))
+    found: list[StepCandidate] = []
+    real_seen: set[str] = set()
+    value_seen: set[str] = set()
+    for skills_root, prefix in roots:
+        for skill_dir in _skill_dirs(skills_root):
+            real = os.path.realpath(skill_dir)
+            if real in real_seen:
+                continue
+            skill = _read_skill(skill_dir)
+            if skill is None or not skill[2]:
+                continue
+            name, description, _ = skill
+            value = f"{prefix}:{name}" if prefix else name
+            if value in value_seen:
+                continue
+            real_seen.add(real)
+            value_seen.add(value)
+            own = plugin is not None and real.startswith(os.path.realpath(plugin[0]) + os.sep)
+            found.append(StepCandidate(value, name, description, own))
+    return found
+
+
+def config_schema_v2(project_root: str | None, home: str | None = None, plugin: tuple[str, str] | None = None) -> dict:
+    """`tw config --schema --version 2` が出す欄の形。既定の並びは `tw` と同じ plugin の候補を走査順に並べたもの。"""
+    candidates = step_candidates(project_root, home, plugin)
+    return {
+        "schema": 2,
+        "keys": [
+            {
+                "key": STEPS_KEY,
+                "label": "並び",
+                "description": "タスクを進めるスキルの並び（上から順に呼ぶ）",
+                "kind": "steps",
+                "default": [c.value for c in candidates if c.own],
+                "values": [{"value": c.value, "label": c.label, "description": c.description} for c in candidates],
+            }
+        ],
+    }
+
+
+_VALUE_LINE_PATTERN = re.compile(
+    r"""([ \t]*([A-Za-z0-9_-]+)[ \t]*=[ \t]*)("(?:[^"\\]|\\.)*"|'[^']*'|\[(?:"(?:[^"\\]|\\.)*"|[ \t,])*\])(.*)""",
+    re.DOTALL,
+)
+
+
+def steps_problem(items: object) -> str | None:
+    """並びとして書けない理由（形・空・重複）。書けるなら `None`。候補との突き合わせは呼ぶ側が行う。"""
+    if not isinstance(items, list) or not all(isinstance(i, str) and i != "" and i.strip() == i for i in items):
+        return "steps は空でない名前の文字列の配列でなければならない"
+    if not items:
+        return "steps は1つ以上要る（空にできない）"
+    dup = sorted({i for i in items if items.count(i) > 1})
+    if dup:
+        return f"steps に同じ名前を2度並べられない: {', '.join(dup)}"
+    return None
+
+
+def steps_text(items: list[str]) -> str:
+    """`tw config` の値の列・`set` の出力に使う1行の JSON の配列。"""
+    return json.dumps(items, ensure_ascii=False, separators=(",", ":"))
 
 
 def config_text_with(text: str, key: str, value: str, label: str = CONFIG_PATH) -> str:
@@ -375,10 +586,20 @@ def config_text_with(text: str, key: str, value: str, label: str = CONFIG_PATH) 
     """
     if key not in SETTABLE_KEYS:
         raise ConfigValueError(f"書けるキーは {' / '.join(SETTABLE_KEYS)} だけ: {key!r}")
-    problem = value_problem(key, value)
-    if problem is not None:
-        raise ConfigValueError(problem)
-    quoted = '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    if key == STEPS_KEY:
+        try:
+            items = json.loads(value)
+        except ValueError:
+            raise ConfigValueError(f"steps の値が JSON の配列でない: {value!r}")
+        problem = steps_problem(items)
+        if problem is not None:
+            raise ConfigValueError(problem)
+        quoted = "[" + ", ".join(json.dumps(i, ensure_ascii=False) for i in items) + "]"
+    else:
+        problem = value_problem(key, value)
+        if problem is not None:
+            raise ConfigValueError(problem)
+        quoted = '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
     table, _, name = key.rpartition(".")
     lines = text.splitlines(keepends=True)
     current: str | None = None

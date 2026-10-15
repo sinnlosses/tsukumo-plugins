@@ -14,6 +14,7 @@ import gitinfo
 import taskfile
 import tracker
 import tw_base
+import tw_config
 
 
 # WORKFLOW.md「summary」の「1行に収める」に反すると見なす幅。80桁はその一行だけで端末が
@@ -79,7 +80,9 @@ def cmd_config(toplevel: str) -> None:
     print(f"CONFIG\t{config.source}")
     for key in layout.CONFIG_KEYS:
         value = getattr(config, key)
-        if key == "base_branch" and value is None:
+        if key == layout.STEPS_KEY:
+            value = layout.steps_text(list(value) if value is not None else tw_config.steps_default(toplevel))
+        elif key == "base_branch" and value is None:
             try:
                 value = gitinfo.base_branch(toplevel)
             except gitinfo.NoBaseBranch:

@@ -171,11 +171,11 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
         "解けた設定を出す（読むだけ）。`--schema` で欄の形、`set <キー> <値>` で書く。",
         r"""解けた設定を出す（読むだけ）。`--schema` は欄の形を出し（読むだけ）、`set <キー> <値>` は検査してから `.tw/config.toml` に書く
 
-`--schema`: 設定にも git にもよらず、1行の JSON を出す（`tw` の「stdout は先頭語の TSV」の、hook の口に続く例外）。形は `{"schema": <形の版>, "default_word": "既定", "none_word": "なし", "keys": [...]}` で、`keys` は画面に出す順の欄。各欄は `key`（`flow`・`parts.<枠>`）・`label`・`description`・`kind`（`choice`＝`values` の `{"value","label","description"}` から選ぶ／`part`＝パーツの全名を書く）・`default`、`part` の欄は加えて `candidates`（`agent`＝Agent ツールの一覧から／`skill`＝スキルの一覧から）と `allow_none`（`なし` を許すか）。`schema` は欄を消す・意味を変えるときだけ上がる。パーツの候補は出さない。
+`--schema`: 設定にも git にもよらず、1行の JSON を出す（`tw` の「stdout は先頭語の TSV」の、hook の口に続く例外）。形は `{"schema": <形の版>, "default_word": "既定", "none_word": "なし", "keys": [...]}` で、`keys` は画面に出す順の欄。各欄は `key`（`flow`・`parts.<枠>`）・`label`・`description`・`kind`（`choice`＝`values` の `{"value","label","description"}` から選ぶ／`part`＝パーツの全名を書く）・`default`、`part` の欄は加えて `candidates`（`agent`＝Agent ツールの一覧から／`skill`＝スキルの一覧から）と `allow_none`（`なし` を許すか）。`schema` は欄を消す・意味を変えるときだけ上がる。パーツの候補は出さない。`--schema --version <版>` は移行中だけの形で、`2` なら `{"schema": 2, "keys": [...]}`（並びの欄 `steps`＝`kind: steps`・`default`＝スキルの全名の配列・`values`＝候補 `{"value","label","description"}`。候補は SKILL.md の frontmatter の `metadata` に `workflow-step: "true"` を持つスキルだけで、作業ツリーの `.claude/skills/`・`~/.claude/skills/`・この `tw` と同じチェックアウトの plugin の `skills/` から拾う）。知らない版は終了コード2。
 
-`set <キー> <値>`: 書けるキーは `flow` と `parts.<枠>` だけ。キーの行があれば値だけを差し替え（行末のコメントは残す）、無ければ `flow` は最初の表より前、`parts.<枠>` は `[parts]` の表の最後（表が無ければ末尾に表ごと）へ足す。ほかの行と並びは変えない。出力 `SET\t<キー>\t<値>`。知らないキー・語彙の外の値は stderr に理由を出して終了コード2（ファイルは変えない）。設定が無ければ `MISSING`（終了コード6）、読めなければ `INVALID`（終了コード3）
+`set <キー> <値>`: 書けるキーは `flow`・`steps`・`parts.<枠>` だけ。`steps` の値は1行の JSON の文字列の配列（例 `'["a","b"]'`）で、1つ以上・重複なし・`--schema --version 2` の `values` か今の値にある名前だけ（外れると終了コード2）。`.tw/config.toml` には最上位の `steps = ["a", "b"]` として書き、`SET` の値は詰めた JSON。キーの行があれば値だけを差し替え（行末のコメントは残す）、無ければ `flow`・`steps` は最初の表より前、`parts.<枠>` は `[parts]` の表の最後（表が無ければ末尾に表ごと）へ足す。ほかの行と並びは変えない。出力 `SET\t<キー>\t<値>`。知らないキー・語彙の外の値は stderr に理由を出して終了コード2（ファイルは変えない）。設定が無ければ `MISSING`（終了コード6）、読めなければ `INVALID`（終了コード3）
 
-出力: 1行目 `CONFIG\t.tw/config.toml`、続けて全キーを `<キー>\t<解けた値>\t<config|default>`（`config` は設定に書いてある、`default` は既定。コマンドのキーで値が無ければ `なし`、ほかは `-`。`base_branch` を書いていなければ git で決めた主ブランチ。`flow` は無ければ `delegate`）、そのあと `[parts]` の枠ごとに `parts.implementer`・`parts.acceptor`・`parts.retrospect`・`parts.ship` の順で `parts.<枠>\t<既定|なし|全名>\t<config|default>`。設定が無ければ `MISSING`（終了コード6）。`.beads` が無くても打てる""",
+出力: 1行目 `CONFIG\t.tw/config.toml`、続けて全キーを `<キー>\t<解けた値>\t<config|default>`（`config` は設定に書いてある、`default` は既定。コマンドのキーで値が無ければ `なし`、ほかは `-`。`base_branch` を書いていなければ git で決めた主ブランチ。`flow` は無ければ `delegate`。`steps` は詰めた JSON の配列で、無ければ既定の並び）、そのあと `[parts]` の枠ごとに `parts.implementer`・`parts.acceptor`・`parts.retrospect`・`parts.ship` の順で `parts.<枠>\t<既定|なし|全名>\t<config|default>`。設定が無ければ `MISSING`（終了コード6）。`.beads` が無くても打てる""",
     ),
     "config-doctor": (
         "このリポジトリが今の読み取りに合っているかを点検する（読むだけ。`--fix` は無い）。",
@@ -297,6 +297,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("config-doctor")
     p_config = sub.add_parser("config")
     p_config.add_argument("--schema", action="store_true")
+    p_config.add_argument("--version")
     p_config.add_argument("action", nargs="?", choices=("set",))
     p_config.add_argument("key", nargs="?")
     p_config.add_argument("value", nargs="?")
@@ -377,8 +378,10 @@ def main(argv: list[str] | None = None) -> None:
             parser.error("config set: <キー> と <値> が要る")
         if args.action is None and args.key is not None:
             parser.error("config: 引数は set <キー> <値> だけ")
+        if args.version is not None and not args.schema:
+            parser.error("config: --version は --schema と一緒に打つ")
         if args.schema:
-            tw_config.cmd_config_schema()
+            tw_config.cmd_config_schema(args.version)
             return
 
     if args.command == "commit-guard":

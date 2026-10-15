@@ -7,12 +7,38 @@ import os
 import sys
 import tempfile
 
+import gitinfo
 import layout
 
 
-def cmd_config_schema() -> None:
-    """欄の形を1行の JSON で出す（読むだけ。設定にも git にもよらない）。"""
-    print(json.dumps(layout.config_schema(), ensure_ascii=False))
+def _step_candidates(project_root: str | None) -> list[layout.StepCandidate]:
+    return layout.step_candidates(project_root, os.path.expanduser("~"), layout.own_plugin_root())
+
+
+def steps_default(toplevel: str) -> list[str]:
+    """`steps` を書いていないときの並び（schema 2 の `default`）。"""
+    return [c.value for c in _step_candidates(toplevel) if c.own]
+
+
+def cmd_config_schema(version: str | None = None) -> None:
+    """欄の形を1行の JSON で出す（読むだけ。設定にはよらない）。
+
+    `version` を省くと schema 1、`2` なら schema 2（並びの欄。候補は作業ツリー・`~`・`tw` と同じ plugin から走査する）。
+    知らない版は stderr に理由を出して終了コード2。
+    """
+    if version is None or version == "1":
+        schema = layout.config_schema()
+    elif version == "2":
+        try:
+            project_root = gitinfo.git_toplevel()
+        except gitinfo.GitCommandError:
+            project_root = None
+        schema = layout.config_schema_v2(project_root, os.path.expanduser("~"), layout.own_plugin_root())
+    else:
+        known = " / ".join(str(v) for v in layout.SCHEMA_VERSIONS)
+        print(f"tw config --schema: 知らない版 {version!r}（{known} のどれか）", file=sys.stderr)
+        raise SystemExit(2)
+    print(json.dumps(schema, ensure_ascii=False))
 
 
 def cmd_config_set(toplevel: str, key: str, value: str) -> None:
@@ -26,6 +52,13 @@ def cmd_config_set(toplevel: str, key: str, value: str) -> None:
         text = f.read()
     try:
         new_text = layout.config_text_with(text, key, value)
+        if key == layout.STEPS_KEY:
+            items = json.loads(value)
+            allowed = {c.value for c in _step_candidates(toplevel)} | set(config.steps or ())
+            unknown = [i for i in items if i not in allowed]
+            if unknown:
+                raise layout.ConfigValueError(f"steps の候補にも今の値にも無い名前: {', '.join(unknown)}")
+            value = layout.steps_text(items)
     except layout.ConfigValueError as e:
         print(f"tw config set: {e}", file=sys.stderr)
         raise SystemExit(2)
