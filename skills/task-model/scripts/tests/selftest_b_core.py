@@ -19,6 +19,8 @@ import beads  # noqa: E402
 import layout  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
+import tracker  # noqa: E402
+import tracker_github  # noqa: E402
 from selftest_b_support import (  # noqa: E402
     PLANNED_BODY, bd, claim_snapshots, env, make_repo, new, new_unplanned, rows, tail_line, work_and_done,
 )
@@ -440,7 +442,51 @@ def test_bd_time_forms() -> None:
     check("時刻でないものは None", beads.parse_time("昨日") is None and beads.parse_time(None) is None)
 
 
+def test_issue_list_reuse_boundary() -> None:
+    say("課題の一覧の使い回し: 書き込みの前は同じ一覧、あとは読み直す（読み専用の動詞ではずらさない）")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path = make_repo(tmp)[0]
+        task_id = new(main_path, "使い回し")
+        bd_id = beads.to_bd_id(task_id)
+        session = tracker.Session(main_path, tracker.Tracker("github"))
+        first = session._issues()
+        check("書き込み無しで読み直すと同じ一覧", session._issues() is first)
+        session._begin(None)
+        check("呼び出しの始め（_begin）は一覧を捨てない", session._issues() is first)
+
+        count = beads.writes(main_path)
+        for args in (["show", bd_id, "--json"], ["list", "--all", "-n", "0", "--flat", "--json"],
+                     ["kv", "get", "gh853-probe"], ["kv", "list", "--json"], ["config", "get", "issue_prefix"],
+                     ["history", bd_id, "--events", "--json"]):
+            beads.run(main_path, args)
+        check("読み専用の動詞（show・list・kv get・kv list・config get・history）は書いた回数を進めない",
+              beads.writes(main_path) == count and session._issues() is first)
+        beads.run(main_path, ["kv", "set", "gh853-probe", "1"])
+        check("kv set は課題を変えないので進めない", beads.writes(main_path) == count and session._issues() is first)
+
+        r = beads.run(main_path, ["update", bd_id, "--title", "書き換えた"], "wt1")
+        check("bd update は書いた回数を進める", r.returncode == 0 and beads.writes(main_path) == count + 1)
+        reread = session._issues()
+        check("書き込みのあとは読み直し、新しい題が見える",
+              reread is not first and any(i.bd_id == bd_id and i.title == "書き換えた" for i in reread))
+        check("読み直したあとはまた使い回す", session._issues() is reread)
+
+        count = beads.writes(main_path)
+        beads.run(main_path, ["frobnicate-unknown-verb"])
+        check("表に無い動詞は書き込みとして扱う", beads.writes(main_path) == count + 1 and session._issues() is not reread)
+
+        count = beads.writes(main_path)
+        env = dict(os.environ)
+        tracker_github._bd(main_path, ["show", bd_id, "--json"], env, None, keeps_issues=True)
+        check("番号の付いた課題の送り（keeps_issues）は書いた回数を進めない", beads.writes(main_path) == count)
+        tracker_github._bd(main_path, ["show", bd_id, "--json"], env)
+        check("keeps_issues でない bd github（pull・番号の無い push）は進める", beads.writes(main_path) == count + 1)
+        other = tracker.Session(os.path.join(tmp, "elsewhere"), tracker.Tracker("github"))
+        check("別の作業ツリーの数は混ざらない", beads.writes(other.toplevel) == 0)
+
+
 TESTS = (
+    test_issue_list_reuse_boundary,
     test_cycle_done_ship_and_dropped,
     test_commit_guard,
     test_claim_race_owner_and_release,

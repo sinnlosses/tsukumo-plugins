@@ -69,10 +69,10 @@ def _claim_started(issue: beads.Issue | None) -> str:
 
 
 def _restore_from_snapshots(
-    toplevel: str, listed: dict, issues: Callable[[], list[beads.Issue]], bd_ids: list[str] | None, actor: str
+    toplevel: str, listed: dict, issues: Callable[[list[str]], list[beads.Issue]], bd_ids: list[str] | None, actor: str
 ) -> tuple[list[str], list[str]]:
     """`restore_claims` の中身。`listed` は `beads.read_kv` の結果（控え・送りの印・同期の時刻を読む）。
-    `issues` は今の課題の一覧を返す（控えのある課題を見るときだけ呼ぶ）。
+    `issues` は控えのある課題の ID を受けて今の課題を返す（控えのある課題を見るときだけ呼ぶ。余分に返してよい）。
 
     戻すかの判定は `_claim_restore_args` に控えの版を渡して決める。担当者を戻さない（閉じた・GitHub で
     手放された・別の作業ツリーが取った）課題は、metadata だけを戻さず、控えを消す。戻したら控えを今の版で書き直す
@@ -83,7 +83,7 @@ def _restore_from_snapshots(
     if not wanted:
         return [], []
     pushed, synced = _pushed_of(listed), _synced_of(listed)
-    current = {i.bd_id: i for i in issues()}
+    current = {i.bd_id: i for i in issues(wanted)}
     lines: list[str] = []
     restored: list[str] = []
     for bd_id in wanted:

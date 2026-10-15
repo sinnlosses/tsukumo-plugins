@@ -161,12 +161,21 @@ READ_REUSE_SECONDS = 10.0
 _read_cache: dict[tuple[str, tuple[str, ...]], tuple[float, subprocess.CompletedProcess]] = {}
 
 
-def forget_reads() -> None:
+_writes: dict[str, int] = {}
+
+
+def writes(toplevel: str) -> int:
+    """このプロセスが `toplevel` で課題を書いた回数。読んだ一覧に添えて、数が進んでいれば読み直す。"""
+    return _writes.get(toplevel, 0)
+
+
+def forget_reads(toplevel: str) -> None:
     """`run` を通さずに `bd` で書くときに呼ぶ。"""
+    _writes[toplevel] = _writes.get(toplevel, 0) + 1
     _read_cache.clear()
 
 
-def _forget_after(args: list[str]) -> None:
+def _forget_after(toplevel: str, args: list[str]) -> None:
     head = " ".join(args[:2])
     if head in _KV_READS:
         return
@@ -176,7 +185,7 @@ def _forget_after(args: list[str]) -> None:
         for key in [k for k in _read_cache if k[1][:2] == ("config", "get")]:
             del _read_cache[key]
         return
-    _read_cache.clear()
+    forget_reads(toplevel)
 
 
 def run(toplevel: str, args: list[str], actor: str | None = None, stdin: str | None = None) -> subprocess.CompletedProcess:
@@ -191,7 +200,7 @@ def run(toplevel: str, args: list[str], actor: str | None = None, stdin: str | N
         if hit is not None and time.monotonic() - hit[0] < READ_REUSE_SECONDS:
             return hit[1]
     else:
-        _forget_after(args)
+        _forget_after(toplevel, args)
     try:
         started = time.monotonic()
         r = subprocess.run(cmd + args, cwd=toplevel, capture_output=True, text=True, input=stdin)

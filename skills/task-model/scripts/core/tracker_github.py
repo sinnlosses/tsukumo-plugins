@@ -307,8 +307,11 @@ def _loads(text: str):
         return None
 
 
-def _bd(toplevel: str, args: list[str], env: dict[str, str], timeout: float | None = None) -> subprocess.CompletedProcess:
-    beads.forget_reads()
+def _bd(
+    toplevel: str, args: list[str], env: dict[str, str], timeout: float | None = None, keeps_issues: bool = False
+) -> subprocess.CompletedProcess:
+    if not keeps_issues:
+        beads.forget_reads(toplevel)
     try:
         return subprocess.run([beads.BD, *args], cwd=toplevel, capture_output=True, text=True, env=env, timeout=timeout)
     except FileNotFoundError as e:

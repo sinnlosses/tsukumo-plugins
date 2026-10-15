@@ -254,6 +254,37 @@ def test_tracker_sync_bd_calls() -> None:
             check(f"{label}の bd の起動は{limit}回以下（{len(calls)}回）", len(calls) <= limit, "\n".join(calls))
 
 
+def test_edit_list_count() -> None:
+    say("トラッカー github・1回の edit が打つ bd list は 0 回（取り込み・戻し・送りをはさんでも、触る課題を1件ずつ引く）")
+    with github() as (fake, tmp, main_path, wt1):
+        a = new(main_path, "list を数える")
+        n = num(a)
+        r = run_task(wt1, "claim", a)
+        check("claim", r.returncode == 0 and r.stdout.startswith("CLAIMED"), r.stdout + r.stderr)
+        counted = os.path.join(tmp, "bd-count.txt")
+        local.env = {**local.env, "BD_COUNT_FILE": counted}
+
+        def lists(*args: str) -> tuple[subprocess.CompletedProcess, list[str]]:
+            open(counted, "w").close()
+            r = run_task(wt1, *args, stdin="メモ\n")
+            return r, [l for l in open(counted).read().splitlines() if l.startswith("list ")]
+
+        r, calls = lists("edit", a, "--section", "参考情報", "--body-file", "-")
+        check("GitHub が変わっていない edit は成功し list を打たない", r.returncode == 0 and r.stdout.startswith("EDITED")
+              and "TRACKER\tOK\tgithub" in r.stdout and calls == [], r.stdout + r.stderr + "\n".join(calls))
+
+        fake.clock_offset = 60
+        fake.edit(n, body="GitHub で直した本文")
+        r, calls = lists("edit", a, "--summary", "題を直した")
+        issue = beads.show(main_path, beads.to_bd_id(a))
+        check("GitHub が変わったあとの edit は取り込みのあと読み直し、list は1回以下",
+              r.returncode == 0 and "TRACKER\tOK\tgithub" in r.stdout and len(calls) <= 1
+              and issue is not None and "GitHub で直した本文" in str(issue.raw.get("description")),
+              r.stdout + r.stderr + "\n".join(calls))
+        check("取り込みのあとも着手の印は戻っている", issue is not None and issue.status == "in_progress"
+              and issue.assignee == "wt1", str(issue and issue.raw))
+
+
 def test_tracker_sync_lock_busy() -> None:
     say("トラッカー github・重ねて打った sync は錠で1本にし、2本目は待たず BUSY で返る")
     with github() as (fake, _tmp, main_path, _wt1):
@@ -349,6 +380,7 @@ def test_tracker_github_draft() -> None:
 TESTS = (
     test_tracker_github_bidirectional,
     test_tracker_sync_bd_calls,
+    test_edit_list_count,
     test_tracker_sync_lock_busy,
     test_tracker_sync_skips_echo,
     test_tracker_github_conflict,

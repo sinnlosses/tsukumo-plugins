@@ -60,6 +60,7 @@ JIRA_REF = re.compile(rf"^(?:\S*/browse/)?({layout.JIRA_ID_FRAGMENT})$")
 
 # 1件の操作（before・after・register）の始めから数えた反映の上限（秒）。
 OP_TIMEOUT = 25.0
+SHOW_LIMIT = 3
 OP_TIMEOUT_ENV = "TASK_WORKFLOW_TRACKER_TIMEOUT"
 
 SEEN_KEY = "task-workflow.github-seen"  # GitHub の一覧で見た最後の更新時刻
@@ -98,7 +99,7 @@ def restore_claims(toplevel: str, bd_ids: list[str], actor: str) -> list[str]:
     """
     if not session(toplevel).bidirectional:
         return []
-    return _restore_from_snapshots(toplevel, beads.read_kv(toplevel), lambda: beads.list_issues(toplevel), bd_ids, actor)[0]
+    return _restore_from_snapshots(toplevel, beads.read_kv(toplevel), lambda _wanted: beads.list_issues(toplevel), bd_ids, actor)[0]
 
 
 class Session:
@@ -116,6 +117,7 @@ class Session:
         self._items_dirty: set[str] = set()
         self._synced: dict | None = None
         self._listed: list[beads.Issue] | None = None
+        self._listed_at = -1
         self._kv_all: dict | None = None
         self._deadline: float | None = None
         # 経過を1行ずつ受ける先（`tw sync` が stderr へ出す）。無ければ何も出さない。
@@ -298,7 +300,7 @@ class Session:
         """
         if not remote:
             return []
-        old = _by_number(self._issues())
+        old = self._by_numbers(sorted(remote))
         lines = []
         for n in sorted(remote):
             local = old.get(n)
@@ -312,7 +314,7 @@ class Session:
         pull_actor = f"{self._actor}{PULL_ACTOR_SUFFIX}"
         pulled_at = _now()
         self._bd_ok(["--actor", pull_actor, "github", "pull", *(str(n) for n in sorted(remote))], "bd github pull")
-        new = _by_number(self._issues())
+        new = self._by_numbers(sorted(remote))
         twins = [
             (new[n].bd_id, twin.bd_id)
             for n in sorted(remote)
@@ -371,8 +373,7 @@ class Session:
     def _rename(self, bd_ids: list[str]) -> tuple[dict[str, str], list[str]]:
         """`external_ref` の番号と ID が違う課題を `gh-<番号>` へ付け替える。`{元: 先}` と出力の行を返す。"""
         wanted = set(bd_ids)
-        issues = self._issues()
-        taken = {i.bd_id for i in issues}
+        issues = self._issues_of(bd_ids)
         renamed: dict[str, str] = {}
         lines: list[str] = []
         for issue in issues:
@@ -380,14 +381,13 @@ class Session:
             if issue.bd_id not in wanted or n is None or beads.is_numbered(issue.bd_id):
                 continue
             target = f"gh-{n}"
-            if target in taken:
+            if target in renamed.values() or self._issue(target) is not None:
                 lines.append(f"TRACKER\tINVALID\t{issue.bd_id}\t{target} が既にある（付け替えない）")
                 continue
             r = self._write(["rename", issue.bd_id, target])
             if r.returncode != 0:
                 lines.append(f"TRACKER\tINVALID\t{issue.bd_id}\tbd rename: {_tail(r)}")
                 continue
-            taken.add(target)
             renamed[issue.bd_id] = target
         return renamed, lines
 
@@ -459,7 +459,7 @@ class Session:
         wanted = set(bd_ids)
         now = _format_time(_now())
         numbers = [
-            str(n) for i in self._issues()
+            str(n) for i in self._issues_of(bd_ids)
             if i.bd_id in wanted and (n := _ref_number(i.external_ref)) is not None
         ]
         if not numbers:
@@ -475,14 +475,14 @@ class Session:
         """`bd github push` で送り、届いたら課題ごとに送った着手の時刻を `bd kv` へ書く（変わったものだけ）。"""
         if self.bidirectional:
             self._adopt_existing(bd_ids)
-        sent = {i: _claim_started(self._issue(i, many=len(bd_ids) > 1)) for i in bd_ids}
-        listed = {i.bd_id: i for i in self._listed or []}
-        has_ref = all(i in listed and _ref_number(listed[i].external_ref) is not None for i in bd_ids)
+        before = {i.bd_id: i for i in self._issues_of(bd_ids)}
+        sent = {i: _claim_started(before.get(i)) for i in bd_ids}
+        has_ref = all(i in before and _ref_number(before[i].external_ref) is not None for i in bd_ids)
         self._bd_ok(["github", "push", *bd_ids], "bd github push", keeps_issues=has_ref)
         if not self.bidirectional:
             return
         pushed = self._load_pushed()
-        for issue in self._issues():
+        for issue in self._issues_of(bd_ids):
             n = _ref_number(issue.external_ref)
             if issue.bd_id in sent and n is not None and pushed.get(n) != sent[issue.bd_id]:
                 key = f"{PUSHED_KEY_PREFIX}{n}"
@@ -495,7 +495,7 @@ class Session:
         `bd github push` が Issue を立てた直後に上限で殺されると番号が Beads に書かれず、
         そのまま送り直すともう1つ立つ。
         """
-        pending = [i for i in self._issues() if i.bd_id in bd_ids and _ref_number(i.external_ref) is None]
+        pending = [i for i in self._issues_of(bd_ids) if i.bd_id in bd_ids and _ref_number(i.external_ref) is None]
         if not pending:
             return
         taken = {n for i in self._issues() if (n := _ref_number(i.external_ref)) is not None}
@@ -530,11 +530,8 @@ class Session:
     # --- 着手の印の控え ------------------------------------------------------------
 
     def _restore_from_snapshots(self, bd_ids: list[str] | None) -> tuple[list[str], list[str]]:
-        """読み済みの `bd kv list` の控えから戻す（モジュールの `_restore_from_snapshots`）。戻したら読み済みの一覧を捨てる。"""
-        lines, restored = _restore_from_snapshots(self.toplevel, self._kv_listing(), self._issues, bd_ids, self._actor)
-        if restored:
-            self._listed = None
-        return lines, restored
+        """読み済みの `bd kv list` の控えから戻す（モジュールの `_restore_from_snapshots`）。"""
+        return _restore_from_snapshots(self.toplevel, self._kv_listing(), self._issues_of, bd_ids, self._actor)
 
     def _save(self) -> None:
         gh.save_items(self.toplevel, self._items or {}, self._items_dirty)
@@ -542,22 +539,44 @@ class Session:
     # --- 呼び出し ------------------------------------------------------------------
 
     def _begin(self, deadline: float | None) -> None:
-        """呼び出し（`before`・`after`・`register`・`sync_all`）の始め。呼ぶ側が間に Beads を書くので、読み済みの値を捨てる。"""
+        """呼び出し（`before`・`after`・`register`・`sync_all`）の始め。`kv` は別の作業ツリーが書くので読み済みの値を捨てる。"""
         self._deadline = deadline
-        self._listed = None
         self._kv_all = None
 
+    def _listed_is_current(self) -> bool:
+        return self._listed is not None and self._listed_at == beads.writes(self.toplevel)
+
     def _issues(self) -> list[beads.Issue]:
-        """課題の一覧。自分が課題を書いたあとの最初の呼び出しで読み直す。"""
-        if self._listed is None:
+        """課題の一覧。読んだあとに課題を書く `bd` を打っていれば（`beads.writes(toplevel)` が進んでいれば）読み直す。"""
+        if not self._listed_is_current():
+            self._listed_at = beads.writes(self.toplevel)
             self._listed = beads.list_issues(self.toplevel)
         return self._listed
 
     def _issue(self, bd_id: str, many: bool = False) -> beads.Issue | None:
         """1件。一覧が読み済みか `many`（何件も引く）なら一覧から、でなければ `bd show`。"""
-        if self._listed is None and not many:
-            return beads.show(self.toplevel, bd_id)
+        if not many and not self._listed_is_current():
+            shown = beads.show(self.toplevel, bd_id)
+            return shown if shown is not None and shown.bd_id == bd_id else None  # `bd show` は ID の前方一致も引く
         return next((i for i in self._issues() if i.bd_id == bd_id), None)
+
+    def _issues_of(self, bd_ids: list[str]) -> list[beads.Issue]:
+        """`bd_ids` の課題（余分に返すことがある）。少なければ1件ずつ `bd show`、多ければ一覧。"""
+        if len(bd_ids) > SHOW_LIMIT:
+            return self._issues()
+        return [i for i in (self._issue(b) for b in bd_ids) if i is not None]
+
+    def _by_numbers(self, numbers: list[int]) -> dict[int, beads.Issue]:
+        """Issue 番号 → 課題。`gh-<番号>` が引けない番号があれば、一覧から番号で探す。"""
+        if len(numbers) <= SHOW_LIMIT:
+            found = {}
+            for n in numbers:
+                issue = self._issue(f"gh-{n}")
+                if issue is not None and _ref_number(issue.external_ref) == n:
+                    found[n] = issue
+            if len(found) == len(set(numbers)):
+                return found
+        return _by_number(self._issues())
 
     def _kv_listing(self) -> dict:
         if self._kv_all is None:
@@ -566,8 +585,7 @@ class Session:
         return self._kv_all
 
     def _write(self, args: list[str], check: bool = False) -> subprocess.CompletedProcess:
-        """この作業ツリーの名前で課題を書く `bd` を打つ（読み済みの一覧を捨てる）。`check` なら失敗で `BeadsError`。"""
-        self._listed = None
+        """この作業ツリーの名前で課題を書く `bd` を打つ。`check` なら失敗で `BeadsError`。"""
         r = beads.run(self.toplevel, args, self._actor)
         if check and r.returncode != 0:
             raise beads.BeadsError(f"bd {' '.join(args)} が失敗（{r.returncode}）: {(r.stderr or r.stdout).strip()}")
@@ -575,8 +593,6 @@ class Session:
 
     def _bd_ok(self, args: list[str], label: str, keeps_issues: bool = False) -> str:
         """`bd` を打つ。`keeps_issues` は、Beads の課題が変わらない呼び出し（番号の付いた課題の送り）に付ける。"""
-        if not keeps_issues:
-            self._listed = None
         if self._env is None:
             env = os.environ.copy()
             if not env.get("GITHUB_TOKEN"):
@@ -585,7 +601,7 @@ class Session:
                     raise _Failed(f"gh auth token: {_tail(token)}")
                 env["GITHUB_TOKEN"] = token.stdout.strip()
             self._env = env
-        r = _bd(self.toplevel, [*args, "--json"], self._env, self._remaining())
+        r = _bd(self.toplevel, [*args, "--json"], self._env, self._remaining(), keeps_issues)
         if r.returncode != 0:
             raise _Failed(f"{label}: {_tail(r)}")
         # `bd github` は GitHub に届かなくても終了コード0で、失敗は `stats.errors` と `warnings`（`--json` を
