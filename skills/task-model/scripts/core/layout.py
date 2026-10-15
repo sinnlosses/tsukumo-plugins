@@ -580,7 +580,7 @@ def steps_text(items: list[str]) -> str:
 def config_text_with(text: str, key: str, value: str, label: str = CONFIG_PATH) -> str:
     """設定の全文 `text` の `key` を `value` にした全文。ほかの行・並び・コメントは変えない。
 
-    キーの行があれば値の文字列だけを差し替え、無ければ `flow` は最初の表より前の最後のキーの行の次へ、
+    キーの行があれば値の文字列だけを差し替え、無ければ `flow`・`steps` は最初の表より前の最後のキーの行の次へ、
     `parts.<枠>` は `[parts]` の最後のキーの行の次（表が無ければ末尾に表ごと）へ足す。書けないキー・値は
     `ConfigValueError`、書いた結果が読めなければ `ConfigError`。
     """
