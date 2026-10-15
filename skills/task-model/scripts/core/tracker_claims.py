@@ -11,7 +11,9 @@ from datetime import datetime
 import beads
 from tracker_github import _loads, _ref_number, _tail
 
-SYNCED_KEY = "task-workflow.github-synced"  # {Issue 番号: その課題を最後に送った・取り込んだ時刻}（CONFLICT の判定）
+SYNCED_KEY = "task-workflow.github-synced"  # 旧い 1 つの表 {Issue 番号: 時刻}。読むだけで、書かない
+# 課題ごとのキー `<これ><Issue 番号>`。値はその課題を最後に送った・取り込んだ時刻（CONFLICT の判定）。JSON でない。
+SYNCED_ITEM_PREFIX = SYNCED_KEY + "."
 # 課題ごとのキー `<これ><Issue 番号>`。値は最後に届いた送りの直前に読んだその課題の着手の時刻
 # （`started_at`。着手中でなければ空）。この値は JSON でない。
 PUSHED_KEY_PREFIX = "task-workflow.github-pushed."
@@ -124,4 +126,12 @@ def _pushed_of(listed: dict) -> dict[int, str]:
 def _synced_of(listed: dict) -> dict:
     raw = listed.get(SYNCED_KEY)
     value = _loads(raw) if isinstance(raw, str) else None
-    return value if isinstance(value, dict) else {}
+    synced = dict(value) if isinstance(value, dict) else {}
+    for k, v in listed.items():
+        number = k[len(SYNCED_ITEM_PREFIX):]
+        if not (k.startswith(SYNCED_ITEM_PREFIX) and number.isdigit() and isinstance(v, str)):
+            continue
+        item, old = beads.parse_time(v), beads.parse_time(synced.get(number))
+        if item is not None and (old is None or item >= old):
+            synced[number] = v
+    return synced

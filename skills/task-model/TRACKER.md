@@ -115,7 +115,7 @@ Project・Status 欄・選択肢の ID は `bd kv` の `task-workflow.project` �
   外れた・GitHub で担当者が付いたものは手放しとして戻さない。届いたかは課題ごとの送りの印
   （`bd kv` の `task-workflow.github-pushed.<番号>`。送りが届くたびに、送る直前に読んだ着手の時刻
   `started_at` を書く。着手中でなければ空）で見て、印が今の着手の時刻と（秒で）違えば届いていない。
-  印の無い課題（印を書く前に送ったもの）だけは、`task-workflow.github-synced` の時刻が着手より前なら届いていないとする。
+  印の無い課題（印を書く前に送ったもの）だけは、`task-workflow.github-synced.<番号>` の時刻が着手より前なら届いていないとする。
   戻せなければ `TRACKER\tFAILED` の行を足し、ほかの行（`CLOSED` など）と送りは続ける。
   **取り込みはすべてこの包みを通す**
 - **着手の印の控え**: 取り込みと上の戻しは別々の書き込みなので、間でプロセスが止まると書く直前の版は
@@ -134,9 +134,10 @@ Project・Status 欄・選択肢の ID は `bd kv` の `task-workflow.project` �
 - **衝突**: 課題ごとの勝ち負けで、欄ごとには合わせない。取り込みは前回の同期より後に Beads で
   変えた課題を上書きしないので、**両側で変えたら Beads が勝ち**、GitHub の版は Issue の編集履歴に残る。
   `tw` はその課題を `TRACKER\tCONFLICT\tGH-<n>` の行で知らせる（人が履歴から拾い直す）。`bd` は飛ばしたことを
-  教えないので、`tw` が課題ごとに最後に送った・取り込んだ時刻（`bd kv` の `task-workflow.github-synced`）を
-  控え、そのあとに Beads と GitHub の両方で更新された課題を衝突とする（書く直前に今の値を読み、触った番号だけを
-  書き換える）
+  教えないので、`tw` が課題ごとに最後に送った・取り込んだ時刻（`bd kv` の課題ごとのキー `task-workflow.github-synced.<番号>`）を
+  控え、そのあとに Beads と GitHub の両方で更新された課題を衝突とする（触った番号のキーだけを書くので、
+  別の作業ツリーが書いた別の番号の時刻を戻さない。旧い 1 つの表 `task-workflow.github-synced` は読むだけで、
+  課題ごとのキーが無い番号だけそこから読む）
 - **GitHub で閉じる**: 取り込むと Beads でも閉じ、依存が解ける。`ship:*` の無い課題が GitHub で
   閉じられたら見送りとして label `cancelled` を足し、`TRACKER\tCLOSED\tGH-<n>` の行を出す（着手中なら
   人に預ける）。GitHub で開き直したら `cancelled` と `ship:*` を外す

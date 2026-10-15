@@ -20,7 +20,6 @@ Issue の読み書き（`bd github push`・`pull` と、取り込む番号を選
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import subprocess
@@ -49,11 +48,12 @@ from tracker_github import (
 )
 from tracker_claims import (
     PUSHED_KEY_PREFIX,
-    SYNCED_KEY,
+    SYNCED_ITEM_PREFIX,
     _claim_restore_args,
     _claim_started,
     _pushed_of,
     _restore_from_snapshots,
+    _synced_of,
 )
 
 JIRA_REF = re.compile(rf"^(?:\S*/browse/)?({layout.JIRA_ID_FRAGMENT})$")
@@ -440,9 +440,7 @@ class Session:
 
     def _load_synced(self) -> dict:
         if self._synced is None:
-            raw = self._kv_listing().get(SYNCED_KEY)
-            cached = _loads(raw) if isinstance(raw, str) else None
-            self._synced = cached if isinstance(cached, dict) else {}
+            self._synced = _synced_of(self._kv_listing())
         return self._synced
 
     def _synced_at(self, issue: beads.Issue) -> datetime | None:
@@ -452,7 +450,7 @@ class Session:
     def _mark_synced(self, bd_ids: list[str]) -> None:
         """送った・取り込んだ時刻を控え、その場で `bd kv` へ書く（あとの Status 欄の書き込みが落ちても残す）。
 
-        書く直前に今の値を読み、触った番号だけを重ねる（別の作業ツリーが書いた時刻を古い値で戻さない）。
+        触った番号のキーだけを書く（別の作業ツリーが書いた別の番号の時刻を戻さない）。
         """
         if not self.bidirectional or not bd_ids:
             return
@@ -464,10 +462,11 @@ class Session:
         ]
         if not numbers:
             return
-        current = _loads(beads.run(self.toplevel, ["kv", "get", SYNCED_KEY]).stdout)
-        synced = {**(current if isinstance(current, dict) else {}), **{n: now for n in numbers}}
-        beads.run_ok(self.toplevel, ["kv", "set", SYNCED_KEY, json.dumps(synced)])
-        self._synced = synced
+        for n in dict.fromkeys(numbers):
+            beads.run_ok(self.toplevel, ["kv", "set", SYNCED_ITEM_PREFIX + n, now])
+            if self._kv_all is not None:
+                self._kv_all[SYNCED_ITEM_PREFIX + n] = now
+        self._synced = None
 
     # --- 課題ごとの送りの印（着手を戻すかの判定） ---------------------------------------
 
@@ -542,6 +541,7 @@ class Session:
         """呼び出し（`before`・`after`・`register`・`sync_all`）の始め。`kv` は別の作業ツリーが書くので読み済みの値を捨てる。"""
         self._deadline = deadline
         self._kv_all = None
+        self._synced = None
 
     def _listed_is_current(self) -> bool:
         return self._listed is not None and self._listed_at == beads.writes(self.toplevel)

@@ -16,6 +16,7 @@ sys.path.insert(1, os.path.join(HERE, "..", "tw"))
 import beads  # noqa: E402
 import ledger  # noqa: E402
 import tracker  # noqa: E402
+import tracker_claims  # noqa: E402
 import tracker_github  # noqa: E402
 from selftest_b_fakegithub import github  # noqa: E402
 from selftest_b_support import bd, new, num, rows  # noqa: E402
@@ -211,6 +212,41 @@ def test_tracker_project_items_per_issue() -> None:
               f"sync:\n{r.stdout}{r.stderr}\nkv の控え: {after}")
 
 
+def test_tracker_synced_per_issue_key() -> None:
+    say("トラッカー github・同期の時刻は課題ごとのキー（旧い1つの表も読み、別の番号の時刻を戻さない）")
+    key, item = tracker_claims.SYNCED_KEY, tracker_claims.SYNCED_ITEM_PREFIX
+    with github() as (_fake, _tmp, main_path, _wt1):
+        a, b = new(main_path, "時刻を分ける1"), new(main_path, "時刻を分ける2")
+        na, nb = num(a), num(b)
+        kv = _kv(main_path)
+        check("new のあと時刻は課題ごとのキーにあり、旧い表は書かない",
+              {f"{item}{na}", f"{item}{nb}"} <= set(kv) and key not in kv and not kv[f"{item}{na}"].startswith("{"), str(sorted(kv)))
+
+        other = "2099-01-01T00:00:00Z"
+        bd(main_path, "kv", "set", f"{item}{nb}", other)
+        time.sleep(1.1)
+        bd(main_path, "update", beads.to_bd_id(a), "--title", "題を直す")
+        run_task(main_path, "sync")
+        kv = _kv(main_path)
+        check("別の番号の時刻を戻さず、触った番号の時刻は進む", kv[f"{item}{nb}"] == other and kv[f"{item}{na}"] != other, str(kv))
+
+        legacy = {str(na): "2000-01-01T00:00:00Z", "777": "2001-02-03T04:05:06Z"}
+        for k in (f"{item}{na}", f"{item}{nb}"):
+            bd(main_path, "kv", "clear", k)
+        bd(main_path, "kv", "set", key, json.dumps(legacy))
+        synced = tracker_claims._synced_of(_kv(main_path))
+        check("番号ごとのキーが無い番号は旧い表から読む", synced == legacy, str(synced))
+        bd(main_path, "kv", "set", f"{item}{na}", "2010-01-01T00:00:00Z")
+        synced = tracker_claims._synced_of(_kv(main_path))
+        check("番号ごとのキーがあれば新しい方を取る", synced[str(na)] == "2010-01-01T00:00:00Z" and synced["777"] == legacy["777"],
+              str(synced))
+        bd(main_path, "kv", "set", f"{item}{na}", "1999-01-01T00:00:00Z")
+        bd(main_path, "kv", "set", f"{item}x", "2030-01-01T00:00:00Z")
+        synced = tracker_claims._synced_of(_kv(main_path))
+        check("旧い表の方が新しければそちらを残し、番号でないキーは読まない", synced == legacy, str(synced))
+        check("旧い表は消さない", json.loads(_kv(main_path)[key]) == legacy)
+
+
 def test_tracker_sync_pushes_only_changed() -> None:
     say("トラッカー github・sync は変えた課題だけを送り、変わりが無ければ送らない")
     with github() as (fake, _tmp, main_path, _wt1):
@@ -241,7 +277,8 @@ def test_tracker_sync_bd_calls() -> None:
         counted = os.path.join(tmp, "bd-count.txt")
         local.env = {**local.env, "BD_COUNT_FILE": counted}
         # 全件取り込んで着手の印を戻す sync は、1件ごとの history と update が本物の仕事なので17回に収まらない。
-        for label, limit in (("変わりの無い sync", 17), ("4件とも GitHub で直した sync", 21)):
+        # 同期の時刻は課題ごとのキーなので、取り込んだ件数ぶんの kv set が付く（kv get は無い）。
+        for label, limit in (("変わりの無い sync", 17), ("4件とも GitHub で直した sync", 23)):
             if label.startswith("4件"):
                 fake.clock_offset = 60
                 for task_id in ids:
@@ -391,6 +428,7 @@ TESTS = (
     test_tracker_register_timeout_no_duplicate,
     test_tracker_pull_reports_duplicate,
     test_tracker_project_items_per_issue,
+    test_tracker_synced_per_issue_key,
 )
 
 
