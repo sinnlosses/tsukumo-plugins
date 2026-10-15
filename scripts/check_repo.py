@@ -32,11 +32,14 @@
   `task-workflow.` の kv キー・`/task-workflow/` の台帳・`docs/history/retrospect.md`・`retrospect_due` は除く）
 - `tw` の流れの語彙（`layout.py` の `FLOW_VALUES`。既定の `delegate` を除く）と `task-workflow/flows/` のファイル
   （近道の印・status で決まる `direct.md`・`hold.md` を除く）が過不足なく対応し、パーツの枠 `parts.<枠>` が `task-workflow/SKILL.md` に全部出ること
+- 並びの印（frontmatter の `metadata` に `workflow-step: "true"`）を持つ SKILL.md が、契約の返す口
+  （`` `phase_result` `` か `` `work_plan` ``）と、`finished`・`skipped`・`stopped` の返し方を本文に書いていること
 """
 
 from __future__ import annotations
 
 import ast
+import functools
 import json
 import os
 import re
@@ -465,6 +468,7 @@ def check_task_model_layout() -> None:
                     fail(f"{rel}:{node.lineno}: os.path.join が {hit!r} を直書きしている")
 
 
+@functools.cache
 def _load_layout():
     import importlib.util
 
@@ -601,6 +605,10 @@ DEPENDENCY_EDGES = {
     "setup-tasks": ("task-model",),
     "retro": ("retrospect", "task-model"),
     "task-model": (),
+    "implement-step": ("task-workflow", "task-model"),
+    "accept-step": ("task-workflow", "task-model"),
+    "retrospect-step": ("task-workflow", "retrospect", "task-model"),
+    "ship-step": ("task-workflow", "task-model"),
 }
 
 
@@ -776,6 +784,43 @@ def check_sibling_imports(names: list[str]) -> None:
                 fail(f"{rel}:{node.lineno}: sys.path の組み立てを読めない（兄弟スキル依存を検査できない）")
 
 
+STEP_RETURN_PORTS = ("`phase_result`", "`work_plan`")
+STEP_OUTCOMES = ("`finished`", "`skipped`", "`stopped`")
+
+
+def is_workflow_step(text: str) -> bool:
+    """`tw config --schema --version 2` が候補に拾う印を持つか（読み方は `layout.parse_skill_frontmatter` と同じ）。"""
+    layout = _load_layout()
+    metadata = layout.parse_skill_frontmatter(text).get("metadata")
+    return isinstance(metadata, dict) and metadata.get(layout.STEP_MARK_KEY) == "true"
+
+
+def step_contract_problems(text: str) -> list[str]:
+    """印のある SKILL.md の本文（frontmatter の後ろ）に欠けている、返す口と結果の語。"""
+    end = text.find("\n---\n", 3)
+    body = text[end + 5 :] if end != -1 else text
+    out = []
+    if not any(port in body for port in STEP_RETURN_PORTS):
+        out.append(f"契約の返す口（{' か '.join(STEP_RETURN_PORTS)}）を呼ぶ手順が無い")
+    missing = [o for o in STEP_OUTCOMES if o not in body]
+    if missing:
+        out.append(f"結果の返し方が無い: {'・'.join(missing)}")
+    return out
+
+
+def check_workflow_steps(names: list[str]) -> None:
+    """並びの印を持つスキルが、契約の返す口で結果を返す手順を持つか。"""
+    for n in names:
+        path = os.path.join(SKILLS, n, "SKILL.md")
+        if not os.path.exists(path):
+            continue
+        text = read(path)
+        if not is_workflow_step(text):
+            continue
+        for p in step_contract_problems(text):
+            fail(f"{n}/SKILL.md: {p}")
+
+
 def main() -> None:
     names = skill_names()
     check_frontmatter(names)
@@ -798,6 +843,7 @@ def main() -> None:
     check_flow_and_part_names()
     check_selftest_body_literal()
     check_agent_frontmatter(agent_names())
+    check_workflow_steps(names)
 
     if problems:
         for p in problems:

@@ -130,6 +130,31 @@ def main() -> int:
     check("SKILL.md に出ない枠を落とす",
           len(flow_problems(["delegate"], "delegate", [*keys, "parts.ship"], [], skill_text)) == 1)
 
+    marked = check_repo.is_workflow_step
+    head = '---\nname: s\ndescription: "d"\nmetadata:\n  workflow-step: "true"\n---\n'
+    check("metadata の workflow-step: \"true\" を印として拾う", marked(head))
+    check("引用符の無い true も拾う", marked(head.replace('"true"', "true")))
+    check("値が true でなければ拾わない", not marked(head.replace('"true"', '"false"')))
+    check("metadata の外の workflow-step は拾わない",
+          not marked('---\nname: s\nworkflow-step: "true"\nother:\n  workflow-step: "true"\n---\n'))
+    check("frontmatter が無ければ拾わない", not marked("# 本文\n  workflow-step: \"true\"\n"))
+
+    contract = check_repo.step_contract_problems
+    outcomes = "`finished`・`skipped`・`stopped`"
+    check("`phase_result` と3つの結果があれば問題なし", contract(head + f"`phase_result` を呼ぶ。{outcomes}\n") == [])
+    check("`work_plan` でもよい", contract(head + f"`work_plan` で進める。{outcomes}\n") == [])
+    check("返す口が無ければ返す", len(contract(head + f"{outcomes}\n")) == 1)
+    check("結果の語が欠ければ返す", len(contract(head + "`work_plan` で進める。`finished`\n")) == 1)
+    check("frontmatter の中の語は本文に数えない",
+          len(contract('---\nname: s\ndescription: "`work_plan`"\n---\n' + f"{outcomes}\n")) == 1)
+
+    check_repo.problems.clear()
+    check_repo.check_workflow_steps(skills)
+    check("実物の印のあるスキルは返す口と結果の返し方を持つ", check_repo.problems == [])
+    check("実物に印のあるスキルが4つある",
+          sum(check_repo.is_workflow_step(check_repo.read(os.path.join(check_repo.SKILLS, n, "SKILL.md")))
+              for n in skills if os.path.exists(os.path.join(check_repo.SKILLS, n, "SKILL.md"))) == 4)
+
     if failures:
         print(f"\n{len(failures)} 件落ちた: {', '.join(failures)}")
         return 1

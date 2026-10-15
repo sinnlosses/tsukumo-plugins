@@ -17,7 +17,7 @@ def _step_candidates(project_root: str | None) -> list[layout.StepCandidate]:
 
 def steps_default(toplevel: str) -> list[str]:
     """`steps` を書いていないときの並び（schema 2 の `default`）。"""
-    return [c.value for c in _step_candidates(toplevel) if c.own]
+    return layout.default_steps(_step_candidates(toplevel))
 
 
 def cmd_config_schema(version: str | None = None) -> None:

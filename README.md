@@ -82,17 +82,19 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
 
 ## 由来
 
-全9スキル。`skills/` にあるものが全てで、この一覧がその索引。
+全13スキル。`skills/` にあるものが全てで、この一覧がその索引。
 
-- 自作（8件）: `task-model`（タスクの規則の正典と `tw` の実装・参照専用）、`setup-tasks` `plan-tasks` `list-tasks`、
+- 自作（12件）: `task-model`（タスクの規則の正典と `tw` の実装・参照専用）、`setup-tasks` `plan-tasks` `list-tasks`、
   `next-task`（タスクを1件に決めて着手の印を立てる入口）、
   `task-workflow`（印の立ったタスクを委譲→受け入れ→振り返り→送り出しの段で進めるオーケストレーター。流れの変種は `flows/`、パーツの契約は `parts/`）、
   `retrospect`（`task-workflow` の中で1件ごと・`next-task` の頭で7日おきに振り返り、改善候補をドラフトの課題〔`tw new --draft`〕として積む。正典・参照専用）、
-  `comment-audit`（コメントの種類を判定して消す・縮める・正典へ移す。`task-workflow` の受け入れ役に渡す）
+  `comment-audit`（コメントの種類を判定して消す・縮める・正典へ移す。`task-workflow` の受け入れ役に渡す）、
+  `implement-step` `accept-step` `retrospect-step` `ship-step`（tsukumo の契約の並び〔schema 2 の `steps`〕に置く段。
+  frontmatter の `metadata` に `workflow-step: "true"` を持ち、入口と出口だけを持って手順は `task-workflow` の `parts/` を読む）
 - [mattpocock/skills](https://github.com/mattpocock/skills) を日本語化したもの（1件）: `retro`
   （改善の7観点の一覧を `retrospect` へ移してそこを指し、選ばれた改善案をドラフトの課題として積む）
 
-どれも `sinnlosses/claude-skills` で育ったもので、そこから切り出した（下の「決めたこと」の2）。
+並びの段の4件を除き、どれも `sinnlosses/claude-skills` で育ったもので、そこから切り出した（下の「決めたこと」の2）。
 
 ## 決めたこと
 

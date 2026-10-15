@@ -60,7 +60,7 @@ rm -rf "$dest" "$bin"
 mkdir "$dest"
 inst >/dev/null 2>&1
 uninst retrospect task-model >"$tmp/out" 2>"$tmp/err"
-! grep -q "warning: retrospect" "$tmp/err"
+! grep -q "warning: retrospect は" "$tmp/err"
 check "依存元も一緒に外せば、その依存元の警告は出ない" $?
 
 rm -rf "$dest" "$bin"

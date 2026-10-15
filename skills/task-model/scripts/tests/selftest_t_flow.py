@@ -694,13 +694,45 @@ def test_config_schema() -> None:
         check("どの欄も label と description を持つ", all(k["label"] and k["description"] for k in keys), repr(keys))
 
 
-def _skill(root: str, name: str, mark: str | None, description: str = "説明") -> str:
-    """`root/<name>/SKILL.md` を書く。`mark` は `metadata` に置く `workflow-step` の値（None なら metadata を置かない）。"""
+def _skill(root: str, name: str, mark: str | None, description: str = "説明", order: str | None = None) -> str:
+    """`root/<name>/SKILL.md` を書く。`mark` は `metadata` に置く `workflow-step` の値（None なら metadata を置かない）。
+    `order` は `workflow-step-order` の値（None なら置かない）。"""
     meta = f'metadata:\n  workflow-step: "{mark}"\n' if mark is not None else ""
+    if mark is not None and order is not None:
+        meta += f'  workflow-step-order: "{order}"\n'
     return write(
         os.path.join(root, name, "SKILL.md"),
         f"---\nname: {name}\ndescription: >\n  {description}\n  続き\n{meta}---\n本文\n",
     )
+
+
+def test_default_steps_order() -> None:
+    say("layout.default_steps: plugin の候補を workflow-step-order の順に、位置の無いもの・読めないものは後ろに走査順で並べる")
+    import layout
+
+    with tempfile.TemporaryDirectory() as tmp:
+        home = os.path.join(tmp, "home")
+        plugin_root = os.path.join(tmp, "plugin")
+        plugin_skills = os.path.join(plugin_root, "skills")
+        _skill(plugin_skills, "a-last", "true")
+        _skill(plugin_skills, "b-second", "true", order="2")
+        _skill(plugin_skills, "c-first", "true", order="1")
+        _skill(plugin_skills, "d-bad", "true", order="x")
+        _skill(plugin_skills, "e-tenth", "true", order="10")
+        _skill(os.path.join(home, ".claude", "skills"), "home-step", "true", order="0")
+        schema = layout.config_schema_v2(None, home, (plugin_root, "p"))
+        steps = schema["keys"][0]
+        check("default は位置の数の順、位置の無いもの・整数でないものは後ろに走査順、plugin の外は入らない",
+              steps["default"] == ["p:c-first", "p:b-second", "p:e-tenth", "p:a-last", "p:d-bad"], repr(steps["default"]))
+        check("values は走査順のまま",
+              [v["value"] for v in steps["values"]] == ["home-step", "p:a-last", "p:b-second", "p:c-first", "p:d-bad", "p:e-tenth"],
+              repr(steps["values"]))
+
+    plugin = layout.own_plugin_root()
+    if plugin is not None:
+        got = layout.config_schema_v2(None, None, plugin)["keys"][0]["default"]
+        check("同梱の既定の並びは 実装・受け入れ・振り返り・送り出し の段の順",
+              got == [f"{plugin[1]}:{n}" for n in ("implement-step", "accept-step", "retrospect-step", "ship-step")], repr(got))
 
 
 def test_step_candidates() -> None:
@@ -963,6 +995,7 @@ TESTS = (
     test_config_command,
     test_config_schema,
     test_step_candidates,
+    test_default_steps_order,
     test_config_schema_version,
     test_config_set,
     test_config_steps,

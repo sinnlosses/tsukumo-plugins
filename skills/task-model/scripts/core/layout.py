@@ -392,6 +392,7 @@ def config_schema() -> dict:
 
 SCHEMA_VERSIONS = (1, 2)
 STEP_MARK_KEY = "workflow-step"
+STEP_ORDER_KEY = "workflow-step-order"  # 既定の並びでの位置（整数の文字）。`tw` と同じ plugin のスキルだけが使う
 PLUGIN_MANIFEST_PATH = os.path.join(".claude-plugin", "plugin.json")
 
 
@@ -401,6 +402,7 @@ class StepCandidate:
     label: str
     description: str
     own: bool  # `tw` と同じチェックアウトの plugin のスキルか
+    order: int | None = None
 
 
 def _scalar(text: str) -> str:
@@ -461,8 +463,8 @@ def _skill_dirs(skills_root: str) -> list[str]:
     return [os.path.join(skills_root, n) for n in names if os.path.isfile(os.path.join(skills_root, n, "SKILL.md"))]
 
 
-def _read_skill(skill_dir: str) -> tuple[str, str, bool] | None:
-    """`(name, description, 印があるか)`。読めなければ `None`。"""
+def _read_skill(skill_dir: str) -> tuple[str, str, bool, int | None] | None:
+    """`(name, description, 印があるか, 既定の並びでの位置)`。読めなければ `None`。位置は整数でなければ `None`。"""
     try:
         with open(os.path.join(skill_dir, "SKILL.md"), encoding="utf-8") as f:
             front = parse_skill_frontmatter(f.read())
@@ -472,10 +474,13 @@ def _read_skill(skill_dir: str) -> tuple[str, str, bool] | None:
     description = front.get("description")
     metadata = front.get("metadata")
     marked = isinstance(metadata, dict) and metadata.get(STEP_MARK_KEY) == "true"
+    order_text = metadata.get(STEP_ORDER_KEY) if isinstance(metadata, dict) else None
+    order = int(order_text) if isinstance(order_text, str) and re.fullmatch(r"-?[0-9]+", order_text) else None
     return (
         name if isinstance(name, str) and name else os.path.basename(skill_dir),
         description if isinstance(description, str) else "",
         marked,
+        order,
     )
 
 
@@ -525,19 +530,25 @@ def step_candidates(
             skill = _read_skill(skill_dir)
             if skill is None or not skill[2]:
                 continue
-            name, description, _ = skill
+            name, description, _, order = skill
             value = f"{prefix}:{name}" if prefix else name
             if value in value_seen:
                 continue
             real_seen.add(real)
             value_seen.add(value)
             own = plugin is not None and real.startswith(os.path.realpath(plugin[0]) + os.sep)
-            found.append(StepCandidate(value, name, description, own))
+            found.append(StepCandidate(value, name, description, own, order))
     return found
 
 
+def default_steps(candidates: list[StepCandidate]) -> list[str]:
+    """既定の並び。`tw` と同じ plugin の候補を `workflow-step-order` の小さい順に、位置の無いものはその後ろに走査順で並べる。"""
+    own = [c for c in candidates if c.own]
+    return [c.value for c in sorted(own, key=lambda c: (c.order is None, c.order or 0))]
+
+
 def config_schema_v2(project_root: str | None, home: str | None = None, plugin: tuple[str, str] | None = None) -> dict:
-    """`tw config --schema --version 2` が出す欄の形。既定の並びは `tw` と同じ plugin の候補を走査順に並べたもの。"""
+    """`tw config --schema --version 2` が出す欄の形。既定の並びは `default_steps`。"""
     candidates = step_candidates(project_root, home, plugin)
     return {
         "schema": 2,
@@ -547,7 +558,7 @@ def config_schema_v2(project_root: str | None, home: str | None = None, plugin: 
                 "label": "並び",
                 "description": "タスクを進めるスキルの並び（上から順に呼ぶ）",
                 "kind": "steps",
-                "default": [c.value for c in candidates if c.own],
+                "default": default_steps(candidates),
                 "values": [{"value": c.value, "label": c.label, "description": c.description} for c in candidates],
             }
         ],
