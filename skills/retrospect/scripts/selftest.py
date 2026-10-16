@@ -336,10 +336,15 @@ def test_gate_ledger() -> None:
     rounds = {
         "GH-61": row("claim", "GH-61") + verify("GH-61", "VERIFY_NOT_PASSED") + verify("GH-61", "VERIFIED"),
         "GH-62": row("claim", "GH-62") + verify("GH-62", "FORMAT_FAILED") + verify("GH-62", "VERIFY_NOT_PASSED") + verify("GH-62", "VERIFIED"),
-        "GH-63": row("claim", "GH-63") + lap("GH-63", "accept") + lap("GH-63", "delegate") + lap("GH-63", "delegate"),
-        "GH-64": row("claim", "GH-64") + lap("GH-64", "accept") + lap("GH-64", "review") + lap("GH-64", "review", "end")
-        + lap("GH-64", "delegate"),
+        # delegate の lap を打たない流れ（loopable: N など）で2回差し戻した
+        "GH-63": row("claim", "GH-63") + lap("GH-63", "accept") + lap("GH-63", "review") + verify("GH-63", "VERIFIED")
+        + lap("GH-63", "review") + verify("GH-63", "VERIFIED") + lap("GH-63", "review"),
+        # delegate の lap を打つ流れで1回差し戻した（lap の有無で結果が変わらない）
+        "GH-64": row("claim", "GH-64") + lap("GH-64", "accept") + lap("GH-64", "review") + lap("GH-64", "delegate")
+        + verify("GH-64", "VERIFIED") + lap("GH-64", "review"),
         "GH-65": row("claim", "GH-65") + lap("GH-65", "accept") + lap("GH-65", "review"),
+        # 直しの無いままレビューだけが続けて打たれた
+        "GH-68": row("claim", "GH-68") + lap("GH-68", "accept") + lap("GH-68", "review") + lap("GH-68", "review"),
         "GH-66": row("claim", "GH-66") + verify("GH-66", "VERIFY_NOT_PASSED") + row("release", "GH-66")
         + row("claim", "GH-66") + verify("GH-66", "VERIFIED"),
         "GH-67": row("claim", "GH-67") + lap("GH-67", "delegate") + lap("GH-67", "accept"),
@@ -364,12 +369,21 @@ def test_gate_ledger() -> None:
         r = gate("GH-62")
         check("FORMAT_FAILED と VERIFY_NOT_PASSED を合わせて2回", "SIGNAL\t検証の打ち直し\t2回" in r.stdout.splitlines(), r.stdout + r.stderr)
         r = gate("GH-63")
-        check("最初の accept start より後の delegate start の数が差し戻しの回数", "SIGNAL\t受け入れでの直し\t2回" in r.stdout.splitlines(), r.stdout + r.stderr)
+        check("delegate の lap が無くても、間に verify が挟まる review start の組の数が差し戻しの回数で、指摘ありになる",
+              "SIGNAL\t受け入れでの直し\t2回" in r.stdout.splitlines() and "SIGNAL\t受け入れでの直し\tレビューの指摘あり" in r.stdout.splitlines(),
+              r.stdout + r.stderr)
         r = gate("GH-64")
-        check("review start の後に delegate start があれば指摘あり", "SIGNAL\t受け入れでの直し\tレビューの指摘あり" in r.stdout.splitlines(), r.stdout + r.stderr)
+        check("delegate の lap があっても同じ数え方で1回",
+              "SIGNAL\t受け入れでの直し\t1回" in r.stdout.splitlines() and "SIGNAL\t受け入れでの直し\tレビューの指摘あり" in r.stdout.splitlines(),
+              r.stdout + r.stderr)
+        r = gate("GH-68")
+        check("verify の挟まらない連続した review start は直しに数えない", "受け入れでの直し" not in r.stdout, r.stdout + r.stderr)
         r = gate("GH-65", review="found")
-        check("review start だけなら clean で、引数が違えば台帳が勝って MISMATCH を標準エラーへ",
+        check("review start が1回だけなら clean で、引数が違えば台帳が勝って MISMATCH を標準エラーへ",
               "レビューの指摘あり" not in r.stdout and "MISMATCH\t--review\t引数=found\t台帳=clean" in r.stderr, r.stdout + r.stderr)
+        r = gate("GH-67", review="found")
+        check("review start が無い回は skip で、差し戻しは数えず、引数が違えば MISMATCH",
+              "受け入れでの直し" not in r.stdout and "MISMATCH\t--review\t引数=found\t台帳=skip" in r.stderr, r.stdout + r.stderr)
         r = gate("GH-67", reverify="3")
         check("全部 0 の台帳に --reverify 3 を渡しても SIGNAL は出ず、MISMATCH を出す",
               "検証の打ち直し" not in r.stdout and "MISMATCH\t--reverify\t引数=3\t台帳=0" in r.stderr, r.stdout + r.stderr)

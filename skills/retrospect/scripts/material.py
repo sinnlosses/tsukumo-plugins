@@ -15,13 +15,15 @@
 - `--friction`（必須）: 委譲先の friction log が全部「なし」（`none`）／行がある（`some`）／書いていない返却がある（`missing`）
 - `--human`（必須）: 人の差し戻しの回数
 - `--reverify`: 検証を打ち直した回数。台帳の `verify` の `result` が `FORMAT_FAILED`・`VERIFY_NOT_PASSED` の件数
-- `--fixes`: 受け入れの差し戻しの回数。台帳の最初の `lap accept start` より後の `lap delegate start` の件数
-- `--review`: 台帳の `lap review start` が無ければ `skip`、あって後に `lap delegate start` があれば `found`、無ければ `clean`
+- `--fixes`: 受け入れの差し戻しの回数。台帳の `lap review start` の続く組のうち、間に `verify` が挟まる組の数
+  （差し戻しのたびに必ず打たれるのは `lap review start` で、`lap delegate start` は打たれないことがあるので見ない）
+- `--review`: 台帳の `lap review start` が無ければ `skip`、`--fixes` が 1 以上なら `found`、無ければ `clean`
 
 台帳の3つは、そのタスクの最後の `claim` 以降だけを数える。台帳が読めない・`claim` が無いときだけ引数の値を使い、
 引数も無ければ `0`・`0`・`skip` として標準エラーに `UNCOUNTED` を出す。台帳から数えられたときに引数が違えば、
 台帳の値を使い標準エラーに `MISMATCH` を出す。縮み: 作業先が別のリポジトリのタスクは `verify` が台帳に残らず
 `--reverify` が 0 になる。受け入れ役が捨てた指摘は直されないので `found` にならない。
+最後のレビューで出た指摘の直し（再レビューしない）は、続く組が無いので数えない。レビューを飛ばした回は差し戻しが起きない。
 
 - **タスク**: Beads の課題（`tw show` と同じ形。front matter と本文、`## 結果`）。
   Beads に無い古いタスクは `docs/history/tasks.md` のアーカイブから本文
@@ -96,7 +98,7 @@ def main() -> None:
     section("手数（トランスクリプトから取った数だけ）")
     print_signals(root, task_id)
 
-    print_stages(read_stages(root, task_id))
+    print_stages(read_stages(read_ledger(root), task_id))
 
     draft_fate.print_section(root, datetime.now(timezone.utc))
 
@@ -315,37 +317,39 @@ GATE_REQUIRED = ("--friction", "--human")
 SLOW_SECONDS = 180
 
 
-def count_from_ledger(root: str, task_id: str) -> dict[str, str] | None:
-    """台帳から `--reverify`・`--fixes`・`--review` を数える。読めない・そのタスクの `claim` が無ければ `None`。"""
+def read_ledger(root: str) -> list[metrics.Event] | str:
+    """台帳の出来事を時刻順に。読めなければ理由の文字列。"""
     try:
         events, _ = metrics.read_events(ledger.ledger_root(cwd=root))
     except (gitinfo.GitCommandError, OSError):
+        return "台帳が読めない（git のリポジトリでない）"
+    return events
+
+
+def count_from_ledger(events: list[metrics.Event] | str, task_id: str) -> dict[str, str] | None:
+    """台帳から `--reverify`・`--fixes`・`--review` を数える。読めない・そのタスクの `claim` が無ければ `None`。
+
+    差し戻しは、受け入れ役が指摘を返す → 委譲先が直して `verify` を打つ → 次の `lap review start`、の順で現れる。
+    `lap delegate start` は差し戻しのたびには打たれないので見ず、続く `lap review start` の組に
+    `verify` が挟まるかで数える。
+    """
+    if isinstance(events, str):
         return None
     own = [e for e in events if e.task == task_id]
     claims = [i for i, e in enumerate(own) if e.kind == "claim"]
     if not claims:
         return None
     run = own[claims[-1] :]
-
-    def lap_starts(stage: str) -> list[int]:
-        return [i for i, e in enumerate(run) if e.kind == "lap" and e.fields.get("stage") == stage and e.fields.get("edge") == "start"]
-
-    accepts, reviews, delegates = lap_starts("accept"), lap_starts("review"), lap_starts("delegate")
+    reviews = [i for i, e in enumerate(run) if e.kind == "lap" and e.fields.get("stage") == "review" and e.fields.get("edge") == "start"]
     failed = sum(1 for e in run if e.kind == "verify" and e.fields.get("result") in metrics.VERIFY_FAILED_RESULTS)
-    if not reviews:
-        review = "skip"
-    else:
-        review = "found" if any(i > reviews[0] for i in delegates) else "clean"
-    return {
-        "--reverify": str(failed),
-        "--fixes": str(sum(1 for i in delegates if accepts and i > accepts[0])),
-        "--review": review,
-    }
+    fixes = sum(1 for a, b in zip(reviews, reviews[1:]) if any(e.kind == "verify" for e in run[a:b]))
+    review = "skip" if not reviews else "found" if fixes else "clean"
+    return {"--reverify": str(failed), "--fixes": str(fixes), "--review": review}
 
 
-def decide_gate(root: str, task_id: str, gate: dict[str, str]) -> dict[str, str]:
+def decide_gate(events: list[metrics.Event] | str, task_id: str, gate: dict[str, str]) -> dict[str, str]:
     """台帳の値を優先して 5 つの答えを決める。食い違いと数えられなかったものは標準エラーに出す。"""
-    counted = count_from_ledger(root, task_id)
+    counted = count_from_ledger(events, task_id)
     decided = dict(gate)
     for opt in ("--reverify", "--fixes", "--review"):
         given = gate.get(opt)
@@ -385,12 +389,10 @@ class StageTimes:
     gap: int
 
 
-def read_stages(root: str, task_id: str) -> StageTimes | str | None:
+def read_stages(events: list[metrics.Event] | str, task_id: str) -> StageTimes | str | None:
     """台帳から段ごとの秒を取る。読めなければ理由の文字列、そのタスクの `claim` が無ければ `None`。"""
-    try:
-        events, _ = metrics.read_events(ledger.ledger_root(cwd=root))
-    except (gitinfo.GitCommandError, OSError):
-        return "台帳が読めない（git のリポジトリでない）"
+    if isinstance(events, str):
+        return events
     found = metrics.task_stage_spans(events, task_id)
     if found is None:
         return None
@@ -491,8 +493,9 @@ def gate_signals(
 
 def print_gate(root: str, task_id: str, gate: dict[str, str]) -> None:
     read = read_all_signals(root, task_id)
-    stages = read_stages(root, task_id)
-    hits = gate_signals(root, decide_gate(root, task_id, gate), read, stages)
+    events = read_ledger(root)
+    stages = read_stages(events, task_id)
+    hits = gate_signals(root, decide_gate(events, task_id, gate), read, stages)
     if not hits:
         print("QUIET")
         return
