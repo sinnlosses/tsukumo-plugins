@@ -27,12 +27,12 @@
 - 最後でない段は返す直前に `tw step <ID> <段の番号>` を打つ。最後の段は `tw verify` を通してから返す。
 - 作業があるなら、返す前に `## やること` を `tw edit` で書き、`tw verify` を通す。作業が無い返却（前提が誤り・dropped・計画だけ）は拒まれない。
 - 判断が要って止めて返すとき・`CONFLICT` で止まるとき・計画を作業の後に書いたとき・目視待ちで返すとき・受け入れの差し戻しの直しを、依頼で `tw verify` を打たないよう言われて返すときは、返す直前に `tw pause` を打つ（`tw verify` を打たないと hook の返却ゲート `NOT_VERIFIED content` に拒まれるため）。`tw step`・`tw pause` は、打ったあとに中身を変えたら打ち直す。
-- 返却の1行目の頭の語は、計画だけの回が `計画 0/<段の数>`、段を済ませたら `段 <n>/<段の数>`、止めたら `止めた <n>/<段の数>`（`n` はいま渡されている段）で、あとに ` | <要約か理由>` を続ける。2行目からは報告の本文。
-  tsukumo で動かすと、この1行目が進み具合の帯を進める。書式の正典は tsukumo の契約 `docs/architecture/workflow-contract.md`「委譲の返却」
-  （https://github.com/sinnlosses/tsukumo/blob/main/docs/architecture/workflow-contract.md）で、読めなければ上の頭の語で返せばよい。
+- 返却の本文の先頭に、した結果を1文で書く（計画だけの回なら計画の要点、段を済ませたらその要約）。止めたとき・「前提が誤り」・`dropped` にすべきときは、先頭を `止めた:`・`前提が誤り:`・`dropped にすべき:` で始めて理由を続ける。進み具合の帯を進める口は返却の書式ではなく、次の `phase_result`。
 - 段を済ませたら（止めたときも）、`SubagentHandback` の直前に MCP ツール `phase_result` を1回呼ぶ。`phase`＝渡された段の番号、`count`＝`## やること` の段の数、
   `outcome`＝`finished`（止めたら `stopped` と1〜2文の `reason`、要らない段と分かったら `skipped`）。計画だけの回は呼ばない。
-  `phase_result` が一覧に無い環境では呼ばない。呼んだときも、返却の1行目は上の形で今までどおり書く。
+  結果の正典は tsukumo の契約 `docs/architecture/workflow-contract.md`「スキルの契約」
+  （https://github.com/sinnlosses/tsukumo/blob/main/docs/architecture/workflow-contract.md）。
+  `phase_result` が一覧に無い環境では呼ばない（メインは本文の先頭で止めたかを読む）。
 - 最後の段（`tw verify` を打つ段。並列の段では最後の段の担当だけ）の返却の本文には `## 構造の変更` の節を書く。中身は tsukumo の `graph` の記法で、1行1辺、行頭 `+ ` / `- ` / `~ ` で足した・消した・変えた（例: `+ A -> B: 語`）。構造が変わらないときは `なし: <理由>` の1行を書く。節が無いと `tw handback-guard` が拒む。
 - 段の区切り（`tw step` を打つ前後）と、`unresponsive.md` 項3の無音の閾値を超えうる長いコマンドの前に、メインへ `SendMessage({to:"main"})` で `状況 | 何をした・何が分かった` の1行を送る（段の番号は入れない）。長いコマンドの実行中は受け取れず、メインから尋ねても返らないので、前に送っておく。`SendMessage` が使えない環境では送らなくてよい。
 - 最後の段（`tw verify` を打つ段）の担当だけ、`tw verify` の前に、このファイルの2つ上のディレクトリ（`task-workflow` の置き場）の `scripts/self_review.py` を打つ（引数なし。並列の段で最後でない段の担当は打たない）。台本は作業ツリーの差分を読むので、コミットする前（差分があるうち）に打つ。コミットしてから `tw verify` を打つ作業先（別のリポジトリ）では、台本 → 直す → コミット → `tw verify` の順にする。出た `SELF` の行ごとに、行のコマンドを打って問いに答え、当たったものを直してから `tw verify` を打つ。`SKIPPED` の行はその性質を判定できなかったという知らせなので、報告にそのまま書く。

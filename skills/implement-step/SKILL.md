@@ -51,4 +51,4 @@ metadata:
   「進み具合の帯（`work_plan`）」の表どおりに `work_plan` を呼ぶ（`phase_result` で済んだ段は `phaseSummary` を省けない）
 - **メインで走るとき**（近道・委譲しない流れ）: 段を終えるたびに `work_plan` で次の位置へ進め、`phaseSummary` に段のまとめを書く
 - `skipped`: `work_plan` の `skippedPhases` にこの段の名前（帯の段が `tw plan-phases` の並びにあるときだけ）を入れて進める
-- `stopped`（委譲先が `止めた`・`CONFLICT`・人に預けて `tw release` した）: `report` の `workPlanClosing` に `stopped` を渡し、後の段を呼ばない
+- `stopped`（委譲先が `phase_result` の `stopped` を返した（返却の先頭が `止めた:`）・`CONFLICT`・人に預けて `tw release` した）: `report` の `workPlanClosing` に `stopped` を渡し、後の段を呼ばない

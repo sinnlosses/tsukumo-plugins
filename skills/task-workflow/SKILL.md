@@ -75,14 +75,14 @@ lap は並びのスキルではなくこのスキルが段の前後で打つ。
    (d) 委譲先の選び方と依頼、(e) 並列の段、(f) 無音の見張り。手順5c の実装の依頼文もここ）。
 
 5b. **返りを見る**（委譲先の hand-back か、Agent ツールの完了の通知が届くたびに）:
-   `${CLAUDE_SKILL_DIR}/parts/implementer/handback-read.md` を読んで従う（返却の1行目で分ける表と、`plan-check` の行を読む表）。
+   `${CLAUDE_SKILL_DIR}/parts/implementer/handback-read.md` を読んで従う（返却の種類で分ける表と、`plan-check` の行を読む表）。
 
 5c. **実装の依頼文**: 手順5(d)の依頼に足す項目は `${CLAUDE_SKILL_DIR}/parts/implementer/delegate.md` の手順5c にある。
 
 5d. **委譲先の無応答に対応する**（手順5で投げたあと、報告が来ないまま長く止まったとき。完了の通知が
    「背景の作業を待っている」で届いたときも。手順5(f)の見張りの `SILENT` の通知もここに含める）: `${CLAUDE_SKILL_DIR}/parts/implementer/unresponsive.md` を読んで従う。
 
-6. **受け入れる**（並びの段 accept-step の本文。受け入れ役の返却の行は `${CLAUDE_SKILL_DIR}/parts/acceptor/acceptor-return.md`）: 作業ツリーを直し始める前に、委譲先の最後の段（`段 N/N`）の hand-back が届いていることを
+6. **受け入れる**（並びの段 accept-step の本文。受け入れ役の返却の行は `${CLAUDE_SKILL_DIR}/parts/acceptor/acceptor-return.md`）: 作業ツリーを直し始める前に、委譲先の最後の段（段 `N`）の hand-back が届いていることを
    確かめる（並列の段の担当を起こしたときは、どの担当も最後に渡した段を返していることを確かめる）。
    確かめた直後に手順5(f)の見張りを `TaskStop` で畳み、`tw lap T-xxx delegate end` を打ち、作業ツリーを cwd にした残りのプロセスが無いかを `ps` で見て（あれば止める）、`tw accept T-xxx` を打つ（出力の読み方は下の `accept.md`）。
    届いていなければ `TaskStop` か `SendMessage` で止めてから触る。報告をそのまま信用しない。
@@ -121,15 +121,15 @@ tsukumo で動かしているとき（`work_plan` の口があるとき）、帯
 帯に無い段（近道の受け入れ・振り返り、`なし` の振り返り）の `skipped` は渡さない。
 
 `work_plan` は**委譲先の返却が届くたびに呼ぶ**（tsukumo の関門が、メインの `work_plan` が受け付けられるまで作業のツールを拒むため）。
-返却（`phase_result` か1行目）で帯の位置が進むので、位置は返却で進んだ位置と同じになる。`phase_result` は要約を持たないので、
+返却（`phase_result`、無い環境では渡した段）で帯の位置が進むので、位置は返却で進んだ位置と同じになる。`phase_result` は要約を持たないので、
 返却で段が済んだあとの `work_plan` には毎回、返却の本文から段のまとめを `phaseSummary` に書く（省けない）:
 
 | 切れ目 | 呼び方 | `phaseSummary` |
 | --- | --- | --- |
 | 手順4a の `plan-check` のあと、最初の委譲の前 | `tw plan-phases T-xxx` | 不要（済んだ段が無い） |
 | 手順5b: 計画だけの回の返却を受け、`plan-check` を打ち直したあと | `--through 計画`（`delegatedRange.count` が Beads の `## やること` の段の数） | 要 |
-| 手順5b: 段 `n/N` の返却（`n < N`）。差し戻して同じ段をやり直させるときも | `--through n`（順不同の並列なら `--also`）。やり直しは同じ位置 | 要 |
-| 手順5b: 最後の段 `N/N` の返却 | `--through 実装` | 要 |
+| 手順5b: 段 `n` の返却（`n < N`）。差し戻して同じ段をやり直させるときも | `--through n`（順不同の並列なら `--also`）。やり直しは同じ位置 | 要 |
+| 手順5b: 最後の段 `N` の返却 | `--through 実装` | 要 |
 | 手順6: 受け入れの判定が済み、手順6a へ進む前（手順6a が無ければ手順7へ進む前） | `--through 受け入れ` | 要 |
 | 手順6a・6b が済み、手順7の `tw finish` を打つ前 | `--through 振り返り`（「振り返り」が無い設定では呼ばない。手順6の `--through 受け入れ` で送り出しだけが残っている） | 要 |
 | 手順4b: 既定の4つ以外のスキルの段が `finished`・`skipped` で済んだあと、次の段を呼ぶ前 | `--through <その段の名前>`（`skipped` なら `--skipped` にも足す） | 要（`skipped` なら飛ばしたわけ） |
