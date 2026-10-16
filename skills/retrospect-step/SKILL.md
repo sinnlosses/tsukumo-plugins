@@ -35,8 +35,8 @@ metadata:
 この段はメインで走る。
 
 - 申し送り（`finished`・`skipped` で返す前に必ず書く）: `tw relay T-xxx 振り返り --body-file -` に、`## 結果` に入れる `- 振り返り:` の1行と、積んだドラフトの ID を渡す。
-  `skipped` は上の「飛ばすとき」の `- 振り返り:` の行（`設定で外した`・`近道（省いた）`）を渡す
+  `skipped` は上の「飛ばすとき」の `- 振り返り:` の行（`近道（省いた）`）を渡す。並びから外した振り返りは、この段が呼ばれないので返す側にならない（外したときの `## 結果` の行はオーケストレーターが書く）
 - `finished`: 振り返りが済んだら、オーケストレーターの「進み具合の帯（`work_plan`）」の表の `--through 振り返り` の行どおりに
   `work_plan` を呼び、`phaseSummary` に `- 振り返り:` の1行の中身を書く
-- `skipped`: `work_plan` の `skippedPhases` にこの段の名前（帯の段が `tw plan-phases` の並びにあるときだけ。`なし` の設定と近道の並びには無い）を入れて進める
+- `skipped`: `work_plan` の `skippedPhases` にこの段の名前（帯の段が `tw plan-phases` の並びにあるときだけ。近道の並びには無い）を入れて進める
 - `stopped`（`retrospect` を一覧に見つけられず人に預けたときなど）: `report` の `workPlanClosing` に `stopped` を渡し、後の段を呼ばない

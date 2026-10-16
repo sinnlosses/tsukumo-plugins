@@ -751,6 +751,10 @@ def check_sibling_imports(names: list[str]) -> None:
 
 STEP_RETURN_PORTS = ("`phase_result`", "`work_plan`")
 STEP_OUTCOMES = ("`finished`", "`skipped`", "`stopped`")
+# 振り返りを省く手段は並び（`steps`）から段を外すことだけ。外した段は呼ばれないので段の返却に `設定で外した` は出ず、
+# 廃止した `parts.retrospect = なし` を指す「`なし` の設定・振り返り」も残さない。
+RETIRED_SKIP_LINE = "設定で外した"
+RETIRED_NONE_SETTING = re.compile(r"`なし` の(設定|振り返り)")
 
 
 def is_workflow_step(text: str) -> bool:
@@ -770,6 +774,11 @@ def step_contract_problems(text: str) -> list[str]:
     missing = [o for o in STEP_OUTCOMES if o not in body]
     if missing:
         out.append(f"結果の返し方が無い: {'・'.join(missing)}")
+    for line in body.splitlines():
+        if RETIRED_SKIP_LINE in line:
+            out.append(f"並びから外した段は呼ばれないので、段が返す行に `{RETIRED_SKIP_LINE}` は書かない: {line.strip()[:60]}")
+        if RETIRED_NONE_SETTING.search(line):
+            out.append(f"廃止した `なし` の設定を指している: {line.strip()[:60]}")
     return out
 
 

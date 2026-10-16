@@ -130,6 +130,10 @@ def main() -> int:
     check("`work_plan` でもよい", contract(head + f"`work_plan` で進める。{outcomes}\n") == [])
     check("返す口が無ければ返す", len(contract(head + f"{outcomes}\n")) == 1)
     check("結果の語が欠ければ返す", len(contract(head + "`work_plan` で進める。`finished`\n")) == 1)
+    check("段の返却に外した行 `設定で外した` を渡すと言えば返す",
+          len(contract(head + f"`work_plan` で進める。{outcomes}\n`skipped` は `設定で外した` を渡す\n")) == 1)
+    check("廃止した `なし` の設定を指せば返す",
+          len(contract(head + f"`work_plan` で進める。{outcomes}\n（`なし` の設定には無い）\n")) == 1)
     check("frontmatter の中の語は本文に数えない",
           len(contract('---\nname: s\ndescription: "`work_plan`"\n---\n' + f"{outcomes}\n")) == 1)
 
