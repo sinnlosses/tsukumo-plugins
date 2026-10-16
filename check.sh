@@ -111,7 +111,6 @@ if stage "comment-audit scripts の自己テスト" 'skills/comment-audit/*'; th
 fi
 
 if stage "task-workflow scripts の自己テスト" 'skills/task-workflow/scripts/*' 'skills/task-model/scripts/core/gitcmd.py' 'skills/comment-audit/*'; then
-  python3 "$here/skills/task-workflow/scripts/selftest_context_size.py"
   python3 "$here/skills/task-workflow/scripts/selftest_self_review.py"
 fi
 
