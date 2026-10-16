@@ -203,8 +203,20 @@ def select(tests: tuple, only: list[str]) -> tuple:
     return chosen
 
 
+def worker_count(test_count: int, env: dict[str, str] | None = None, cpus: int | None = None) -> int:
+    env = os.environ if env is None else env
+    cpus = cpus or os.cpu_count() or 2
+    try:
+        wanted = int(env.get("TW_SELFTEST_WORKERS", ""))
+    except ValueError:
+        wanted = 0
+    if wanted < 1:
+        wanted = max(1, -(-cpus * 3 // 10))
+    return min(test_count, wanted)
+
+
 def run_parallel(tests: tuple) -> list[list[str]]:
-    with ThreadPoolExecutor(max_workers=min(len(tests), max(1, (os.cpu_count() or 2) // 2))) as pool:
+    with ThreadPoolExecutor(max_workers=worker_count(len(tests))) as pool:
         return list(pool.map(run_one, tests))
 
 
