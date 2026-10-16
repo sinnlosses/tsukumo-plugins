@@ -1,7 +1,8 @@
 """`tw commit-guard`: Claude Code の PreToolUse hook の入力（stdin の JSON）を読み、次の2つの実効の作業先に、
 `done` 前の着手の控え（`ledger.open_claims`）があれば拒む。
 コミットを作る git のサブコマンドと、シェルでのファイルの書き換え（`sed -i`・`perl -i`・`>`・`>>`・`tee`・
-python の書き込み）と、設定の `verify`・`verify_before_ship` と同じコマンドの直打ち。判定しきれない書き方は通す。
+python の書き込み）と、設定の `verify`・`verify_before_ship` と同じコマンドの直打ちと、`ref-guard` を外す変数を含むコマンド。
+判定しきれない書き方は通す。コミットは、作業先で `ref-guard` が効いていれば拒まず git の hook に任せる。
 書き換えと直打ちは、入力の `cwd` の控えのタスクの `### 作業先` の作業ツリー（`tw_handback.task_trees`）にも控えがあるとみなして拒む。
 コミットはそこでは拒まない。
 
@@ -21,6 +22,7 @@ import gitcmd
 import layout
 import gitinfo
 import ledger
+import ref_guard
 
 COMMIT_SUBCOMMANDS = ("commit", "merge", "pull", "cherry-pick", "revert", "am", "rebase")
 
@@ -66,9 +68,17 @@ def decide(payload: dict) -> str | None:
     start = payload.get("cwd")
     if not isinstance(command, str) or not isinstance(start, str):
         return None
+    if gitcmd.REF_GUARD_ALLOW_ENV in command:
+        for where in dict.fromkeys([start, *(s.where for s in _simple_commands(command, start) if s.where)]):
+            claims = _open_claims_at(where)
+            if claims:
+                return (
+                    f"着手の印（{','.join(claims)}）が立っていて tw done の前の作業ツリー（{where}）では "
+                    f"ref-guard を外す変数 {gitcmd.REF_GUARD_ALLOW_ENV} を付けない。コミットせず、変更は作業ツリーに残したまま報告で返す"
+                )
     for where, subcommand in _git_commits(command, start):
         claims = _open_claims_at(where)
-        if claims:
+        if claims and not ref_guard.active(where):
             return (
                 f"着手の印（{','.join(claims)}）が立っていて tw done の前の作業ツリー（{where}）では "
                 f"git {subcommand} を拒む。コミットせず、変更は作業ツリーに残したまま報告で返す"

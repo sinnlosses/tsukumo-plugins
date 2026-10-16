@@ -3,7 +3,7 @@
 # 宣言が無いと Python 3.9 が、長い日本語の行の読み込み位置によって「Non-UTF-8 code」で落ちる。
 """Beads に置いたタスクの運用を操作する入口コマンド。
 
-使い方: tw <status|new|claim|release|done|ship|finish|land|config|config-doctor|show|find|edit|plan-check|plan-phases|verify|verify-check|accept|pause|step|lap|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|ask-guard> ...
+使い方: tw <status|new|claim|release|done|ship|finish|land|config|config-doctor|show|find|edit|plan-check|plan-phases|verify|verify-check|accept|pause|step|lap|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|ask-guard|ref-guard> ...
 
 `install.sh` が PATH 上に張る `tw` と、plugin の `bin/tw` から呼ぶ。`commit-guard`・`handback-guard` の
 `--agent-scoped` は plugin の `hooks/hooks.json` が付け、入力に `agent_id` があるとき（サブエージェント）だけ関門を掛ける。
@@ -31,6 +31,7 @@ import handback_guard
 import layout
 import gitinfo
 import metrics
+import ref_guard
 import taskfile
 import tracker
 import tw_accept
@@ -249,6 +250,12 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
 """
         + HOOK_NOTE,
     ),
+    "ref-guard": (
+        "git の reference-transaction hook から呼ばれ、着手中の作業ツリーで主ブランチに無いコミットへ枝を動かす更新を拒む。手で打たない。",
+        r"""`tw claim` が共有の git dir の `hooks/reference-transaction` に置く薄い殻から、状態 `prepared` のときだけ呼ばれる（`core.hooksPath` があるときと、印の無い利用者の hook があるときは置かない）。stdin の `<old> <new> <ref>` の行のうち、`ref` が `HEAD` か今の枝で、`new` が `old` と違うコミットで、主ブランチの祖先でないものがあり、git を打った作業ツリーに着手の控えがあれば拒む。呼び手（主のセッションかサブエージェントか）もシェルの書き方（`sh -c`・スクリプト越し・`--no-verify`）も問わない。`tw` 自身の git は環境変数 `TW_REF_GUARD_ALLOW` を付けるので拒まない。控えの無い作業ツリー・ほかの枝の更新・判定できないとき（git や設定が読めない）は通す
+
+出力: 拒むときだけ標準エラーに理由の1行（「コミットせず、変更は作業ツリーに残したまま報告で返す」）を出して終了コード1（git の hook の取り決め。TSV の取り決めと、Claude Code の hook の JSON の取り決めの例外）。通すときは何も出さず0""",
+    ),
 }
 
 
@@ -359,6 +366,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_step.add_argument("step")
     sub.add_parser("handback-guard").add_argument("--agent-scoped", dest="agent_scoped", action="store_true")
     sub.add_parser("ask-guard")
+    sub.add_parser("ref-guard").add_argument("state")
 
     p_edit = sub.add_parser("edit")
     p_edit.add_argument("task_id")
@@ -417,6 +425,8 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "ask-guard":
         ask_guard.run(sys.stdin, sys.stdout)
         return
+    if args.command == "ref-guard":
+        raise SystemExit(ref_guard.run(args.state, sys.stdin, sys.stderr))
 
     try:
         toplevel = gitinfo.git_toplevel()

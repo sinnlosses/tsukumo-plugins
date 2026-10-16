@@ -9,6 +9,7 @@ import beads
 import layout
 import gitinfo
 import ledger
+import ref_guard
 import taskfile
 import tracker
 import tw_base
@@ -79,6 +80,7 @@ def cmd_claim(toplevel: str, task_id: str) -> None:
     if claimed is not None:
         beads.write_claim_snapshot(toplevel, claimed)
     ledger.mark_open_claim(shown, cwd=toplevel)
+    _install_ref_guard(toplevel)
     tw_base.record(toplevel, "claim", shown, issue)
     _claim_branch_out(
         toplevel, shown, branch_setting, base, branch_after_sync, f"beads:{bd_id}",
@@ -217,6 +219,16 @@ def _claim_branch_out(
         print(f"CLAIMED\t{task_id}\t{where}\tbranch={feature_branch}{direct}")
     else:
         print(f"CLAIMED\t{task_id}\t{where}\tbranch={branch_after_sync}{direct}")
+
+
+def _install_ref_guard(toplevel: str) -> None:
+    """置けなければ標準エラーに1行出すだけで、`claim` の出力と終了コードは変えない。"""
+    try:
+        reason = ref_guard.install(toplevel)
+    except (OSError, gitinfo.GitCommandError) as e:
+        reason = f"hook を置けない（{type(e).__name__}: {e}）"
+    if reason is not None:
+        print(f"ref-guard: {reason}（コミットの拒否は commit-guard の文字列の判定だけになる）", file=sys.stderr)
 
 
 def _print_taken(shown: str, issue: beads.Issue) -> None:

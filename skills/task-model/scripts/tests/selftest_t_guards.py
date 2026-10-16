@@ -15,7 +15,7 @@ import gitinfo  # noqa: E402
 import ledger  # noqa: E402
 import stamps  # noqa: E402
 import taskfile  # noqa: E402
-from selftest_fixtures import BODY, TASK_PY, commit_task, flow_rows, hook_env, make_repo, metadata, readonly_git, run_guard, run_handback_guard, run_task, snapshot  # noqa: E402
+from selftest_fixtures import BODY, TASK_PY, commit_task, disarm_ref_guard, flow_rows, hook_env, make_repo, metadata, readonly_git, run_guard, run_handback_guard, run_task, snapshot  # noqa: E402
 
 
 NO_DELEGATE = os.path.join(HERE, "..", "..", "..", "..", "agents", "no-delegate.md")
@@ -31,11 +31,12 @@ def _hook_command(subcommand: str) -> str:
 
 @weight(9)
 def test_commit_guard() -> None:
-    say("task.py commit-guard: 印が立って done 前の作業ツリーのコミットを拒む")
+    say("task.py commit-guard: ref-guard が効かない作業ツリーでは、印が立って done 前のコミットを拒む")
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, wt2 = make_repo(tmp)
         commit_task(main_path, taskfile.Task("T-100", "拒む", "todo", "sonnet", "Y", (), BODY))
         commit_task(main_path, taskfile.Task("T-101", "release で外す", "todo", "sonnet", "Y", (), BODY))
+        disarm_ref_guard(main_path)
 
         check("claim の前は通る", run_guard(tmp, wt1, "git commit -m x") is None)
         run_task(wt1, "claim", "T-100")
@@ -154,6 +155,7 @@ def test_commit_guard_shell_edit() -> None:
     say("task.py commit-guard: 印が立って done 前の作業ツリーで、シェルからのファイルの書き換えを拒む")
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, wt2 = make_repo(tmp)
+        disarm_ref_guard(main_path)
         commit_task(main_path, taskfile.Task("T-100", "拒む", "todo", "sonnet", "Y", (), BODY))
         run_task(wt1, "claim", "T-100")
         write(os.path.join(wt1, ".gitignore"), "*.log\n")
@@ -379,6 +381,7 @@ def test_agent_scoped_guard() -> None:
     say("task.py commit-guard・handback-guard --agent-scoped: 名前を問わずサブエージェント（agent_id）に関門を掛ける")
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, _wt2 = make_repo(tmp, verify="`true`")
+        disarm_ref_guard(main_path)
         commit_task(main_path, taskfile.Task("T-100", "拒む", "todo", "sonnet", "Y", (), BODY))
         run_task(wt1, "claim", "T-100")
         write(os.path.join(wt1, "work.txt"), "x\n")
@@ -995,6 +998,7 @@ def test_worktree_state_dir() -> None:
     say("stamps.py .tw/local/: 作業ツリーごとの控えとログを .tw/local/ に置き、旧い置き場の控えも読んで移す")
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, wt2 = make_repo(tmp, verify="`true`")
+        disarm_ref_guard(main_path)
         commit_task(main_path, taskfile.Task("T-100", "新しい置き場", "todo", "sonnet", "Y", (), BODY))
         commit_task(main_path, taskfile.Task("T-101", "古い置き場", "todo", "sonnet", "Y", (), BODY))
 
