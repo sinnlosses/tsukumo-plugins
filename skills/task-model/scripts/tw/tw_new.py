@@ -30,7 +30,7 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
         print("usage: --draft は --hold・--direct と一緒に使えない", file=sys.stderr)
         raise SystemExit(2)
     body = tw_base.read_body(args.body_file)
-    error = taskfile.validate_draft_body(body) if args.draft else taskfile.validate_new_body(body, args.hold)
+    error = taskfile.validate_draft_body(body) if args.draft else taskfile.validate_new_body(body, args.hold, args.difficulty)
     if error is not None:
         print(f"usage: {error}", file=sys.stderr)
         raise SystemExit(2)
@@ -113,7 +113,7 @@ def cmd_adopt(toplevel: str, args: argparse.Namespace) -> None:
     """振り分け前の課題（トラッカーから取り込んだものなど）に番号・difficulty・loopable を付ける。"""
     old = beads.to_bd_id(args.bd_id)
     body = tw_base.read_body(args.body_file)
-    error = taskfile.validate_new_body(body, hold=False)
+    error = taskfile.validate_new_body(body, hold=False, difficulty=args.difficulty)
     if error is not None:
         print(f"usage: {error}", file=sys.stderr)
         raise SystemExit(2)
