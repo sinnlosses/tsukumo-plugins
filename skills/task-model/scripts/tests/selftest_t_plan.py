@@ -772,11 +772,11 @@ def test_plan_coverage() -> None:
         r = run_task(main_path, "edit", old_style, "--body-file", "-", stdin=plan("1", "3"))
         check("欄の無い計画へ欄を足して抜ければ edit が拒む", r.returncode == 2, r.stdout + r.stderr)
 
-        added = plan("1, 2", "3").replace(criteria, criteria + "\n4. 新しい")
+        added = plan("1, 2", "なし", "3").replace(criteria, criteria + "\n4. 新しい")
         r = run_task(main_path, "edit", covered, "--change-frame", "--body-file", "-", stdin=added)
         check("完了条件の行を足して引かれない行ができれば、やることが同じでも edit が拒む",
               r.returncode == 2 and "4 行目" in r.stderr and "4. 新しい" not in shown(main_path, covered), r.stdout + r.stderr)
-        removed = plan("1, 2", "3").replace(criteria, "1. 通る\n2. 動く")
+        removed = plan("1, 2", "なし", "3").replace(criteria, "1. 通る\n2. 動く")
         r = run_task(main_path, "edit", covered, "--change-frame", "--body-file", "-", stdin=removed)
         check("完了条件の行を減らして段が無い番号を指せば、やることが同じでも edit が拒む",
               r.returncode == 2 and "3 は完了条件に無い行" in r.stderr, r.stdout + r.stderr)
