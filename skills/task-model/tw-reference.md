@@ -9,15 +9,16 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | サブコマンド | すること | 主な出力 |
 | --- | --- | --- |
 | `status [--all] [--check]` | 一覧と判定を読むだけで見るとき（`--check` は課題の形の判定） | 行 `id/status/…`、`---` の後に `counts`・`ready`・`todo_loopable`・`stale`・`invalid`・`triage`・`jira_close`・`retrospect_due`。`--check` は `OK`・`INVALID` |
-| `new --summary … --difficulty … --loopable Y\|N [--deps …] [--hold\|--draft] [--direct] --body-file <path\|->` | タスクやドラフトを登録するとき | `CREATED`・`LOCKED` |
+| `new --summary … --difficulty … --loopable Y\|N [--deps …] [--hold\|--draft] [--direct] [--kind <種類>] --body-file <path\|->` | タスクやドラフトを登録するとき | `CREATED`・`LOCKED` |
 | `claim T-xxx` | 作業を始めるとき（着手の印を立てる） | `CLAIMED`・`TAKEN`・`NOT_READY`・`DIRTY`・`UNSHIPPED`・`GIT_READ_ONLY` |
 | `release T-xxx [--force]` | 着手の印を外すとき | `RELEASED`・`NOT_CLAIMED`・`NOT_OWNER` |
 | `done T-xxx [--dropped] --result-file <path\|->` | 結果を書いて作業を閉じるとき（コミットも送りもしない）。ドラフトの却下にも使う | `DONE`（`COMMITS_SINCE_CLAIM` が続くことがある）・`NOT_OWNER`・`NOT_READY`・`INVALID` |
 | `ship` | コミットを主ブランチへ送るとき（rebase・検証・ff-only・印を閉じる・トラッカーへ送る） | `SHIPPED`・`NOTHING`（`NOT_CLOSED`・`TRACKER`・`BACKUP`・`SUBMODULE_NOT_SYNCED` が続くことがある）・`MAIN_DIRTY`・`CONFLICT`・`VERIFY_FAILED`・`RACE`・`GIT_READ_ONLY` |
 | `land <枝>` | 作業先が別のリポジトリのタスクの受け入れで、その枝を主ブランチへ ff で合流し、作業ツリーと枝を消すとき | `LANDED`（`SUBMODULE_NOT_SYNCED`・`REMOVED`・`DELETED` が続く）・`NOT_REMOVED`・`NOT_LANDED`・`GIT_READ_ONLY` |
 | `show T-xxx` | タスクを読むだけで見るとき | 本文。無ければ `NOT_READY` |
-| `edit T-xxx [--body-file <path\|->] [--section <節名>]（組は繰り返せる） [--after-work] [--change-frame] [--summary …] [--difficulty …] [--loopable Y\|N] [--status todo\|hold] [--add-deps …] [--remove-deps …] [--direct Y\|N]` | 本文・属性・依存を直すとき（`--section` で節だけ。`--section`・`--body-file` の組を繰り返すと複数の節が1回で書け、反映も1回。ドラフトを `todo` に進めるのも `--status`） | `EDITED`（`PLAN_AFTER_WORK`・`DIRECT_OFF` が続くことがある）・`NOT_READY`・`WORK_BEFORE_PLAN`・`FRAME_CHANGED` |
-| `adopt <ID> --difficulty … --loopable … [--summary …] [--direct] --body-file …` | 振り分け前の課題をタスクにするとき | `ADOPTED` |
+| `find [<語>…] [--kind <種類>]` | ID の無い頼み文の語と種類で `READY` を1件に絞るとき（読むだけ。当て方は WORKFLOW.md「kind（種類）」） | `FOUND`・`MANY`（`CANDIDATE`・`MORE` が続く）・`NONE`（どれも終了コード0） |
+| `edit T-xxx [--body-file <path\|->] [--section <節名>]（組は繰り返せる） [--after-work] [--change-frame] [--summary …] [--difficulty …] [--loopable Y\|N] [--status todo\|hold] [--add-deps …] [--remove-deps …] [--direct Y\|N] [--kind <種類>\|-]` | 本文・属性・依存を直すとき（`--section` で節だけ。`--section`・`--body-file` の組を繰り返すと複数の節が1回で書け、反映も1回。ドラフトを `todo` に進めるのも `--status`） | `EDITED`（`PLAN_AFTER_WORK`・`DIRECT_OFF` が続くことがある）・`NOT_READY`・`WORK_BEFORE_PLAN`・`FRAME_CHANGED` |
+| `adopt <ID> --difficulty … --loopable … [--summary …] [--direct] [--kind <種類>] --body-file …` | 振り分け前の課題をタスクにするとき | `ADOPTED` |
 | `sync` | トラッカーと同期するとき | `TRACKER\tOK\|FAILED`・`NOTHING`・`BUSY`（終了コード5） |
 | `backup` | Beads のバックアップを取るとき | `BACKUP\tOK\|FAILED` |
 | `jira-closed T-xxx…` | `jira:close` を外すとき | `CLEARED` |

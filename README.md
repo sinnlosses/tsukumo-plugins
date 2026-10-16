@@ -41,7 +41,7 @@ hook の掛かり方と、やむを得ず plugin と併用したときの注意�
 ## `.git` が読み取り専用の sandbox で打つとき
 
 Codex のように、書けるのが作業ツリーと一時ディレクトリだけの環境:
-`status`・`show`・`edit`・`done`・`plan-check`・`verify`（取り込みが要らないとき）・`verify-check`・`pause`・`step`・`metrics` と、
+`status`・`show`・`find`・`edit`・`done`・`plan-check`・`verify`（取り込みが要らないとき）・`verify-check`・`pause`・`step`・`metrics` と、
 追い付きも枝の切り出しも要らない `claim`（`branch = "切らない"` で、主ブランチが `HEAD` の祖先）は通る。作業ツリーごとの控えは
 作業ツリーの根の `.tw/local/` に、中身の鍵の object は一時ディレクトリに書くので、`.git` には書かない。git に書くコマンドは
 `GIT_READ_ONLY`（終了コード11）で止まるので、sandbox の外で同じコマンドを打ち直す。Claude Code なら `settings.json` に

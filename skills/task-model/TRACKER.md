@@ -31,6 +31,7 @@ GitHub で本文を直したあとの取り込みで `open` に戻る。`deferre
 | `done`・`dropped` | `bd close`（`dropped` は label `cancelled` を足す。独自の状態 `cancelled` は依存を解決しないので使わない） |
 | `difficulty`・`loopable` | metadata `difficulty`・`loopable`（GitHub には載らず、取り込みで消えたら取り込み前の値を戻す。label `difficulty:`・`loopable:` は読まない） |
 | 委譲しない近道の印 | label `direct:Y`（印が無ければ label を置かない。`direct:` の label が `Y` 以外か2つ以上なら INVALID） |
+| 種類（WORKFLOW.md「kind（種類）」） | label `kind:<種類>`（種類が無ければ label を置かない。`kind:` の label が語彙の外か2つ以上なら INVALID） |
 | `dependencies` | `blocks` の依存（`bd create --deps`。後から変えるのは `tw edit --add-deps`・`--remove-deps` が打つ `bd dep add`・`bd dep remove`） |
 | `summary` | `title` |
 | `## 完了条件` | `acceptance_criteria` |
