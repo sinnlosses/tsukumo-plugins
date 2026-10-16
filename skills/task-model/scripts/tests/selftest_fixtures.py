@@ -130,6 +130,17 @@ def body_file(dirpath: str, name: str = "body.md") -> str:
     return write(os.path.join(dirpath, name), PLANNED_BODY)
 
 
+USER_REF_HOOK = "#!/bin/sh\n# 利用者の hook\nexit 0\n"
+
+
+def disarm_ref_guard(main_path: str) -> str:
+    """印の無い利用者の `reference-transaction` を置き、`tw claim` に `ref-guard` を置かせない。置いたパスを返す。"""
+    path = os.path.join(gitinfo.git_common_dir(main_path), "hooks", "reference-transaction")
+    write(path, USER_REF_HOOK)
+    os.chmod(path, 0o755)
+    return path
+
+
 def commit_task(main_path: str, task: taskfile.Task) -> None:
     """`tw new` を通さずに、`task` の ID・状態・label・本文のまま Beads の課題を作る（コミットしない）。"""
     bd_id = beads.to_bd_id(task.id)

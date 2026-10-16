@@ -51,7 +51,8 @@
 | `.tw/.gitignore` | 中身 `local/`。`.tw/local/` だけを git の外に置く。`init.py` が書き（無いときと、旧い形のとき）、`tw` は書かない。コミットする |
 | `docs/history/retrospect.md` | 横断の振り返りの記録（1回ごとに先頭へ `## YYYY-MM-DD（開始日〜終了日）` の見出しを足す。書くのは週ごとの振り返り）。`tw status` が見出しの日付から `retrospect_due` を決める |
 | 台帳 `$(git rev-parse --path-format=absolute --git-common-dir)/task-workflow/`（環境変数 `TW_STATE_DIR` があれば `$TW_STATE_DIR/<本体の作業ツリーの名前>-<共有の git dir の realpath の sha1 の先頭12桁>/`） | 着手から送り出しまでの出来事（`flow/<YYYY-MM>.jsonl`。1行1出来事。`tw metrics` が読む。会話・コマンド・パスは入れない。消えない）。コミットしない。全作業ツリーで1つ。`TW_STATE_DIR` を付けると、そのあとの記録はその下に書き、共有の git dir の台帳は読まない（写さない）。書けなければ標準エラーに1行出すだけで、元のサブコマンドの出力と終了コードは変わらない |
-| 作業ツリーの根の `.tw/local/task-open-claims/T-xxx` | `claim` から `done`・`release`・`ship` までの控え（中身は空）。`tw commit-guard`・`tw handback-guard`・`tw ask-guard` が読む。コミットしない。作業ツリーごと |
+| 作業ツリーの根の `.tw/local/task-open-claims/T-xxx` | `claim` から `done`・`release`・`ship` までの控え（中身は空）。`tw commit-guard`・`tw handback-guard`・`tw ask-guard`・`tw ref-guard` が読む。コミットしない。作業ツリーごと |
+| 共有の git dir の `hooks/reference-transaction`（`git rev-parse --git-path hooks` の下。`core.hooksPath` があれば置かない） | `tw ref-guard` を呼ぶ薄い殻（2行目が印 `# tw ref-guard`）。`claim` が置き、`done`・`ship` では消さない。控えの無い作業ツリーでは何もしない。印の無い利用者の hook があれば置かない。消してよい（次の `claim` が置き直す）。全作業ツリーで1つ |
 | 作業ツリーの根の `.tw/local/` | `tw verify`・`tw pause`・`tw step` を打った時点の中身の鍵、`ship` の検証の借り、検証のログ、書き換える道具を使ったサブエージェントの印（`task-agent-writers/<agent_id>`。着手の控えが無くなると消える）。コミットしない。作業ツリーごと。初めて書くときに `tw` が作り、中身 `*` の `.tw/local/.gitignore` を置く |
 
 **プロジェクトごとに変わる値は `.tw/config.toml` に置く**（コミットする。`AGENTS.md`・`CLAUDE.md` には
@@ -246,7 +247,7 @@ front matter（`id`・`summary`・`status`・`difficulty`・`loopable`・近道�
   で閉じる
 - **依存の解決**: `done`・`dropped`（`ship` で `bd close` したもの）と、Beads に無い ID（旧アーカイブ由来）は解決済み。
   `todo`・`hold` は未解決。後から変えるのは `tw edit T-xxx --add-deps T-yyy` と `--remove-deps`（本文の `## 注意` に書くだけでは Beads の依存に入らず、BLOCKED に出ない）
-- **委譲先を hook が拒む**: 印を立ててから `done` を打つまで委譲先（サブエージェント。plugin で入れたときは名前を問わず、リンクだけで入れたときは frontmatter に hook を持つ実装役のエージェント定義）に掛かる関門（拒むもの・掛かる口）は `tw-reference.md`「hook の関門」節。
+- **委譲先を hook が拒む**: 印を立ててから `done` を打つまで委譲先（サブエージェント。plugin で入れたときは名前を問わず、リンクだけで入れたときは frontmatter に hook を持つ実装役のエージェント定義）に掛かる関門（拒むもの・掛かる口）は `tw-reference.md`「hook の関門」節。コミットは git の hook（`ref-guard`）でも拒み、こちらは呼び手を問わないので、控えがあるうちはメインも `tw` を通さずにコミットしない（`tw finish` で `done` のあとにコミットする）。
   委譲先は `Edit`・`Write` で書き、検証は `tw verify` で打ち、最後でない段は `tw step T-xxx <n>`、止める返却は `tw pause` を返す直前に打つ
 - **取り残し**（前提: 1つの作業ツリーでは同時に1セッション）:
 

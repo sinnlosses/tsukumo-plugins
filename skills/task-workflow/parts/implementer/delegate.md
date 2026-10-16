@@ -35,8 +35,8 @@
    末尾一致が複数当たったら選ばずに止め、行を添えて人に預け `tw release T-xxx` する。
    一覧に無ければ、まだ入れていない（人がやること）とみなして、これまでどおり `general-purpose` を使う。hook の関門は、リンクで入れたときは
    `no-delegate` の定義が、plugin で入れたときは `hooks/hooks.json` が名前を問わずサブエージェントに掛ける（正典の `tw-reference.md`「hook の関門」節）。一覧に無くて `general-purpose` に
-   落ちたときは関門が掛からず、手順6の `COMMITS_SINCE_CLAIM` と手順5bの `plan-check`・手順6の
-   `verify-check` だけが頼りになる。
+   落ちたときは Claude Code の hook の関門が掛からず（コミットだけは git の hook `ref-guard` が呼び手を問わず拒む）、
+   手順6の `COMMITS_SINCE_CLAIM` と手順5bの `plan-check`・手順6の `verify-check` だけが頼りになる。
    決まりの本文は貼らず、次を渡す（委譲先は `${CLAUDE_SKILL_DIR}` を持たないので、パスは解決した絶対パスにする）:
    - タスクID と「まず `tw show T-xxx` で読む」
    - `${CLAUDE_SKILL_DIR}/parts/implementer/implementer-brief.md` を解決した絶対パスと「最初にそれを読んで従う」
