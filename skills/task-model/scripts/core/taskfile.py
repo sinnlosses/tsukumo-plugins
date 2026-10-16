@@ -105,7 +105,7 @@ def validate_new_body(body: str, hold: bool, difficulty: str) -> str | None:
         return error
     if not has_plan(body):
         return None if hold else f"{PLAN_HEADING} に計画を書く（空にできるのは --hold だけ）"
-    return plan_steps(body)[1] or plan_files(body)[1] or plan_work_repo(body)[1]
+    return plan_steps(body)[1] or plan_files(body)[1] or plan_work_repo(body)[1] or coverage_refusal(body)
 
 
 def validate_draft_body(body: str) -> str | None:
@@ -114,14 +114,14 @@ def validate_draft_body(body: str) -> str | None:
     error = validate_body(body, draft=True) or viewpoint_refusal(body)
     if error is not None or not has_plan(body):
         return error
-    return plan_steps(body)[1] or plan_files(body)[1] or plan_work_repo(body)[1]
+    return plan_steps(body)[1] or plan_files(body)[1] or plan_work_repo(body)[1] or coverage_refusal(body)
 
 
 def validate_edited_body(
     old_body: str, new_body: str, *, draft: bool, old_difficulty: str, difficulty: str
 ) -> str | None:
     """`task edit` の本文検査。枠の検査（`draft` はドラフトの緩い枠）に加え、変えた節だけを見る:
-    `## やること` を変えて中身があれば段の形、opus に上げたか論点を変えたなら論点、`## 目的・背景` を変えたなら `- 観点:` の語彙。"""
+    `## やること` を変えて中身があれば段の形と完了条件の覆い、opus に上げたか論点を変えたなら論点、`## 目的・背景` を変えたなら `- 観点:` の語彙。"""
     error = validate_body(new_body, draft)
     if error is not None:
         return error
@@ -132,7 +132,7 @@ def validate_edited_body(
         error = viewpoint_refusal(new_body)
     if error is not None or not has_plan(new_body) or not plan_changed(old_body, new_body):
         return error
-    return plan_steps(new_body)[1]
+    return plan_steps(new_body)[1] or coverage_refusal(new_body)
 
 
 def opus_refusal(difficulty: str, body: str) -> str | None:
@@ -166,11 +166,13 @@ def section_changed(old_body: str, new_body: str, heading: str) -> bool:
 
 @dataclass(frozen=True)
 class PlanStep:
-    """`## やること` の段1つ。`after` は前の段の番号（欄が無ければ直前の段）、`files` は触るファイル（欄が無ければ空）。"""
+    """`## やること` の段1つ。`after` は前の段の番号（欄が無ければ直前の段）、`files` は触るファイル（欄が無ければ空）、
+    `covers` は満たす完了条件の行番号（欄が無ければ `None`、`なし` なら空）。"""
 
     name: str
     after: tuple[int, ...]
     files: tuple[str, ...]
+    covers: tuple[int, ...] | None = None
 
 
 def plan_steps(body: str) -> tuple[tuple[str, ...], str | None]:
@@ -218,9 +220,11 @@ def plan_step_specs(body: str) -> tuple[tuple[PlanStep, ...], str | None]:
         after, error = _parse_after(n, fields.get(PLAN_AFTER_FIELD))
         if error is None:
             files, error = _parse_touched(n, fields.get(PLAN_TOUCHED_FIELD))
+        if error is None:
+            covers, error = _parse_covers(n, fields.get(PLAN_COVERS_FIELD))
         if error is not None:
             return (), error
-        specs.append(PlanStep(name, after, files))
+        specs.append(PlanStep(name, after, files, covers))
     for a, b in _unordered_pairs(_joined_after(specs)):
         bare = [n for n in (a, b) if not specs[n - 1].files]
         if bare:
@@ -230,8 +234,55 @@ def plan_step_specs(body: str) -> tuple[tuple[PlanStep, ...], str | None]:
 
 PLAN_AFTER_FIELD = "前の段"
 PLAN_TOUCHED_FIELD = "触るファイル"
+PLAN_COVERS_FIELD = "満たす完了条件"
 _PLAN_STEP_LINE = re.compile(r"^### (\d+)\. (\S.*)$")
-_PLAN_FIELD_LINE = re.compile(rf"^- ({PLAN_AFTER_FIELD}|{PLAN_TOUCHED_FIELD}):\s*(.*)$")
+_PLAN_FIELD_LINE = re.compile(rf"^- ({PLAN_AFTER_FIELD}|{PLAN_TOUCHED_FIELD}|{PLAN_COVERS_FIELD}):\s*(.*)$")
+_CRITERION_ITEM = re.compile(r"^(?:\d+\.|[-*])\s")
+
+
+def _parse_covers(n: int, raw: str | None) -> tuple[tuple[int, ...] | None, str | None]:
+    if raw is None:
+        return None, None
+    if raw.strip() == EMPTY_MARK:
+        return (), None
+    items = [x.strip() for x in raw.split(",")]
+    if not all(x.isdigit() for x in items):
+        return None, f"段 {n} の `- {PLAN_COVERS_FIELD}:` は完了条件の行番号のコンマ区切りか `{EMPTY_MARK}`: {raw.strip()}"
+    return tuple(sorted({int(x) for x in items})), None
+
+
+def criteria_count(body: str) -> int:
+    """`## 完了条件` の行の数。行頭が `1.`・`-`・`*` の項目を数え、項目が1つも無ければ空でない行を数える。"""
+    lines = dict(_frame_sections(body)[1]).get(ACCEPTANCE_HEADING, "").split("\n")
+    items = [line for line in lines if _CRITERION_ITEM.match(line)]
+    return len(items) or len([line for line in lines if line.strip()])
+
+
+def plan_coverage(body: str) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    """`(どの段にも引かれていない完了条件の行番号, 存在しない行番号)`。どちらも小さい順。
+
+    1つでも段が `- 満たす完了条件:` の欄を持つ計画だけを見る。欄が無い旧い計画・段の読めない計画・
+    `## 完了条件` が空の本文は `((), ())`。
+    """
+    specs, error = plan_step_specs(body)
+    rows = criteria_count(body)
+    if error is not None or rows == 0 or all(s.covers is None for s in specs):
+        return (), ()
+    cited = {n for s in specs for n in (s.covers or ())}
+    uncovered = tuple(n for n in range(1, rows + 1) if n not in cited)
+    unknown = tuple(sorted(n for n in cited if not 1 <= n <= rows))
+    return uncovered, unknown
+
+
+def coverage_refusal(body: str) -> str | None:
+    """段の `- 満たす完了条件:` が `## 完了条件` を覆わないとき、その理由。"""
+    uncovered, unknown = plan_coverage(body)
+    parts = []
+    if uncovered:
+        parts.append(f"完了条件の {','.join(map(str, uncovered))} 行目がどの段の `- {PLAN_COVERS_FIELD}:` にも引かれていない")
+    if unknown:
+        parts.append(f"`- {PLAN_COVERS_FIELD}:` の {','.join(map(str, unknown))} は完了条件に無い行")
+    return "。".join(parts) or None
 
 
 def _parse_after(n: int, raw: str | None) -> tuple[tuple[int, ...], str | None]:

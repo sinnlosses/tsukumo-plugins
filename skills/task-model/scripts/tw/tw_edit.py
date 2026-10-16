@@ -144,7 +144,10 @@ def _own_plan(toplevel: str, task_id: str) -> tuple[str, beads.Issue, str, str |
         raise SystemExit(4)
     metadata = issue.raw.get("metadata")
     metadata = metadata if isinstance(metadata, dict) else {}
-    plan_body = f"{taskfile.PLAN_HEADING}\n{issue.raw.get('notes') or ''}\n"
+    plan_body = (
+        f"{taskfile.PLAN_HEADING}\n{issue.raw.get('notes') or ''}\n\n"
+        f"{taskfile.ACCEPTANCE_HEADING}\n{issue.raw.get('acceptance_criteria') or ''}\n"
+    )
     plan_base = metadata.get(beads.PLAN_BASE_KEY) or None
     stale = tw_plan.registered_plan_changes(toplevel, plan_base, metadata.get(beads.PLAN_TIP_KEY) or None, plan_body)
     return shown, issue, plan_body, metadata.get(beads.PLAN_KEY) or None, plan_base, stale
@@ -361,6 +364,10 @@ def _print_plan_check(
         print(f"PLAN_NOT_FIRST\t{shown}\t{'missing' if not has_plan else (mark or 'unrecorded')}")
     if not specs:
         return
+    uncovered, unknown = taskfile.plan_coverage(body)
+    if uncovered or unknown:
+        listed = [str(n) for n in uncovered] + [f"{n}?" for n in unknown]
+        print(f"PLAN_UNCOVERED\t{shown}\t{','.join(listed)}")
     pairs, serial = taskfile.parallel_steps(specs)
     for a, b in pairs:
         print(f"PARALLEL\t{shown}\t{a},{b}")
