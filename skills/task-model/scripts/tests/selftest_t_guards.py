@@ -441,6 +441,23 @@ def test_agent_scoped_guard() -> None:
                 r = subprocess.run(["sh", "-c", hook], input=json.dumps(payload), capture_output=True, text=True, env=env)
                 check(f"hooks.json の {hook} は agent_id={agent_id} で{'拒む' if refused else '通す'}",
                       r.returncode == 0 and (r.stdout != "") == refused, r.stdout + r.stderr)
+        for code, expected_exit in ((1, 1), (78, 0), (127, 0)):
+            fake_root = tempfile.mkdtemp(dir=tmp)
+            os.makedirs(os.path.join(fake_root, "bin"))
+            fake_tw = os.path.join(fake_root, "bin", "tw")
+            write(fake_tw, f"#!/bin/sh\necho boom >&2\nexit {code}\n")
+            os.chmod(fake_tw, 0o755)
+            for hook in all_hooks:
+                guard = "ask-guard" if " ask-guard" in hook else "commit-guard" if "commit-guard" in hook else "handback-guard"
+                r = subprocess.run(["sh", "-c", hook], input="{}", capture_output=True, text=True,
+                                   env={**env, "CLAUDE_PLUGIN_ROOT": fake_root})
+                if code == 1:
+                    ok = (r.returncode == 1 and r.stdout == "" and "boom" in r.stderr
+                          and f"{guard} が終了コード 1 で落ちた" in r.stderr)
+                else:
+                    ok = r.returncode == 0 and r.stdout == "" and "前提が欠けている" in r.stderr
+                check(f"hooks.json の {guard} は tw が終了コード {code} で落ちると終了コード {expected_exit} で理由を出す",
+                      ok, r.stdout + r.stderr)
 
 
 def _send_edit(tmp: str, where: str, agent_id: str) -> None:

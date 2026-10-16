@@ -83,6 +83,7 @@ Bash のコマンド文字列に `git` が出ないコミット（`sh -c`・ス�
 
 **`commit-guard`・`handback-guard`・`ask-guard` は Claude Code の hook の取り決めに従う**: 出力は TSV でなく JSON で、終了コードはいつも0。
 読めない入力も何も出さずに通す。タスク運用を始めていないリポジトリ・git の外でも打てる。
+plugin の `hooks.json` は、`tw` 自体が落ちた（終了コード 78・127 以外の非 0）ときは標準エラーに理由を出して終了コード 1 で返し（作業は止めない）、78・127 は案内して 0 で返す。
 
 #### tools・permissions.deny で置き換えられない理由
 
