@@ -21,8 +21,8 @@ metadata:
 - 呼び出しの引数: タスクの ID 1つ（以下 `T-xxx`）
 - Beads から: `tw show T-xxx` の `## 完了条件`、`tw accept T-xxx` が読む着手の控えと差分の範囲
 - 設定: `tw config` の `parts.acceptor` と検証コマンド
-- 移行中の形: 実装の段の最後の返却（`- 規約:`・friction log・`- ドラフト:` の行）は、Beads に置く欄がまだ無いので、
-  同じ会話で呼んだオーケストレーターの文脈から読む
+- 申し送りから（task-model の WORKFLOW.md「段の申し送り」）: `tw relay T-xxx 実装` の本文（実装の段の `- 規約:`・friction log・`- ドラフト:` の行）。
+  `parts/acceptor/accept.md` が受け入れ役に渡す「委譲先の段ごとの返却の friction log の行」はここから読む。`NONE` なら friction log を書いていない返却として渡す
 
 ## 手順
 
@@ -37,6 +37,8 @@ metadata:
 
 この段はメインで走る。
 
+- 申し送り（`finished`・`skipped` で返す前に必ず書く）: `tw relay T-xxx 受け入れ --body-file -` に、判定の語と、受け入れ役の最後の返却の
+  `- 材料:`・`- 指摘:`・`- 付随:`・`- 目視:`・`- 預けること:` の行（差し戻しの回をまたいだ `- 指摘:` の `規約:` の行も）を渡す。`skipped` は飛ばしたわけの1行を渡す
 - `finished`: 判定が `受け入れ` か `預ける`（`accept.md` の表で手順7へ進むもの）で済んだら、オーケストレーターの「進み具合の帯（`work_plan`）」の表の
   `--through 受け入れ` の行どおりに `work_plan` を呼び、`phaseSummary` に判定のまとめを書く
 - `skipped`: `work_plan` の `skippedPhases` にこの段の名前（帯の段が `tw plan-phases` の並びにあるときだけ。近道の並びには無い）を入れて進める
