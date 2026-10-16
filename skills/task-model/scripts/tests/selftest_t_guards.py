@@ -1328,12 +1328,77 @@ def test_commit_guard_with_ref_guard() -> None:
               reason is not None and "TW_REF_GUARD_ALLOW" in reason and "T-100" in reason, str(reason))
         check("export TW_REF_GUARD_ALLOW も拒む", run_guard(tmp, wt1, "export TW_REF_GUARD_ALLOW; git commit -m x") is not None)
         check("名前を読むだけのコマンドは通す", run_guard(tmp, wt1, "grep -rn TW_REF_GUARD_ALLOW .") is None)
+        for command in (
+            "git -c core.hooksPath=/dev/null commit -m x",
+            "sh -c 'git -c core.hooksPath=/dev/null commit -m x'",
+            "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null sh ./c.sh",
+        ):
+            reason = run_guard(tmp, wt1, command)
+            check(f"core.hooksPath を指し直すコマンドは拒む: {command}",
+                  reason is not None and "core.hooksPath" in reason, str(reason))
+
+
+def _guard_in_env(tmp: str, where: str, command: str, env: dict[str, str]) -> str | None:
+    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": where})
+    r = run_task(tmp, "commit-guard", stdin=payload, env=env)
+    if r.returncode != 0:
+        raise RuntimeError(f"commit-guard が {r.returncode} で終わった: {r.stderr}")
+    return None if r.stdout == "" else json.loads(r.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+def _bin_with(tmp: str, name: str, links: dict[str, str]) -> str:
+    """`links` の `{名前: 実体のパス}` だけを置いたディレクトリ。"""
+    d = os.path.join(tmp, name)
+    os.makedirs(d)
+    for link, target in links.items():
+        os.symlink(target, os.path.join(d, link))
+    return d
+
+
+@weight(5)
+def test_commit_guard_covers_inactive_ref_guard() -> None:
+    say("task.py commit-guard: 控えがあり ref-guard が効かないどの場面でも、commit-guard が git commit を拒む")
+    real_git = shutil.which("git") or "git"
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
+        commit_task(main_path, taskfile.Task("T-100", "効かない場面", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        hook = _ref_hook(main_path)
+        body = _read_bytes(hook).decode()
+        check("効いているあいだは commit-guard は通す", run_guard(tmp, wt1, "git commit -m x") is None)
+
+        old_git = write(os.path.join(tmp, "old-git", "git"),
+                        f'#!/bin/sh\n[ "$1" = --version ] && {{ echo "git version 2.27.0"; exit 0; }}\nexec {real_git} "$@"\n')
+        os.chmod(old_git, 0o755)
+        no_python = _bin_with(tmp, "no-python", {"git": real_git})
+        for label, env in (
+            ("git が 2.28 より古い", {"PATH": os.path.dirname(old_git) + os.pathsep + os.environ.get("PATH", "")}),
+            ("python3 が PATH に無い", {"PATH": no_python}),
+            ("環境に TW_REF_GUARD_ALLOW がある", {"TW_REF_GUARD_ALLOW": "1"}),
+        ):
+            check(f"{label}: commit-guard が git commit を拒む", _guard_in_env(tmp, wt1, "git commit -m x", env) is not None)
+
+        for label, prepare in (
+            ("殻の指す task.py が無い", lambda: write(hook, ref_guard.hook_body("/nonexistent/task.py"))),
+            ("殻が実行できない", lambda: os.chmod(hook, 0o644)),
+            ("殻が消えた", lambda: os.remove(hook)),
+            ("利用者の hook に置き換わった", lambda: disarm_ref_guard(main_path)),
+            ("core.hooksPath が設定された", lambda: git(main_path, "config", "core.hooksPath", os.path.join(tmp, "elsewhere"))),
+        ):
+            prepare()
+            check(f"{label}: ref_guard.active は偽", not ref_guard.active(wt1), str(ref_guard.inactive_reason(wt1)))
+            check(f"{label}: commit-guard が git commit を拒む", run_guard(tmp, wt1, "git commit -m x") is not None)
+            _raw_git(main_path, "config", "--unset-all", "core.hooksPath")
+            write(hook, body)
+            os.chmod(hook, 0o755)
+        check("殻を戻せば commit-guard はまた hook に任せる", run_guard(tmp, wt1, "git commit -m x") is None)
 
 
 TESTS = (
     test_ref_guard_blocks_commits,
     test_ref_guard_install_states,
     test_commit_guard_with_ref_guard,
+    test_commit_guard_covers_inactive_ref_guard,
     test_handback_guard,
     test_handback_guard_other_repo,
     test_step_stamps_other_repo,
