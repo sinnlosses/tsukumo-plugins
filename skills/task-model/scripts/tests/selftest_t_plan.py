@@ -725,7 +725,84 @@ def test_opus_question_and_viewpoint() -> None:
               and "\nstatus: todo\n" in shown(main_path, draft), r.stdout + r.stderr)
 
 
+@weight(4)
+def test_plan_coverage() -> None:
+    say("task.py new・adopt・edit・plan-check: 段の `- 満たす完了条件:` が `## 完了条件` を覆わない計画を終了コード2で拒み、plan-check が PLAN_UNCOVERED で知らせる")
+    criteria = "1. 通る\n2. 動く\n3. 文書がある"
+    field = taskfile.PLAN_COVERS_FIELD
+
+    def plan(*covers: str | None) -> str:
+        steps = [(f"段{n}", "" if c is None else f"- {field}: {c}") for n, c in enumerate(covers, 1)]
+        return task_body(steps, ["shared.txt"], acceptance=criteria)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
+
+        def new(body: str, *extra: str) -> subprocess.CompletedProcess:
+            return run_task(main_path, "new", "--summary", "覆い", "--difficulty", "sonnet", "--loopable", "Y", *extra,
+                            "--body-file", "-", stdin=body)
+
+        def created(r: subprocess.CompletedProcess) -> str:
+            return r.stdout.split("\t")[1] if r.stdout.startswith("CREATED\t") else ""
+
+        before = issue_count(main_path)
+        r = new(plan("1, 3", "3"))
+        check("引かれていない完了条件の行があれば new は終了コード2で作らず、行番号を言う",
+              r.returncode == 2 and "2 行目" in r.stderr and issue_count(main_path) == before, r.stdout + r.stderr)
+        r = new(plan("1, 2", "3, 5"))
+        check("完了条件に無い行を引けば new は終了コード2で作らず、その番号を言う",
+              r.returncode == 2 and "5 は完了条件に無い行" in r.stderr and issue_count(main_path) == before, r.stdout + r.stderr)
+        r = new(plan("1, x", "2, 3"))
+        check("番号でない欄は new が終了コード2で拒む", r.returncode == 2 and field in r.stderr, r.stdout + r.stderr)
+        r = new(plan("1, 2", "なし", "3"))
+        covered = created(r)
+        check("全行が引かれていれば通る（欄が `なし` の段があってもよい）", covered != "", r.stdout + r.stderr)
+        old_style = created(new(plan(None, None)))
+        check("欄が1つも無い旧い計画は従来どおり通る", old_style != "", "")
+        r = new(plan("99", None).replace(criteria, ""), "--draft")
+        check("完了条件が空のドラフトは欄があっても検査しない", r.returncode == 0 and created(r) != ""
+              and "\nstatus: draft\n" in shown(main_path, created(r)), r.stdout + r.stderr)
+
+        uncovered_plan = plan("1", "3").split(f"{taskfile.PLAN_HEADING}\n", 1)[1].split(f"\n{taskfile.ACCEPTANCE_HEADING}\n", 1)[0]
+        r = run_task(main_path, "edit", covered, "--section", "やること", "--body-file", "-", stdin=uncovered_plan)
+        check("edit は覆わない計画を終了コード2で拒み、書き換えない", r.returncode == 2 and "2 行目" in r.stderr
+              and "段1" in shown(main_path, covered) and f"- {field}: 1\n" not in shown(main_path, covered), r.stdout + r.stderr)
+        r = run_task(main_path, "edit", covered, "--body-file", "-", stdin=plan("1", "3"))
+        check("本文ごとの edit も同じ", r.returncode == 2 and "2 行目" in r.stderr, r.stdout + r.stderr)
+        r = run_task(main_path, "edit", old_style, "--body-file", "-", stdin=plan("1", "3"))
+        check("欄の無い計画へ欄を足して抜ければ edit が拒む", r.returncode == 2, r.stdout + r.stderr)
+
+        r = subprocess.run(["bd", "create", "--id", "t-raw", "--title", "取り込み", "--silent"], cwd=main_path,
+                           capture_output=True, text=True)
+        r = run_task(main_path, "adopt", "T-RAW", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", "-",
+                     stdin=plan("1", "3"))
+        check("adopt も覆わない計画を終了コード2で拒む", r.returncode == 2 and "2 行目" in r.stderr, r.stdout + r.stderr)
+        r = run_task(main_path, "adopt", "T-RAW", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", "-",
+                     stdin=plan("1, 2", "3"))
+        check("adopt は覆う計画なら通る", r.returncode == 0 and r.stdout.startswith("ADOPTED\t"), r.stdout + r.stderr)
+
+        bypass = taskfile.Task("T-200", "覆わない", "todo", "sonnet", "Y", (), plan("1", "3, 7"))
+        commit_task(main_path, bypass)
+        commit_task(main_path, taskfile.Task("T-201", "覆う", "todo", "sonnet", "Y", (), plan("1, 2", "3")))
+        commit_task(main_path, taskfile.Task("T-202", "欄なし", "todo", "sonnet", "Y", (), plan(None, None)))
+        run_task(wt1, "claim", "T-200")
+        r = run_task(wt1, "plan-check", "T-200")
+        lines = r.stdout.splitlines()
+        check("plan-check は1行目のあとに PLAN_UNCOVERED（引かれていない行はそのまま、存在しない行は ?）を出す（終了コード0）",
+              r.returncode == 0 and len(lines) == 2 and lines[0].startswith("PLAN_NOT_FIRST\tT-200\t")
+              and lines[1] == "PLAN_UNCOVERED\tT-200\t2,7?", r.stdout + r.stderr)
+        run_task(wt1, "release", "T-200", "--force")
+        run_task(wt1, "claim", "T-201")
+        r = run_task(wt1, "plan-check", "T-201")
+        check("覆う計画に PLAN_UNCOVERED は出ない", "PLAN_UNCOVERED" not in r.stdout and r.returncode == 0, r.stdout + r.stderr)
+        run_task(wt1, "release", "T-201", "--force")
+        run_task(wt1, "claim", "T-202")
+        r = run_task(wt1, "plan-check", "T-202")
+        check("欄の無い旧い計画に PLAN_UNCOVERED は出ない", "PLAN_UNCOVERED" not in r.stdout and r.returncode == 0, r.stdout + r.stderr)
+
+
 TESTS = (
+    test_plan_coverage,
     test_opus_question_and_viewpoint,
     test_draft_to_todo,
     test_registered_plan,
