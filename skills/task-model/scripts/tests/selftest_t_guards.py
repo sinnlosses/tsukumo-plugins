@@ -1332,10 +1332,28 @@ def test_commit_guard_with_ref_guard() -> None:
             "git -c core.hooksPath=/dev/null commit -m x",
             "sh -c 'git -c core.hooksPath=/dev/null commit -m x'",
             "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null sh ./c.sh",
+            "GIT_CONFIG_PARAMETERS=\"'core.hooksPath'='/dev/null'\" git commit -m x",
+            "git --config-env=core.hooksPath=HOOKS commit -m x",
+            "git config core.hooksPath /dev/null",
+            "git config --global core.hooksPath /tmp/hooks",
+            "git config set core.hooksPath /tmp/hooks",
+            "sh -c 'git config core.hooksPath /tmp/hooks'",
         ):
             reason = run_guard(tmp, wt1, command)
             check(f"core.hooksPath を指し直すコマンドは拒む: {command}",
                   reason is not None and "core.hooksPath" in reason, str(reason))
+        for command in (
+            "grep -rn hooksPath .",
+            "rg -n core.hooksPath skills",
+            "git config --get core.hooksPath",
+            "git config get core.hooksPath",
+            "git config core.hooksPath",
+            "git config core.hooksPath 2>/dev/null",
+            "git config --list | grep -i hookspath",
+            "git log --grep hooksPath",
+            "git config --unset core.hooksPath",
+        ):
+            check(f"hooksPath を読むだけ（か外して既定に戻す）のコマンドは通す: {command}", run_guard(tmp, wt1, command) is None)
 
 
 def _guard_in_env(tmp: str, where: str, command: str, env: dict[str, str]) -> str | None:

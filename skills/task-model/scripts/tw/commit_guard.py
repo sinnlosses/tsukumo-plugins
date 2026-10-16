@@ -2,7 +2,7 @@
 `done` 前の着手の控え（`ledger.open_claims`）があれば拒む。
 コミットを作る git のサブコマンドと、シェルでのファイルの書き換え（`sed -i`・`perl -i`・`>`・`>>`・`tee`・
 python の書き込み）と、設定の `verify`・`verify_before_ship` と同じコマンドの直打ちと、`ref-guard` を外す書き方
-（`TW_REF_GUARD_ALLOW=`・`export TW_REF_GUARD_ALLOW`・`hooksPath` を含むコマンド）。判定しきれない書き方は通す。
+（`TW_REF_GUARD_ALLOW=`・`export TW_REF_GUARD_ALLOW`・`core.hooksPath` を書き換える形。読むだけのコマンドは通す）。判定しきれない書き方は通す。
 コミットは、作業先で `ref-guard` が効いていれば（`ref_guard.inactive_reason` が `None`）拒まず git の hook に任せる。
 書き換えと直打ちは、入力の `cwd` の控えのタスクの `### 作業先` の作業ツリー（`tw_handback.task_trees`）にも控えがあるとみなして拒む。
 コミットはそこでは拒まない。
@@ -39,8 +39,29 @@ _PY_WRITE = re.compile(
 _PY_OUTSIDE = re.compile(r"['\"](?:/tmp|/private|/var|/dev|~)|tempfile")
 _GIT_OPTIONS_WITH_VALUE =("-c", "--git-dir", "--work-tree", "--namespace")
 _DISARMS_REF_GUARD = re.compile(
-    rf"\b{gitcmd.REF_GUARD_ALLOW_ENV}=|\bexport\s+{gitcmd.REF_GUARD_ALLOW_ENV}\b|hookspath", re.IGNORECASE
+    rf"\b{gitcmd.REF_GUARD_ALLOW_ENV}="
+    rf"|\bexport\s+{gitcmd.REF_GUARD_ALLOW_ENV}\b"
+    r"|(?:^|\s)-c\s*['\"]?core\.hookspath="
+    r"|--config-env[=\s]['\"]?core\.hookspath="
+    r"|\bGIT_CONFIG_KEY_\d+=['\"]?core\.hookspath"
+    r"|\bGIT_CONFIG_PARAMETERS=\S*core\.hookspath",
+    re.IGNORECASE,
 )
+_CONFIG_HOOKS_PATH = re.compile(
+    r"\bgit\s+(?:[^;&|\n]*?\s)?config\b(?P<opts>[^;&|\n]*?)\bcore\.hookspath\b(?P<rest>[^;&|\n]*)", re.IGNORECASE
+)
+_CONFIG_READS = re.compile(r"(?:^|\s)(?:--get\S*|get|--list|-l|--unset\S*|unset)(?=\s|$)")
+
+
+def _disarms_ref_guard(command: str) -> bool:
+    """`ref-guard` を外す書き方か。`hooksPath` を読むだけのコマンド（`grep`・`git config --get`）は含めない。"""
+    if _DISARMS_REF_GUARD.search(command):
+        return True
+    for m in _CONFIG_HOOKS_PATH.finditer(command):
+        value = m.group("rest").strip().strip("'\"").strip()
+        if value and not re.match(r"-|\d*[<>]", value) and not _CONFIG_READS.search(m.group("opts")):
+            return True
+    return False
 
 
 def run(stdin: IO[str], stdout: IO[str], agent_scoped: bool = False) -> None:
@@ -72,7 +93,7 @@ def decide(payload: dict) -> str | None:
     start = payload.get("cwd")
     if not isinstance(command, str) or not isinstance(start, str):
         return None
-    if _DISARMS_REF_GUARD.search(command):
+    if _disarms_ref_guard(command):
         for where in dict.fromkeys([start, *(s.where for s in _simple_commands(command, start) if s.where)]):
             claims = _open_claims_at(where)
             if claims:
