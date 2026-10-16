@@ -22,7 +22,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | `sync` | トラッカーと同期するとき | `TRACKER\tOK\|FAILED`・`NOTHING`・`BUSY`（終了コード5） |
 | `backup` | Beads のバックアップを取るとき | `BACKUP\tOK\|FAILED` |
 | `jira-closed T-xxx…` | `jira:close` を外すとき | `CLEARED` |
-| `plan-check T-xxx` | `## やること` を作業より先に書いたかを読むだけで確かめるとき（受け入れと返却の前） | `PLAN_FIRST`・`PLAN_REGISTERED`・`PLAN_NOT_FIRST\t…\t<理由>`・`PLAN_STALE`（どれも終了コード0）、並列の計画では続けて `PARALLEL`・`SERIAL`・`STEP`。`NOT_OWNER` |
+| `plan-check T-xxx` | `## やること` を作業より先に書いたかを読むだけで確かめるとき（受け入れと返却の前） | `PLAN_FIRST`・`PLAN_REGISTERED`・`PLAN_NOT_FIRST\t…\t<理由>`・`PLAN_STALE`（どれも終了コード0）、段が `- 満たす完了条件:` の欄で完了条件を覆わなければ続けて `PLAN_UNCOVERED\tT-xxx\t<n,…>`、並列の計画では続けて `PARALLEL`・`SERIAL`・`STEP`。`NOT_OWNER` |
 | `plan-phases T-xxx [--through <段>] [--also <n,…>] [--skipped <段,…>]` | tsukumo の `work_plan` に渡す段の並びと位置を読むだけで出すとき（実装のあとの段は `steps` の並びの2つ目以降のスキルから組む。既定の並びなら「受け入れ」「振り返り」「送り出し」。`--skipped` は飛ばした段で、出力の `skippedPhases` に入る。使い方はオーケストレーターの「進み具合の帯（`work_plan`）」） | `PHASES\tT-xxx\t<JSON 1行>`。`NO_PHASE`（終了コード2）・`NOT_OWNER` |
 | `verify [T-xxx]` | 検証コマンドを打つとき（主ブランチの取り込み・整形・中身の鍵の控えも担う。ID は基本付けない） | `FOLDED`（取り込んだとき先頭）・`VERIFIED`・`VERIFIED_UNSTAMPED`・`VERIFY_NOT_PASSED`・`FORMAT_FAILED`・`PLAN_MISSING`・`CONFLICT`・`GIT_READ_ONLY`・`NOTHING`。末尾40行のあとに判定行をもう一度出すので、`tail` で切っても最後の行（取り込んだときは最後の2行）で判定が取れる |
 | `verify-check` | 中身が `verify` の控えと同じかを読むだけで見るとき（同じなら検証を省く） | `VERIFIED_SAME`・`NOT_VERIFIED\t<理由>`（終了コード0）・`NOTHING` |
@@ -44,7 +44,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 
 | 終了コード | 先頭語 | 意味 | スキルがすること |
 | --- | --- | --- | --- |
-| 0 | 各成功語（`plan-check` の `PLAN_NOT_FIRST`・`PLAN_STALE`・`verify-check` の `NOT_VERIFIED` を含む） | 成功（`PLAN_NOT_FIRST`・`PLAN_STALE`・`NOT_VERIFIED` は止める合図ではなく、着手・受け入れで扱う知らせ） | 次へ |
+| 0 | 各成功語（`plan-check` の `PLAN_NOT_FIRST`・`PLAN_STALE`・`PLAN_UNCOVERED`・`verify-check` の `NOT_VERIFIED` を含む） | 成功（`PLAN_NOT_FIRST`・`PLAN_STALE`・`PLAN_UNCOVERED`・`NOT_VERIFIED` は止める合図ではなく、着手・受け入れで扱う知らせ） | 次へ |
 | 1 | （traceback） | 環境の故障 | エラー出力を報告して止まる。**手で代用しない** |
 | 2 | （stderr） | 渡した引数・本文の誤り | 直して打ち直す |
 | 3 | `INVALID` | データの不備（読めない課題〔label の語彙の外など〕、設定が読めない、主ブランチが決まらない、`--check` の重複、トラッカーの付け替え先が既にある） | 理由をそのまま報告して止まる。**直しに行かない** |
