@@ -39,6 +39,7 @@ GitHub で本文を直したあとの取り込みで `open` に戻る。`deferre
 | 登録時に `## やること` を書いたときの SHA と、着手時に比べた主ブランチの先端 | metadata `task_plan_base`・`task_plan_tip` |
 | `## 目的・背景`・`## 決まっていること`・`## 解くべき論点`・`## 注意`・`## 参考情報` | `description`（見出しのまま）。`tw show` は枠の7節を空でもこの順に出す |
 | `## 結果`（`- 振り返り:` を含む） | `## 結果` で始まる comment（最後のものが正） |
+| 段の申し送り（WORKFLOW.md「段の申し送り」） | `## 申し送り: <鍵>` で始まる comment（鍵ごとに最後のものが正。`tw relay` が書き・読む） |
 | 登録から完了までの本文の差（振り返りの材料） | `bd history`（振り返りのパーツが最初と最後の版の差を出す） |
 | git に残る過去の `develop/task/` と `docs/history/` | 動かさない（[legacy.md](legacy.md)） |
 
@@ -105,7 +106,7 @@ Project・Status 欄・選択肢の ID は `bd kv` の `task-workflow.project` �
   `difficulty`・`loopable` が無ければ振り分け前（上の「サイクルの各段で Beads に起きること」）
 - **写る欄**: 題 ↔ `title`、本文 ↔ `description`、label ↔ label（`ship:*`・
   `cancelled` も）、開閉 ↔ `open`／`closed`、`status::in_progress`・`status::deferred` ↔ `in_progress`・
-  `deferred`。`acceptance_criteria`・`notes`・comment（`## 結果`）は Beads だけに置き、GitHub には出さない
+  `deferred`。`acceptance_criteria`・`notes`・comment（`## 結果`・`## 申し送り:`）は Beads だけに置き、GitHub には出さない
 - **錠の持ち主**: 取り込みは assignee を GitHub の担当者で上書きし（作業ツリーの名前は GitHub の
   利用者でないので空になる）、metadata を消し、label `status::in_progress` が GitHub に無ければ
   `open` に戻す。`tw` は取り込みを actor `<作業ツリーの名前>:github-pull` で打ち、その更新の書く直前の版

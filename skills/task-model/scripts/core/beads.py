@@ -23,6 +23,7 @@ Issue 番号（`gh-5` ↔ `GH-5`）、`t` なら `task` の採番（`t-123` ↔ 
 | label `direct:Y`（無ければ印なし） | `direct` |
 | `blocks` の依存 | `dependencies` |
 | `title` | `summary` |
+| `## 申し送り: <鍵>` で始まる comment | 段の申し送り（`tw relay`。`Task` には写さない） |
 
 読み手は例外を投げず `(値, 理由)` の対を返す。`bd` そのものが落ちたときだけ
 `BeadsError`（環境の故障。呼ぶ側は traceback にせず終了コード1にする）。
