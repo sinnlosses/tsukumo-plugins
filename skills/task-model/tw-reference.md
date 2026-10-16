@@ -30,8 +30,8 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | `finish T-xxx [--dropped] --result-file <path\|-> --message <件名> [--add <ファイル>]…` | 結果・コミット・送りを一度に打つとき（`done` → `git add` → コミット → `ship`） | `done` の行、`COMMITTED`・`NO_COMMIT`、`ship` の行。`COMMITS_SINCE_CLAIM` が出れば終了コード12で止まる |
 | `metrics [--days N] [--stages]` | 流れの数と段ごとの所要時間を読むだけで見るとき（振り返り） | `PERIOD`、続けて `shipped`・`lead_median_seconds`・`verify_per_task` など。`--stages` は `STAGE`・`OPEN`。`SKIPPED`・`EMPTY` |
 | `config` | 解けた設定を読むだけで見るとき | `CONFIG`、続けて `<キー>\t<値>\t<config\|default>`（`steps` の値は詰めた JSON の配列）。設定が無ければ `MISSING`（終了コード6） |
-| `config --schema [--version <版>]` | 設定の欄の形（`flow` の語彙・`[parts]` の枠・枠ごとの既定・`なし` を許すか・説明。`--version 2` は並び `steps` の既定と候補）を読むだけで見るとき（設定画面が欄を描く口。設定にはよらない） | 1行の JSON（TSV の例外）。引数なしは `{"schema": 1, "default_word", "none_word", "keys": [...]}`、`--version 2` は `{"schema": 2, "keys": [...]}`。知らない版は終了コード2。欄の中身は `task.py config --help` |
-| `config set <キー> <値>` | `flow`・`steps`・`parts.<枠>` を検査してから `.tw/config.toml` に書くとき（ほかの行・並び・コメントは変えない。`steps` の値は1行の JSON の文字列の配列） | `SET\t<キー>\t<値>`。知らないキー・語彙の外の値・空や重複や候補にも今の値にも無い名前の並びは終了コード2（ファイルは変えない）。`MISSING`（終了コード6）・`INVALID`（終了コード3） |
+| `config --schema` | 設定の欄の形（並び `steps` の既定と候補）を読むだけで見るとき（設定画面が欄を描く口。設定にはよらない） | 1行の JSON（TSV の例外）`{"schema": 2, "keys": [...]}`。`--version` は知らない引数として終了コード2。欄の中身は `task.py config --help` |
+| `config set <キー> <値>` | `steps` を検査してから `.tw/config.toml` に書くとき（ほかの行・並び・コメントは変えない。値は1行の JSON の文字列の配列） | `SET\t<キー>\t<値>`。知らないキー（廃止した `flow`・`parts.<枠>` を含む）・空や重複や候補にも今の値にも無い名前の並びは終了コード2（ファイルは変えない）。`MISSING`（終了コード6）・`INVALID`（終了コード3） |
 | `config-doctor` | リポジトリが今の読み取りに合っているかを読むだけで点検するとき（`--fix` は無い） | `base_branch`・`config`・`python`・`git`・`bd`・`dolt`・`gh`・`tw`・`store`・`beads`・`tracker` の行（2語目が `OK`・`MISSING`・`INVALID`、前提の行は `OPTIONAL` も） |
 | `commit-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ deny の JSON 1行。通すときは何も出さない |
 | `pause [T-xxx [<n>]]` | 判断が要って止める・目視待ち・計画を作業の後に書いた返却の直前に打つ（委譲先。並列の段の担当は ID と段の番号を付ける） | `PAUSED`・`NOT_OWNER` |
@@ -55,7 +55,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | 9 | `RACE` | `--ff-only` が3回続けて落ちた | 人に預ける |
 | 10 | `VERIFY_NOT_PASSED`・`FORMAT_FAILED`・`PLAN_MISSING`・`TRACKER\tFAILED`・`BACKUP\tFAILED`（後ろ2つは `sync`・`backup` だけ） | `verify` の検証コマンドが落ちた／整形コマンドが落ちた（検証は打っていない）／`## やること` が空のまま作業があるので打たなかった（どちらも控えは消えた）／トラッカー・バックアップに届かない | `VERIFY_NOT_PASSED`・`FORMAT_FAILED` は出力の末尾（全体はログ）を読んで直し、`PLAN_MISSING` は `## やること` を書いて `tw edit T-xxx --after-work` で渡し、打ち直す。`TRACKER`・`BACKUP` は行を添えて報告する（タスクの操作は済んでいる） |
 | 11 | `GIT_READ_ONLY` | `.git` に書けない（`EACCES`・`EPERM`・`EROFS`）のに、git に書く操作が要る（`ship`・`land`、追い付くか枝を切る `claim`、取り込む `verify`）。行は `GIT_READ_ONLY\t<書けない git dir>\t<次の一手>`。打つ前に確かめるので、作業ツリーも Beads も変わっていない | sandbox の外で同じコマンドを打ち直す（`README.md`「`.git` が読み取り専用の sandbox で打つとき」節）。打ち直せなければ行を添えて人に預ける |
-| 12 | `COMMITS_SINCE_CLAIM`（`finish` だけ） | `done` は済んだが、`claim` のあとに委譲先が作ったコミットの合図が出たので、コミットと `ship` を打たずに止めた | 送り出しのパーツの `COMMITS_SINCE_CLAIM` の扱いに従って判断し、個別に `git add`・`git commit`・`tw ship` を打つ |
+| 12 | `COMMITS_SINCE_CLAIM`（`finish` だけ） | `done` は済んだが、`claim` のあとに委譲先が作ったコミットの合図が出たので、コミットと `ship` を打たずに止めた | 送り出しの段の `COMMITS_SINCE_CLAIM` の扱いに従って判断し、個別に `git add`・`git commit`・`tw ship` を打つ |
 
 `/loop` を続けるかは、オーケストレーターの「`/loop` の続行判断」で決める（終了コードの一覧はここに持たない）。
 
@@ -79,7 +79,7 @@ hook 3種の仕様の正典はこの節。判定の細部（何をコミット�
 リンクと plugin を併用すると、同梱の実装役への委譲で両方の口が走り、PATH の `tw` と plugin の `bin/tw` の版が違うと `tw verify` のあとの関門が `NOT_VERIFIED scheme` で止まるので、2つを同じチェックアウトに揃える。
 Bash のコマンド文字列に `git` が出ないコミット（`sh -c`・スクリプト越し）と、`Edit`・`Write`・`NotebookEdit` を使わずに書き換えたサブエージェントの返却には効かず、`finish`・`done` の `COMMITS_SINCE_CLAIM` と受け入れの `plan-check`・`verify-check` が事後に拾う。
 
-**lap はパーツではなくオーケストレーターが段の前後で打つ**（`tw lap`。段の名前は `direct`・`delegate`・`accept`・`review`・`retro`・`land`・`sync` で固定）。`ask-guard` はこの段で境を決め、パーツの名前は見ない。
+**lap は並びのスキルではなくオーケストレーターが段の前後で打つ**（`tw lap`。段の名前は `direct`・`delegate`・`accept`・`review`・`retro`・`land`・`sync` で固定）。`ask-guard` はこの段で境を決め、並びのスキルの名前は見ない。
 
 **`commit-guard`・`handback-guard`・`ask-guard` は Claude Code の hook の取り決めに従う**: 出力は TSV でなく JSON で、終了コードはいつも0。
 読めない入力も何も出さずに通す。タスク運用を始めていないリポジトリ・git の外でも打てる。
