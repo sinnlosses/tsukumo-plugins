@@ -260,7 +260,7 @@ def check_tw_entry(names: list[str]) -> None:
             fail(f"{os.path.relpath(TW_TARGET, ROOT)} の1行目が #!/usr/bin/env python3 でない")
     long_form = re.compile(r"python3 [^\n`]*task-(workflow|model)/scripts/(tw/)?task\.py")
     old_abbrev = re.compile(
-        r"`task (status|new|claim|release|done|ship|finish|land|config|config-doctor|show|edit|plan-check|verify|verify-check|accept|pause|step|lap|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|ask-guard)[ `]"
+        r"`task (status|new|claim|release|done|ship|finish|land|config|config-doctor|show|edit|plan-check|verify|verify-check|accept|pause|step|lap|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|ask-guard|ref-guard)[ `]"
     )
     for n in names:
         for md in markdown_files(n):

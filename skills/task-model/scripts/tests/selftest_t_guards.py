@@ -1326,6 +1326,8 @@ def test_commit_guard_with_ref_guard() -> None:
         reason = run_guard(tmp, wt1, "TW_REF_GUARD_ALLOW=1 git commit -m x")
         check("TW_REF_GUARD_ALLOW を付けたコマンドは拒む",
               reason is not None and "TW_REF_GUARD_ALLOW" in reason and "T-100" in reason, str(reason))
+        check("export TW_REF_GUARD_ALLOW も拒む", run_guard(tmp, wt1, "export TW_REF_GUARD_ALLOW; git commit -m x") is not None)
+        check("名前を読むだけのコマンドは通す", run_guard(tmp, wt1, "grep -rn TW_REF_GUARD_ALLOW .") is None)
 
 
 TESTS = (

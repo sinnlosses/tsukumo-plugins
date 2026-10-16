@@ -1,7 +1,7 @@
 """`tw commit-guard`: Claude Code の PreToolUse hook の入力（stdin の JSON）を読み、次の2つの実効の作業先に、
 `done` 前の着手の控え（`ledger.open_claims`）があれば拒む。
 コミットを作る git のサブコマンドと、シェルでのファイルの書き換え（`sed -i`・`perl -i`・`>`・`>>`・`tee`・
-python の書き込み）と、設定の `verify`・`verify_before_ship` と同じコマンドの直打ちと、`ref-guard` を外す変数を含むコマンド。
+python の書き込み）と、設定の `verify`・`verify_before_ship` と同じコマンドの直打ちと、`ref-guard` を外す変数を付けるコマンド（`TW_REF_GUARD_ALLOW=`・`export TW_REF_GUARD_ALLOW`）。
 判定しきれない書き方は通す。コミットは、作業先で `ref-guard` が効いていれば拒まず git の hook に任せる。
 書き換えと直打ちは、入力の `cwd` の控えのタスクの `### 作業先` の作業ツリー（`tw_handback.task_trees`）にも控えがあるとみなして拒む。
 コミットはそこでは拒まない。
@@ -37,6 +37,7 @@ _PY_WRITE = re.compile(
 )
 _PY_OUTSIDE = re.compile(r"['\"](?:/tmp|/private|/var|/dev|~)|tempfile")
 _GIT_OPTIONS_WITH_VALUE =("-c", "--git-dir", "--work-tree", "--namespace")
+_SETS_REF_GUARD_ALLOW = re.compile(rf"\b{gitcmd.REF_GUARD_ALLOW_ENV}=|\bexport\s+{gitcmd.REF_GUARD_ALLOW_ENV}\b")
 
 
 def run(stdin: IO[str], stdout: IO[str], agent_scoped: bool = False) -> None:
@@ -68,7 +69,7 @@ def decide(payload: dict) -> str | None:
     start = payload.get("cwd")
     if not isinstance(command, str) or not isinstance(start, str):
         return None
-    if gitcmd.REF_GUARD_ALLOW_ENV in command:
+    if _SETS_REF_GUARD_ALLOW.search(command):
         for where in dict.fromkeys([start, *(s.where for s in _simple_commands(command, start) if s.where)]):
             claims = _open_claims_at(where)
             if claims:
