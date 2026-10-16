@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import glob
+import importlib
 import json
 import os
 import shutil
 import tempfile
+import types
 from datetime import datetime, timedelta, timezone
 
 from selftest_support import check, copy_beads, git, refuse_direct_run, say, weight, write  # noqa: E402
@@ -952,6 +955,38 @@ def test_task_stage_spans() -> None:
           got is not None and got[1:] == (["反映"], at(2), at(8)), repr(got))
 
 
+def unregistered_tests(module: types.ModuleType) -> list[str]:
+    registered = set(getattr(module, "TESTS", ()))
+    return [n for n, f in vars(module).items() if n.startswith("test_") and callable(f) and f not in registered]
+
+
+def test_unregistered_tests_named() -> None:
+    say("自己テスト: TESTS に載っていない test_ 関数は関数名で返り、載っていれば・TESTS が無くても返り方が決まっている")
+    fake = types.ModuleType("fake_selftest")
+    fake.test_listed = lambda: None
+    fake.test_unlisted = lambda: None
+    fake.helper = lambda: None
+    fake.TESTS = (fake.test_listed,)
+    check("載っていない test_ 関数だけを名前で返す（test_ で始まらない名前は返さない）",
+          unregistered_tests(fake) == ["test_unlisted"], repr(unregistered_tests(fake)))
+    fake.TESTS = (fake.test_listed, fake.test_unlisted)
+    check("全部載っていれば空", unregistered_tests(fake) == [], repr(unregistered_tests(fake)))
+    bare = types.ModuleType("fake_bare")
+    bare.test_orphan = lambda: None
+    check("TESTS が無いモジュールは test_ 関数がすべて未登録として返る",
+          unregistered_tests(bare) == ["test_orphan"], repr(unregistered_tests(bare)))
+
+
+def test_all_tests_registered() -> None:
+    say("自己テスト: selftest_t_*・selftest_b_* の test_ 関数は全部 TESTS に載っている（載っていなければ関数名を出して落ちる）")
+    here = os.path.dirname(os.path.abspath(__file__))
+    missing: list[str] = []
+    for path in sorted(glob.glob(os.path.join(here, "selftest_[tb]_*.py"))):
+        module = importlib.import_module(os.path.basename(path)[: -len(".py")])
+        missing += [f"{module.__name__}.{n}" for n in unregistered_tests(module)]
+    check("並びに載っていない test_ 関数が無い", not missing, "並びに載っていない: " + ", ".join(missing))
+
+
 TESTS = (
     test_open_stages,
     test_task_stage_spans,
@@ -974,6 +1009,8 @@ TESTS = (
     test_lap_edge,
     test_relay,
     test_record_normalizes_task_id,
+    test_unregistered_tests_named,
+    test_all_tests_registered,
 )
 
 
