@@ -32,10 +32,11 @@ PLAN_FILES_HEADING = "### 名指すファイル"
 PLAN_WORK_REPO_HEADING = "### 作業先"
 ACCEPTANCE_HEADING = "## 完了条件"
 CAUTION_HEADING = "## 注意"
+QUESTION_HEADING = "## 解くべき論点"
 SECTION_HEADINGS = (
     PURPOSE_HEADING,
     "## 決まっていること（蒸し返さない）",
-    "## 解くべき論点",
+    QUESTION_HEADING,
     PLAN_HEADING,
     ACCEPTANCE_HEADING,
     CAUTION_HEADING,
@@ -46,6 +47,20 @@ FILLED_SECTIONS = (PURPOSE_HEADING, ACCEPTANCE_HEADING)
 EMPTY_MARK = "なし"
 
 RESULT_HEADING = "## 結果"  # done/dropped で必須（3.3）。常に本文の最後に置く。
+
+OPUS_DIFFICULTY = "opus"
+# ドラフトの `- 観点:` の語彙。正典は skills/retrospect/detail.md で、食い違いは retrospect の自己テストが落とす。
+VIEWPOINT_COLORS = ("赤", "黄")
+VIEWPOINTS = (
+    "道案内",
+    "機械の検査",
+    "コーディング規約",
+    "常に読み込まれる設定ファイル",
+    "道具の経済",
+    "空振り",
+    "情報への手の届き",
+)
+WEEKLY_VIEWPOINTS = ("流れの数", "段の所要時間", "規則の棚卸し")
 
 
 @dataclass(frozen=True)
@@ -82,10 +97,10 @@ def render(task: Task) -> str:
     )
 
 
-def validate_new_body(body: str, hold: bool) -> str | None:
-    """`task new`・`task adopt` の本文検査。枠の検査に加え、`## やること` の中身・段・`### 名指すファイル` を
-    求める（`### 作業先` があればその形も）。中身を空にできるのは `hold` のときだけ。問題が無ければ `None`。"""
-    error = validate_body(body)
+def validate_new_body(body: str, hold: bool, difficulty: str = "") -> str | None:
+    """`task new`・`task adopt` の本文検査。枠の検査に加え、`difficulty` が opus なら論点を求め、`## やること` の中身・段・
+    `### 名指すファイル` を求める（`### 作業先` があればその形も）。中身を空にできるのは `hold` のときだけ。問題が無ければ `None`。"""
+    error = validate_body(body) or opus_refusal(difficulty, body)
     if error is not None:
         return error
     if not has_plan(body):
@@ -96,18 +111,57 @@ def validate_new_body(body: str, hold: bool) -> str | None:
 def validate_draft_body(body: str) -> str | None:
     """`tw new --draft` の本文検査。見出しは枠の節を枠の順に欠けてよく、中身が要るのは `## 目的・背景` だけ。
     `## やること` に中身があれば `validate_new_body` と同じ計画の検査をかける。問題が無ければ `None`。"""
-    error = validate_body(body, draft=True)
+    error = validate_body(body, draft=True) or viewpoint_refusal(body)
     if error is not None or not has_plan(body):
         return error
     return plan_steps(body)[1] or plan_files(body)[1] or plan_work_repo(body)[1]
 
 
-def validate_edited_body(old_body: str, new_body: str, draft: bool = False) -> str | None:
-    """`task edit` の本文検査。枠の検査（`draft` はドラフトの緩い枠）に加え、`## やること` を変えて中身があるなら段の形を求める。"""
+def validate_edited_body(
+    old_body: str, new_body: str, draft: bool = False, old_difficulty: str = "", difficulty: str = ""
+) -> str | None:
+    """`task edit` の本文検査。枠の検査（`draft` はドラフトの緩い枠）に加え、変えた節だけを見る:
+    `## やること` を変えて中身があれば段の形、opus に上げたか論点を変えたなら論点、`## 目的・背景` を変えたなら `- 観点:` の語彙。"""
     error = validate_body(new_body, draft)
+    if error is not None:
+        return error
+    if not draft and difficulty == OPUS_DIFFICULTY:
+        if old_difficulty != OPUS_DIFFICULTY or section_changed(old_body, new_body, QUESTION_HEADING):
+            error = opus_refusal(difficulty, new_body)
+    if error is None and section_changed(old_body, new_body, PURPOSE_HEADING):
+        error = viewpoint_refusal(new_body)
     if error is not None or not has_plan(new_body) or not plan_changed(old_body, new_body):
         return error
     return plan_steps(new_body)[1]
+
+
+def opus_refusal(difficulty: str, body: str) -> str | None:
+    """`difficulty` が opus で `## 解くべき論点` が空・「なし」なら、その理由。"""
+    if difficulty == OPUS_DIFFICULTY and is_blank(dict(_frame_sections(body)[1]).get(QUESTION_HEADING, "")):
+        return f"difficulty が {OPUS_DIFFICULTY} のときは {QUESTION_HEADING} に論点を書く（空・「{EMPTY_MARK}」にできない）"
+    return None
+
+
+def viewpoint_refusal(body: str) -> str | None:
+    """`## 目的・背景` に `- 観点:` の行があるとき、観点が語彙の外か空なら、その理由。色は無くてよく、付くなら赤か黄。"""
+    match = _viewpoint_match(body)
+    if match is None:
+        return None
+    viewpoint = match.group(1)
+    if viewpoint in VIEWPOINTS + WEEKLY_VIEWPOINTS:
+        return None
+    return (
+        f"`- 観点:` の観点 {viewpoint!r} が語彙の外（色は {'・'.join(VIEWPOINT_COLORS)} か無し。観点は "
+        + "・".join(VIEWPOINTS + WEEKLY_VIEWPOINTS)
+        + "）"
+    )
+
+
+def section_changed(old_body: str, new_body: str, heading: str) -> bool:
+    """`heading` の節の中身が `old_body` と違うか。行末の空白と連続する空行の数は無視する。"""
+    old = dict(_frame_sections(old_body)[1]).get(heading, "")
+    new = dict(_frame_sections(new_body)[1]).get(heading, "")
+    return _squeeze(old) != _squeeze(new)
 
 
 @dataclass(frozen=True)
@@ -553,11 +607,16 @@ def has_plan(body: str) -> bool:
 
 def draft_viewpoint(body: str) -> str | None:
     """`## 目的・背景` の最初の `- 観点:` の行の観点（先頭の色 `赤`・`黄` を落とす）。行が無い・空なら None。"""
+    match = _viewpoint_match(body)
+    return (match.group(1) or None) if match is not None else None
+
+
+def _viewpoint_match(body: str) -> re.Match[str] | None:
     purpose = dict(_frame_sections(body)[1]).get(PURPOSE_HEADING, "")
     for line in purpose.split("\n"):
         m = _VIEWPOINT_LINE.match(line.strip())
         if m is not None:
-            return m.group(1) or None
+            return m
     return None
 
 
