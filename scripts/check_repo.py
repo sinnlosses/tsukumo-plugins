@@ -22,7 +22,7 @@
   兄弟スキル名があること
 - 本文が `${CLAUDE_SKILL_DIR}/../<兄弟>` で兄弟スキルを指しているなら、`REQUIRES` にその兄弟スキル名があること
 - 兄弟のパス `${CLAUDE_SKILL_DIR}/../<兄弟>` で指してよいのは `task-model` と自分自身だけであること
-  （ほかのパーツは Skill ツールで名前を指して呼び、そのパーツの道具は置き場〔Base directory〕から打つ）
+  （ほかのスキルは Skill ツールで名前を指して呼び、そのスキルの道具は置き場〔Base directory〕から打つ）
 - retrospect の本文を `retrospect/SKILL.md` で指す文言が無いこと（本文は `detail.md`）
 - 各スキルの `.md` がファイルを指す先（`skills/<名>/`・`<名>/<ファイル>.md|py`・`` `<名>` スキルの `…` ``・
   `` `<名>` の `<ファイル>.md` ``）が、`DEPENDENCY_EDGES` の許す辺に収まること
@@ -540,7 +540,7 @@ def forbidden_path_references(owner: str, text: str) -> list[str]:
 
 def check_sibling_path_references(names: list[str]) -> None:
     """兄弟のパス `${CLAUDE_SKILL_DIR}/../<兄弟>` で指してよいのは `task-model` と自分自身だけ。
-    ほかのパーツは Skill ツールで名前を指して呼ぶ。"""
+    ほかのスキルは Skill ツールで名前を指して呼ぶ。"""
     for n in names:
         for md in markdown_files(n):
             for dep in forbidden_path_references(n, read(md)):
@@ -559,7 +559,7 @@ def check_retrospect_entry_references(names: list[str]) -> None:
 
 
 # 本文がファイルを指してよいスキル（自分自身は常に許す）。ここに無いスキルは見ない。
-# 入口が流れのオーケストレーターを、オーケストレーターがパーツを呼ぶのは Skill ツールの名前で、ファイルは指さない。
+# 入口が流れのオーケストレーターを、オーケストレーターが段のスキルを呼ぶのは Skill ツールの名前で、ファイルは指さない。
 DEPENDENCY_EDGES = {
     "next-task": ("task-model",),
     "task-workflow": ("task-model",),
@@ -754,7 +754,7 @@ STEP_OUTCOMES = ("`finished`", "`skipped`", "`stopped`")
 
 
 def is_workflow_step(text: str) -> bool:
-    """`tw config --schema --version 2` が候補に拾う印を持つか（読み方は `layout.parse_skill_frontmatter` と同じ）。"""
+    """`tw config --schema` が候補に拾う印を持つか（読み方は `layout.parse_skill_frontmatter` と同じ）。"""
     layout = _load_layout()
     metadata = layout.parse_skill_frontmatter(text).get("metadata")
     return isinstance(metadata, dict) and metadata.get(layout.STEP_MARK_KEY) == "true"

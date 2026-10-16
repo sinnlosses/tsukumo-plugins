@@ -75,7 +75,7 @@ def main() -> int:
     check("next-task から task-model のファイルは許す", edges("next-task", "`skills/task-model/WORKFLOW.md`", skills) == [])
     check("plan-tasks から next-task のファイルは返す",
           edges("plan-tasks", "`next-task` スキルの `ship-stopped.md` の表", skills) == ["next-task"])
-    check("retrospect から task-workflow のパーツのファイルは返す",
+    check("retrospect から task-workflow の段の手順のファイルは返す",
           edges("retrospect", "task-workflow/parts/retrospect/retrospect.md を読む", skills) == ["task-workflow"])
     check("task-model からほかのスキルのファイルは返す", edges("task-model", "`next-task` の `SKILL.md`", skills) == ["next-task"])
     check("retro から retrospect のファイルは許す", edges("retro", "`retrospect` の `detail.md`", skills) == [])
