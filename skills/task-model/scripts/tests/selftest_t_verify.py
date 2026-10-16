@@ -394,6 +394,7 @@ def test_readonly_commands_stay_out_of_git() -> None:
     args_of = {
         "status": ["status"],
         "show": ["show", "T-120"],
+        "find": ["find", "書く"],
         "plan-check": ["plan-check", "T-120"],
         "plan-phases": ["plan-phases", "T-120"],
         "verify-check": ["verify-check"],
