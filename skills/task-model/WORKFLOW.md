@@ -79,6 +79,7 @@ verify = "pnpm check"        # 受け入れ判定に使う。打つものが無�
 | `github_project` | `"<owner>/<番号>"`（Status 欄を書く Project）。`tracker = "github"` なら必須 |
 | `backup` | Beads のバックアップの置き場（git の外） |
 | `hook_tally` | 直近30日の hook ごとの拒否の回数を出すコマンド。読むのは `tw` ではなく週ごとの横断の振り返りで、無ければその観点を飛ばす |
+| `review_code_globs` | 文書の拡張子（`.md` など）でもコード扱いにして、受け入れの新しい文脈のレビューを掛けるパスの glob の配列。最上位に `review_code_globs = ["skills/**", "agents/**"]` の形で書く。`**` は `/` を越え、`*`・`?` は越えない。空の配列でも書かなくてもよく、無ければ文書の拡張子だけの差分は `SKIP\tdocs-only`。`review_needed.py` が読む |
 | `steps` | スキルの並び。最上位に `steps = ["<全名>", …]`（文字列の配列）で書く。1つ以上・重複なし。並びの順が呼ぶ順。無ければ `tw config --schema` の `default`（`tw` と同じ plugin の候補を、`metadata` の `workflow-step-order` の小さい順に並べたもの）。名前は同じ `values`（SKILL.md の frontmatter の `metadata` に `workflow-step: "true"` を持つスキル）の全名。書くのは `tw config set steps '<1行の JSON の配列>'` |
 
 欄の形（`steps` の既定と候補）は、ここに書き写さず `tw config --schema` が出す。廃止した `flow` の行と `[parts]` の表は、設定に残っていれば `INVALID`（終了コード3）で止まる。
@@ -204,6 +205,12 @@ front matter（`id`・`summary`・`status`・`difficulty`・`loopable`・近道�
 `tw new`・`tw adopt` は `HEAD` と主ブランチの分かれ目の SHA を控え、`tw claim` がその SHA から着手時の主ブランチの先端までに
 名指したファイルが変わったかを判定する（`tw plan-check` の `PLAN_REGISTERED`・`PLAN_STALE`）。
 変わっていれば、委譲先が実装の前に調べ直して書き直す。
+
+**登録時の `## 決まっていること（蒸し返さない）` の裏取り**: 項目が挙動・数え方（「〜すれば〜になる」「〜を除いて数える」など）を
+言い切るときは、登録の前に実物（コード・文面・1回の実行）で通ることを確かめ、根拠を項目の後ろに1行添える
+（ファイルと関数、または打ったコマンドと結果）。聞いて決まっただけの方針や承認の範囲には要らない。
+`tw new` の本文検査（`taskfile.validate_new_body`）は枠・段・名指すファイルの形だけを見て、この節の項目に決まった書式は無い。
+言い切りかどうかは文面から機械で決められず、根拠の行を一律に求めると聞いて決まっただけの項目にも要るので、検査には足さない。
 
 ## status と着手の印
 
