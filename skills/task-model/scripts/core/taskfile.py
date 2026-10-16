@@ -16,6 +16,7 @@ from dataclasses import dataclass
 STATUS_VALUES = ("todo", "hold", "done", "dropped", "draft")
 DIFFICULTY_VALUES = ("haiku", "sonnet", "opus")
 LOOPABLE_VALUES = ("Y", "N")
+KIND_VALUES = ("bug", "feature", "refactor", "docs")
 
 # 委譲しない近道の基準（WORKFLOW.md「difficulty とモデルの切り替え」の表）。
 DIRECT_DIFFICULTY = "haiku"

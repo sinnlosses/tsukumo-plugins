@@ -66,6 +66,9 @@ FROM_DRAFT_KEY = "from_draft"
 FROM_DRAFT_UNKNOWN = "不明"
 DIRECT_LABEL = "direct:"
 DIRECT_ON = f"{DIRECT_LABEL}Y"
+KIND_LABEL = "kind:"
+# `tw edit --kind` に渡すと種類を外す値。
+KIND_NONE = "-"
 # `task done` が立て、`task ship` が主ブランチへ送ったあとに閉じる印（done と dropped の2つ）。
 SHIP_LABELS = {"done": "ship:done", "dropped": "ship:dropped"}
 # Jira の方式で、ローカルで閉じたが Jira で閉じてもらうのを待っている印。
@@ -385,6 +388,9 @@ def to_task(issue: Issue) -> tuple[taskfile.Task | None, str | None]:
     direct = label_values(issue.labels, DIRECT_LABEL)
     if direct not in ([], ["Y"]):
         return None, "label direct: は direct:Y が1つだけ（印が無ければ置かない）"
+    kinds = label_values(issue.labels, KIND_LABEL)
+    if len(kinds) > 1 or (kinds and kinds[0] not in taskfile.KIND_VALUES):
+        return None, f"label kind: は {'|'.join(taskfile.KIND_VALUES)} の1つだけ（種類が無ければ置かない）"
     summary = issue.title.strip()
     if summary == "" or "\n" in summary:
         return None, "title が空か改行を含む"
@@ -404,6 +410,23 @@ def is_draft(issue: Issue) -> bool:
 
 def label_values(labels: tuple[str, ...], prefix: str) -> list[str]:
     return [l[len(prefix) :] for l in labels if l.startswith(prefix)]
+
+
+def kind_of(issue: Issue) -> str | None:
+    """label `kind:<種類>` の種類。無ければ `None`。"""
+    kinds = label_values(issue.labels, KIND_LABEL)
+    return kinds[0] if kinds else None
+
+
+def kind_label_args(issue: Issue, kind: str) -> list[str]:
+    """`bd update` に渡す、`kind:` の label を `kind` の1つだけ（`-` なら無し）にする引数。
+
+    同じ label の外しと付けを1回の `bd update` に混ぜない。
+    """
+    wanted = [] if kind == KIND_NONE else [f"{KIND_LABEL}{kind}"]
+    current = [l for l in issue.labels if l.startswith(KIND_LABEL)]
+    removed = [x for l in current if l not in wanted for x in ("--remove-label", l)]
+    return removed + [x for l in wanted if l not in current for x in ("--add-label", l)]
 
 
 def attribute_values(issue: Issue, key: str) -> list[str]:

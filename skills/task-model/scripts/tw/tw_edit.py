@@ -18,14 +18,14 @@ import tw_plan
 
 
 def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
-    """本文・summary・difficulty・loopable・todo↔hold・依存・近道の印を書き換える。"""
+    """本文・summary・difficulty・loopable・todo↔hold・依存・近道の印・種類を書き換える。"""
     bd_id = tw_base.bd_task_id(args.task_id)
     shown = beads.to_task_id(bd_id)
     sections: list[str] = args.section or []
     body_files: list[str] = args.body_file or []
     _check_body_args(sections, body_files)
-    if not any([body_files,args.summary, args.difficulty, args.loopable, args.status, args.add_deps, args.remove_deps, args.direct]):
-        print("usage: 直すもの（--body-file・--summary・--difficulty・--loopable・--status・--add-deps・--remove-deps・--direct）が無い", file=sys.stderr)
+    if not any([body_files,args.summary, args.difficulty, args.loopable, args.status, args.add_deps, args.remove_deps, args.direct, args.kind]):
+        print("usage: 直すもの（--body-file・--summary・--difficulty・--loopable・--status・--add-deps・--remove-deps・--direct・--kind）が無い", file=sys.stderr)
         raise SystemExit(2)
     add = _parse_dep_list(args.add_deps, layout.ANY_ID_PATTERN, "--add-deps", "T-999・GH-5・PROJ-123")
     remove = _parse_dep_list(args.remove_deps, layout.ANY_ID_PATTERN, "--remove-deps", "T-999・GH-5・PROJ-123")
@@ -95,6 +95,8 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
     if direct != had_direct:
         cmd += [x for l in issue.labels if l.startswith(beads.DIRECT_LABEL) for x in ("--remove-label", l)]
         cmd += ["--add-label", beads.DIRECT_ON] if direct == "Y" else []
+    if args.kind:
+        cmd += beads.kind_label_args(issue, args.kind)
     if args.status:
         if issue.status not in ("open", *beads.HOLD_STATUSES):
             print(f"NOT_READY\t{shown}\t{issue.status}（todo↔hold は着手前だけ）")

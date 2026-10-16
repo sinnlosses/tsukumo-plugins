@@ -56,6 +56,8 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
         cmd = ["create", "--id", bd_id, "--title", summary, "--body-file", "-", "--metadata", json.dumps(metadata), "--silent"]
         if args.direct:
             cmd += ["-l", beads.DIRECT_ON]
+        if args.kind:
+            cmd += ["-l", f"{beads.KIND_LABEL}{args.kind}"]
         if parts.acceptance:
             cmd += ["--acceptance", parts.acceptance]
         if parts.notes:
@@ -153,6 +155,8 @@ def cmd_adopt(toplevel: str, args: argparse.Namespace) -> None:
     cmd += ["--set-metadata", f"{beads.DIFFICULTY_KEY}={args.difficulty}", "--set-metadata", f"{beads.LOOPABLE_KEY}={args.loopable}"]
     if args.direct:
         cmd += ["--add-label", beads.DIRECT_ON]
+    if args.kind:
+        cmd += beads.kind_label_args(issue, args.kind)
     if args.summary:
         cmd += ["--title", args.summary.strip()]
     beads.run_ok(toplevel, cmd, actor, parts.description)

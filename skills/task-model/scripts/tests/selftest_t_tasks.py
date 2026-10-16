@@ -204,6 +204,61 @@ def test_new_and_status_single_worktree() -> None:
         check("必須節が無い本文は終了コード2", r.returncode == 2 and r.stdout == "", r.stdout + r.stderr)
 
 
+def test_kind_label() -> None:
+    say("task.py new・edit・adopt --kind（種類は label kind:<種類> の1つ）")
+    with tempfile.TemporaryDirectory() as tmp:
+        _main_path, wt1, _wt2 = make_repo(tmp)
+
+        def kinds(task_id: str) -> list[str]:
+            return sorted(l for l in issue_json(wt1, task_id).get("labels") or [] if l.startswith(beads.KIND_LABEL))
+
+        def new(*extra: str) -> str:
+            r = run_task(wt1, "new", "--summary", "種類", "--difficulty", "sonnet", "--loopable", "Y", *extra,
+                         "--body-file", body_file(wt1))
+            check(f"new {' '.join(extra) or '（--kind なし）'} は CREATED", r.returncode == 0 and r.stdout.startswith("CREATED\t"), r.stdout + r.stderr)
+            return r.stdout.split("\t")[1] if r.stdout.startswith("CREATED\t") else ""
+
+        typed = new("--kind", "bug")
+        check("new --kind bug は label kind:bug を付ける", kinds(typed) == ["kind:bug"], repr(kinds(typed)))
+        plain = new()
+        check("--kind なしは kind: の label を付けない", kinds(plain) == [], repr(kinds(plain)))
+        r = run_task(wt1, "status")
+        check("種類の無いタスクも有るタスクも status で READY",
+              all(any(l.startswith(f"{t}\ttodo\t") and "\tREADY\t" in l for l in r.stdout.splitlines()) for t in (typed, plain)),
+              r.stdout)
+
+        before = issue_count(wt1)
+        r = run_task(wt1, "new", "--summary", "語彙の外", "--difficulty", "sonnet", "--loopable", "Y", "--kind", "fix",
+                     "--body-file", body_file(wt1))
+        check("語彙の外の --kind は終了コード2で作らない", r.returncode == 2 and issue_count(wt1) == before, r.stdout + r.stderr)
+
+        r = run_task(wt1, "edit", typed, "--kind", "feature")
+        check("edit --kind feature で付け替わり kind: は1つ", r.returncode == 0 and kinds(typed) == ["kind:feature"],
+              r.stdout + r.stderr + repr(kinds(typed)))
+        r = run_task(wt1, "edit", typed, "--kind", "feature")
+        check("同じ種類の edit --kind は通り、kind: は1つのまま", r.returncode == 0 and kinds(typed) == ["kind:feature"],
+              r.stdout + r.stderr + repr(kinds(typed)))
+        r = run_task(wt1, "edit", typed, "--kind", "-")
+        check("edit --kind - で外れる", r.returncode == 0 and kinds(typed) == [], r.stdout + r.stderr + repr(kinds(typed)))
+
+        subprocess.run(["bd", "label", "add", beads.to_bd_id(plain), "kind:bug"], cwd=wt1, capture_output=True, text=True)
+        subprocess.run(["bd", "label", "add", beads.to_bd_id(plain), "kind:docs"], cwd=wt1, capture_output=True, text=True)
+        r = run_task(wt1, "status")
+        check("kind: が2つあれば invalid に出る", f"\ninvalid\t1\t{plain}" in r.stdout, r.stdout)
+        r = run_task(wt1, "edit", plain, "--kind", "docs")
+        check("edit --kind docs で kind: が1つに戻る", r.returncode == 0 and kinds(plain) == ["kind:docs"],
+              r.stdout + r.stderr + repr(kinds(plain)))
+
+        r = subprocess.run(["bd", "create", "--id", "t-raw", "--title", "取り込み", "-l", "kind:bug", "--silent"],
+                           cwd=wt1, capture_output=True, text=True)
+        check("振り分け前の課題（kind:bug つき）を作れる", r.returncode == 0, r.stdout + r.stderr)
+        r = run_task(wt1, "adopt", "T-RAW", "--difficulty", "sonnet", "--loopable", "Y", "--kind", "refactor",
+                     "--body-file", "-", stdin=PLANNED_BODY)
+        adopted = r.stdout.strip().split("\t")[-1] if r.stdout.startswith("ADOPTED\t") else ""
+        check("adopt --kind refactor は kind: を refactor の1つにする", adopted != "" and kinds(adopted) == ["kind:refactor"],
+              r.stdout + r.stderr + (repr(kinds(adopted)) if adopted else ""))
+
+
 def test_claim_and_release_single_worktree() -> None:
     say("task.py claim/release（単独の作業ツリー）")
     with tempfile.TemporaryDirectory() as tmp:
@@ -494,6 +549,7 @@ TESTS = (
     test_done_single_worktree,
     test_claim_and_release_single_worktree,
     test_new_and_status_single_worktree,
+    test_kind_label,
     test_draft_register_and_refuse_claim,
     test_draft_dropped,
     test_claim_race,

@@ -62,7 +62,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     ),
     "new": (
         "採番して Beads に課題を作る（コミットしない）。",
-        r"""採番して Beads に課題を作る（コミットしない。採番は TRACKER.md の「タスクの要素と Beads の置き場」）。`--draft` はドラフト（WORKFLOW.md の「ドラフトの課題」）を作る: 本文は「タスクの本文」のドラフトの緩い検査で見て、`deferred` と metadata `draft`=`Y` で作り、`task_plan_base` は控えない。`--hold` と同時・`--direct` と同時は何も作らずに終了コード2。以下は `--draft` でないとき。`--difficulty`・`--loopable` は metadata `difficulty`・`loopable` に書く（label は付けない）。`--direct` は委譲しない近道の印（label `direct:Y`）を付け、「difficulty とモデルの切り替え」の基準の表で `tw` が見る条件を外れれば何も作らずに終了コード2。`## やること` の中身が要る（空にできるのは `--hold` だけ。段の形に沿わない・`### 名指すファイル` が無い・形が違う・パスが木に無い・`### 作業先` が絶対パス1行でないか git のリポジトリの根でなければ、何も作らずに終了コード2）。中身があれば、計画のリポジトリ（`### 作業先` があればそこ）の `HEAD` と主ブランチの分かれ目の SHA を metadata `task_plan_base` に控える
+        r"""採番して Beads に課題を作る（コミットしない。採番は TRACKER.md の「タスクの要素と Beads の置き場」）。`--draft` はドラフト（WORKFLOW.md の「ドラフトの課題」）を作る: 本文は「タスクの本文」のドラフトの緩い検査で見て、`deferred` と metadata `draft`=`Y` で作り、`task_plan_base` は控えない。`--hold` と同時・`--direct` と同時は何も作らずに終了コード2。以下は `--draft` でないとき。`--difficulty`・`--loopable` は metadata `difficulty`・`loopable` に書く（label は付けない）。`--direct` は委譲しない近道の印（label `direct:Y`）を付け、「difficulty とモデルの切り替え」の基準の表で `tw` が見る条件を外れれば何も作らずに終了コード2。`--kind` は種類（WORKFLOW.md の「kind（種類）」の語彙）を label `kind:<種類>` で付ける（省くと付けない。`--draft` でも付けられる）。`## やること` の中身が要る（空にできるのは `--hold` だけ。段の形に沿わない・`### 名指すファイル` が無い・形が違う・パスが木に無い・`### 作業先` が絶対パス1行でないか git のリポジトリの根でなければ、何も作らずに終了コード2）。中身があれば、計画のリポジトリ（`### 作業先` があればそこ）の `HEAD` と主ブランチの分かれ目の SHA を metadata `task_plan_base` に控える
 
 出力: `CREATED`・`LOCKED`（20回打ち直しても番号が取れない）""",
     ),
@@ -104,13 +104,13 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     ),
     "edit": (
         "本文と属性と依存を直す。",
-        r"""本文と属性と依存を直す（`--difficulty`・`--loopable` は metadata を書き換える。コミットも `ship` も要らない。`## 完了条件`・`## やること` はそれぞれの欄へ分けて入れ、版は `bd history` に残る。`## 結果` は拒む）。`--status` は着手前（`open`・`deferred`）だけ。ドラフトに `--status todo|hold` を打つと、書いたあとの本文（同じ呼び出しの `--body-file` を当てたもの）を `new` と同じ検査（`hold` なら `--hold` の検査）にかけ、通らなければ何も書かずに `NOT_READY\tT-xxx\tDRAFT\t<理由>`（終了コード4）。通れば状態と印 `draft` の取り外しを同じ `bd update` で書き、`## やること` に中身があれば `new` と同じく `task_plan_base` を控える。ドラフトの本文の編集は WORKFLOW.md の「タスクの本文」のドラフトの緩い検査で見る。`--direct Y|N`（`--body-file` が無くてもよい）は label `direct:Y` を付け外しする。`Y` で基準を外れれば何も書かずに終了コード2。印のあるタスクの本文か `--difficulty` を変えて基準を外れたら、書き込んで印を外し、`EDITED`（と `PLAN_AFTER_WORK`）の次に `DIRECT_OFF\tT-xxx\t<理由>` を出す。`--add-deps`・`--remove-deps`（`--body-file` が無くてもよく、その場合は本文に触れない）は Beads の依存を `bd dep add`・`bd dep remove` で1辺ずつ直す（`bd` の循環検査の前に `tw` が先に拒む）。削除してから追加し、すでにある依存の追加は通る。自分自身・Beads に無い ID・循環になる辺・形の違う ID・依存にない ID の削除・追加と削除に同じ ID は、何も書かずに終了コード2。以下は本文について。本文を丸ごと書き換える。`--section` を付けると、その節の中身だけを渡した中身に置き換え、ほかの節は1バイトも変えない（節名は `やること`・`## やること` のどちらでも受ける。枠に無い見出し・渡した中身に行頭の `## ` の行があれば、書き込まずに終了コード2。置き換えた全文に以降の検査が効く）。`--section` と `--body-file` の組は繰り返せて、先頭から順に同じ呼び出しの中で置き換える（組の数が違う・同じ節を2回指す・`--body-file -` を2回使うのは書き込まずに終了コード2）。検査と、Beads・トラッカーへの反映は結合した本文に対して1回だけ通るので、何節も書くときは繰り返して1回で打つ（`--status`・`--summary` なども同じ呼び出しに付けられる）。渡した本文の `## 目的・背景`・`## 完了条件` がいまの本文と違えば、書き込まずに `FRAME_CHANGED\tT-xxx\t<違う節>` で止まる（終了コード4。行末の空白と空行の数の差は違いに数えない。いまの本文に節が無いもの・中身が空か「なし」のものは比べない）。変えてよいときだけ `--change-frame` を付けて打ち直す。ほかの節だけの書き換えは今までどおり通る。`claim` の後に、着手の印の持ち主が `## やること` に初めて中身を入れたとき、その時点で作業が始まっていたか（`claim` した時点の `HEAD` より後のコミットか、渡した本文のファイル以外の変更があるか。submodule のずれは数えない）を1回だけ metadata `task_plan` に残す（値は `first`／`after-work`）。`after-work` になるときは書き込まずに `WORK_BEFORE_PLAN\tT-xxx\t<次の一手>` で止まる（終了コード4）。`--after-work` を付けると書き込んで `after-work` を残し、`EDITED` の次に `PLAN_AFTER_WORK\tT-xxx\t作業の後に書いた` の行を足す（作業が始まっていなければ `--after-work` は何も変えず `first`）。front matter 付きの本文は拒む（終了コード2。除いて渡す）
+        r"""本文と属性と依存を直す（`--difficulty`・`--loopable` は metadata を書き換える。コミットも `ship` も要らない。`## 完了条件`・`## やること` はそれぞれの欄へ分けて入れ、版は `bd history` に残る。`## 結果` は拒む）。`--status` は着手前（`open`・`deferred`）だけ。ドラフトに `--status todo|hold` を打つと、書いたあとの本文（同じ呼び出しの `--body-file` を当てたもの）を `new` と同じ検査（`hold` なら `--hold` の検査）にかけ、通らなければ何も書かずに `NOT_READY\tT-xxx\tDRAFT\t<理由>`（終了コード4）。通れば状態と印 `draft` の取り外しを同じ `bd update` で書き、`## やること` に中身があれば `new` と同じく `task_plan_base` を控える。ドラフトの本文の編集は WORKFLOW.md の「タスクの本文」のドラフトの緩い検査で見る。`--direct Y|N`（`--body-file` が無くてもよい）は label `direct:Y` を付け外しする。`Y` で基準を外れれば何も書かずに終了コード2。印のあるタスクの本文か `--difficulty` を変えて基準を外れたら、書き込んで印を外し、`EDITED`（と `PLAN_AFTER_WORK`）の次に `DIRECT_OFF\tT-xxx\t<理由>` を出す。`--kind <種類>|-`（`--body-file` が無くてもよい）は label `kind:` をすべて外してから `kind:<種類>` を付ける（`-` は外すだけ）。`--add-deps`・`--remove-deps`（`--body-file` が無くてもよく、その場合は本文に触れない）は Beads の依存を `bd dep add`・`bd dep remove` で1辺ずつ直す（`bd` の循環検査の前に `tw` が先に拒む）。削除してから追加し、すでにある依存の追加は通る。自分自身・Beads に無い ID・循環になる辺・形の違う ID・依存にない ID の削除・追加と削除に同じ ID は、何も書かずに終了コード2。以下は本文について。本文を丸ごと書き換える。`--section` を付けると、その節の中身だけを渡した中身に置き換え、ほかの節は1バイトも変えない（節名は `やること`・`## やること` のどちらでも受ける。枠に無い見出し・渡した中身に行頭の `## ` の行があれば、書き込まずに終了コード2。置き換えた全文に以降の検査が効く）。`--section` と `--body-file` の組は繰り返せて、先頭から順に同じ呼び出しの中で置き換える（組の数が違う・同じ節を2回指す・`--body-file -` を2回使うのは書き込まずに終了コード2）。検査と、Beads・トラッカーへの反映は結合した本文に対して1回だけ通るので、何節も書くときは繰り返して1回で打つ（`--status`・`--summary` なども同じ呼び出しに付けられる）。渡した本文の `## 目的・背景`・`## 完了条件` がいまの本文と違えば、書き込まずに `FRAME_CHANGED\tT-xxx\t<違う節>` で止まる（終了コード4。行末の空白と空行の数の差は違いに数えない。いまの本文に節が無いもの・中身が空か「なし」のものは比べない）。変えてよいときだけ `--change-frame` を付けて打ち直す。ほかの節だけの書き換えは今までどおり通る。`claim` の後に、着手の印の持ち主が `## やること` に初めて中身を入れたとき、その時点で作業が始まっていたか（`claim` した時点の `HEAD` より後のコミットか、渡した本文のファイル以外の変更があるか。submodule のずれは数えない）を1回だけ metadata `task_plan` に残す（値は `first`／`after-work`）。`after-work` になるときは書き込まずに `WORK_BEFORE_PLAN\tT-xxx\t<次の一手>` で止まる（終了コード4）。`--after-work` を付けると書き込んで `after-work` を残し、`EDITED` の次に `PLAN_AFTER_WORK\tT-xxx\t作業の後に書いた` の行を足す（作業が始まっていなければ `--after-work` は何も変えず `first`）。front matter 付きの本文は拒む（終了コード2。除いて渡す）
 
 出力: `EDITED`（`PLAN_AFTER_WORK`・`DIRECT_OFF` が続くことがある）・`NOT_READY`・`WORK_BEFORE_PLAN`・`FRAME_CHANGED`""",
     ),
     "adopt": (
         "振り分け前の課題に metadata `difficulty`・`loopable` と本文を付ける。",
-        r"""振り分け前の課題（TRACKER.md の「サイクルの各段で Beads に起きること」）に metadata `difficulty`・`loopable` と本文を付ける（`jira` はキーの無い課題に番号も）。本文の検査は `new` と同じで `## やること` の中身が要り（`--hold` は無い）、`notes` に入れて metadata `task_plan_base` を控える。`--direct` は label `direct:Y` を付け、基準を外れれば `new` と同じく終了コード2
+        r"""振り分け前の課題（TRACKER.md の「サイクルの各段で Beads に起きること」）に metadata `difficulty`・`loopable` と本文を付ける（`jira` はキーの無い課題に番号も）。本文の検査は `new` と同じで `## やること` の中身が要り（`--hold` は無い）、`notes` に入れて metadata `task_plan_base` を控える。`--direct` は label `direct:Y` を付け、基準を外れれば `new` と同じく終了コード2。`--kind` は label `kind:` をすべて外してから `kind:<種類>` を付ける（省くと label `kind:` に触らない）
 
 出力: `ADOPTED\t<元のID>\t<ID>`""",
     ),
@@ -278,6 +278,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_new.add_argument("--hold", action="store_true")
     p_new.add_argument("--draft", action="store_true")
     p_new.add_argument("--direct", action="store_true")
+    p_new.add_argument("--kind", default=None, choices=taskfile.KIND_VALUES)
     p_new.add_argument("--body-file", required=True)
 
     p_claim = sub.add_parser("claim")
@@ -360,6 +361,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_edit.add_argument("--after-work", dest="after_work", action="store_true")
     p_edit.add_argument("--change-frame", dest="change_frame", action="store_true")
     p_edit.add_argument("--direct", default=None, choices=taskfile.LOOPABLE_VALUES)
+    p_edit.add_argument("--kind", default=None, choices=(*taskfile.KIND_VALUES, beads.KIND_NONE))
 
     p_adopt = sub.add_parser("adopt")
     p_adopt.add_argument("bd_id")
@@ -367,6 +369,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_adopt.add_argument("--loopable", required=True, choices=taskfile.LOOPABLE_VALUES)
     p_adopt.add_argument("--summary", default=None)
     p_adopt.add_argument("--direct", action="store_true")
+    p_adopt.add_argument("--kind", default=None, choices=taskfile.KIND_VALUES)
     p_adopt.add_argument("--body-file", required=True)
 
     sub.add_parser("sync")
