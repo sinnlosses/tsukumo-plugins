@@ -259,6 +259,79 @@ def test_kind_label() -> None:
               r.stdout + r.stderr + (repr(kinds(adopted)) if adopted else ""))
 
 
+def test_find() -> None:
+    say("task.py find（READY を語と種類で絞り、FOUND・MANY・NONE で返す）")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(tmp)
+
+        def add(number: int, summary: str, kind: str | None = None, files: tuple[str, ...] = ("shared.txt",),
+                status: str = "todo", deps: tuple[str, ...] = ()) -> str:
+            task_id = f"T-{number}"
+            commit_task(main_path, taskfile.Task(task_id, summary, status, "sonnet", "Y", deps, task_body([("書く", "x")], files)))
+            if kind is not None:
+                subprocess.run(["bd", "label", "add", beads.to_bd_id(task_id), f"{beads.KIND_LABEL}{kind}"],
+                               cwd=main_path, capture_output=True, text=True)
+            return task_id
+
+        def find(*args: str) -> subprocess.CompletedProcess:
+            return run_task(wt1, "find", *args)
+
+        add(101, "hoge の表示を直す")
+        add(102, "ログを整える", files=("src/Render.ts",))
+        many = [add(110 + i, f"一括の{i}") for i in range(6)]
+        three = [add(120 + i, f"三件の{i}") for i in range(3)]
+        kind_only = add(130, "種類だけ", kind="bug")
+        add(131, "種類だけ")
+        mixed_plain = add(140, "混合の種類なし")
+        mixed_bug = add(141, "混合の不具合", kind="bug")
+        add(142, "混合の機能", kind="feature")
+        other_bug = add(143, "別の不具合", kind="bug")
+        add(150, "除外の保留", status="hold")
+        blocker = add(151, "依存の先")
+        add(152, "除外の依存待ち", deps=(blocker,))
+        claimed = add(153, "除外の着手中")
+        r = run_task(wt2, "claim", claimed)
+        check("着手中にする", r.returncode == 0, r.stdout + r.stderr)
+        r = run_task(wt1, "new", "--summary", "除外のドラフト", "--difficulty", "sonnet", "--loopable", "Y", "--draft",
+                     "--body-file", "-", stdin=DRAFT_BODY)
+        check("ドラフトを積む", r.returncode == 0, r.stdout + r.stderr)
+
+        status = run_task(wt1, "status").stdout
+        ready = next((l.split("\t")[1] for l in status.splitlines() if l.startswith("ready\t")), "?")
+
+        r = find("どこにも無い語")
+        check("当たらなければ NONE と絞る前の READY の件数", r.returncode == 0 and r.stdout == f"NONE\t{ready}\n", r.stdout + r.stderr)
+        r = find("ＨＯＧＥ")
+        check("全角・大文字違いの語でも summary に当たれば FOUND",
+              r.returncode == 0 and r.stdout == "FOUND\tT-101\tY\thoge の表示を直す\n", r.stdout + r.stderr)
+        r = find("render.TS")
+        check("### 名指すファイル のパスだけに当たっても FOUND", r.stdout.startswith("FOUND\tT-102\t"), r.stdout + r.stderr)
+        r = find("一括")
+        lines = r.stdout.splitlines()
+        check("6件なら MANY 6・先頭4件の CANDIDATE・MORE 2",
+              lines == ["MANY\t6", *(f"CANDIDATE\t{t}\tY\t一括の{i}" for i, t in enumerate(many[:4])), "MORE\t2"], r.stdout)
+        r = find("三件")
+        lines = r.stdout.splitlines()
+        check("3件なら MANY 3・CANDIDATE 全件・MORE なし",
+              lines == ["MANY\t3", *(f"CANDIDATE\t{t}\tY\t三件の{i}" for i, t in enumerate(three))], r.stdout)
+        r = find("該当しない", "種類だけ")
+        check("語どうしはどれか1つに当たればよい", r.stdout.startswith("MANY\t2\n"), r.stdout)
+        r = find("--kind", "bug")
+        ids = [l.split("\t")[1] for l in r.stdout.splitlines() if l.startswith("CANDIDATE")]
+        check("--kind だけなら種類の無いタスクは当たらない",
+              r.stdout.startswith("MANY\t3\n") and ids == [kind_only, mixed_bug, other_bug], r.stdout)
+        r = find("混合", "--kind", "bug")
+        ids = [l.split("\t")[1] for l in r.stdout.splitlines() if l.startswith("CANDIDATE")]
+        check("--kind と語なら、語の当たる種類なしと同じ種類だけ", r.stdout.startswith("MANY\t2\n")
+              and ids == [mixed_plain, mixed_bug], r.stdout)
+        r = find("除外")
+        check("hold・ドラフト・着手中・依存待ちは当たらない", r.stdout == f"NONE\t{ready}\n", r.stdout)
+        r = find()
+        check("語も --kind も無ければ終了コード2", r.returncode == 2 and r.stdout == "", r.stdout + r.stderr)
+        r = find("一括", "--kind", "fix")
+        check("語彙の外の --kind は終了コード2", r.returncode == 2 and r.stdout == "", r.stdout + r.stderr)
+
+
 def test_claim_and_release_single_worktree() -> None:
     say("task.py claim/release（単独の作業ツリー）")
     with tempfile.TemporaryDirectory() as tmp:
@@ -550,6 +623,7 @@ TESTS = (
     test_claim_and_release_single_worktree,
     test_new_and_status_single_worktree,
     test_kind_label,
+    test_find,
     test_draft_register_and_refuse_claim,
     test_draft_dropped,
     test_claim_race,

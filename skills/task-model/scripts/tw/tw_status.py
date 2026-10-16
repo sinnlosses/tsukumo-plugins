@@ -1,4 +1,4 @@
-"""`tw status`・`config`・`show`（読むだけのサブコマンド）。"""
+"""`tw status`・`config`・`show`・`find`（読むだけのサブコマンド）。"""
 
 from __future__ import annotations
 
@@ -112,6 +112,62 @@ def cmd_show(toplevel: str, task_id: str) -> None:
     no_comments = issue.raw.get("comment_count") == 0
     result = None if no_comments else beads.last_result(beads.comments(toplevel, bd_id))
     sys.stdout.write(beads.render_task(task, issue, result))
+
+
+# `MANY` のあとに出す候補の数（next-task が `AskUserQuestion` で見せる上限）。
+FIND_CANDIDATES = 4
+
+
+def cmd_find(toplevel: str, words: list[str], kind: str | None) -> None:
+    """`READY` を語と種類で絞り、`FOUND`・`MANY`・`NONE` で返す（読むだけ。WORKFLOW.md「kind（種類）」）。"""
+    folded = [w for w in (_fold(w) for w in words) if w]
+    if not folded and kind is None:
+        print("usage: 語か --kind のどちらかを渡す", file=sys.stderr)
+        raise SystemExit(2)
+    snap = tw_base.beads_snapshot(toplevel)
+    ready = [
+        tid
+        for tid in sorted(snap.tasks, key=beads.sort_key)
+        if snap.tasks[tid].status == "todo" and tw_base.readiness(snap.tasks[tid], snap.tasks, snap.claims) == "READY"
+    ]
+    hits = [tid for tid in ready if _find_hit(snap.tasks[tid], snap.issues[tid], folded, kind)]
+    if not hits:
+        print(f"NONE\t{len(ready)}")
+        return
+    rows = [f"{tid}\t{snap.tasks[tid].loopable}\t{snap.tasks[tid].summary}" for tid in hits]
+    if len(hits) == 1:
+        print(f"FOUND\t{rows[0]}")
+        return
+    print(f"MANY\t{len(hits)}")
+    for row in rows[:FIND_CANDIDATES]:
+        print(f"CANDIDATE\t{row}")
+    if len(hits) > FIND_CANDIDATES:
+        print(f"MORE\t{len(hits) - FIND_CANDIDATES}")
+
+
+def _fold(s: str) -> str:
+    return unicodedata.normalize("NFKC", s).casefold().strip()
+
+
+def _find_hit(task: taskfile.Task, issue: beads.Issue, words: list[str], kind: str | None) -> bool:
+    """語は summary と `### 名指すファイル` のどれかに含まれれば当たり（語どうしは OR）。
+
+    種類を渡したら、種類の違うタスクは外す。種類の無いタスクは語だけで決め、語が無ければ当たらない。
+    """
+    own = beads.kind_of(issue)
+    if kind is not None and own is not None and own != kind:
+        return False
+    if not words:
+        return own == kind
+    body = beads.compose_body(
+        str(issue.raw.get("description") or ""),
+        str(issue.raw.get("acceptance_criteria") or ""),
+        str(issue.raw.get("notes") or ""),
+        None,
+    )
+    paths, _ = taskfile.plan_files(body)
+    targets = [_fold(task.summary), *(_fold(p) for p in paths)]
+    return any(w in t for w in words for t in targets)
 
 
 def _print_status_table(

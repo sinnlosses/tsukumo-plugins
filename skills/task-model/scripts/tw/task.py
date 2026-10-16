@@ -3,7 +3,7 @@
 # 宣言が無いと Python 3.9 が、長い日本語の行の読み込み位置によって「Non-UTF-8 code」で落ちる。
 """Beads に置いたタスクの運用を操作する入口コマンド。
 
-使い方: tw <status|new|claim|release|done|ship|finish|land|config|config-doctor|show|edit|plan-check|plan-phases|verify|verify-check|accept|pause|step|lap|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|ask-guard> ...
+使い方: tw <status|new|claim|release|done|ship|finish|land|config|config-doctor|show|find|edit|plan-check|plan-phases|verify|verify-check|accept|pause|step|lap|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|ask-guard> ...
 
 `install.sh` が PATH 上に張る `tw` と、plugin の `bin/tw` から呼ぶ。`commit-guard`・`handback-guard` の
 `--agent-scoped` は plugin の `hooks/hooks.json` が付け、入力に `agent_id` があるとき（サブエージェント）だけ関門を掛ける。
@@ -155,6 +155,12 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
         r"""タスク1件を front matter と本文の形で出す（読むだけ。WORKFLOW.md の「タスクの本文」）。枠の7節を空でもこの順に出す
 
 出力: 本文。無ければ `NOT_READY`""",
+    ),
+    "find": (
+        "`READY` のタスクを語と種類で絞る（読むだけ）。",
+        r"""`READY`（`status` の着手可否が `READY` の行）のタスクを、語と `--kind` で `status` の並びのまま絞る（読むだけ。WORKFLOW.md の「kind（種類）」）。語は NFKC と大文字小文字を揃えて、summary か `### 名指すファイル` のパスに含まれれば当たり、語どうしは言い換えとしてどれか1つでよい。`--kind` を付けると label `kind:` が違う種類のタスクを外し、種類の無いタスクは語だけで決める（語が無ければ当たらない）。語も `--kind` も無ければ終了コード2
+
+出力（どれも終了コード0）: 1件なら `FOUND\t<ID>\t<loopable>\t<summary>`。2件以上なら `MANY\t<件数>` に続けて先頭4件の `CANDIDATE\t<ID>\t<loopable>\t<summary>`、5件以上ならそのあとに `MORE\t<残りの件数>`。0件なら `NONE\t<絞る前の READY の件数>`""",
     ),
     "plan-check": (
         "自分の着手の印について、`## やること` を作業より先に `tw edit` で書いたかを出す（読むだけ）。",
@@ -312,6 +318,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_show = sub.add_parser("show")
     p_show.add_argument("task_id")
+
+    p_find = sub.add_parser("find")
+    p_find.add_argument("words", nargs="*")
+    p_find.add_argument("--kind", default=None, choices=taskfile.KIND_VALUES)
 
     p_plan_check = sub.add_parser("plan-check")
     p_plan_check.add_argument("task_id")
@@ -476,6 +486,8 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
             tw_finish.cmd_finish(toplevel, args.task_id, args.dropped, args.result_file, args.message, args.files)
         elif args.command == "show":
             tw_status.cmd_show(toplevel, args.task_id)
+        elif args.command == "find":
+            tw_status.cmd_find(toplevel, args.words, args.kind)
         elif args.command == "edit":
             tw_edit.cmd_edit(toplevel, args)
         elif args.command == "plan-check":
