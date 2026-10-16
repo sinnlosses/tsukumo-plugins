@@ -30,8 +30,6 @@
   実在するファイルを指すこと（形を読めない言及も落とす）
 - `task-model` の `.md` が、ほかのスキル名とエージェント名を書いていないこと（データの名前の
   `task-workflow.` の kv キー・`/task-workflow/` の台帳・`docs/history/retrospect.md`・`retrospect_due` は除く）
-- `tw` の流れの語彙（`layout.py` の `FLOW_VALUES`。既定の `delegate` を除く）と `task-workflow/flows/` のファイル
-  （近道の印・status で決まる `direct.md`・`hold.md` を除く）が過不足なく対応し、パーツの枠 `parts.<枠>` が `task-workflow/SKILL.md` に全部出ること
 - 並びの印（frontmatter の `metadata` に `workflow-step: "true"`）を持つ SKILL.md が、契約の返す口
   （`` `phase_result` `` か `` `work_plan` ``）と、`finished`・`skipped`・`stopped` の返し方を本文に書いていること
 """
@@ -479,39 +477,6 @@ def _load_layout():
     return module
 
 
-# 流れの変種のうち、`flow` の値でなくタスクの近道の印・status で決まるもの。
-FLOWS_NOT_IN_CONFIG = ("direct", "hold")
-
-
-def flow_and_part_problems(
-    flow_values: list[str], default_flow: str, part_keys: list[str], flow_files: list[str], skill_text: str
-) -> list[str]:
-    """`tw` の流れの語彙・パーツの枠と、オーケストレーターの `flows/`・`SKILL.md` の食い違い。"""
-    found = []
-    for value in flow_values:
-        if value != default_flow and value not in flow_files:
-            found.append(f"flow の値 {value!r} に skills/task-workflow/flows/{value}.md が無い")
-    for name in flow_files:
-        if name not in flow_values and name not in FLOWS_NOT_IN_CONFIG:
-            found.append(f"skills/task-workflow/flows/{name}.md が tw の flow の語彙に無い")
-    for key in part_keys:
-        if f"`{key}`" not in skill_text:
-            found.append(f"skills/task-workflow/SKILL.md が `{key}` を書いていない")
-    return found
-
-
-def check_flow_and_part_names() -> None:
-    """流れの種類とパーツの枠の正は `tw`（layout.py）。オーケストレーターの `flows/`・`SKILL.md` がそれと合っているか。"""
-    layout = _load_layout()
-    flows_dir = os.path.join(SKILLS, "task-workflow", "flows")
-    flow_files = sorted(f[:-3] for f in os.listdir(flows_dir) if f.endswith(".md"))
-    skill_text = read(os.path.join(SKILLS, "task-workflow", "SKILL.md"))
-    for p in flow_and_part_problems(
-        [c.value for c in layout.FLOW_VALUES], layout.DEFAULT_FLOW, list(layout.PART_KEYS), flow_files, skill_text
-    ):
-        fail(p)
-
-
 def check_selftest_body_literal() -> None:
     """自己テストが `### 名指すファイル` を直書きして本文を組んでいないか（`selftest_body.task_body` で組む）。"""
     for fname in sorted(os.listdir(_TASK_MODEL_TESTS)):
@@ -840,7 +805,6 @@ def main() -> None:
     check_sibling_imports(names)
     check_python_syntax(names)
     check_task_model_layout()
-    check_flow_and_part_names()
     check_selftest_body_literal()
     check_agent_frontmatter(agent_names())
     check_workflow_steps(names)

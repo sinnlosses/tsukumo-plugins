@@ -297,6 +297,8 @@ STEP_SHIP = "ship-step"
 # 並びのスキルの全名の `:` より後ろ。この4つのほかは名前がそのまま帯の段の名前になる
 DEFAULT_STEP_NAMES = (STEP_IMPLEMENT, STEP_ACCEPT, STEP_RETRO, STEP_SHIP)
 
+FLOW_DELEGATE = "delegate"
+FLOW_MAIN = "main"
 FLOW_DIRECT = "direct"
 PLAN_REGISTERED_STATE = "registered"
 PLAN_WRITTEN_STATE = "written"
@@ -323,7 +325,6 @@ def work_plan_phases(
     specs: tuple[PlanStep, ...],
     flow: str,
     plan_state: str,
-    with_retro: bool,
     through: str | None,
     also: tuple[int, ...],
     steps: tuple[str, ...] = (),
@@ -331,7 +332,7 @@ def work_plan_phases(
 ) -> tuple[dict | None, str | None]:
     """`work_plan` の引数（`phases`・`current`・`finishedInGroup`・あれば `delegatedRange`・`skippedPhases`）。形が決まらなければ `(None, 理由)`。
 
-    `flow` は `delegate`・`main`・`FLOW_DIRECT`。`through` はその段までと、それ以前を済ませた位置（省略は何も済んでいない）。
+    `flow` は `FLOW_DELEGATE`・`FLOW_MAIN`・`FLOW_DIRECT`。振り返りの段は `steps` に `retrospect-step` があるときだけ。`through` はその段までと、それ以前を済ませた位置（省略は何も済んでいない）。
     `also` は並列のまとまりの中で、`through` の後ろにあるが先に済んだ段の番号。
     `steps` は並びのスキルの全名で、空なら `DEFAULT_STEP_NAMES` の順。`skipped` は済んだ段のうち飛ばした段の名前。
     """
@@ -363,7 +364,7 @@ def work_plan_phases(
                 entries.append(PHASE_ACCEPT)
                 keys.append([PHASE_ACCEPT])
         elif step == STEP_RETRO:
-            if with_retro and not direct:
+            if not direct:
                 entries.append(PHASE_RETRO)
                 keys.append([PHASE_RETRO])
         else:

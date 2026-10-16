@@ -161,10 +161,10 @@ def cmd_plan_phases(
     direct = beads.label_values(issue.labels, beads.DIRECT_LABEL) == ["Y"]
     if direct and plan_state == taskfile.PLAN_REGISTERED_STATE:
         flow = taskfile.FLOW_DIRECT
-    elif config.flow == layout.FLOW_MAIN or beads.attribute_values(issue, beads.LOOPABLE_KEY) == ["N"]:
-        flow = layout.FLOW_MAIN
+    elif beads.attribute_values(issue, beads.LOOPABLE_KEY) == ["N"]:
+        flow = taskfile.FLOW_MAIN
     else:
-        flow = layout.FLOW_DELEGATE
+        flow = taskfile.FLOW_DELEGATE
     also_numbers: tuple[int, ...] = ()
     if also:
         if not all(x.strip().isdigit() for x in also.split(",")):
@@ -177,7 +177,6 @@ def cmd_plan_phases(
         specs,
         flow,
         plan_state,
-        config.part("retrospect") != layout.PART_NONE,
         through,
         also_numbers,
         steps,

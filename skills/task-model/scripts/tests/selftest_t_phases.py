@@ -114,28 +114,8 @@ def _wt2_of(wt1: str) -> str:
     return os.path.join(os.path.dirname(wt1), "wt2")
 
 
-def test_phases_without_retrospect() -> None:
-    say("task.py plan-phases: parts.retrospect が なし のときは振り返りを省く")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない", extra='\n[parts]\nretrospect = "なし"\n')
-        task_id = _register(main_path, ONE_STEP)
-        run_task(wt1, "claim", task_id)
-        got, r = _phases(wt1, task_id)
-        check("受け入れ以降は2段", got is not None and got["phases"] == ["書く", "受け入れ", "送り出し"], r.stdout + r.stderr)
-        r = run_task(wt1, "plan-phases", task_id, "--through", "振り返り")
-        check("省いた振り返りは指せない", r.returncode == 2 and r.stdout.startswith("NO_PHASE\t"), r.stdout)
-
-
 def test_phases_main_and_direct_flows() -> None:
-    say("task.py plan-phases: main の流れ・loopable N は範囲なし、近道は 直す・検証・送り出し")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない", extra='flow = "main"\n')
-        task_id = _register(main_path, ONE_STEP)
-        run_task(wt1, "claim", task_id)
-        got, r = _phases(wt1, task_id)
-        check("flow = main は同じ並びで delegatedRange なし",
-              got == {"phases": ["書く", *TAIL], "current": 0, "finishedInGroup": []}, r.stdout + r.stderr)
-
+    say("task.py plan-phases: loopable N は範囲なし、近道は 直す・検証・送り出し")
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
         task_id = _register(main_path, ONE_STEP, loopable="N")
@@ -169,6 +149,8 @@ def test_phases_follow_steps() -> None:
         got, r = _phases(wt1, task_id)
         check("並びから振り返りを外すと帯にも出ない",
               got is not None and got["phases"] == ["書く", "受け入れ", "送り出し"], r.stdout + r.stderr)
+        r = run_task(wt1, "plan-phases", task_id, "--through", "振り返り")
+        check("外した振り返りは指せない", r.returncode == 2 and r.stdout.startswith("NO_PHASE\t"), r.stdout)
 
     custom = _steps_line(impl, accept, "x:lint-step", retro, ship)
     with tempfile.TemporaryDirectory() as tmp:
@@ -200,14 +182,13 @@ def test_phases_follow_steps() -> None:
         check("近道でも既定の4つ以外のスキルの段は残り、受け入れ・振り返りは省く",
               got is not None and got["phases"] == ["直す", "検証", "lint-step", "送り出し"], r.stdout + r.stderr)
 
-    got, error = taskfile.work_plan_phases((), "delegate", taskfile.PLAN_MISSING_STATE, True, None, (), ())
+    got, error = taskfile.work_plan_phases((), "delegate", taskfile.PLAN_MISSING_STATE, None, (), ())
     check("並びが空（plugin の外の tw）なら既定の4つの順で組む",
           got is not None and got["phases"] == ["計画", "実装", *TAIL], str(error))
 
 
 TESTS = (
     test_phases_delegate_flow,
-    test_phases_without_retrospect,
     test_phases_main_and_direct_flows,
     test_phases_follow_steps,
 )

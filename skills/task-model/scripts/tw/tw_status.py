@@ -92,8 +92,6 @@ def cmd_config(toplevel: str) -> None:
         if value is None:
             value = layout.NO_COMMAND if key in CONFIG_COMMAND_KEYS else "-"
         print(f"{key}\t{value}\t{'config' if key in config.written else 'default'}")
-    for slot in layout.PART_SLOTS:
-        print(f"{slot.key}\t{config.part(slot.name)}\t{'config' if slot.key in config.written else 'default'}")
 
 
 def cmd_show(toplevel: str, task_id: str) -> None:

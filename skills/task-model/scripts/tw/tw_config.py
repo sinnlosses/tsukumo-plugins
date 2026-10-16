@@ -20,24 +20,13 @@ def steps_default(toplevel: str) -> list[str]:
     return layout.default_steps(_step_candidates(toplevel))
 
 
-def cmd_config_schema(version: str | None = None) -> None:
-    """欄の形を1行の JSON で出す（読むだけ。設定にはよらない）。
-
-    `version` を省くと schema 1、`2` なら schema 2（並びの欄。候補は作業ツリー・`~`・`tw` と同じ plugin から走査する）。
-    知らない版は stderr に理由を出して終了コード2。
-    """
-    if version is None or version == "1":
-        schema = layout.config_schema()
-    elif version == "2":
-        try:
-            project_root = gitinfo.git_toplevel()
-        except gitinfo.GitCommandError:
-            project_root = None
-        schema = layout.config_schema_v2(project_root, os.path.expanduser("~"), layout.own_plugin_root())
-    else:
-        known = " / ".join(str(v) for v in layout.SCHEMA_VERSIONS)
-        print(f"tw config --schema: 知らない版 {version!r}（{known} のどれか）", file=sys.stderr)
-        raise SystemExit(2)
+def cmd_config_schema() -> None:
+    """欄の形（schema 2。並びの欄）を1行の JSON で出す（読むだけ。設定にはよらない）。候補は作業ツリー・`~`・`tw` と同じ plugin から走査する。"""
+    try:
+        project_root = gitinfo.git_toplevel()
+    except gitinfo.GitCommandError:
+        project_root = None
+    schema = layout.config_schema(project_root, os.path.expanduser("~"), layout.own_plugin_root())
     print(json.dumps(schema, ensure_ascii=False))
 
 
