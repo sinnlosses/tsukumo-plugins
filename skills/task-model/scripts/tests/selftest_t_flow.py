@@ -636,8 +636,9 @@ def test_bin_tw_python_floor() -> None:
         r = subprocess.run(["/bin/sh", "-c", commands[0]], capture_output=True, text=True,
                            env={"PATH": f"{old}:{base_path}", "CLAUDE_PLUGIN_ROOT": plugin_root})
         check(
-            "hook は前提の欠落で1行警告し、終了コードは0（コミットや委譲を塞がない）",
-            r.returncode == 0 and r.stdout == "" and r.stderr.count("\n") == 1 and "前提が欠けている" in r.stderr,
+            "hook は前提の欠落で bin/tw の理由と案内の2行を出し、終了コードは0（コミットや委譲を塞がない）",
+            r.returncode == 0 and r.stdout == "" and r.stderr.count("\n") == 2
+            and "Python 3.9 以上が要る" in r.stderr and "前提が欠けている" in r.stderr,
             r.stdout + r.stderr,
         )
         r = subprocess.run(["/bin/sh", "-c", commands[0]], capture_output=True, text=True,
