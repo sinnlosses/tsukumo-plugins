@@ -82,6 +82,8 @@ def cmd_config(toplevel: str) -> None:
         value = getattr(config, key)
         if key == layout.STEPS_KEY:
             value = layout.steps_text(list(value) if value is not None else tw_config.steps_default(toplevel))
+        elif key == layout.REVIEW_CODE_GLOBS_KEY:
+            value = layout.steps_text(list(value))
         elif key == "base_branch" and value is None:
             try:
                 value = gitinfo.base_branch(toplevel)

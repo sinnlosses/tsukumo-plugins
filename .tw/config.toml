@@ -1,1 +1,2 @@
 verify = "./check.sh"
+review_code_globs = ["skills/**", "agents/**"]
