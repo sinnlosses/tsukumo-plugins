@@ -14,6 +14,7 @@ import layout
 import taskfile
 import tracker
 import tw_base
+import tw_config
 import tw_plan
 
 
@@ -142,7 +143,9 @@ def cmd_plan_check(toplevel: str, task_id: str) -> None:
     _print_plan_check(shown, plan_body, mark, plan_base, stale)
 
 
-def cmd_plan_phases(toplevel: str, task_id: str, through: str | None, also: str | None) -> None:
+def cmd_plan_phases(
+    toplevel: str, task_id: str, through: str | None, also: str | None, skipped: str | None = None
+) -> None:
     """`work_plan` の引数を `PHASES\\tT-xxx\\t<JSON 1行>` で出す。指定が並びに合わなければ `NO_PHASE`（終了コード2）。"""
     shown, issue, plan_body, mark, _base, _stale = _own_plan(toplevel, task_id)
     specs, steps_error = taskfile.plan_step_specs(plan_body) if taskfile.has_plan(plan_body) else ((), None)
@@ -166,8 +169,17 @@ def cmd_plan_phases(toplevel: str, task_id: str, through: str | None, also: str 
             print(f"NO_PHASE\t{shown}\t--also は段の番号のコンマ区切り: {also}")
             raise SystemExit(2)
         also_numbers = tuple(int(x) for x in also.split(","))
+    steps = config.steps if config.steps is not None else tuple(tw_config.steps_default(toplevel))
+    skipped_names = tuple(x.strip() for x in skipped.split(",") if x.strip()) if skipped else ()
     result, error = taskfile.work_plan_phases(
-        specs, flow, plan_state, config.part("retrospect") != layout.PART_NONE, through, also_numbers
+        specs,
+        flow,
+        plan_state,
+        config.part("retrospect") != layout.PART_NONE,
+        through,
+        also_numbers,
+        steps,
+        skipped_names,
     )
     if result is None:
         print(f"NO_PHASE\t{shown}\t{error}")

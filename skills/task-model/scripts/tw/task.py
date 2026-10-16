@@ -164,7 +164,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     ),
     "plan-phases": (
         "自分の着手の印について、`work_plan` に渡す段の並びと位置を出す（読むだけ）。",
-        r"""自分の着手の印について、`work_plan` の引数（`phases`・`current`・`finishedInGroup`・あれば `delegatedRange`）をそのまま写せる形で出す（読むだけ）。受け入れ以降は「受け入れ」「振り返り」「送り出し」に固定（`parts.retrospect` が `なし` なら「振り返り」を省く）。並びは `plan-check` と同じ印で決める: `PLAN_REGISTERED` は計画の段なしで各段、`PLAN_FIRST` は先頭に済みの「計画」を足し、それ以外は仮の「実装」1段と `delegatedRange` の `{first}` だけ（段の数が未定）。`flow` が `main` か `loopable: N` なら `delegatedRange` なし。近道（`direct:Y` かつ `PLAN_REGISTERED`）は「直す」「検証」「送り出し」。連続する段のすべての組が並列の組なら1つの配列にまとめる（`current` は配列を1要素に数える）。`--through <段>` は、その段までと、それ以前を済ませた位置（段は `計画`・`実装`（全段）・`受け入れ`・`振り返り`・`直す`・`検証`・段の番号。省略は何も済んでいない位置）。`--also <n,…>` は、並列のまとまりの中で `--through` の後ろにあるが先に済んだ段の番号。全部済みにする指定（送り出しまで）と、並びに無い段は何も出さず `NO_PHASE`
+        r"""自分の着手の印について、`work_plan` の引数（`phases`・`current`・`finishedInGroup`・あれば `delegatedRange`・`skippedPhases`）をそのまま写せる形で出す（読むだけ）。帯の段は `tw config` の `steps` の並びの順に組む（並びが空なら既定の4つの順）: 全名の `:` より後ろが `implement-step` なら下の実装の段、`accept-step` は「受け入れ」、`retrospect-step` は「振り返り」（`parts.retrospect` が `なし` なら省く）、`ship-step` は「送り出し」、それ以外はその名前の1段。既定の並びなら受け入れ以降は「受け入れ」「振り返り」「送り出し」。実装の段は `plan-check` と同じ印で決める: `PLAN_REGISTERED` は計画の段なしで各段、`PLAN_FIRST` は先頭に済みの「計画」を足し、それ以外は仮の「実装」1段と `delegatedRange` の `{first}` だけ（段の数が未定）。並びに `implement-step` が無ければ実装の段も `delegatedRange` も無い。`flow` が `main` か `loopable: N` なら `delegatedRange` なし。近道（`direct:Y` かつ `PLAN_REGISTERED`）は実装の段が「直す」「検証」になり、「受け入れ」「振り返り」を省く（既定の並びなら「直す」「検証」「送り出し」）。`--skipped <段,…>` は済んだ段のうち飛ばした段の名前で、出力の `skippedPhases` に入る（並びに無い名前と、その位置で済んでいない段は `NO_PHASE`）。連続する段のすべての組が並列の組なら1つの配列にまとめる（`current` は配列を1要素に数える）。`--through <段>` は、その段までと、それ以前を済ませた位置（段は `計画`・`実装`（全段）・`受け入れ`・`振り返り`・`直す`・`検証`・段の番号。省略は何も済んでいない位置）。`--also <n,…>` は、並列のまとまりの中で `--through` の後ろにあるが先に済んだ段の番号。全部済みにする指定（送り出しまで）と、並びに無い段は何も出さず `NO_PHASE`
 
 出力: `PHASES\tT-xxx\t<JSON 1行>`。`NO_PHASE\tT-xxx\t<理由>`（終了コード2）。`NOT_OWNER`（終了コード4）""",
     ),
@@ -319,6 +319,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_plan_phases.add_argument("task_id")
     p_plan_phases.add_argument("--through")
     p_plan_phases.add_argument("--also")
+    p_plan_phases.add_argument("--skipped")
 
     p_accept = sub.add_parser("accept")
     p_accept.add_argument("task_id")
@@ -478,7 +479,7 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
         elif args.command == "plan-check":
             tw_edit.cmd_plan_check(toplevel, args.task_id)
         elif args.command == "plan-phases":
-            tw_edit.cmd_plan_phases(toplevel, args.task_id, args.through, args.also)
+            tw_edit.cmd_plan_phases(toplevel, args.task_id, args.through, args.also, args.skipped)
         elif args.command == "accept":
             tw_accept.cmd_accept(toplevel, args.task_id, args.after_review)
         elif args.command == "verify":
