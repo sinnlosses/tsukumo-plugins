@@ -112,7 +112,101 @@ def test_deleted_code() -> None:
         check("REVIEW code 1", got == "REVIEW\tcode\t1", repr(got))
 
 
+def write_globs(d: str, line: str | None) -> None:
+    body = 'verify = "なし"\n' + (line + "\n" if line is not None else "")
+    write(d, ".tw/config.toml", body)
+
+
+def test_code_globs() -> None:
+    print("review_code_globs に当たる文書は REVIEW code")
+    with tempfile.TemporaryDirectory() as d:
+        init_repo(d)
+        write_globs(d, 'review_code_globs = ["skills/**", "agents/**"]')
+        write(d, "skills/x/SKILL.md", "s\n")
+        got = run(d, "--difficulty", "sonnet")
+        check("skills/ 配下の .md は REVIEW code（設定のファイルも文書でないので数える）", got == "REVIEW\tcode\t2", repr(got))
+        git(d, "add", ".tw/config.toml")
+        git(d, "commit", "-q", "-m", "config")
+        got = run(d, "--difficulty", "sonnet")
+        check("skills/ 配下の .md だけなら REVIEW code 1", got == "REVIEW\tcode\t1", repr(got))
+        git(d, "add", "skills")
+        git(d, "commit", "-q", "-m", "skill")
+        write(d, "agents/a.md", "a\n")
+        write(d, "agents/deep/b.md", "b\n")
+        got = run(d, "--difficulty", "sonnet")
+        check("** は深いディレクトリも越える", got == "REVIEW\tcode\t2", repr(got))
+        os.remove(os.path.join(d, "agents/a.md"))
+        os.remove(os.path.join(d, "agents/deep/b.md"))
+        write(d, "docs/guide.md", "g\n")
+        write(d, "README.md", "r\n")
+        got = run(d, "--difficulty", "sonnet")
+        check("通常の docs の .md は SKIP docs-only", got == "SKIP\tdocs-only", repr(got))
+
+
+def test_code_globs_absent_or_empty() -> None:
+    print("設定が無い・キーが無い・空のときは従来どおり")
+    for label, line in (("設定ファイルなし", "-"), ("キーなし", None), ("空の配列", "review_code_globs = []")):
+        with tempfile.TemporaryDirectory() as d:
+            init_repo(d)
+            if line != "-":
+                write_globs(d, line)
+                git(d, "add", ".tw/config.toml")
+                git(d, "commit", "-q", "-m", "config")
+            write(d, "skills/x/SKILL.md", "s\n")
+            got = run(d, "--difficulty", "sonnet")
+            check(f"{label}: skills/ 配下の .md は SKIP docs-only", got == "SKIP\tdocs-only", repr(got))
+
+
+def test_glob_boundary() -> None:
+    print("* は / を越えず、** は越える")
+    with tempfile.TemporaryDirectory() as d:
+        init_repo(d)
+        write_globs(d, 'review_code_globs = ["agents/*.md", "docs/**/api.md"]')
+        git(d, "add", ".tw/config.toml")
+        git(d, "commit", "-q", "-m", "config")
+        write(d, "agents/a.md", "a\n")
+        got = run(d, "--difficulty", "sonnet")
+        check("agents/*.md は直下の .md に当たる", got == "REVIEW\tcode\t1", repr(got))
+        os.remove(os.path.join(d, "agents/a.md"))
+        write(d, "agents/sub/b.md", "b\n")
+        got = run(d, "--difficulty", "sonnet")
+        check("agents/*.md は下のディレクトリの .md に当たらない", got == "SKIP\tdocs-only", repr(got))
+        os.remove(os.path.join(d, "agents/sub/b.md"))
+        write(d, "docs/api.md", "x\n")
+        got = run(d, "--difficulty", "sonnet")
+        check("docs/**/api.md は間のディレクトリが0個でも当たる", got == "REVIEW\tcode\t1", repr(got))
+        os.remove(os.path.join(d, "docs/api.md"))
+        write(d, "docs/a/b/api.md", "x\n")
+        got = run(d, "--difficulty", "sonnet")
+        check("docs/**/api.md は深いディレクトリでも当たる", got == "REVIEW\tcode\t1", repr(got))
+
+
+def test_broken_config() -> None:
+    print("壊れた設定は理由を出して非0で終わる")
+    for label, line in (
+        ("配列でない", 'review_code_globs = "skills/**"'),
+        ("空の要素", 'review_code_globs = [""]'),
+        ("文字列でない要素", "review_code_globs = [1]"),
+    ):
+        with tempfile.TemporaryDirectory() as d:
+            init_repo(d)
+            write_globs(d, line)
+            write(d, "README.md", "b\n")
+            out = subprocess.run(
+                [sys.executable, SCRIPT, "--difficulty", "sonnet"], cwd=d, capture_output=True, text=True
+            )
+            check(
+                f"{label}: 終了コード非0で行番号つきの理由",
+                out.returncode != 0 and ".tw/config.toml:2:" in out.stderr and out.stdout == "",
+                out.stdout + out.stderr,
+            )
+
+
 def main() -> int:
+    test_code_globs()
+    test_code_globs_absent_or_empty()
+    test_glob_boundary()
+    test_broken_config()
     test_docs_only()
     test_untracked_code()
     test_opus_docs_only()
