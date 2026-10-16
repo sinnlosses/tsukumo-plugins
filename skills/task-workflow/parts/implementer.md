@@ -2,7 +2,7 @@
 
 | 入力 | 返すもの | 守る関門 |
 | --- | --- | --- |
-| タスクの ID・段の番号 | 返却の1行目（tsukumo の `docs/architecture/workflow-contract.md`「委譲の返却」）と、最後の段の `## 構造の変更` | `tw handback-guard`（`tw step`・`tw verify`・`tw pause`）、`tw commit-guard` |
+| タスクの ID・段の番号 | 段ごとの `phase_result`（計画だけの回を除く。tsukumo の `docs/architecture/workflow-contract.md`「スキルの契約」）、返却の1行目（同じ契約の「委譲の返却」。並存）と、最後の段の `## 構造の変更` | `tw handback-guard`（`tw step`・`tw verify`・`tw pause`）、`tw commit-guard` |
 
 手順5〜5dで読む副ファイルは `parts/implementer/` にある。
 

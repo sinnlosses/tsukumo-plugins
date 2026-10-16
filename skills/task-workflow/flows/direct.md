@@ -1,7 +1,8 @@
 # 委譲しない近道で進める
 
    条件・通すもの・降りる条件は正典「difficulty とモデルの切り替え」の「委譲しない近道」。
-   委譲せずメインで次を順に打つ:
+   委譲せずメインで次を順に打つ。並びで進めるとき（`SKILL.md` の手順4b）は、implement-step が1〜3を行い、
+   accept-step・retrospect-step が `skipped` を返し、ship-step が4・5を行う:
 
    1. `tw lap T-xxx direct`
    2. `tw show T-xxx` の `## やること` の段どおりに、`### 名指すファイル` だけを直す。
@@ -10,10 +11,10 @@
    4. 手順7の `tw done T-xxx --result-file -`。`- 振り返り:` の行は `- 振り返り: 近道（省いた）`。規約の行は `- 規約: 委譲なし`・`- 規約の指摘: なし`
    5. 手順7のコミット → 手順8
 
-   帯の並びは「直す」「検証」「送り出し」の3段（`SKILL.md`「進み具合の帯（`work_plan`）」。`tw plan-phases T-xxx` が出す）。
+   帯の並びは、既定の並びなら「直す」「検証」「送り出し」の3段（受け入れ・振り返りは帯に無いので、`skipped` でも `--skipped` に入れない。`SKILL.md`「進み具合の帯（`work_plan`）」。`tw plan-phases T-xxx` が出す）。
    手順2で直し終えたあと手順3の前に `--through 直す`、手順3の `tw verify` が通ったあと手順4の前に `--through 検証` を呼び、送り出しだけが残る位置にする。
 
-   `tw lap` の `delegate`・`accept`・`review`・`retro` は打たない。手順5〜6b（委譲・返り・受け入れのレビュー・振り返り・合流）は通らない。
+   `tw lap` の `delegate`・`accept`・`review`・`retro` は打たない。委譲・返り・受け入れのレビュー・振り返り・合流（手順5〜5d・6・6a・6b）は通らない。
 
    **近道を降りる**（直しが名指すファイルの外へ広がる・判断が要る・`VERIFY_NOT_PASSED` が1回の直しで通らない）:
    直したファイルを `git restore` で戻し、`tw edit T-xxx --direct N` を打ってから、手順5の委譲へ進む

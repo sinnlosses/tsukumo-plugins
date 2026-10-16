@@ -23,10 +23,7 @@ metadata:
 
 1. 段が要るかを決める（下の「飛ばすとき」）。要らなければ `skipped` を返して終わる
 2. オーケストレーターの手順5〜5dを、`parts/implementer.md` から読む副ファイルのとおりに進める（委譲先の選び方・依頼文・返りの読み方・無応答の扱いは変えない）
-3. 手順5cの依頼文に、次の1項を足す: 「段を済ませたら、`SubagentHandback` の直前に MCP ツール `phase_result` を
-   `phase`＝渡された段の番号・`count`＝`## やること` の段の数・`outcome`＝`finished`（止めたときは `stopped` と `reason`、
-   要らない段と分かったときは `skipped`）で呼ぶ。`phase_result` が一覧に無ければ呼ばない。返却の1行目は今までどおり書く。
-   計画だけの回は呼ばない」
+3. 委譲先は段ごとに `phase_result` を呼ぶ（`parts/implementer/implementer-brief.md` の「段の進め方と返却」。依頼文に足す項目は無い）
 
 ## 飛ばすとき
 

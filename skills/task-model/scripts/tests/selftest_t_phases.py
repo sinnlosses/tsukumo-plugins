@@ -155,10 +155,61 @@ def test_phases_main_and_direct_flows() -> None:
         check("--through 直す で検証が今の段", got is not None and got["current"] == 1, r.stdout + r.stderr)
 
 
+def _steps_line(*names: str) -> str:
+    return f"steps = {json.dumps(list(names))}\n"
+
+
+def test_phases_follow_steps() -> None:
+    say("task.py plan-phases: 実装のあとの段は steps の並びから組む（外した段は出さず、ほかのスキルは名前の段）")
+    impl, accept, retro, ship = (f"tsukumo-workflow:{n}" for n in taskfile.DEFAULT_STEP_NAMES)
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない", extra=_steps_line(impl, accept, ship))
+        task_id = _register(main_path, ONE_STEP)
+        run_task(wt1, "claim", task_id)
+        got, r = _phases(wt1, task_id)
+        check("並びから振り返りを外すと帯にも出ない",
+              got is not None and got["phases"] == ["書く", "受け入れ", "送り出し"], r.stdout + r.stderr)
+
+    custom = _steps_line(impl, accept, "x:lint-step", retro, ship)
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない", extra=custom)
+        task_id = _register(main_path, ONE_STEP)
+        run_task(wt1, "claim", task_id)
+        got, r = _phases(wt1, task_id)
+        check("既定の4つ以外のスキルは : より後ろの名前の段として並びの位置に入る",
+              got == {"phases": ["書く", "受け入れ", "lint-step", "振り返り", "送り出し"],
+                      "delegatedRange": {"first": 0, "count": 1}, "current": 0, "finishedInGroup": []},
+              r.stdout + r.stderr)
+        got, r = _phases(wt1, task_id, "--through", "lint-step")
+        check("--through にそのスキルの段を指せる", got is not None and got["current"] == 3, r.stdout + r.stderr)
+        got, r = _phases(wt1, task_id, "--through", "lint-step", "--skipped", "lint-step")
+        check("済んだ段を --skipped に渡すと skippedPhases に入る",
+              got is not None and got.get("skippedPhases") == ["lint-step"], r.stdout + r.stderr)
+        r = run_task(wt1, "plan-phases", task_id, "--through", "lint-step", "--skipped", "振り返り")
+        check("まだ済んでいない段の --skipped は NO_PHASE", r.returncode == 2 and r.stdout.startswith("NO_PHASE\t"),
+              r.stdout + r.stderr)
+        r = run_task(wt1, "plan-phases", task_id, "--through", "lint-step", "--skipped", "無い段")
+        check("並びに無い段の --skipped は NO_PHASE", r.returncode == 2 and r.stdout.startswith("NO_PHASE\t"),
+              r.stdout + r.stderr)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない", extra=custom)
+        task_id = _register(main_path, ONE_STEP, "--direct", difficulty="haiku")
+        run_task(wt1, "claim", task_id)
+        got, r = _phases(wt1, task_id)
+        check("近道でも既定の4つ以外のスキルの段は残り、受け入れ・振り返りは省く",
+              got is not None and got["phases"] == ["直す", "検証", "lint-step", "送り出し"], r.stdout + r.stderr)
+
+    got, error = taskfile.work_plan_phases((), "delegate", taskfile.PLAN_MISSING_STATE, True, None, (), ())
+    check("並びが空（plugin の外の tw）なら既定の4つの順で組む",
+          got is not None and got["phases"] == ["計画", "実装", *TAIL], str(error))
+
+
 TESTS = (
     test_phases_delegate_flow,
     test_phases_without_retrospect,
     test_phases_main_and_direct_flows,
+    test_phases_follow_steps,
 )
 
 
