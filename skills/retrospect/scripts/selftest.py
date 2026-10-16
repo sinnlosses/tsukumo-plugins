@@ -231,8 +231,8 @@ def test_slow_calls() -> None:
 
 
 def test_gate() -> None:
-    print("material.py --gate の判定")
-    quiet = {"--friction": "none", "--reverify": "0", "--fixes": "0", "--human": "0", "--review": "skip"}
+    print("material.py --gate の判定（台帳が読めないときは引数に戻る）")
+    quiet = {"--friction": "none", "--human": "0"}
 
     with tempfile.TemporaryDirectory() as d:
         root = os.path.join(d, "repo")
@@ -316,6 +316,70 @@ def test_gate() -> None:
         check("5つのうち1つでも欠ければ終了コード2", r.returncode == 2 and r.stdout == "", r.stdout + r.stderr)
         r = gate("GH-1", {**quiet, "--review": "maybe"})
         check("値が違えば終了コード2", r.returncode == 2, r.stdout + r.stderr)
+
+
+def test_gate_ledger() -> None:
+    print("material.py --gate が reverify・fixes・review を台帳から数える")
+    base = datetime.now(timezone.utc) - timedelta(hours=1)
+    seq = iter(range(1, 10000))
+
+    def row(event: str, task: str, **fields: object) -> str:
+        at = (base + timedelta(seconds=next(seq))).isoformat(timespec="seconds")
+        return flow_row(at, event, task, **fields)
+
+    def lap(task: str, stage: str, edge: str = "start") -> str:
+        return row("lap", task, stage=stage, edge=edge)
+
+    def verify(task: str, result: str) -> str:
+        return row("verify", task, result=result, seconds=1)
+
+    rounds = {
+        "GH-61": row("claim", "GH-61") + verify("GH-61", "VERIFY_NOT_PASSED") + verify("GH-61", "VERIFIED"),
+        "GH-62": row("claim", "GH-62") + verify("GH-62", "FORMAT_FAILED") + verify("GH-62", "VERIFY_NOT_PASSED") + verify("GH-62", "VERIFIED"),
+        "GH-63": row("claim", "GH-63") + lap("GH-63", "accept") + lap("GH-63", "delegate") + lap("GH-63", "delegate"),
+        "GH-64": row("claim", "GH-64") + lap("GH-64", "accept") + lap("GH-64", "review") + lap("GH-64", "review", "end")
+        + lap("GH-64", "delegate"),
+        "GH-65": row("claim", "GH-65") + lap("GH-65", "accept") + lap("GH-65", "review"),
+        "GH-66": row("claim", "GH-66") + verify("GH-66", "VERIFY_NOT_PASSED") + row("release", "GH-66")
+        + row("claim", "GH-66") + verify("GH-66", "VERIFIED"),
+        "GH-67": row("claim", "GH-67") + lap("GH-67", "delegate") + lap("GH-67", "accept"),
+    }
+
+    with tempfile.TemporaryDirectory() as d:
+        root = os.path.join(d, "repo")
+        os.makedirs(root)
+        git(root, "init", "-q", "-b", "main")
+        env = {**os.environ, "CLAUDE_CONFIG_DIR": os.path.join(d, "cfg")}
+        write(os.path.join(root, ".git", "task-workflow", "flow", "2026-10.jsonl"), "".join(rounds.values()))
+
+        def gate(task_id: str, **given: str) -> subprocess.CompletedProcess:
+            args = ["--friction", "none", "--human", "0"] + [a for k, v in given.items() for a in (f"--{k}", v)]
+            return subprocess.run(
+                [sys.executable, os.path.join(HERE, "material.py"), root, task_id, "--gate", *args],
+                capture_output=True, text=True, env=env,
+            )
+
+        r = gate("GH-61")
+        check("失敗の検証が1回なら検証の打ち直しは1回", "SIGNAL\t検証の打ち直し\t1回" in r.stdout.splitlines(), r.stdout + r.stderr)
+        r = gate("GH-62")
+        check("FORMAT_FAILED と VERIFY_NOT_PASSED を合わせて2回", "SIGNAL\t検証の打ち直し\t2回" in r.stdout.splitlines(), r.stdout + r.stderr)
+        r = gate("GH-63")
+        check("最初の accept start より後の delegate start の数が差し戻しの回数", "SIGNAL\t受け入れでの直し\t2回" in r.stdout.splitlines(), r.stdout + r.stderr)
+        r = gate("GH-64")
+        check("review start の後に delegate start があれば指摘あり", "SIGNAL\t受け入れでの直し\tレビューの指摘あり" in r.stdout.splitlines(), r.stdout + r.stderr)
+        r = gate("GH-65", review="found")
+        check("review start だけなら clean で、引数が違えば台帳が勝って MISMATCH を標準エラーへ",
+              "レビューの指摘あり" not in r.stdout and "MISMATCH\t--review\t引数=found\t台帳=clean" in r.stderr, r.stdout + r.stderr)
+        r = gate("GH-67", reverify="3")
+        check("全部 0 の台帳に --reverify 3 を渡しても SIGNAL は出ず、MISMATCH を出す",
+              "検証の打ち直し" not in r.stdout and "MISMATCH\t--reverify\t引数=3\t台帳=0" in r.stderr, r.stdout + r.stderr)
+        r = gate("GH-66")
+        check("最後の claim 以降だけ数える", "検証の打ち直し" not in r.stdout and "UNCOUNTED" not in r.stderr, r.stdout + r.stderr)
+        r = gate("GH-70")
+        check("claim が無ければ QUIET で、3つとも UNCOUNTED を標準エラーへ",
+              r.stdout == "QUIET\n" and all(f"UNCOUNTED\t{o}" in r.stderr for o in ("--reverify", "--fixes", "--review")), r.stdout + r.stderr)
+        r = gate("GH-70", reverify="1")
+        check("claim が無ければ引数に戻る", "SIGNAL\t検証の打ち直し\t1回" in r.stdout.splitlines() and "MISMATCH" not in r.stderr, r.stdout + r.stderr)
 
 
 def test_stage_signals() -> None:
@@ -546,7 +610,7 @@ def test_draft_fate() -> None:
         def run(script: str, *args: str) -> subprocess.CompletedProcess:
             return subprocess.run([sys.executable, os.path.join(HERE, script), root, *args], capture_output=True, text=True, env=env)
 
-        quiet = ["--friction", "none", "--reverify", "0", "--fixes", "0", "--human", "0", "--review", "skip"]
+        quiet = ["--friction", "none", "--human", "0"]
         r = run("material.py", "T-004", "--gate", *quiet)
         check("QUIET のときはドラフトの行方を出さない", r.stdout == "QUIET\n", r.stdout + r.stderr)
         r = run("material.py", "T-004", "--gate", *["some" if a == "none" else a for a in quiet])
@@ -591,6 +655,7 @@ def main() -> None:
     test_weekly()
     test_slow_calls()
     test_gate()
+    test_gate_ledger()
     test_stage_signals()
     test_task_material()
     test_draft_fate()
