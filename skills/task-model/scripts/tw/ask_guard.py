@@ -68,8 +68,9 @@ def decide(payload: dict) -> str | None:
     shown = ",".join(refused)
     return (
         f"着手の印（{shown}）のタスクは loopable: Y（利用者に聞かずに進める約束）なので AskUserQuestion を拒む。"
-        f"質問せず、tw edit {shown} --status hold で直し、tw show {shown} の ## 注意 の最後に判断の論点を1行足して"
-        f" tw edit {shown} --section 注意 --body-file - で書き、tw release {shown} で着手を戻して外す。"
+        f"質問せず、tw release {shown} で着手を戻し（着手中は --status を直せないので先に外す）、"
+        f"tw edit {shown} --status hold で hold にして、tw show {shown} の ## 注意 の最後に判断の論点を1行足して"
+        f" tw edit {shown} --section 注意 --body-file - で書く。"
         "作業ツリーに作業が残っていなければ tw status を取り直し、READY かつ loopable: Y の行が残る限り /loop は次の1件へ進み、"
         "残っていれば続けずに人に預けて終える"
     )

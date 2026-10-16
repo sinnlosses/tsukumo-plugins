@@ -33,7 +33,8 @@
 取り直し、`着手可否` が `READY` かつ `loopable` が `Y` の行があれば
 続行し、無ければ続行しない。例外は**判断待ちで外したとき**（`tw ask-guard` に拒まれた、または実装役が
 人の判断を要すると止めて返した〔frame が実装と合わない等〕）。そのタスクは
-`tw edit T-xxx --status hold`（`## 注意` に論点を書く）→ `tw release` で外す。`loopable: N` に直して
+`tw release T-xxx` → `tw edit T-xxx --status hold` →
+`## 注意` に論点を書く、の順で外す（着手中は `--status` を直せないので `release` が先）。`loopable: N` に直して
 止める運用は誤り（人が決め直すまで誰も進められないのは `hold`）。作業ツリーに作業
 （`claim` した時点より後のコミットか変更）が無ければ、`tw status` を取り直し、`READY` かつ `loopable: Y` の行が
 残る限り続行する。止めるのは続けても進められる行が無いときだけ
