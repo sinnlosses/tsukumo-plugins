@@ -9,7 +9,7 @@ metadata:
 
 # 送り出しの段
 
-並びの段の1つ。手順の本文は `task-workflow` の `parts/ship.md`（オーケストレーターの手順7・8）で、このスキルは入口と出口だけを持つ。
+並びの段の1つ。手順の本文は `task-workflow` の `parts/ship/ship.md`（オーケストレーターの手順7・8）で、このスキルは入口と出口だけを持つ。
 入口と出口の正典は tsukumo の契約 `docs/architecture/workflow-contract.md`「スキルの契約」
 （https://github.com/sinnlosses/tsukumo/blob/main/docs/architecture/workflow-contract.md）。
 
@@ -17,14 +17,13 @@ metadata:
 
 - 呼び出しの引数: タスクの ID 1つ（以下 `T-xxx`）
 - Beads から: `tw show T-xxx` の本文と着手の印（`tw finish` が読む）
-- 設定: `tw config` の `parts.ship`
 - 申し送りから（task-model の WORKFLOW.md「段の申し送り」）: `## 結果` に写す行を、`tw relay T-xxx 実装`（`- 規約:`）・`tw relay T-xxx 受け入れ`
   （`- 指摘:`・`- 目視:`・`- 預けること:`）・`tw relay T-xxx 振り返り`（`- 振り返り:`）の本文から読む。`NONE` のときは、`実装` なら `- 規約: 委譲なし`、
-  `受け入れ` なら `- 規約の指摘: なし` で目視・預けることの行を書かず、`振り返り` なら `parts/ship.md` の決まりで `- 振り返り:` の行を決める
+  `受け入れ` なら `- 規約の指摘: なし` で目視・預けることの行を書かず、`振り返り` なら `parts/ship/ship.md` の決まりで `- 振り返り:` の行を決める
 
 ## 手順
 
-1. オーケストレーターの手順7・8を `parts/ship.md` のとおりに進める（`## 結果` の書き方・`tw finish` の打ち方・止まったときの表は変えない）
+1. オーケストレーターの手順7・8を `parts/ship/ship.md` のとおりに進める（`## 結果` の書き方・`tw finish` の打ち方・止まったときの表は変えない）
 2. 近道（`tw claim` の行末が `direct=Y` で `tw plan-check T-xxx` が `PLAN_REGISTERED`）のときは、`task-workflow` の `flows/direct.md` の手順4・5として進める
 
 この段は飛ばさない（`skipped` を返さない）。`dropped` にするときも `tw finish --dropped` をこの段が打つ。

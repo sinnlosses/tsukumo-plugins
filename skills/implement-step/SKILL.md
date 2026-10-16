@@ -9,7 +9,18 @@ metadata:
 
 # 実装の段
 
-並びの段の1つ。手順の本文は `task-workflow` の `parts/implementer.md`（オーケストレーターの手順5〜5d）で、このスキルは入口と出口だけを持つ。
+並びの段の1つ。手順の本文は `task-workflow` の `SKILL.md` の手順5〜5dと、そこから読む副ファイル（下の表。`task-workflow` の `parts/implementer/`）で、このスキルは入口と出口だけを持つ。
+守る関門は `tw handback-guard`（`tw step`・`tw verify`・`tw pause`）と `tw commit-guard`。最後の段の返却には `## 構造の変更` を書く。
+
+| 副ファイル | 中身 |
+| --- | --- |
+| `delegate.md` | 手順5の (b)〜(f) と手順5c（実装の依頼文） |
+| `implementer-brief.md` | 実装役が最初に読んで従う決まり（依頼で絶対パスを渡す） |
+| `rewrite-plan.md` | `## やること` を書き直してから委譲するとき |
+| `handback-read.md` | 手順5b（返りを見る） |
+| `return-abnormal.md` | 手順5bの返りの異常系 |
+| `unresponsive.md` | 手順5d（委譲先の無応答） |
+
 入口と出口の正典は tsukumo の契約 `docs/architecture/workflow-contract.md`「スキルの契約」
 （https://github.com/sinnlosses/tsukumo/blob/main/docs/architecture/workflow-contract.md）。
 
@@ -17,19 +28,18 @@ metadata:
 
 - 呼び出しの引数: タスクの ID 1つ（以下 `T-xxx`）
 - Beads から: `tw show T-xxx` の `## やること` の段と `## 完了条件`、`tw plan-check T-xxx` の計画の形
-- 設定: `tw config` の `flow` と `parts.implementer`
 
 ## 手順
 
 1. 段が要るかを決める（下の「飛ばすとき」）。要らなければ `skipped` を返して終わる
-2. オーケストレーターの手順5〜5dを、`parts/implementer.md` から読む副ファイルのとおりに進める（委譲先の選び方・依頼文・返りの読み方・無応答の扱いは変えない）
+2. オーケストレーターの手順5〜5dを、上の表の副ファイルのとおりに進める（委譲先の選び方・依頼文・返りの読み方・無応答の扱いは変えない）
 3. 委譲先は段ごとに `phase_result` を呼ぶ（`parts/implementer/implementer-brief.md` の「段の進め方と返却」。依頼文に足す項目は無い）
 
 ## 飛ばすとき
 
 - `tw claim` の行末が `direct=Y` で `tw plan-check T-xxx` が `PLAN_REGISTERED`（近道）のときは飛ばさない。
   委譲の代わりに `task-workflow` の `flows/direct.md` の手順1〜3（直す・検証）をメインで行い、下の「メインで走るとき」で返す
-- 委譲しない流れ（`loopable: N` をユーザーが直接呼んだとき、`flow` が `main`）も飛ばさない。`flows/main.md` のとおりメインで段を進める
+- 委譲しない流れ（`loopable: N` をユーザーが直接呼んだとき）も飛ばさない。`flows/main.md` のとおりメインで段を進める
 - この段が `skipped` を返すのは、`## やること` に作業が無いと分かり `dropped` にするときだけ（`tw done --dropped` は送り出しの段が打つ）
 
 ## 返すもの

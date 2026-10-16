@@ -1,16 +1,16 @@
-# 受け入れ役の契約
+# 受け入れ役の返却と選び方
 
 | 入力 | 返すもの | 守る関門 |
 | --- | --- | --- |
 | 差分の範囲・完了条件・観点 | `- 指摘:`・`- 付随:`・`- 材料:` などの行（下の表） | 書き換えない |
 
-手順6・6aの受け入れ役を自前で定義するときに満たす条件。オーケストレーター（このスキル）・`tw accept`・`material.py`・`check_repo.py` が読む・渡す・検査するものだけを並べる。
-モデル・判断の物差し（何を指摘とするか・採否・目視の見比べ方）・文体は契約の外で、同梱の `agents/acceptor.md` と `parts/acceptor/acceptor-brief.md` が決める。
+手順6・6aの受け入れ役が満たす条件。オーケストレーター（このスキル）・`tw accept`・`material.py`・`check_repo.py` が読む・渡す・検査するものだけを並べる。
+モデル・判断の物差し（何を指摘とするか・採否・目視の見比べ方）・文体は、同梱の `agents/acceptor.md` と `parts/acceptor/acceptor-brief.md` が決める。
 手順6の受け入れの続きは `parts/acceptor/accept.md`、そこから読む副ファイルは同じ `parts/acceptor/` にある。
 
 | 項目 | 条件 | 読む・渡す・検査する側 |
 | --- | --- | --- |
-| 選ばれ方 | `tw config` の `parts.acceptor` が全名なら、Agent ツールの一覧でその名前と完全一致するもの（`model` を渡さない。無ければ代えずに止める）。`既定` なら一覧で名前の末尾が `acceptor`。あれば `model` を渡さずに起こし、無ければ手順5の選び方（`no-delegate` があればそれ、無ければ `general-purpose`）に `model: opus` を渡して代える。末尾が `acceptor` の行が複数並んだら選ばずに止め、`tw config set parts.acceptor <全名>` で選んでもらう | 手順6 |
+| 選ばれ方 | Agent ツールの一覧で名前の末尾が `acceptor` の行。無いときと複数当たったときの扱いは `accept.md` に書く | 手順6 |
 | 持たない道具 | `Agent`・`Edit`・`Write`・`NotebookEdit` を持たず、frontmatter に `hooks` を持たない（書き換えないので返却は `tw handback-guard` に判定されない。コミットを拒む `tw commit-guard` は、plugin で入れたときは名前を問わず掛かり、リンクだけで入れたときは掛からない） | 手順6、`check_repo.py`（同梱の定義だけ） |
 | 依頼 | `受け入れ`（差分のレビュー・目視・材料）と `目視待ち`（目視だけ）の2種類。渡すものは手順6の列挙と `visual-review.md`。どちらにも `acceptor-brief.md` の絶対パスが載る。レビューの要否は `tw accept`（作業先が別のリポジトリなら `review_needed.py`。`other-repo.md`）の `REVIEW\t…` と木の SHA か、`SKIP`・`NOTHING`・`NO_RANGE`。`目視待ち` を受けた受け入れ役は、最後の `受け入れ` も `SendMessage` で続けて受ける（`visual-review.md`）。差し戻しのあとの2・3回目も同じ受け入れ役が `SendMessage` で2つの木の SHA と、メインが取り下げた指摘の行を受ける。呼び戻せないときだけ新しい受け入れ役が、前の回の指摘の原文・2つの木の SHA・手順6の渡すものを受ける（`review-rounds.md`） | 手順6、`visual-review.md`、`review-rounds.md`、`other-repo.md`、`tw accept` |
 | 返却の1行目 | `受け入れ <判定> \| <1文>`。判定は下の3語のどれか。形が違えば `SendMessage` で返し直させる | 手順6 |
@@ -34,4 +34,4 @@
 - `human`: 依頼に添えられた人の差し戻しの数をそのまま返す
 - `review`: レビューしなかった（`SKIP`・`NOTHING`・`NO_RANGE` の依頼）なら `skip`、指摘が出なかったなら `clean`、指摘が出たなら（捨てたものも）`found`
 
-同梱の受け入れ役が書く `- 捨てた指摘: <数>` は読む側が無く、契約に入らない。
+同梱の受け入れ役が書く `- 捨てた指摘: <数>` は読む側が無く、この表に入らない。

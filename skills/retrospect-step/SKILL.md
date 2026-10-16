@@ -9,8 +9,8 @@ metadata:
 
 # 振り返りの段
 
-並びの段の1つ。手順の本文は `task-workflow` の `parts/retrospect.md`（オーケストレーターの手順6a）で、このスキルは入口と出口だけを持つ。
-振り返りの観点・物差し・判定の口は `retrospect` スキルが持ち、この段はそれを Skill ツールで名前を指して呼ぶ（呼ぶ名前の決め方は `parts/retrospect.md`）。
+並びの段の1つ。手順の本文は `task-workflow` の `parts/retrospect/retrospect.md`（オーケストレーターの手順6a）で、このスキルは入口と出口だけを持つ。
+振り返りの観点・物差し・判定の口は `retrospect` スキルが持ち、この段はそれを Skill ツールで名前を指して呼ぶ（呼ぶ名前の決め方は `parts/retrospect/retrospect.md`）。
 入口と出口の正典は tsukumo の契約 `docs/architecture/workflow-contract.md`「スキルの契約」
 （https://github.com/sinnlosses/tsukumo/blob/main/docs/architecture/workflow-contract.md）。
 
@@ -18,18 +18,16 @@ metadata:
 
 - 呼び出しの引数: タスクの ID 1つ（以下 `T-xxx`）
 - Beads から: タスクの本文と履歴（`retrospect` の判定の口がタスクの ID で読む）
-- 設定: `tw config` の `parts.retrospect`
 - 申し送りから（task-model の WORKFLOW.md「段の申し送り」）: `tw relay T-xxx 受け入れ` の本文（`- 材料:`・`- 指摘:`・`- 付随:` の行）と、
-  `tw relay T-xxx 実装` の本文の `- ドラフト:` の行。`受け入れ` が `NONE` なら材料が無いので、`parts/retrospect.md` の判定に材料なしとして渡す。`実装` が `NONE` ならドラフトの候補は無い
+  `tw relay T-xxx 実装` の本文の `- ドラフト:` の行。`受け入れ` が `NONE` なら材料が無いので、`parts/retrospect/retrospect.md` の判定に材料なしとして渡す。`実装` が `NONE` ならドラフトの候補は無い
 
 ## 手順
 
 1. 段が要るかを決める（下の「飛ばすとき」）。要らなければ `skipped` を返して終わる
-2. オーケストレーターの手順6aを `parts/retrospect.md` のとおりに進める（lap・材料の渡し方・ドラフトの積み方・`## 結果` の `- 振り返り:` の1行の決め方は変えない）
+2. オーケストレーターの手順6aを `parts/retrospect/retrospect.md` のとおりに進める（lap・材料の渡し方・ドラフトの積み方・`## 結果` の `- 振り返り:` の1行の決め方は変えない）
 
 ## 飛ばすとき
 
-- `tw config` の `parts.retrospect` が `なし`（`tw lap T-xxx retro` を打たない。`## 結果` の行は `- 振り返り: 設定で外した`）
 - 近道（`tw claim` の行末が `direct=Y` で `tw plan-check T-xxx` が `PLAN_REGISTERED`）で受け入れの段を飛ばしたとき（`## 結果` の行は `- 振り返り: 近道（省いた）`）
 
 ## 返すもの

@@ -4,16 +4,15 @@
 | --- | --- | --- |
 | 受け入れ役の `- 材料:` の行とタスクの ID | `## 結果` に入れる `- 振り返り:` の1行と、積んだドラフトの ID | 作業ツリーを書き換えない |
 
-`tw config` の `parts.retrospect` が `なし` なら、この段を通らない（lap も打たない）。手順7の `## 結果` の行は `- 振り返り: 設定で外した`
+並びに振り返りの段が無ければ、この段を通らない（lap も打たない）。手順7の `## 結果` の行は `- 振り返り: 設定で外した`
 （`tw done` の記録は近道と同じく `reflection` が `skipped`）。
 
 6a. **振り返る**（`/loop` から回っているときも。委譲せずメインで行う）: 頭に `tw lap T-xxx retro start` を打ち（振り返りを終えて手順7の `tw finish` を打つ直前に `tw lap T-xxx retro end`）、
    受け入れ役の最後の返却の `- 材料: friction=… reverify=… fixes=… human=… review=…` の5つの値を、
-   振り返りのスキルを Skill ツールで名前を指して呼び（`parts.retrospect` が全名ならその名前と完全一致するスキル。一覧に無ければ代えずに行を添えて人に預ける。
-   `既定` なら一覧の末尾が `retrospect` の行。リンクで入れたとき `retrospect`、plugin で入れたとき `tsukumo-workflow:retrospect`。一覧に出ている名前のまま使い、
-   複数当たったら選ばずに止めて `tw config set parts.retrospect <全名>` を案内する）、
+   振り返りのスキルを Skill ツールで名前を指して呼び（一覧の末尾が `retrospect` の行。リンクで入れたとき `retrospect`、plugin で入れたとき `tsukumo-workflow:retrospect`。
+   一覧に出ている名前のまま使い、一覧に無ければ代えずに行を添えて人に預ける。複数当たったら選ばずに止めて人に預ける）、
    タスクID `T-xxx` と一緒にそのまま渡す。判定の口 `material.py --gate` は retrospect が自分の置き場から打つ
-   （値の意味は `parts/acceptor.md`。`human` は手順6で依頼に添えたメモの数が返る。
+   （値の意味は `parts/acceptor/acceptor-return.md`。`human` は手順6で依頼に添えたメモの数が返る。
    手順6で `受け入れ` を受けたあとに検証を打ち直したときは、`reverify` にその回数を足す）。
    受け入れ役の `- 指摘:`・`- 付随:` の行は、`retrospect` の材料「受け入れでの直し」「本文と差分のずれ」「付いてきた文書の変更」の出どころとして、手順6aの振り返りに使う。
    委譲先の報告の `- ドラフト:` の行（委譲先は `tw new` を打てないので報告に書く）も、候補として同じ物差しにかける。

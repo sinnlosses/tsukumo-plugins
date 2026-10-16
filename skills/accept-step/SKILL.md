@@ -9,18 +9,18 @@ metadata:
 
 # 受け入れの段
 
-並びの段の1つ。手順の本文は `task-workflow` の `parts/acceptor.md`（契約）と `parts/acceptor/accept.md`（オーケストレーターの手順6）で、
+並びの段の1つ。手順の本文は `task-workflow` の `parts/acceptor/accept.md`（オーケストレーターの手順6）と `parts/acceptor/acceptor-return.md`（受け入れ役の返却の行）で、
 このスキルは入口と出口だけを持つ。入口と出口の正典は tsukumo の契約 `docs/architecture/workflow-contract.md`「スキルの契約」
 （https://github.com/sinnlosses/tsukumo/blob/main/docs/architecture/workflow-contract.md）。
 
-判定は受け入れ役のエージェントがこの段の中の道具として行う。選び方（`parts.acceptor` の値・`既定` の末尾一致・`model` の渡し方）は
-`parts/acceptor.md` の「選ばれ方」のとおりで、同梱の `agents/acceptor.md`（Opus 固定・`Agent`・`Edit`・`Write`・`NotebookEdit` を持たない）は並びに出さない。
+判定は受け入れ役のエージェントがこの段の中の道具として行う。選び方（一覧の末尾一致・`model` の渡し方）は
+`parts/acceptor/accept.md` のとおりで、同梱の `agents/acceptor.md`（Opus 固定・`Agent`・`Edit`・`Write`・`NotebookEdit` を持たない）は並びに出さない。
 
 ## 受け取るもの
 
 - 呼び出しの引数: タスクの ID 1つ（以下 `T-xxx`）
 - Beads から: `tw show T-xxx` の `## 完了条件`、`tw accept T-xxx` が読む着手の控えと差分の範囲
-- 設定: `tw config` の `parts.acceptor` と検証コマンド
+- 設定: `tw config` の検証コマンド
 - 申し送りから（task-model の WORKFLOW.md「段の申し送り」）: `tw relay T-xxx 実装` の本文（実装の段の `- 規約:`・friction log・`- ドラフト:` の行）。
   `parts/acceptor/accept.md` が受け入れ役に渡す「委譲先の段ごとの返却の friction log の行」はここから読む。`NONE` なら friction log を書いていない返却として渡す
 

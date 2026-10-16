@@ -24,12 +24,10 @@
    `plan-check` の行（`PLAN_FIRST`・`PLAN_REGISTERED` など）は、手順5bの表で読んだものと同じに読む。
    作業先が別のリポジトリのタスクでは `tw accept` を使わず、`other-repo.md` のとおり個別に打つ。
 
-   受け入れ役は Agent ツールで起こす。`subagent_type` は `tw config` の `parts.acceptor` の行で決める。全名なら、
-   Agent ツールの説明に並ぶエージェントのうちその名前と完全一致するものを `model` を渡さずに起こす（一覧に無ければ代えずに、
-   行を添えて人に預け `tw release T-xxx` する）。`既定` なら、Agent ツールの説明に並ぶエージェント末尾が `acceptor` の行
+   受け入れ役は Agent ツールで起こす。`subagent_type` は、Agent ツールの説明に並ぶエージェント末尾が `acceptor` の行
    （`acceptor` か `tsukumo-workflow:acceptor`。tsukumo-plugins の `agents/acceptor.md`。モデルは Opus 固定で、
    読むだけの定義。書き換えないので返却は `tw handback-guard` に判定されない）があれば、一覧に出ている名前のまま `model` を渡さずに起こす。
-   末尾一致が複数当たったら選ばずに止め、`tw config set parts.acceptor <全名>` で選ぶよう人に案内して `tw release T-xxx` する。
+   末尾一致が複数当たったら選ばずに止め、行を添えて人に預け `tw release T-xxx` する。
    無ければ手順5の `subagent_type` の選び方と同じにして `model: opus` を渡す。決まりの本文は貼らず、
    渡すのは次だけ（受け入れ役は `${CLAUDE_SKILL_DIR}` を持たないので、パスは解決した絶対パスにする）:
    - 作業ツリーのパス・差分を出すコマンド（`git diff HEAD` と、未追跡の新しいファイルを並べる

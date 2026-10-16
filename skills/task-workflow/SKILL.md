@@ -1,6 +1,6 @@
 ---
 name: task-workflow
-description: "着手の印が立ったタスク1件を、設定の並び（既定は委譲→受け入れ→振り返り→送り出し）の段で主ブランチへ送るまで進めるオーケストレーター。入口のスキルが tw claim で印を立てたあと、Skill ツールでタスクの ID と tw claim の出力の行を渡して呼ぶ。段を並べ、lap を打ち、パーツ（実装役・受け入れ役・振り返り・送り出し）を名前で呼ぶ。印の無いタスクには使わない。"
+description: "着手の印が立ったタスク1件を、設定の並び（既定は委譲→受け入れ→振り返り→送り出し）の段で主ブランチへ送るまで進めるオーケストレーター。入口のスキルが tw claim で印を立てたあと、Skill ツールでタスクの ID と tw claim の出力の行を渡して呼ぶ。段を並べ、lap を打ち、並びのスキル（既定は実装・受け入れ・振り返り・送り出し）を名前で呼ぶ。印の無いタスクには使わない。"
 user-invocable: false
 ---
 
@@ -13,11 +13,10 @@ user-invocable: false
 手順の番号は入口の手順0〜4に続けて 4a から振る（副ファイルの「手順6」などはこの番号を指す）。
 
 段の並び: 4a 作業ツリーを確かめる → 4b `tw config` の `steps` の行の並びのスキルを順に呼ぶ → 完了報告。
-既定の並びの各スキルの本文は手順5〜8で、5 委譲（implement-step。パーツ「実装役」`parts.implementer`）→ 6 受け入れ（accept-step。パーツ「受け入れ役」`parts.acceptor`）→
-6a 振り返り・6b 合流（retrospect-step。パーツ「振り返り」`parts.retrospect`）→ 7・8 送り出し（ship-step。パーツ「送り出し」`parts.ship`）。
+既定の並びの各スキルの本文は手順5〜8で、5 委譲（implement-step）→ 6 受け入れ（accept-step）→ 6a 振り返り・6b 合流（retrospect-step）→ 7・8 送り出し（ship-step）。
 流れの変種は `flows/`（近道 `direct.md`・メインで行う `main.md`・`HOLD` を決める `hold.md`）、
-パーツの契約と既定の依頼文は `parts/`（`implementer.md`・`acceptor.md`・`retrospect.md`・`ship.md`）にある。
-lap はパーツではなくこのスキルが段の前後で打つ。
+各段の手順の副ファイルは `parts/implementer/`・`parts/acceptor/`・`parts/retrospect/`・`parts/ship/` にある。
+lap は並びのスキルではなくこのスキルが段の前後で打つ。
 
 ## このプロジェクトの設定（`tw config`）
 
@@ -30,14 +29,9 @@ lap はパーツではなくこのスキルが段の前後で打つ。
 `MISSING` の行などで設定が読めないときは `task-model` スキルの `preflight.md` に従う。
 
 **並びの読み分け**: `steps` の行の値（1行の JSON の配列）で決める。空でない配列なら、第3列が `config` でも `default` でも手順4bで並びを順に呼ぶ。
-`[]`（`tw` が plugin のチェックアウトの外にあり、既定の並びが取れない）なら、手順4bを飛ばして手順5〜8をこの順に進める（schema 1 の流れ）。
-どちらでも、下の `flow`・`parts.<枠>` の行は手順5〜8とパーツの副ファイルが読むので、従来どおりに効く。
-
-**流れとパーツの選び**: `flow` の行で流れを決める（`delegate` は下の手順のとおり、`main` は手順5(a)）。
-`parts.<枠>` の行の値で各段のパーツを呼ぶ。`既定` は同梱のパーツを一覧の末尾一致で探す（選び方は各パーツの副ファイル。
-末尾一致が複数当たったら選ばずに止め、`tw config set parts.<枠> <全名>` で選ぶよう人に案内して `tw release T-xxx` する）。
-それ以外の値は全名で、一覧（Agent ツールのエージェントか、スキル）に出ている名前と完全一致で呼ぶ。一覧に無ければ
-既定のパーツや `general-purpose` に代えず、行を添えて人に預け `tw release T-xxx` する。`なし` は `parts.retrospect` だけが取り、手順6aを飛ばす。
+`[]`（`tw` が plugin のチェックアウトの外にあり、既定の並びが取れない）なら、手順4bを飛ばして手順5〜8をこの順に進める。
+流れは `loopable: N` のタスクが手順5(a)のメインで行う流れに、近道の印のタスクが `flows/direct.md` に分かれ、ほかは委譲する流れ。
+振り返りを省くときは、並び（`tw config set steps`）から `retrospect-step` を外す。
 
 ## 手順
 
@@ -55,7 +49,7 @@ lap はパーツではなくこのスキルが段の前後で打つ。
       `tw release T-xxx` する（人は `tw claim T-xxx` のあと `tw relay T-xxx 再開 --body-file -` に空の本文を渡して消すか、`tw config set steps` で並びを直す）
    2. 段ごとに、呼ぶ直前に `tw relay T-xxx 再開 --body-file -` へその段の全名を書く（段は `stopped` の前に `tw release` を打つことがあり、
       止まったあとでは印の持ち主でなくなって書けないため）。続けて Skill ツールでその全名を呼び、引数にタスクの ID だけを渡す。
-      一覧に無い名前は、`parts.<枠>` の全名と同じく既定のスキルに代えず、行を添えて人に預け `tw release T-xxx` する
+      一覧に無い名前は、ほかのスキルに代えず、行を添えて人に預け `tw release T-xxx` する
    3. 段の結果（`finished`・`skipped`・`stopped`）は、呼んだスキルの「返すもの」のとおりに読む。`finished`・`skipped` なら次の段へ進む
       （次の段の直前の書き込みが `再開` を上書きする）。`stopped` なら後の段を呼ばず、`再開` をそのまま残して完了報告へ進む
    4. 並びの最後の段が `finished`・`skipped` で済んだら、`tw relay T-xxx 再開 --body-file -` に空の本文を渡して消し、完了報告へ進む。
@@ -64,7 +58,7 @@ lap はパーツではなくこのスキルが段の前後で打つ。
    再開したときは、最初の `work_plan` を再開する段より前の段を済ませた位置（`--through <手前の段の帯の最後の段>`。手前に帯の段が無ければ省く）で呼ぶ。
    前の会話で飛ばした段の印は持ち越さない（`--skipped` は空から始める）。
 
-5. **委譲する**（並びの段 implement-step の本文。パーツ「実装役」。契約は `${CLAUDE_SKILL_DIR}/parts/implementer.md`）: 小節は (a) 近道と `loopable: N`、(b) `plan-check` で形を決める、(c) 計画どおりに委譲する・書き直しから委譲する、
+5. **委譲する**（並びの段 implement-step の本文）: 小節は (a) 近道と `loopable: N`、(b) `plan-check` で形を決める、(c) 計画どおりに委譲する・書き直しから委譲する、
    (d) 委譲先の選び方と依頼、(e) 並列の段、(f) 無音の見張りの順に読む。
    委譲は `## やること` の段（`### <n>. <名前>`）を1段ずつ頼む。最初の委譲で段1を渡し、
    委譲先は段を1つ済ませるたびに返す。次の段は手順5bで、**同じ委譲先を `SendMessage` で再開して**渡す
@@ -74,7 +68,7 @@ lap はパーツではなくこのスキルが段の前後で打つ。
 
    **(a) 近道と `loopable: N`**: `CLAIMED` の行末が `direct=Y` で `tw plan-check T-xxx` が `PLAN_REGISTERED` なら、
    委譲せず `${CLAUDE_SKILL_DIR}/flows/direct.md` を読んで従う（委譲・受け入れ・振り返りを通らず、直す → `tw verify` → 手順7 → 8）。
-   `loopable: N` のタスク（ユーザーが直接呼んだとき）と、`flow` の行が `main` のときのタスク（近道に当たらないものすべて）は委譲せずメインで行う。
+   `loopable: N` のタスク（ユーザーが直接呼んだとき）は委譲せずメインで行う。
    `${CLAUDE_SKILL_DIR}/flows/main.md` を読んで従う。
 
    **(b)〜(f)**: `${CLAUDE_SKILL_DIR}/parts/implementer/delegate.md` を読んで従う（(b) `plan-check` で形を決める、(c) 計画どおりに委譲する・書き直しから委譲する、
@@ -88,7 +82,7 @@ lap はパーツではなくこのスキルが段の前後で打つ。
 5d. **委譲先の無応答に対応する**（手順5で投げたあと、報告が来ないまま長く止まったとき。完了の通知が
    「背景の作業を待っている」で届いたときも。手順5(f)の見張りの `SILENT` の通知もここに含める）: `${CLAUDE_SKILL_DIR}/parts/implementer/unresponsive.md` を読んで従う。
 
-6. **受け入れる**（並びの段 accept-step の本文。パーツ「受け入れ役」。契約は `${CLAUDE_SKILL_DIR}/parts/acceptor.md`）: 作業ツリーを直し始める前に、委譲先の最後の段（`段 N/N`）の hand-back が届いていることを
+6. **受け入れる**（並びの段 accept-step の本文。受け入れ役の返却の行は `${CLAUDE_SKILL_DIR}/parts/acceptor/acceptor-return.md`）: 作業ツリーを直し始める前に、委譲先の最後の段（`段 N/N`）の hand-back が届いていることを
    確かめる（並列の段の担当を起こしたときは、どの担当も最後に渡した段を返していることを確かめる）。
    確かめた直後に手順5(f)の見張りを `TaskStop` で畳み、`tw lap T-xxx delegate end` を打ち、作業ツリーを cwd にした残りのプロセスが無いかを `ps` で見て（あれば止める）、`tw accept T-xxx` を打つ（出力の読み方は下の `accept.md`）。
    届いていなければ `TaskStop` か `SendMessage` で止めてから触る。報告をそのまま信用しない。
@@ -97,18 +91,17 @@ lap はパーツではなくこのスキルが段の前後で打つ。
    差し戻し・別のリポジトリのとき・`COMMITS_SINCE_CLAIM`）は `${CLAUDE_SKILL_DIR}/parts/acceptor/accept.md` を読んで従う。
    受け入れのあとの `tw verify-check` の出力は `${CLAUDE_SKILL_DIR}/parts/acceptor/verify-check.md` で読む。
 
-6a. **振り返る**（並びの段 retrospect-step の本文。パーツ「振り返り」。`/loop` から回っているときも。委譲せずメインで行う）: `${CLAUDE_SKILL_DIR}/parts/retrospect.md` を読んで従う。
-   `parts.retrospect` の行が `なし` なら、`tw lap T-xxx retro` を打たずに飛ばし、`## 結果` の行を `- 振り返り: 設定で外した` にする。
+6a. **振り返る**（並びの段 retrospect-step の本文。`/loop` から回っているときも。委譲せずメインで行う）: `${CLAUDE_SKILL_DIR}/parts/retrospect/retrospect.md` を読んで従う。
+   並びに `retrospect-step` が無ければ、この手順を通らず（`tw lap T-xxx retro` も打たず）、`## 結果` の行は `- 振り返り: 設定で外した` にする。
 
 6b. **合流する**（手順6で `tw verify` を背景で起こしたときだけ。`VERIFIED_SAME` で起こさなかったときは手順7へ）:
    `${CLAUDE_SKILL_DIR}/parts/acceptor/verify-merge.md` を読んで従う（背景の `tw verify` の完了を待ち、出力の最後の行で分ける表）。
 
-7. **完了にしてコミットして送る**（並びの段 ship-step の本文。パーツ「送り出し」）: `tw finish` が `tw done`・コミット・`tw ship` を順に打つ。
-   `${CLAUDE_SKILL_DIR}/parts/ship.md` の手順7を読んで従う（`tw finish` の打ち方・`## 結果` に写す規約の2行・`COMMITS_SINCE_CLAIM`・`OPEN_SPAN`。
-   `parts.ship` が全名のときの呼び方もここ）。
+7. **完了にしてコミットして送る**（並びの段 ship-step の本文）: `tw finish` が `tw done`・コミット・`tw ship` を順に打つ。
+   `${CLAUDE_SKILL_DIR}/parts/ship/ship.md` の手順7を読んで従う（`tw finish` の打ち方・`## 結果` に写す規約の2行・`COMMITS_SINCE_CLAIM`・`OPEN_SPAN`）。
 
 8. **送ったあとを読む**: 手順7の `tw finish` の出力の最後の行（`tw ship` の判定）で分ける。
-   `${CLAUDE_SKILL_DIR}/parts/ship.md` の手順8の表に従う（`SHIPPED`・`NOTHING` は完了、それ以外は `parts/ship/ship-stopped.md`）。push はしない。
+   `${CLAUDE_SKILL_DIR}/parts/ship/ship.md` の手順8の表に従う（`SHIPPED`・`NOTHING` は完了、それ以外は `parts/ship/ship-stopped.md`）。push はしない。
 
 ## 進み具合の帯（`work_plan`）
 
@@ -118,7 +111,7 @@ tsukumo で動かしているとき（`work_plan` の口があるとき）、帯
 `current` は並列の段の配列を1要素に数える（`tw` の出力に従い、自分で数え直さない）。
 
 実装のあとの段は、`tw plan-phases` が `steps` の並びのスキルから組む。既定の並びなら「受け入れ」（手順6）・「振り返り」（手順6a・6b）・「送り出し」（手順7・8）の3段で、
-`parts.retrospect` が `なし` のときは「振り返り」が消えて2段になる。並びから外したスキルの段は帯に出ず、既定の4つ以外のスキルは、その名前（全名の `:` より後ろ）の段として並びの位置に入る。
+並びから `retrospect-step` を外したときは「振り返り」が消えて2段になる。並びから外したスキルの段は帯に出ず、既定の4つ以外のスキルは、その名前（全名の `:` より後ろ）の段として並びの位置に入る。
 委譲する流れと `main` の流れは、計画の段（必要なときだけ）・`## やること` の段・そのあとの段の並びで、`main` の流れには `delegatedRange` が付かない。
 近道（`flows/direct.md`）は実装の段が「直す」「検証」になり、「受け入れ」「振り返り」が消える（既定の並びなら「直す」「検証」「送り出し」の3段）。
 

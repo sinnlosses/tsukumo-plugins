@@ -76,7 +76,7 @@ def main() -> int:
     check("plan-tasks から next-task のファイルは返す",
           edges("plan-tasks", "`next-task` スキルの `ship-stopped.md` の表", skills) == ["next-task"])
     check("retrospect から task-workflow のパーツのファイルは返す",
-          edges("retrospect", "task-workflow/parts/retrospect.md を読む", skills) == ["task-workflow"])
+          edges("retrospect", "task-workflow/parts/retrospect/retrospect.md を読む", skills) == ["task-workflow"])
     check("task-model からほかのスキルのファイルは返す", edges("task-model", "`next-task` の `SKILL.md`", skills) == ["next-task"])
     check("retro から retrospect のファイルは許す", edges("retro", "`retrospect` の `detail.md`", skills) == [])
     check("自分自身のファイルは許す", edges("plan-tasks", "skills/plan-tasks/SKILL.md", skills) == [])
@@ -86,7 +86,7 @@ def main() -> int:
 
     upward = check_repo.upward_reference_problems
     brief = os.path.join(check_repo.SKILLS, "task-workflow", "parts", "acceptor", "acceptor-brief.md")
-    check("1つ上の `acceptor.md` は届く", upward(brief, "このファイルの1つ上のディレクトリの `acceptor.md`") == [])
+    check("1つ上の `ship/ship.md` は届く", upward(brief, "このファイルの1つ上のディレクトリの `ship/ship.md`") == [])
     check("括弧の中の言及から2つ上の `review-criteria.md` に届く",
           upward(brief, "置き場（このファイルの2つ上のディレクトリ）の `review-criteria.md`") == [])
     check("括弧の後ろの `scripts/self_review.py` に届く",
