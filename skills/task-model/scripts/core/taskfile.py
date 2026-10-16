@@ -97,7 +97,7 @@ def render(task: Task) -> str:
     )
 
 
-def validate_new_body(body: str, hold: bool, difficulty: str = "") -> str | None:
+def validate_new_body(body: str, hold: bool, difficulty: str) -> str | None:
     """`task new`・`task adopt` の本文検査。枠の検査に加え、`difficulty` が opus なら論点を求め、`## やること` の中身・段・
     `### 名指すファイル` を求める（`### 作業先` があればその形も）。中身を空にできるのは `hold` のときだけ。問題が無ければ `None`。"""
     error = validate_body(body) or opus_refusal(difficulty, body)
@@ -118,7 +118,7 @@ def validate_draft_body(body: str) -> str | None:
 
 
 def validate_edited_body(
-    old_body: str, new_body: str, draft: bool = False, old_difficulty: str = "", difficulty: str = ""
+    old_body: str, new_body: str, *, draft: bool, old_difficulty: str, difficulty: str
 ) -> str | None:
     """`task edit` の本文検査。枠の検査（`draft` はドラフトの緩い枠）に加え、変えた節だけを見る:
     `## やること` を変えて中身があれば段の形、opus に上げたか論点を変えたなら論点、`## 目的・背景` を変えたなら `- 観点:` の語彙。"""
@@ -625,9 +625,7 @@ _VIEWPOINT_LINE = re.compile(r"^- 観点:\s*(?:[赤黄](?:\s+|$))?(.*?)\s*$")
 
 def plan_changed(old_body: str, new_body: str) -> bool:
     """`## やること` の中身が `old_body` と違うか。行末の空白と連続する空行の数は無視する。"""
-    old = dict(_frame_sections(old_body)[1]).get(PLAN_HEADING, "")
-    new = dict(_frame_sections(new_body)[1]).get(PLAN_HEADING, "")
-    return _squeeze(old) != _squeeze(new)
+    return section_changed(old_body, new_body, PLAN_HEADING)
 
 
 def changed_frame_sections(old_body: str, new_body: str) -> list[str]:
