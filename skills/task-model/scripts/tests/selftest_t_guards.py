@@ -9,13 +9,14 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-from selftest_support import check, git, refuse_direct_run, say, weight, write  # noqa: E402
+from selftest_support import check, git, git_env, refuse_direct_run, say, weight, write  # noqa: E402
 import beads  # noqa: E402
 import gitinfo  # noqa: E402
 import ledger  # noqa: E402
+import ref_guard  # noqa: E402
 import stamps  # noqa: E402
 import taskfile  # noqa: E402
-from selftest_fixtures import BODY, TASK_PY, commit_task, flow_rows, hook_env, make_repo, metadata, readonly_git, run_guard, run_handback_guard, run_task, snapshot  # noqa: E402
+from selftest_fixtures import BODY, TASK_PY, commit_task, disarm_ref_guard, flow_rows, hook_env, make_repo, metadata, readonly_git, run_guard, run_handback_guard, run_task, snapshot  # noqa: E402
 
 
 NO_DELEGATE = os.path.join(HERE, "..", "..", "..", "..", "agents", "no-delegate.md")
@@ -31,11 +32,12 @@ def _hook_command(subcommand: str) -> str:
 
 @weight(9)
 def test_commit_guard() -> None:
-    say("task.py commit-guard: 印が立って done 前の作業ツリーのコミットを拒む")
+    say("task.py commit-guard: ref-guard が効かない作業ツリーでは、印が立って done 前のコミットを拒む")
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, wt2 = make_repo(tmp)
         commit_task(main_path, taskfile.Task("T-100", "拒む", "todo", "sonnet", "Y", (), BODY))
         commit_task(main_path, taskfile.Task("T-101", "release で外す", "todo", "sonnet", "Y", (), BODY))
+        disarm_ref_guard(main_path)
 
         check("claim の前は通る", run_guard(tmp, wt1, "git commit -m x") is None)
         run_task(wt1, "claim", "T-100")
@@ -154,6 +156,7 @@ def test_commit_guard_shell_edit() -> None:
     say("task.py commit-guard: 印が立って done 前の作業ツリーで、シェルからのファイルの書き換えを拒む")
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, wt2 = make_repo(tmp)
+        disarm_ref_guard(main_path)
         commit_task(main_path, taskfile.Task("T-100", "拒む", "todo", "sonnet", "Y", (), BODY))
         run_task(wt1, "claim", "T-100")
         write(os.path.join(wt1, ".gitignore"), "*.log\n")
@@ -379,6 +382,7 @@ def test_agent_scoped_guard() -> None:
     say("task.py commit-guard・handback-guard --agent-scoped: 名前を問わずサブエージェント（agent_id）に関門を掛ける")
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, _wt2 = make_repo(tmp, verify="`true`")
+        disarm_ref_guard(main_path)
         commit_task(main_path, taskfile.Task("T-100", "拒む", "todo", "sonnet", "Y", (), BODY))
         run_task(wt1, "claim", "T-100")
         write(os.path.join(wt1, "work.txt"), "x\n")
@@ -995,6 +999,7 @@ def test_worktree_state_dir() -> None:
     say("stamps.py .tw/local/: 作業ツリーごとの控えとログを .tw/local/ に置き、旧い置き場の控えも読んで移す")
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, wt2 = make_repo(tmp, verify="`true`")
+        disarm_ref_guard(main_path)
         commit_task(main_path, taskfile.Task("T-100", "新しい置き場", "todo", "sonnet", "Y", (), BODY))
         commit_task(main_path, taskfile.Task("T-101", "古い置き場", "todo", "sonnet", "Y", (), BODY))
 
@@ -1191,7 +1196,227 @@ def test_state_dir() -> None:
               r.returncode == 0 and os.path.isdir(ledger.flow_dir(shared_root)), r.stdout + r.stderr)
 
 
+def _raw_git(cwd: str, *args: str) -> subprocess.CompletedProcess:
+    """`ref-guard` を外す変数を付けない git（委譲先やメインが手で打つ git）。失敗しても例外にしない。"""
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, env=git_env(allow_ref_update=False))
+
+
+def _raw_sh(cwd: str, command: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["sh", "-c", command], cwd=cwd, capture_output=True, text=True, env=git_env(allow_ref_update=False))
+
+
+def _ref_hook(main_path: str) -> str:
+    return os.path.join(gitinfo.git_common_dir(main_path), "hooks", ref_guard.HOOK_NAME)
+
+
+def _read_bytes(path: str) -> bytes:
+    with open(path, "rb") as f:
+        return f.read()
+
+
+@weight(6)
+def test_ref_guard_blocks_commits() -> None:
+    say("task.py ref-guard: 印が立って done 前の作業ツリーで、書き方と呼び手を問わずコミットを拒み、tw の git は通す")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(tmp, branch="切らない")
+        commit_task(main_path, taskfile.Task("T-100", "拒む", "todo", "sonnet", "Y", (), BODY))
+        commit_task(main_path, taskfile.Task("T-101", "done のあと", "todo", "sonnet", "Y", (), BODY))
+        r = run_task(wt1, "claim", "T-100")
+        hook = _ref_hook(main_path)
+        check("claim で印付きの reference-transaction が置かれ、実行できる",
+              r.returncode == 0 and os.access(hook, os.X_OK) and ref_guard.MARKER in _read_bytes(hook).decode(),
+              r.stdout + r.stderr)
+
+        write(os.path.join(wt1, "work.txt"), "x\n")
+        _raw_git(wt1, "add", "work.txt")
+        head = _raw_git(wt1, "rev-parse", "HEAD").stdout.strip()
+        for label, run in (
+            ("git commit -m x", lambda: _raw_git(wt1, "commit", "-q", "-m", "x")),
+            ("sh -c 'git commit --no-verify -m x'", lambda: _raw_sh(wt1, "git commit -q --no-verify -m x")),
+            ("git commit --amend", lambda: _raw_git(wt1, "commit", "-q", "--amend", "-m", "x")),
+        ):
+            done = run()
+            check(f"呼び手を問わず（メインが手で打っても）拒む: {label}",
+                  done.returncode != 0 and "着手の印" in done.stderr
+                  and _raw_git(wt1, "rev-parse", "HEAD").stdout.strip() == head, done.stdout + done.stderr)
+
+        write(os.path.join(main_path, "advance.txt"), "m\n")
+        _raw_git(main_path, "add", "advance.txt")
+        advanced = _raw_git(main_path, "commit", "-q", "-m", "main を進める")
+        check("控えの無い作業ツリーのコミットは通る（本体）", advanced.returncode == 0, advanced.stderr)
+        ff = _raw_git(wt1, "merge", "-q", "--ff-only", "main")
+        check("主ブランチへの早送りは通る", ff.returncode == 0, ff.stderr)
+        stash_name = f"gh908-selftest-{os.getpid()}"
+        stashed = _raw_git(wt1, "stash", "push", "-q", "-u", "-m", stash_name)
+        sha = next((l.split()[0] for l in _raw_git(wt1, "stash", "list", "--format=%H %gs").stdout.splitlines()
+                    if l.endswith(stash_name)), None)
+        check("git stash は通る", stashed.returncode == 0 and sha is not None, stashed.stderr)
+        if sha is not None:
+            _raw_git(wt1, "stash", "apply", "-q", sha)
+            _raw_git(wt1, "stash", "drop", "-q")
+
+        write(os.path.join(wt2, "other.txt"), "o\n")
+        _raw_git(wt2, "add", "other.txt")
+        other = _raw_git(wt2, "commit", "-q", "-m", "別の作業ツリー")
+        check("控えの無い別の作業ツリーのコミットは通る", other.returncode == 0, other.stderr)
+        _raw_git(wt2, "reset", "-q", "--hard", "main")
+
+        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "T-100: 完了", "--add", "work.txt",
+                     stdin="- 検証: x\n- 振り返り: 兆候なし\n")
+        kinds = [l.split("\t", 1)[0] for l in r.stdout.splitlines()]
+        check("tw finish は DONE・COMMITTED・SHIPPED まで進む",
+              r.returncode == 0 and [k for k in kinds if k in ("DONE", "COMMITTED", "SHIPPED")] == ["DONE", "COMMITTED", "SHIPPED"],
+              r.stdout + r.stderr)
+
+        run_task(wt2, "claim", "T-101")
+        write(os.path.join(wt2, "after.txt"), "a\n")
+        _raw_git(wt2, "add", "after.txt")
+        before = _raw_git(wt2, "commit", "-q", "-m", "done の前")
+        check("done の前は素の git commit を拒む", before.returncode != 0 and "T-101" in before.stderr, before.stderr)
+        run_task(wt2, "done", "T-101", "--result-file", "-", stdin="- 検証: x\n- 振り返り: 兆候なし\n")
+        after = _raw_git(wt2, "commit", "-q", "-m", "done のあと")
+        check("tw done のあとの素の git commit は通る", after.returncode == 0, after.stderr)
+
+
+@weight(4)
+def test_ref_guard_install_states() -> None:
+    say("ref_guard.install: 同じ中身は書かず、別の task.py の殻は書き直し、利用者の hook と core.hooksPath には書かない")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
+        hook = _ref_hook(main_path)
+        check("初めては置く", ref_guard.install(wt1) is None and os.access(hook, os.X_OK))
+        earlier = os.stat(hook).st_mtime_ns - 10**9
+        os.utime(hook, ns=(earlier, earlier))
+        check("同じ中身なら書かない", ref_guard.install(wt1) is None and os.stat(hook).st_mtime_ns == earlier)
+        write(hook, ref_guard.hook_body("/nonexistent/task.py"))
+        check("印付きで別の task.py を指す殻は書き直す",
+              ref_guard.install(wt1) is None and _read_bytes(hook).decode() == ref_guard.hook_body(
+                  os.path.realpath(os.path.join(HERE, "..", "tw", "task.py"))))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
+        commit_task(main_path, taskfile.Task("T-100", "利用者の hook", "todo", "sonnet", "Y", (), BODY))
+        hook = disarm_ref_guard(main_path)
+        before = _read_bytes(hook)
+        r = run_task(wt1, "claim", "T-100")
+        check("利用者の hook があれば置かず、hook はバイト単位で同じ・標準エラーに ref-guard: の1行・stdout は CLAIMED",
+              r.returncode == 0 and _read_bytes(hook) == before and "ref-guard:" in r.stderr
+              and r.stdout.startswith("CLAIMED\t") and "ref-guard" not in r.stdout, r.stdout + r.stderr)
+        check("利用者の hook があるときは commit-guard が git commit を拒む", run_guard(tmp, wt1, "git commit -m x") is not None)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
+        commit_task(main_path, taskfile.Task("T-100", "core.hooksPath", "todo", "sonnet", "Y", (), BODY))
+        hooks_path = os.path.join(tmp, "user-hooks")
+        os.makedirs(hooks_path)
+        git(main_path, "config", "core.hooksPath", hooks_path)
+        r = run_task(wt1, "claim", "T-100")
+        check("core.hooksPath があれば置かず、指す先も共有の hooks も空のまま・標準エラーに ref-guard: の1行",
+              r.returncode == 0 and os.listdir(hooks_path) == [] and not os.path.exists(_ref_hook(main_path))
+              and "ref-guard:" in r.stderr and r.stdout.startswith("CLAIMED\t"), r.stdout + r.stderr)
+
+
+def test_commit_guard_with_ref_guard() -> None:
+    say("task.py commit-guard: ref-guard が効く作業ツリーではコミットを git の hook に任せ、外す変数は拒む")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
+        commit_task(main_path, taskfile.Task("T-100", "任せる", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        check("git commit の入力は通す（hook に任せる）", run_guard(tmp, wt1, "git commit -m x") is None)
+        reason = run_guard(tmp, wt1, "TW_REF_GUARD_ALLOW=1 git commit -m x")
+        check("TW_REF_GUARD_ALLOW を付けたコマンドは拒む",
+              reason is not None and "TW_REF_GUARD_ALLOW" in reason and "T-100" in reason, str(reason))
+        check("export TW_REF_GUARD_ALLOW も拒む", run_guard(tmp, wt1, "export TW_REF_GUARD_ALLOW; git commit -m x") is not None)
+        check("名前を読むだけのコマンドは通す", run_guard(tmp, wt1, "grep -rn TW_REF_GUARD_ALLOW .") is None)
+        for command in (
+            "git -c core.hooksPath=/dev/null commit -m x",
+            "sh -c 'git -c core.hooksPath=/dev/null commit -m x'",
+            "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null sh ./c.sh",
+            "GIT_CONFIG_PARAMETERS=\"'core.hooksPath'='/dev/null'\" git commit -m x",
+            "git --config-env=core.hooksPath=HOOKS commit -m x",
+            "git config core.hooksPath /dev/null",
+            "git config --global core.hooksPath /tmp/hooks",
+            "git config set core.hooksPath /tmp/hooks",
+            "sh -c 'git config core.hooksPath /tmp/hooks'",
+        ):
+            reason = run_guard(tmp, wt1, command)
+            check(f"core.hooksPath を指し直すコマンドは拒む: {command}",
+                  reason is not None and "core.hooksPath" in reason, str(reason))
+        for command in (
+            "grep -rn hooksPath .",
+            "rg -n core.hooksPath skills",
+            "git config --get core.hooksPath",
+            "git config get core.hooksPath",
+            "git config core.hooksPath",
+            "git config core.hooksPath 2>/dev/null",
+            "git config --list | grep -i hookspath",
+            "git log --grep hooksPath",
+            "git config --unset core.hooksPath",
+        ):
+            check(f"hooksPath を読むだけ（か外して既定に戻す）のコマンドは通す: {command}", run_guard(tmp, wt1, command) is None)
+
+
+def _guard_in_env(tmp: str, where: str, command: str, env: dict[str, str]) -> str | None:
+    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": where})
+    r = run_task(tmp, "commit-guard", stdin=payload, env=env)
+    if r.returncode != 0:
+        raise RuntimeError(f"commit-guard が {r.returncode} で終わった: {r.stderr}")
+    return None if r.stdout == "" else json.loads(r.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+def _bin_with(tmp: str, name: str, links: dict[str, str]) -> str:
+    """`links` の `{名前: 実体のパス}` だけを置いたディレクトリ。"""
+    d = os.path.join(tmp, name)
+    os.makedirs(d)
+    for link, target in links.items():
+        os.symlink(target, os.path.join(d, link))
+    return d
+
+
+@weight(5)
+def test_commit_guard_covers_inactive_ref_guard() -> None:
+    say("task.py commit-guard: 控えがあり ref-guard が効かないどの場面でも、commit-guard が git commit を拒む")
+    real_git = shutil.which("git") or "git"
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
+        commit_task(main_path, taskfile.Task("T-100", "効かない場面", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        hook = _ref_hook(main_path)
+        body = _read_bytes(hook).decode()
+        check("効いているあいだは commit-guard は通す", run_guard(tmp, wt1, "git commit -m x") is None)
+
+        old_git = write(os.path.join(tmp, "old-git", "git"),
+                        f'#!/bin/sh\n[ "$1" = --version ] && {{ echo "git version 2.27.0"; exit 0; }}\nexec {real_git} "$@"\n')
+        os.chmod(old_git, 0o755)
+        no_python = _bin_with(tmp, "no-python", {"git": real_git})
+        for label, env in (
+            ("git が 2.28 より古い", {"PATH": os.path.dirname(old_git) + os.pathsep + os.environ.get("PATH", "")}),
+            ("python3 が PATH に無い", {"PATH": no_python}),
+            ("環境に TW_REF_GUARD_ALLOW がある", {"TW_REF_GUARD_ALLOW": "1"}),
+        ):
+            check(f"{label}: commit-guard が git commit を拒む", _guard_in_env(tmp, wt1, "git commit -m x", env) is not None)
+
+        for label, prepare in (
+            ("殻の指す task.py が無い", lambda: write(hook, ref_guard.hook_body("/nonexistent/task.py"))),
+            ("殻が実行できない", lambda: os.chmod(hook, 0o644)),
+            ("殻が消えた", lambda: os.remove(hook)),
+            ("利用者の hook に置き換わった", lambda: disarm_ref_guard(main_path)),
+            ("core.hooksPath が設定された", lambda: git(main_path, "config", "core.hooksPath", os.path.join(tmp, "elsewhere"))),
+        ):
+            prepare()
+            check(f"{label}: ref_guard.active は偽", not ref_guard.active(wt1), str(ref_guard.inactive_reason(wt1)))
+            check(f"{label}: commit-guard が git commit を拒む", run_guard(tmp, wt1, "git commit -m x") is not None)
+            _raw_git(main_path, "config", "--unset-all", "core.hooksPath")
+            write(hook, body)
+            os.chmod(hook, 0o755)
+        check("殻を戻せば commit-guard はまた hook に任せる", run_guard(tmp, wt1, "git commit -m x") is None)
+
+
 TESTS = (
+    test_ref_guard_blocks_commits,
+    test_ref_guard_install_states,
+    test_commit_guard_with_ref_guard,
+    test_commit_guard_covers_inactive_ref_guard,
     test_handback_guard,
     test_handback_guard_other_repo,
     test_step_stamps_other_repo,

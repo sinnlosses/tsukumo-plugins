@@ -54,6 +54,16 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
         None,
     )
     body = current
+    difficulties = beads.attribute_values(issue, beads.DIFFICULTY_KEY)
+    old_difficulty = difficulties[0] if difficulties else "?"
+    difficulty = args.difficulty or old_difficulty
+    if args.difficulty and not body_files:
+        error = taskfile.validate_edited_body(
+            current, current, draft=beads.is_draft(issue), old_difficulty=old_difficulty, difficulty=difficulty
+        )
+        if error is not None:
+            print(f"usage: {error}", file=sys.stderr)
+            raise SystemExit(2)
     if body_files:
         for name, path in zip(sections or [None], body_files):
             given = tw_base.read_body(path)
@@ -61,7 +71,9 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
                 print("usage: --body-file の中身が空（空白だけ）。書き換えない", file=sys.stderr)
                 raise SystemExit(2)
             body = given if name is None else _section_body(name, body, given)
-        error = taskfile.validate_edited_body(current, body, draft=beads.is_draft(issue))
+        error = taskfile.validate_edited_body(
+            current, body, draft=beads.is_draft(issue), old_difficulty=old_difficulty, difficulty=difficulty
+        )
         if error is not None:
             print(f"usage: {error}", file=sys.stderr)
             raise SystemExit(2)
@@ -89,8 +101,6 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
     for value, key in ((args.difficulty, beads.DIFFICULTY_KEY), (args.loopable, beads.LOOPABLE_KEY)):
         if value:
             cmd += ["--set-metadata", f"{key}={value}"]
-    difficulties = beads.attribute_values(issue, beads.DIFFICULTY_KEY)
-    difficulty = args.difficulty or (difficulties[0] if difficulties else "?")
     had_direct = "Y" if beads.DIRECT_ON in issue.labels else "N"
     direct, direct_off = _edited_direct(had_direct, args.direct, difficulty, body)
     if direct != had_direct:
@@ -104,7 +114,7 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
             raise SystemExit(4)
         cmd += ["--status", "open" if args.status == "todo" else beads.HOLD_STATUS]
         if beads.is_draft(issue):
-            cmd += _draft_promotion_args(toplevel, shown, body, args.status)
+            cmd += _draft_promotion_args(toplevel, shown, body, args.status, difficulty)
     if len(cmd) > 2:
         r = beads.run(toplevel, cmd, tw_base.actor(toplevel), stdin)
         if r.returncode != 0:
@@ -188,10 +198,10 @@ def cmd_plan_phases(
     print(f"PHASES\t{shown}\t{json.dumps(result, ensure_ascii=False, separators=(',', ':'))}")
 
 
-def _draft_promotion_args(toplevel: str, shown: str, body: str, status: str) -> list[str]:
+def _draft_promotion_args(toplevel: str, shown: str, body: str, status: str, difficulty: str) -> list[str]:
     """ドラフトを `todo`・`hold` へ進める `bd update` の引数。本文が `tw new`（`hold` なら `--hold`）の検査を通らなければ
     何も書かずに `NOT_READY\\t<ID>\\tDRAFT\\t<理由>`（終了コード4）。"""
-    error = taskfile.validate_new_body(body, hold=status == "hold")
+    error = taskfile.validate_new_body(body, hold=status == "hold", difficulty=difficulty)
     if error is not None:
         print(f"NOT_READY\t{shown}\tDRAFT\t{error}")
         raise SystemExit(4)

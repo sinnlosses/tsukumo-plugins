@@ -25,7 +25,7 @@ from selftest_b_support import (  # noqa: E402
     PLANNED_BODY, bd, claim_snapshots, env, make_repo, new, new_unplanned, rows, tail_line, work_and_done,
 )
 from selftest_body import task_body  # noqa: E402
-from selftest_fixtures import run_guard, run_handback_guard, run_task, start_task  # noqa: E402
+from selftest_fixtures import disarm_ref_guard, run_guard, run_handback_guard, run_task, start_task  # noqa: E402
 from selftest_support import check, git, refuse_direct_run, say, write  # noqa: E402
 
 MATERIAL_PY = os.path.join(HERE, "..", "..", "..", "retrospect", "scripts", "material.py")
@@ -272,9 +272,10 @@ def test_claim_race_owner_and_release() -> None:
 
 
 def test_commit_guard() -> None:
-    say("commit-guard: 印が立って done 前の作業ツリーのコミットを拒む")
+    say("commit-guard: ref-guard が効かない作業ツリーでは、印が立って done 前のコミットを拒む")
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, wt2 = make_repo(tmp)
+        disarm_ref_guard(main_path)
         a = new(main_path, "拒む")
         c = new(main_path, "人が外す")
 

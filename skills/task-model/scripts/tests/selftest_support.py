@@ -160,8 +160,16 @@ def write(path: str, content: str) -> str:
     return path
 
 
+def git_env(allow_ref_update: bool) -> dict[str, str]:
+    """`allow_ref_update` が真なら、着手中の作業ツリーでも `ref-guard` に拒まれない（委譲先のコミットを再現する）。"""
+    env = {k: v for k, v in os.environ.items() if k != "TW_REF_GUARD_ALLOW"}
+    if allow_ref_update:
+        env["TW_REF_GUARD_ALLOW"] = "1"
+    return env
+
+
 def git(cwd: str, *args: str) -> subprocess.CompletedProcess:
-    r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+    r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, env=git_env(allow_ref_update=True))
     if r.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} 失敗: {r.stderr}")
     return r

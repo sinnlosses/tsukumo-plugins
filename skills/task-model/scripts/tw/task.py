@@ -3,7 +3,7 @@
 # 宣言が無いと Python 3.9 が、長い日本語の行の読み込み位置によって「Non-UTF-8 code」で落ちる。
 """Beads に置いたタスクの運用を操作する入口コマンド。
 
-使い方: tw <status|new|claim|release|done|ship|finish|land|config|config-doctor|show|find|edit|plan-check|plan-phases|verify|verify-check|accept|pause|step|lap|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|ask-guard> ...
+使い方: tw <status|new|claim|release|done|ship|finish|land|config|config-doctor|show|find|edit|plan-check|plan-phases|verify|verify-check|accept|pause|step|lap|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|ask-guard|ref-guard> ...
 
 `install.sh` が PATH 上に張る `tw` と、plugin の `bin/tw` から呼ぶ。`commit-guard`・`handback-guard` の
 `--agent-scoped` は plugin の `hooks/hooks.json` が付け、入力に `agent_id` があるとき（サブエージェント）だけ関門を掛ける。
@@ -31,6 +31,7 @@ import handback_guard
 import layout
 import gitinfo
 import metrics
+import ref_guard
 import taskfile
 import tracker
 import tw_accept
@@ -62,13 +63,13 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     ),
     "new": (
         "採番して Beads に課題を作る（コミットしない）。",
-        r"""採番して Beads に課題を作る（コミットしない。採番は TRACKER.md の「タスクの要素と Beads の置き場」）。`--draft` はドラフト（WORKFLOW.md の「ドラフトの課題」）を作る: 本文は「タスクの本文」のドラフトの緩い検査で見て、`deferred` と metadata `draft`=`Y` で作り、`task_plan_base` は控えない。`--hold` と同時・`--direct` と同時は何も作らずに終了コード2。以下は `--draft` でないとき。`--difficulty`・`--loopable` は metadata `difficulty`・`loopable` に書く（label は付けない）。`--direct` は委譲しない近道の印（label `direct:Y`）を付け、「difficulty とモデルの切り替え」の基準の表で `tw` が見る条件を外れれば何も作らずに終了コード2。`--kind` は種類（WORKFLOW.md の「kind（種類）」の語彙）を label `kind:<種類>` で付ける（省くと付けない。`--draft` でも付けられる）。`## やること` の中身が要る（空にできるのは `--hold` だけ。段の形に沿わない・`### 名指すファイル` が無い・形が違う・パスが木に無い・`### 作業先` が絶対パス1行でないか git のリポジトリの根でなければ、何も作らずに終了コード2）。中身があれば、計画のリポジトリ（`### 作業先` があればそこ）の `HEAD` と主ブランチの分かれ目の SHA を metadata `task_plan_base` に控える
+        r"""採番して Beads に課題を作る（コミットしない。採番は TRACKER.md の「タスクの要素と Beads の置き場」）。`--draft` はドラフト（WORKFLOW.md の「ドラフトの課題」）を作る: 本文は「タスクの本文」のドラフトの緩い検査で見て、`deferred` と metadata `draft`=`Y` で作り、`task_plan_base` は控えない。`--hold` と同時・`--direct` と同時は何も作らずに終了コード2。ドラフトの本文に `- 観点:` の行があって観点が語彙（`skills/retrospect/detail.md` の7観点と、横断の振り返りの3観点）の外か、色が赤・黄以外なら何も作らずに終了コード2。以下は `--draft` でないとき。`--difficulty opus` で `## 解くべき論点` が空か「なし」なら何も作らずに終了コード2（`adopt` も同じ）。`--difficulty`・`--loopable` は metadata `difficulty`・`loopable` に書く（label は付けない）。`--direct` は委譲しない近道の印（label `direct:Y`）を付け、「difficulty とモデルの切り替え」の基準の表で `tw` が見る条件を外れれば何も作らずに終了コード2。`--kind` は種類（WORKFLOW.md の「kind（種類）」の語彙）を label `kind:<種類>` で付ける（省くと付けない。`--draft` でも付けられる）。`## やること` の中身が要る（空にできるのは `--hold` だけ。段の形に沿わない・`### 名指すファイル` が無い・形が違う・パスが木に無い・`### 作業先` が絶対パス1行でないか git のリポジトリの根でなければ、何も作らずに終了コード2）。中身があれば、計画のリポジトリ（`### 作業先` があればそこ）の `HEAD` と主ブランチの分かれ目の SHA を metadata `task_plan_base` に控える
 
 出力: `CREATED`・`LOCKED`（20回打ち直しても番号が取れない）""",
     ),
     "claim": (
         "clean・未送りなしを確かめ、主ブランチへ追い付き、印を立てる。",
-        r"""clean・未送りなしを確かめ、主ブランチへ追い付き（主ブランチが `HEAD` の祖先なら `merge` を打たない）、印を立て（`.tw/local/task-open-claims/T-xxx` の控えも置く）、設定の `branch` が `既定`・`作業ブランチを切る`（無ければ `既定`）なら枝を切る。追い付くか枝を切るのに `.git` へ書けなければ、印を立てる前に `GIT_READ_ONLY` で止まる。印は `bd update --claim`（actor は作業ツリーの名前）で、`claim` した時点の `HEAD` と枝を metadata `task_claim_head`・`task_branch` に控える。登録時の計画の控えがあれば、名指したファイルが控えから主ブランチの先端までに変わったかを判定し、比べた先端を metadata `task_plan_tip` に控え、変わっていなければ印に `registered` を残す（出力は変えない）。近道の印（label `direct:Y`）があれば基準を測り直し、`CLAIMED` の行末に `direct=Y`（基準に当たり `registered`）か `direct=N:<理由>`（外れた条件か `登録時の計画が古い`）の列を足す。印が無ければ列を出さない。ドラフトは何もせずに `NOT_READY\tT-xxx\tDRAFT`（終了コード4）
+        r"""clean・未送りなしを確かめ、主ブランチへ追い付き（主ブランチが `HEAD` の祖先なら `merge` を打たない）、印を立て（`.tw/local/task-open-claims/T-xxx` の控えも置く）、共有の git dir の `hooks/reference-transaction` に `ref-guard` の殻を置き（`core.hooksPath` があるときと印の無い利用者の hook があるときは置かない。置かなかったときと、置いても効かないとき〔効かない場面は tw-reference.md「hook の関門」節〕は標準エラーに `ref-guard:` の1行を出す。出力と終了コードは変えない）、設定の `branch` が `既定`・`作業ブランチを切る`（無ければ `既定`）なら枝を切る。追い付くか枝を切るのに `.git` へ書けなければ、印を立てる前に `GIT_READ_ONLY` で止まる。印は `bd update --claim`（actor は作業ツリーの名前）で、`claim` した時点の `HEAD` と枝を metadata `task_claim_head`・`task_branch` に控える。登録時の計画の控えがあれば、名指したファイルが控えから主ブランチの先端までに変わったかを判定し、比べた先端を metadata `task_plan_tip` に控え、変わっていなければ印に `registered` を残す（出力は変えない）。近道の印（label `direct:Y`）があれば基準を測り直し、`CLAIMED` の行末に `direct=Y`（基準に当たり `registered`）か `direct=N:<理由>`（外れた条件か `登録時の計画が古い`）の列を足す。印が無ければ列を出さない。ドラフトは何もせずに `NOT_READY\tT-xxx\tDRAFT`（終了コード4）
 
 出力: `CLAIMED`・`TAKEN`・`NOT_READY`・`DIRTY`・`UNSHIPPED`・`GIT_READ_ONLY`""",
     ),
@@ -104,7 +105,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     ),
     "edit": (
         "本文と属性と依存を直す。",
-        r"""本文と属性と依存を直す（`--difficulty`・`--loopable` は metadata を書き換える。コミットも `ship` も要らない。`## 完了条件`・`## やること` はそれぞれの欄へ分けて入れ、版は `bd history` に残る。`## 結果` は拒む）。`--status` は着手前（`open`・`deferred`）だけ。ドラフトに `--status todo|hold` を打つと、書いたあとの本文（同じ呼び出しの `--body-file` を当てたもの）を `new` と同じ検査（`hold` なら `--hold` の検査）にかけ、通らなければ何も書かずに `NOT_READY\tT-xxx\tDRAFT\t<理由>`（終了コード4）。通れば状態と印 `draft` の取り外しを同じ `bd update` で書き、`## やること` に中身があれば `new` と同じく `task_plan_base` を控える。ドラフトの本文の編集は WORKFLOW.md の「タスクの本文」のドラフトの緩い検査で見る。`--direct Y|N`（`--body-file` が無くてもよい）は label `direct:Y` を付け外しする。`Y` で基準を外れれば何も書かずに終了コード2。印のあるタスクの本文か `--difficulty` を変えて基準を外れたら、書き込んで印を外し、`EDITED`（と `PLAN_AFTER_WORK`）の次に `DIRECT_OFF\tT-xxx\t<理由>` を出す。`--kind <種類>|-`（`--body-file` が無くてもよい）は label `kind:` をすべて外してから `kind:<種類>` を付ける（`-` は外すだけ）。`--add-deps`・`--remove-deps`（`--body-file` が無くてもよく、その場合は本文に触れない）は Beads の依存を `bd dep add`・`bd dep remove` で1辺ずつ直す（`bd` の循環検査の前に `tw` が先に拒む）。削除してから追加し、すでにある依存の追加は通る。自分自身・Beads に無い ID・循環になる辺・形の違う ID・依存にない ID の削除・追加と削除に同じ ID は、何も書かずに終了コード2。以下は本文について。本文を丸ごと書き換える。`--section` を付けると、その節の中身だけを渡した中身に置き換え、ほかの節は1バイトも変えない（節名は `やること`・`## やること` のどちらでも受ける。枠に無い見出し・渡した中身に行頭の `## ` の行があれば、書き込まずに終了コード2。置き換えた全文に以降の検査が効く）。`--section` と `--body-file` の組は繰り返せて、先頭から順に同じ呼び出しの中で置き換える（組の数が違う・同じ節を2回指す・`--body-file -` を2回使うのは書き込まずに終了コード2）。検査と、Beads・トラッカーへの反映は結合した本文に対して1回だけ通るので、何節も書くときは繰り返して1回で打つ（`--status`・`--summary` なども同じ呼び出しに付けられる）。渡した本文の `## 目的・背景`・`## 完了条件` がいまの本文と違えば、書き込まずに `FRAME_CHANGED\tT-xxx\t<違う節>` で止まる（終了コード4。行末の空白と空行の数の差は違いに数えない。いまの本文に節が無いもの・中身が空か「なし」のものは比べない）。変えてよいときだけ `--change-frame` を付けて打ち直す。ほかの節だけの書き換えは今までどおり通る。`claim` の後に、着手の印の持ち主が `## やること` に初めて中身を入れたとき、その時点で作業が始まっていたか（`claim` した時点の `HEAD` より後のコミットか、渡した本文のファイル以外の変更があるか。submodule のずれは数えない）を1回だけ metadata `task_plan` に残す（値は `first`／`after-work`）。`after-work` になるときは書き込まずに `WORK_BEFORE_PLAN\tT-xxx\t<次の一手>` で止まる（終了コード4）。`--after-work` を付けると書き込んで `after-work` を残し、`EDITED` の次に `PLAN_AFTER_WORK\tT-xxx\t作業の後に書いた` の行を足す（作業が始まっていなければ `--after-work` は何も変えず `first`）。front matter 付きの本文は拒む（終了コード2。除いて渡す）
+        r"""本文と属性と依存を直す（`--difficulty`・`--loopable` は metadata を書き換える。コミットも `ship` も要らない。`## 完了条件`・`## やること` はそれぞれの欄へ分けて入れ、版は `bd history` に残る。`## 結果` は拒む）。`--status` は着手前（`open`・`deferred`）だけ。ドラフトに `--status todo|hold` を打つと、書いたあとの本文（同じ呼び出しの `--body-file` を当てたもの）を `new` と同じ検査（`hold` なら `--hold` の検査）にかけ、通らなければ何も書かずに `NOT_READY\tT-xxx\tDRAFT\t<理由>`（終了コード4）。通れば状態と印 `draft` の取り外しを同じ `bd update` で書き、`## やること` に中身があれば `new` と同じく `task_plan_base` を控える。ドラフトの本文の編集は WORKFLOW.md の「タスクの本文」のドラフトの緩い検査で見る。変えた節だけを見る検査もある（既存のタスクは壊さない）: difficulty を opus に上げるか `## 解くべき論点` を変えて、opus の論点が空か「なし」なら、`--difficulty` だけの編集でも書かずに終了コード2。`## 目的・背景` を変えて `- 観点:` の観点が語彙の外・色が赤・黄以外なら書かずに終了コード2。`--direct Y|N`（`--body-file` が無くてもよい）は label `direct:Y` を付け外しする。`Y` で基準を外れれば何も書かずに終了コード2。印のあるタスクの本文か `--difficulty` を変えて基準を外れたら、書き込んで印を外し、`EDITED`（と `PLAN_AFTER_WORK`）の次に `DIRECT_OFF\tT-xxx\t<理由>` を出す。`--kind <種類>|-`（`--body-file` が無くてもよい）は label `kind:` をすべて外してから `kind:<種類>` を付ける（`-` は外すだけ）。`--add-deps`・`--remove-deps`（`--body-file` が無くてもよく、その場合は本文に触れない）は Beads の依存を `bd dep add`・`bd dep remove` で1辺ずつ直す（`bd` の循環検査の前に `tw` が先に拒む）。削除してから追加し、すでにある依存の追加は通る。自分自身・Beads に無い ID・循環になる辺・形の違う ID・依存にない ID の削除・追加と削除に同じ ID は、何も書かずに終了コード2。以下は本文について。本文を丸ごと書き換える。`--section` を付けると、その節の中身だけを渡した中身に置き換え、ほかの節は1バイトも変えない（節名は `やること`・`## やること` のどちらでも受ける。枠に無い見出し・渡した中身に行頭の `## ` の行があれば、書き込まずに終了コード2。置き換えた全文に以降の検査が効く）。`--section` と `--body-file` の組は繰り返せて、先頭から順に同じ呼び出しの中で置き換える（組の数が違う・同じ節を2回指す・`--body-file -` を2回使うのは書き込まずに終了コード2）。検査と、Beads・トラッカーへの反映は結合した本文に対して1回だけ通るので、何節も書くときは繰り返して1回で打つ（`--status`・`--summary` なども同じ呼び出しに付けられる）。渡した本文の `## 目的・背景`・`## 完了条件` がいまの本文と違えば、書き込まずに `FRAME_CHANGED\tT-xxx\t<違う節>` で止まる（終了コード4。行末の空白と空行の数の差は違いに数えない。いまの本文に節が無いもの・中身が空か「なし」のものは比べない）。変えてよいときだけ `--change-frame` を付けて打ち直す。ほかの節だけの書き換えは今までどおり通る。`claim` の後に、着手の印の持ち主が `## やること` に初めて中身を入れたとき、その時点で作業が始まっていたか（`claim` した時点の `HEAD` より後のコミットか、渡した本文のファイル以外の変更があるか。submodule のずれは数えない）を1回だけ metadata `task_plan` に残す（値は `first`／`after-work`）。`after-work` になるときは書き込まずに `WORK_BEFORE_PLAN\tT-xxx\t<次の一手>` で止まる（終了コード4）。`--after-work` を付けると書き込んで `after-work` を残し、`EDITED` の次に `PLAN_AFTER_WORK\tT-xxx\t作業の後に書いた` の行を足す（作業が始まっていなければ `--after-work` は何も変えず `first`）。front matter 付きの本文は拒む（終了コード2。除いて渡す）
 
 出力: `EDITED`（`PLAN_AFTER_WORK`・`DIRECT_OFF` が続くことがある）・`NOT_READY`・`WORK_BEFORE_PLAN`・`FRAME_CHANGED`""",
     ),
@@ -224,7 +225,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     ),
     "commit-guard": (
         "Claude Code の PreToolUse hook から呼ばれ、着手中の作業ツリーでのコミット・書き換え・検証コマンドの直打ちを拒む。",
-        r"""Claude Code の PreToolUse hook（`agents/no-delegate.md` の frontmatter と、plugin の `hooks/hooks.json`）から呼ばれる。`--agent-scoped`（`hooks/hooks.json` だけが付け、`"${CLAUDE_PLUGIN_ROOT}/bin/tw"` の絶対パスで呼ぶ）があるときは、入力に `agent_id` があるとき（サブエージェント。名前は問わない）だけ掛け、無ければ（主のセッション）通す。stdin の hook の入力を読み、Bash のコマンドのうちコミットを作る git のサブコマンド（`commit`・`merge`・`pull`・`cherry-pick`・`revert`・`am`・`rebase`）の実効の作業先（入力の `cwd`・`cd <dir>`・`git -C <dir>`）に `.tw/local/task-open-claims/` の控え（読む順は WORKFLOW.md の「ファイル配置と設定ファイル」の控えの行のとおり、`.tw/local/` が無ければ `.tw/` 直下、それも無ければ作業ツリー固有の git dir）があれば拒む。コミットのほかに、シェルでのファイルの書き換え（`sed -i`・`perl -i`・`>`・`>>`・`tee`、`-c`・ヒアドキュメントに書き込みが見える python）も、書き先（python は実効の作業先）を含む作業ツリーに控えがあれば拒む（入力の `cwd` に控えが無くても、書き先がその作業ツリーの中なら拒む）。作業ツリーの外・`.gitignore` で無視されるパス・`/dev/`・判定しきれない書き方（変数展開・変数やコマンド置換で決まる `cd` のあと・`eval`・`bash -c`）は通す。さらに、実効の作業先に控えがあるとき、その作業ツリーの設定の `verify`・`verify_before_ship` と同じコマンドの直打ちも拒んで `tw verify` を案内する。同じと見なすのは、`&&`・`;`・`|` を含まない設定のコマンドの語で始まり、残りが `-` で始まる語（`--full` など）だけのとき。`&&`・`;`・`|` で割れた各コマンドを別々に見る（`./check.sh` を `tail` に渡すパイプも拒む）。先頭の `env`・`command`・`VAR=値` の前置きとリダイレクトは無視し、`cd` は実効の作業先として追う。コマンドがパスで書かれていれば、実効の作業先（設定は作業ツリーの根）から解いて同じファイルを指すかで比べる（`./check.sh` と絶対パスは同じ）。旗でない語が続く絞った実行（`./check.sh path/to.test.ts`）・`bash ./check.sh`・`timeout …`・`tw verify`・設定が読めないか `なし` のときは通す。`cwd` が作業ツリーの外のまま絶対パスで打つものも、作業先に設定が無いので通す（既知の取りこぼし）。入力の `cwd` に控えがあり、そのタスクの `### 作業先` が別のリポジトリなら、そのリポジトリの作業ツリーのうち枝の名前がタスクIDの小文字のもの（`handback-guard` と同じ）にも控えがあるとみなして、書き換えと検証コマンドの直打ちを拒む（コミットは拒まない）。入力の `cwd` が作業先の作業ツリーそのものなら、着手した作業ツリーを引けないので通す（既知の取りこぼし）。メインのセッションと、別の作業ツリー・別のリポジトリへのコミットには掛からない。リンクだけで入れたときの `no-delegate` 以外への委譲と、Bash のコマンド文字列に `git` が出ないコミット（`sh -c`・スクリプト越し）には効かず、`finish`・`done` の `COMMITS_SINCE_CLAIM` が事後に拾う。`bd` は、書き換えか直打ちの先が控えの無い作業ツリーで、入力の `cwd` に控えがあるときだけ読む
+        r"""Claude Code の PreToolUse hook（`agents/no-delegate.md` の frontmatter と、plugin の `hooks/hooks.json`）から呼ばれる。`--agent-scoped`（`hooks/hooks.json` だけが付け、`"${CLAUDE_PLUGIN_ROOT}/bin/tw"` の絶対パスで呼ぶ）があるときは、入力に `agent_id` があるとき（サブエージェント。名前は問わない）だけ掛け、無ければ（主のセッション）通す。stdin の hook の入力を読み、Bash のコマンドのうちコミットを作る git のサブコマンド（`commit`・`merge`・`pull`・`cherry-pick`・`revert`・`am`・`rebase`）の実効の作業先（入力の `cwd`・`cd <dir>`・`git -C <dir>`）に `.tw/local/task-open-claims/` の控え（読む順は WORKFLOW.md の「ファイル配置と設定ファイル」の控えの行のとおり、`.tw/local/` が無ければ `.tw/` 直下、それも無ければ作業ツリー固有の git dir）があれば拒む。ただし実効の作業先で `ref-guard` が効いていれば（打つたびに確かめる。効かない場面は tw-reference.md「hook の関門」節）コミットは拒まず git の hook に任せる。控えがあるとき、`ref-guard` を外す書き方のコマンド（`TW_REF_GUARD_ALLOW=`・`export TW_REF_GUARD_ALLOW`・`core.hooksPath` を書き換える形。形の一覧は tw-reference.md「hook の関門」節。名前を読むだけの `grep`・`git config --get core.hooksPath` などは通す）は拒む。コミットのほかに、シェルでのファイルの書き換え（`sed -i`・`perl -i`・`>`・`>>`・`tee`、`-c`・ヒアドキュメントに書き込みが見える python）も、書き先（python は実効の作業先）を含む作業ツリーに控えがあれば拒む（入力の `cwd` に控えが無くても、書き先がその作業ツリーの中なら拒む）。作業ツリーの外・`.gitignore` で無視されるパス・`/dev/`・判定しきれない書き方（変数展開・変数やコマンド置換で決まる `cd` のあと・`eval`・`bash -c`）は通す。さらに、実効の作業先に控えがあるとき、その作業ツリーの設定の `verify`・`verify_before_ship` と同じコマンドの直打ちも拒んで `tw verify` を案内する。同じと見なすのは、`&&`・`;`・`|` を含まない設定のコマンドの語で始まり、残りが `-` で始まる語（`--full` など）だけのとき。`&&`・`;`・`|` で割れた各コマンドを別々に見る（`./check.sh` を `tail` に渡すパイプも拒む）。先頭の `env`・`command`・`VAR=値` の前置きとリダイレクトは無視し、`cd` は実効の作業先として追う。コマンドがパスで書かれていれば、実効の作業先（設定は作業ツリーの根）から解いて同じファイルを指すかで比べる（`./check.sh` と絶対パスは同じ）。旗でない語が続く絞った実行（`./check.sh path/to.test.ts`）・`bash ./check.sh`・`timeout …`・`tw verify`・設定が読めないか `なし` のときは通す。`cwd` が作業ツリーの外のまま絶対パスで打つものも、作業先に設定が無いので通す（既知の取りこぼし）。入力の `cwd` に控えがあり、そのタスクの `### 作業先` が別のリポジトリなら、そのリポジトリの作業ツリーのうち枝の名前がタスクIDの小文字のもの（`handback-guard` と同じ）にも控えがあるとみなして、書き換えと検証コマンドの直打ちを拒む（コミットは拒まない）。入力の `cwd` が作業先の作業ツリーそのものなら、着手した作業ツリーを引けないので通す（既知の取りこぼし）。メインのセッションと、別の作業ツリー・別のリポジトリへのコミットには掛からない。リンクだけで入れたときの `no-delegate` 以外への委譲と、Bash のコマンド文字列に `git` が出ないコミット（`sh -c`・スクリプト越し）には効かない（`ref-guard` が効く作業ツリーでは git の側で拒み、効かなければ `finish`・`done` の `COMMITS_SINCE_CLAIM` が事後に拾う）。`bd` は、書き換えか直打ちの先が控えの無い作業ツリーで、入力の `cwd` に控えがあるときだけ読む
 
 出力: 拒むときだけ PreToolUse の deny の JSON 1行（理由は「コミットせず…報告で返す」か「…`Edit`・`Write` で書く」か「検証コマンド…を直に打たない。`tw verify` で打つ」）。通すときは何も出さない
 
@@ -248,6 +249,12 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
 
 """
         + HOOK_NOTE,
+    ),
+    "ref-guard": (
+        "git の reference-transaction hook から呼ばれ、着手中の作業ツリーで主ブランチに無いコミットへ枝を動かす更新を拒む。手で打たない。",
+        r"""`tw claim` が共有の git dir の `hooks/reference-transaction` に置く薄い殻から、状態 `prepared` のときだけ呼ばれる（`core.hooksPath` があるときと、印の無い利用者の hook があるときは置かない）。stdin の `<old> <new> <ref>` の行のうち、`ref` が `HEAD` か今の枝で、`new` が `old` と違うコミットで、主ブランチの祖先でないものがあり、git を打った作業ツリーに着手の控えがあれば拒む。呼び手（主のセッションかサブエージェントか）もシェルの書き方（`sh -c`・スクリプト越し・`--no-verify`）も問わない。`tw` 自身の git は環境変数 `TW_REF_GUARD_ALLOW` を付けるので拒まない。控えの無い作業ツリー・ほかの枝の更新・判定できないとき（git や設定が読めない）は通す
+
+出力: 拒むときだけ標準エラーに理由の1行（「コミットせず、変更は作業ツリーに残したまま報告で返す」）を出して終了コード1（git の hook の取り決め。TSV の取り決めと、Claude Code の hook の JSON の取り決めの例外）。通すときは何も出さず0""",
     ),
 }
 
@@ -359,6 +366,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_step.add_argument("step")
     sub.add_parser("handback-guard").add_argument("--agent-scoped", dest="agent_scoped", action="store_true")
     sub.add_parser("ask-guard")
+    sub.add_parser("ref-guard").add_argument("state")
 
     p_edit = sub.add_parser("edit")
     p_edit.add_argument("task_id")
@@ -417,6 +425,8 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "ask-guard":
         ask_guard.run(sys.stdin, sys.stdout)
         return
+    if args.command == "ref-guard":
+        raise SystemExit(ref_guard.run(args.state, sys.stdin, sys.stderr))
 
     try:
         toplevel = gitinfo.git_toplevel()

@@ -6,6 +6,9 @@ import os
 import subprocess
 
 
+REF_GUARD_ALLOW_ENV = "TW_REF_GUARD_ALLOW"
+
+
 class GitCommandError(RuntimeError):
     """git を呼んで非0で終わった。環境の故障として扱う（データの不備ではない）。"""
 
@@ -13,8 +16,9 @@ class GitCommandError(RuntimeError):
 def run(
     args: list[str], cwd: str | None = None, env: dict[str, str] | None = None, errors: str | None = None
 ) -> subprocess.CompletedProcess:
-    """`git <args>` を打つ。`env` は `os.environ` に重ねる。失敗しても例外にしない。"""
-    merged = {**os.environ, **env} if env is not None else None
+    """`git <args>` を打つ。`env` は `os.environ` に重ねる。失敗しても例外にしない。
+    `tw` の打つ git は着手中の作業ツリーでも `ref-guard` に拒まれないよう、いつも `REF_GUARD_ALLOW_ENV` を付ける。"""
+    merged = {**os.environ, **(env or {}), REF_GUARD_ALLOW_ENV: "1"}
     return subprocess.run(["git", *args], cwd=cwd, env=merged, capture_output=True, text=True, errors=errors)
 
 

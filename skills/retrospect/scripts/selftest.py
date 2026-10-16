@@ -560,7 +560,34 @@ def test_draft_fate() -> None:
               "TOTAL\t4\t1\t3\t0\t道案内" in lines_of("ドラフトの行方（直近28日）", r.stdout), r.stdout + r.stderr)
 
 
+def test_viewpoint_vocabulary() -> None:
+    print("tw new --draft の観点・色の語彙が detail.md の正典と一致する")
+    import re
+
+    sys.path.insert(0, os.path.join(HERE, "..", "..", "task-model", "scripts", "core"))
+    import taskfile
+
+    with open(os.path.join(HERE, "..", "detail.md"), encoding="utf-8") as f:
+        sections = {block.split("\n", 1)[0].strip(): block for block in f.read().split("\n## ")}
+
+    def section(prefix: str) -> str:
+        return next((text for title, text in sections.items() if title.startswith(prefix)), "")
+
+    def column(text: str, pattern: str) -> tuple[str, ...]:
+        return tuple(m.group(1) for line in text.split("\n") if (m := re.match(pattern, line)))
+
+    check("7観点が改善の7観点の節の太字の項目と同じ順",
+          column(section("改善の7観点"), r"^- \*\*(.+?)\*\*:") == taskfile.VIEWPOINTS,
+          repr(column(section("改善の7観点"), r"^- \*\*(.+?)\*\*:")))
+    check("色が色と1行の書式の表と同じ",
+          column(section("色と1行の書式"), r"^\| `(.+?)` \|") == taskfile.VIEWPOINT_COLORS,
+          repr(column(section("色と1行の書式"), r"^\| `(.+?)` \|")))
+    weekly = tuple(v for v in column(section("週ごとに振り返る"), r"^\s*\| (\S+) \|") if v not in ("観点", "---"))
+    check("横断の3観点が週ごとに振り返るの表の1列目と同じ", weekly == taskfile.WEEKLY_VIEWPOINTS, repr(weekly))
+
+
 def main() -> None:
+    test_viewpoint_vocabulary()
     test_weekly()
     test_slow_calls()
     test_gate()

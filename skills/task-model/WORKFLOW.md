@@ -51,7 +51,8 @@
 | `.tw/.gitignore` | 中身 `local/`。`.tw/local/` だけを git の外に置く。`init.py` が書き（無いときと、旧い形のとき）、`tw` は書かない。コミットする |
 | `docs/history/retrospect.md` | 横断の振り返りの記録（1回ごとに先頭へ `## YYYY-MM-DD（開始日〜終了日）` の見出しを足す。書くのは週ごとの振り返り）。`tw status` が見出しの日付から `retrospect_due` を決める |
 | 台帳 `$(git rev-parse --path-format=absolute --git-common-dir)/task-workflow/`（環境変数 `TW_STATE_DIR` があれば `$TW_STATE_DIR/<本体の作業ツリーの名前>-<共有の git dir の realpath の sha1 の先頭12桁>/`） | 着手から送り出しまでの出来事（`flow/<YYYY-MM>.jsonl`。1行1出来事。`tw metrics` が読む。会話・コマンド・パスは入れない。消えない）。コミットしない。全作業ツリーで1つ。`TW_STATE_DIR` を付けると、そのあとの記録はその下に書き、共有の git dir の台帳は読まない（写さない）。書けなければ標準エラーに1行出すだけで、元のサブコマンドの出力と終了コードは変わらない |
-| 作業ツリーの根の `.tw/local/task-open-claims/T-xxx` | `claim` から `done`・`release`・`ship` までの控え（中身は空）。`tw commit-guard`・`tw handback-guard`・`tw ask-guard` が読む。コミットしない。作業ツリーごと |
+| 作業ツリーの根の `.tw/local/task-open-claims/T-xxx` | `claim` から `done`・`release`・`ship` までの控え（中身は空）。`tw commit-guard`・`tw handback-guard`・`tw ask-guard`・`tw ref-guard` が読む。コミットしない。作業ツリーごと |
+| 共有の git dir の `hooks/reference-transaction`（`git rev-parse --git-path hooks` の下。`core.hooksPath` があれば置かない） | `tw ref-guard` を呼ぶ薄い殻（2行目が印 `# tw ref-guard`）。`claim` が置き、`done`・`ship` では消さない。控えの無い作業ツリーでは何もしない。印の無い利用者の hook があれば置かない。消してよい（次の `claim` が置き直す）。全作業ツリーで1つ |
 | 作業ツリーの根の `.tw/local/` | `tw verify`・`tw pause`・`tw step` を打った時点の中身の鍵、`ship` の検証の借り、検証のログ、書き換える道具を使ったサブエージェントの印（`task-agent-writers/<agent_id>`。着手の控えが無くなると消える）。コミットしない。作業ツリーごと。初めて書くときに `tw` が作り、中身 `*` の `.tw/local/.gitignore` を置く |
 
 **プロジェクトごとに変わる値は `.tw/config.toml` に置く**（コミットする。`AGENTS.md`・`CLAUDE.md` には
@@ -142,9 +143,13 @@ front matter（`id`・`summary`・`status`・`difficulty`・`loopable`・近道�
 `## 結果` は枠の外で、`tw done` が最後に足す（done/dropped で必須）。`tw new`・`tw adopt` は
 枠と違う本文（見出しの欠け・順・枠の外の見出し）、空か「なし」の `## 目的・背景`・`## 完了条件`、
 空か「なし」の `## やること`（`--hold` を除く）、下の形に沿わない計画、`## 結果` を拒む。
-`tw edit` も枠を検査する（`## やること` は書いてよい）。
+`difficulty` が `opus` で `## 解くべき論点` が空か「なし」のときも拒む（`--hold` でも）。
+`tw edit` も枠を検査する（`## やること` は書いてよい）。既存のタスクを壊さないよう、変えた節だけを見る:
+`opus` に上げる編集か `## 解くべき論点` を変える編集で論点が空か「なし」なら拒み、`## 目的・背景` を変える編集で
+`- 観点:` の行が語彙の外なら拒む（どれも終了コード2。ドラフトを `todo`・`hold` へ進めるときは `tw new` と同じ検査）。
 `tw new --draft` の本文は検査を緩める: 見出しは枠の部分列（順は枠どおりで、欠けてよい）で、中身が要るのは
 `## 目的・背景` だけ。front matter・見出しより前の文・`## 結果` は拒み、`## やること` に中身があれば下の段の形も検査する。
+`## 目的・背景` に `- 観点:` の行があれば、観点が語彙（7観点と、横断の振り返りの3観点）の中で、色が付くなら赤か黄でなければ拒む。
 欠けた節は空の欄になり、`tw show` は7節をそろえて出す。ドラフトの本文を直す `tw edit` も同じ緩い検査で、
 `## 完了条件` を空のまま `## やること` だけ書く途中の編集を通す。
 
@@ -208,6 +213,10 @@ front matter（`id`・`summary`・`status`・`difficulty`・`loopable`・近道�
 `tw new` の本文検査（`taskfile.validate_new_body`）は枠・段・名指すファイルの形だけを見て、この節の項目に決まった書式は無い。
 言い切りかどうかは文面から機械で決められず、根拠の行を一律に求めると聞いて決まっただけの項目にも要るので、検査には足さない。
 
+**手順を書く文書の変更の計画に順の確かめの段を求める検査**: `tw plan-check`（`tw_edit._print_plan_check`）は印・段の見出しと欄（`- 前の段:`・`- 触るファイル:`）の形・名指すファイルの変わりだけを見て、段の本文の文は読まない（`taskfile.plan_step_specs`）。
+計画が機械に渡す欄は `- 前の段:`・`- 触るファイル:` の 2 つだけで、コマンドの手順を書く文書を直す計画かを示す欄も印も無く、
+名指すファイルのパスからも手順を書く文書とそれ以外の文書を分けられない。段の文面の判定は自由記述の解釈になるので、`plan-check` には足さず、実装役の決まり（`implementer-brief.md`）に置く。
+
 ## status と着手の印
 
 ```
@@ -237,7 +246,7 @@ front matter（`id`・`summary`・`status`・`difficulty`・`loopable`・近道�
   で閉じる
 - **依存の解決**: `done`・`dropped`（`ship` で `bd close` したもの）と、Beads に無い ID（旧アーカイブ由来）は解決済み。
   `todo`・`hold` は未解決。後から変えるのは `tw edit T-xxx --add-deps T-yyy` と `--remove-deps`（本文の `## 注意` に書くだけでは Beads の依存に入らず、BLOCKED に出ない）
-- **委譲先を hook が拒む**: 印を立ててから `done` を打つまで委譲先（サブエージェント。plugin で入れたときは名前を問わず、リンクだけで入れたときは frontmatter に hook を持つ実装役のエージェント定義）に掛かる関門（拒むもの・掛かる口）は `tw-reference.md`「hook の関門」節。
+- **委譲先を hook が拒む**: 印を立ててから `done` を打つまで委譲先（サブエージェント。plugin で入れたときは名前を問わず、リンクだけで入れたときは frontmatter に hook を持つ実装役のエージェント定義）に掛かる関門（拒むもの・掛かる口）は `tw-reference.md`「hook の関門」節。コミットは git の hook（`ref-guard`）でも拒み、こちらは呼び手を問わないので、控えがあるうちはメインも `tw` を通さずにコミットしない（`tw finish` で `done` のあとにコミットする）。
   委譲先は `Edit`・`Write` で書き、検証は `tw verify` で打ち、最後でない段は `tw step T-xxx <n>`、止める返却は `tw pause` を返す直前に打つ
 - **取り残し**（前提: 1つの作業ツリーでは同時に1セッション）:
 
@@ -509,7 +518,7 @@ frame が実装と合わず人が決め直すまで進められないタスク�
   - 出し先: <どのファイルのどの節に足すか / タスクにするなら何をするタスクか>
   ```
 
-  `- 観点:` の行は振り返りから積むドラフトだけが持つ（色と観点の語彙は振り返りの段のスキルが持つ）。何を変えるかの1行は `--summary` に書く
+  `- 観点:` の行は振り返りから積むドラフトだけが持つ（色と観点の語彙は振り返りの段のスキルの `detail.md` が正典で、`taskfile.py` が検査に写し、自己テストが食い違いを見張る）。何を変えるかの1行は `--summary` に書く
 
 - **会話入口**: チャットでの明示の指示（「これタスクにして」「それでいいよ」）を拾う。検討中の発言・
   思いつきは拾わない。迷ったら拾わない。`/loop` から回っているときは使わない

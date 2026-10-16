@@ -19,6 +19,7 @@ def task_body(
     purpose: str = "x",
     acceptance: str = "x",
     caution: str = "",
+    question: str = "なし",
 ) -> str:
     """7つの見出しを正典の順に並べた本文。`steps` は（段の見出し, 本文）の並びで、`### 1.` から番号を振る。
 
@@ -32,7 +33,7 @@ def task_body(
         plan.append(f"{taskfile.PLAN_FILES_HEADING}\n{listed}")
     contents = {
         taskfile.PURPOSE_HEADING: f"{purpose}\n",
-        "## 解くべき論点": "なし\n",
+        taskfile.QUESTION_HEADING: f"{question}\n",
         taskfile.PLAN_HEADING: "\n".join(plan),
         taskfile.ACCEPTANCE_HEADING: f"{acceptance}\n",
         taskfile.CAUTION_HEADING: f"{caution}\n" if caution else "",
