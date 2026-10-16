@@ -772,6 +772,21 @@ def test_plan_coverage() -> None:
         r = run_task(main_path, "edit", old_style, "--body-file", "-", stdin=plan("1", "3"))
         check("欄の無い計画へ欄を足して抜ければ edit が拒む", r.returncode == 2, r.stdout + r.stderr)
 
+        added = plan("1, 2", "3").replace(criteria, criteria + "\n4. 新しい")
+        r = run_task(main_path, "edit", covered, "--change-frame", "--body-file", "-", stdin=added)
+        check("完了条件の行を足して引かれない行ができれば、やることが同じでも edit が拒む",
+              r.returncode == 2 and "4 行目" in r.stderr and "4. 新しい" not in shown(main_path, covered), r.stdout + r.stderr)
+        removed = plan("1, 2", "3").replace(criteria, "1. 通る\n2. 動く")
+        r = run_task(main_path, "edit", covered, "--change-frame", "--body-file", "-", stdin=removed)
+        check("完了条件の行を減らして段が無い番号を指せば、やることが同じでも edit が拒む",
+              r.returncode == 2 and "3 は完了条件に無い行" in r.stderr, r.stdout + r.stderr)
+        draft = created(new(plan("1", "1").replace(criteria, ""), "--draft"))
+        r = run_task(main_path, "edit", draft, "--section", "完了条件", "--body-file", "-", stdin=criteria)
+        check("完了条件が空のドラフトに欄つきの計画があれば、完了条件を書き足す edit も覆いを見て拒む",
+              r.returncode == 2 and "2,3 行目" in r.stderr and "\nstatus: draft\n" in shown(main_path, draft), r.stdout + r.stderr)
+        r = run_task(main_path, "edit", draft, "--section", "完了条件", "--body-file", "-", stdin="1. 通る")
+        check("覆う完了条件なら書き足せる", r.returncode == 0 and r.stdout.startswith(f"EDITED\t{draft}"), r.stdout + r.stderr)
+
         r = subprocess.run(["bd", "create", "--id", "t-raw", "--title", "取り込み", "--silent"], cwd=main_path,
                            capture_output=True, text=True)
         r = run_task(main_path, "adopt", "T-RAW", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", "-",

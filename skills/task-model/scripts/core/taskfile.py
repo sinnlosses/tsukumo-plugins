@@ -121,7 +121,7 @@ def validate_edited_body(
     old_body: str, new_body: str, *, draft: bool, old_difficulty: str, difficulty: str
 ) -> str | None:
     """`task edit` の本文検査。枠の検査（`draft` はドラフトの緩い枠）に加え、変えた節だけを見る:
-    `## やること` を変えて中身があれば段の形と完了条件の覆い、opus に上げたか論点を変えたなら論点、`## 目的・背景` を変えたなら `- 観点:` の語彙。"""
+    `## やること` を変えて中身があれば段の形、`## やること` か `## 完了条件` を変えて中身があれば完了条件の覆い、opus に上げたか論点を変えたなら論点、`## 目的・背景` を変えたなら `- 観点:` の語彙。"""
     error = validate_body(new_body, draft)
     if error is not None:
         return error
@@ -130,9 +130,13 @@ def validate_edited_body(
             error = opus_refusal(difficulty, new_body)
     if error is None and section_changed(old_body, new_body, PURPOSE_HEADING):
         error = viewpoint_refusal(new_body)
-    if error is not None or not has_plan(new_body) or not plan_changed(old_body, new_body):
+    if error is not None or not has_plan(new_body):
         return error
-    return plan_steps(new_body)[1] or coverage_refusal(new_body)
+    if plan_changed(old_body, new_body):
+        error = plan_steps(new_body)[1]
+    if error is None and (plan_changed(old_body, new_body) or section_changed(old_body, new_body, ACCEPTANCE_HEADING)):
+        error = coverage_refusal(new_body)
+    return error
 
 
 def opus_refusal(difficulty: str, body: str) -> str | None:
