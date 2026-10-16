@@ -64,11 +64,13 @@ NO_DELEGATE_HOOK_LINES = (
     "command: tw handback-guard 2>/dev/null || true",
 )
 
-# hook の command の末尾。前提の欠落（78・127）だけ1行警告し、どんな終了でも真で終える。
-HOOK_TAIL = (
-    "2>/dev/null || { case $? in 78|127) "
-    "echo 'tsukumo-workflow: 前提が欠けている（tw config-doctor で確かめる）' >&2;; esac; true; }"
-)
+def hook_tail(subcommand: str) -> str:
+    """hook の command の末尾。前提の欠落（78・127）は案内して 0、ほかの非 0 は理由を出して 1 で返す。"""
+    return (
+        "|| { c=$?; case $c in 78|127) "
+        "echo 'tsukumo-workflow: 前提が欠けている（tw config-doctor で確かめる）' >&2; exit 0;; "
+        f'*) echo "tsukumo-workflow: {subcommand} が終了コード $c で落ちた（関門が掛かっていない）" >&2; exit 1;; esac; }}'
+    )
 
 ACCEPTOR_DISALLOWED_TOOLS = ("Agent", "Edit", "Write", "NotebookEdit")
 
@@ -296,10 +298,10 @@ def check_plugin() -> None:
         fail("hooks/hooks.json を読めない（hooks.<イベント>[].hooks[].command の形）")
         return
     for subcommand in ("commit-guard", "handback-guard"):
-        want = f'"${{CLAUDE_PLUGIN_ROOT}}/bin/tw" {subcommand} --agent-scoped {HOOK_TAIL}'
+        want = f'"${{CLAUDE_PLUGIN_ROOT}}/bin/tw" {subcommand} --agent-scoped {hook_tail(subcommand)}'
         if want not in commands:
             fail(f"hooks/hooks.json に hook {want!r} が無い")
-    want = f'"${{CLAUDE_PLUGIN_ROOT}}/bin/tw" ask-guard {HOOK_TAIL}'
+    want = f'"${{CLAUDE_PLUGIN_ROOT}}/bin/tw" ask-guard {hook_tail("ask-guard")}'
     if want not in commands:
         fail(f"hooks/hooks.json に hook {want!r} が無い")
 
