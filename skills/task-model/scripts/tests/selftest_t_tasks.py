@@ -435,6 +435,61 @@ def test_taskfile_draft_viewpoint() -> None:
               repr(taskfile.draft_viewpoint(body)))
 
 
+def test_taskfile_opus_and_viewpoint() -> None:
+    say("taskfile の opus の論点・ドラフトの観点と色の検査（変えた節だけを見る）")
+    planned = lambda **kw: task_body([("書く", "x")], ["shared.txt"], **kw)
+    for label, difficulty, question, hold, ok in (
+        ("opus で論点が「なし」", "opus", "なし", False, False),
+        ("opus で論点が空", "opus", "", False, False),
+        ("opus で論点が「なし」は --hold でも", "opus", "なし", True, False),
+        ("opus で論点がある", "opus", "どちらに寄せるか", False, True),
+        ("sonnet で論点が「なし」", "sonnet", "なし", False, True),
+        ("haiku で論点が空", "haiku", "", False, True),
+    ):
+        got = taskfile.validate_new_body(planned(question=question), hold=hold, difficulty=difficulty)
+        check(f"validate_new_body: {label}は{'通す' if ok else '拒む'}", (got is None) == ok, repr(got))
+
+    empty, asked = planned(), planned(question="どちらに寄せるか")
+    edit = taskfile.validate_edited_body
+    check("opus で論点が空の既存本文の ## 注意 だけを変える編集は通る",
+          edit(empty, empty.replace("## 注意\n", "## 注意\n- y\n"), old_difficulty="opus", difficulty="opus") is None)
+    check("opus で論点を空に変える編集は拒む",
+          edit(asked, empty, old_difficulty="opus", difficulty="opus") is not None)
+    check("sonnet から opus に上げる編集は論点が空なら拒む",
+          edit(empty, empty, old_difficulty="sonnet", difficulty="opus") is not None)
+    check("sonnet から opus に上げる編集は論点があれば通る",
+          edit(asked, asked, old_difficulty="sonnet", difficulty="opus") is None)
+    check("opus のまま difficulty を指定し直す編集は論点が空でも通る",
+          edit(empty, empty, old_difficulty="opus", difficulty="opus") is None)
+    check("ドラフトの編集は opus の論点を見ない",
+          edit(empty, empty, draft=True, old_difficulty="sonnet", difficulty="opus") is None)
+
+    def purposed(line: str) -> str:
+        return planned(purpose=f"- 出どころ: 振り返り: T-001\n{line}\n- 根拠: x")
+
+    for line, ok in (
+        ("- 観点: 赤 機械の検査", True),
+        ("- 観点: 黄 道案内", True),
+        ("- 観点: 流れの数", True),
+        ("- 観点: 段の所要時間", True),
+        ("- 観点: 規則の棚卸し", True),
+        ("- 観点: 緑 道案内", False),
+        ("- 観点: 赤道案内", False),
+        ("- 観点: 赤", False),
+        ("- 観点: なにか", False),
+        ("- 根拠: 観点の行なし", True),
+    ):
+        got = taskfile.viewpoint_refusal(purposed(line))
+        check(f"viewpoint_refusal: {line!r} は{'通す' if ok else '拒む'}", (got is None) == ok, repr(got))
+    check("validate_draft_body は語彙外の観点を拒む",
+          taskfile.validate_draft_body("## 目的・背景\n\n- 観点: 緑 道案内\n") is not None
+          and taskfile.validate_draft_body("## 目的・背景\n\n- 観点: 黄 道案内\n") is None)
+    odd = purposed("- 観点: なにか")
+    check("語彙外の観点を持つ既存本文の ## 注意 だけを変える編集は通り、## 目的・背景 を変えると拒む",
+          edit(odd, odd.replace("## 注意\n", "## 注意\n- y\n")) is None
+          and edit(odd, odd.replace("- 根拠: x", "- 根拠: y")) is not None)
+
+
 def test_done_single_worktree() -> None:
     say("task.py done（単独の作業ツリー）")
     with tempfile.TemporaryDirectory() as tmp:
@@ -631,6 +686,7 @@ TESTS = (
     test_new_avoids_history_ids,
     test_taskfile_body,
     test_taskfile_draft_viewpoint,
+    test_taskfile_opus_and_viewpoint,
 )
 
 
