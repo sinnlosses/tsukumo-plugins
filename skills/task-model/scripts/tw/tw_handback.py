@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import io
 import os
+import re
 import sys
 from typing import Callable
 
@@ -148,15 +149,45 @@ def _claimed_plan_body(toplevel: str, task_id: str) -> str:
 STRUCTURE_HEADING = "## 構造の変更"
 
 
-def _has_structure_section(body: str) -> bool:
-    return any(line.strip() == STRUCTURE_HEADING for line in body.splitlines())
+STRUCTURE_EDGE_LINE = re.compile(r"[+\-~] .+ -> .+")
+STRUCTURE_NONE_LINE = re.compile(r"なし: .+")
+
+
+def _structure_section_lines(body: str) -> list[str] | None:
+    """`## 構造の変更` の節の本文の、空でない行（前後の空白は除く）。節が無ければ `None`。"""
+    lines = body.splitlines()
+    start = next((i for i, line in enumerate(lines) if line.strip() == STRUCTURE_HEADING), None)
+    if start is None:
+        return None
+    section: list[str] = []
+    for line in lines[start + 1 :]:
+        if line.startswith("## "):
+            break
+        if line.strip():
+            section.append(line.strip())
+    return section
+
+
+def _structure_section_problem(body: str) -> str | None:
+    """`## 構造の変更` の節が無い・中身の形が違うときの、拒む理由の前半。正しければ `None`。"""
+    section = _structure_section_lines(body)
+    if section is None:
+        return f"最後の段の返却の本文に {STRUCTURE_HEADING} の節が無い"
+    if not section:
+        return f"{STRUCTURE_HEADING} の節が空"
+    if len(section) == 1 and STRUCTURE_NONE_LINE.fullmatch(section[0]):
+        return None
+    bad = next((n for n, line in enumerate(section, 1) if not STRUCTURE_EDGE_LINE.fullmatch(line)), None)
+    if bad is None:
+        return None
+    return f"{STRUCTURE_HEADING} の節の{bad}行目が形に合わない"
 
 
 def handback_refusal(where: str, body: str | None = None) -> str | None:
     """`where` の作業ツリーから委譲先が返すのを拒む理由。通すなら `None`。
 
     `body`（返却の本文。読める経路でだけ渡る）があり、計画・検証が揃った最後の段の返却（`tw step` の印も
-    `tw pause` の控えも使わず `verify-check` が `VERIFIED_SAME`）で、本文に `## 構造の変更` の行が無ければ拒む。
+    `tw pause` の控えも使わず `verify-check` が `VERIFIED_SAME`）で、本文に `## 構造の変更` の節が無いか、中身が形（各行が `+|-|~ A -> B` か、全体が `なし: <理由>` の1行）に合わなければ拒む。
 
     控えのタスクごとに、その作業ツリー（`task_trees`）を1つずつ見る。作業ツリーを通すのは、作業が無い
     （着手した作業ツリーでは `claim` 時の `HEAD` より後のコミットも、変更も無い。
@@ -175,11 +206,12 @@ def handback_refusal(where: str, body: str | None = None) -> str | None:
     last_stage: list[str] = []
     gaps = [line for task_id in claims for line in _handback_gaps(toplevel, task_id, last_stage)]
     if not gaps:
-        if body is not None and last_stage and not _has_structure_section(body):
+        problem = _structure_section_problem(body) if body is not None and last_stage else None
+        if problem is not None:
             return (
-                f"最後の段の返却の本文に {STRUCTURE_HEADING} の節が無い（着手の印 {','.join(claims)}）。"
-                f"{STRUCTURE_HEADING} を足し、tsukumo の graph の記法の行（例: + A -> B: 語）か "
-                f"なし: <理由> の1行を書いてから返す"
+                f"{problem}（着手の印 {','.join(claims)}）。"
+                f"{STRUCTURE_HEADING} に、各行が tsukumo の graph の記法（例: + A -> B: 語）の行か、"
+                f"全体が なし: <理由> の1行の節を書いてから返す"
             )
         return None
     shown = ",".join(claims)
