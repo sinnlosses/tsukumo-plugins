@@ -635,6 +635,35 @@ def test_lap() -> None:
           tw_claim._reflection_of("- 検証: x\n- 振り返り: 設定で外した\n") == "skipped")
 
 
+def test_done_reflection_flag() -> None:
+    say("task.py done --reflection: 渡した値が台帳に残り、`## 結果` の行は見ず、不正な値は終了コード2で何も書かない")
+    cases = (
+        ("none", "- 検証: x\n- 振り返り: 近道（省いた）\n"),
+        ("some", "- 検証: x\n- 振り返り: 兆候なし\n"),
+        ("skipped", "- 検証: x\n"),
+    )
+    for value, result in cases:
+        with tempfile.TemporaryDirectory() as tmp:
+            main_path, wt1, _wt2 = make_repo(tmp, verify="`true`")
+            commit_task(main_path, taskfile.Task("T-100", "旗", "todo", "sonnet", "Y", (), BODY))
+            run_task(wt1, "claim", "T-100")
+            r = run_task(wt1, "done", "T-100", "--reflection", value, "--result-file", "-", stdin=result)
+            done = [e for e in flow_rows(wt1) if e["event"] == "done"]
+            check(f"--reflection {value} は結果の行によらず reflection が {value}",
+                  r.returncode == 0 and len(done) == 1 and done[0]["reflection"] == value, r.stdout + r.stderr + repr(done))
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, verify="`true`")
+        commit_task(main_path, taskfile.Task("T-100", "旗", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        r = run_task(wt1, "done", "T-100", "--reflection", "bogus", "--result-file", "-", stdin="- 検証: x\n")
+        check("不正な値は終了コード2で done を記録しない",
+              r.returncode == 2 and not [e for e in flow_rows(wt1) if e["event"] == "done"], r.stdout + r.stderr)
+        r = run_task(wt1, "done", "T-100", "--result-file", "-", stdin="- 検証: x\n- 振り返り: 兆候なし\n")
+        done = [e for e in flow_rows(wt1) if e["event"] == "done"]
+        check("不正な値で止めたあとも着手の印は残り、フラグなしは従来どおり行から none",
+              r.returncode == 0 and len(done) == 1 and done[0]["reflection"] == "none", r.stdout + r.stderr)
+
+
 @weight(11)
 def test_handback_guard_structure() -> None:
     say("task.py handback-guard: 最後の段の返却の本文に ## 構造の変更 が無ければ拒む")
@@ -1149,6 +1178,7 @@ TESTS = (
     test_agent_scoped_reader_handback,
     test_readonly_git,
     test_lap,
+    test_done_reflection_flag,
     test_readonly_git_stops_writers,
 )
 

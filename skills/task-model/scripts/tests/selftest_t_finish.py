@@ -6,7 +6,7 @@ import tempfile
 from selftest_support import check, git, refuse_direct_run, say, write  # noqa: E402
 import beads  # noqa: E402
 import taskfile  # noqa: E402
-from selftest_fixtures import BODY, commit_task, make_repo, run_task  # noqa: E402
+from selftest_fixtures import BODY, commit_task, flow_rows, make_repo, run_task  # noqa: E402
 
 RESULT = "- 検証: x\n- 振り返り: 兆候なし\n"
 
@@ -45,6 +45,24 @@ def test_finish_bundles_done_commit_ship() -> None:
             and ("SHIPPED\t" in r.stdout or "NOTHING" in r.stdout),
             r.stdout + r.stderr,
         )
+
+
+def test_finish_reflection_flag() -> None:
+    say("task.py finish --reflection: 渡した値が台帳に残り、不正な値は終了コード2で done もコミットも打たない")
+    with tempfile.TemporaryDirectory() as tmp:
+        _main, wt1 = _claimed(tmp)
+        r = run_task(wt1, "finish", "T-100", "--reflection", "some", "--result-file", "-", "--message", "x", stdin=RESULT)
+        done = [e for e in flow_rows(wt1) if e["event"] == "done"]
+        check("結果の行が兆候なしでも --reflection some なら reflection は some",
+              r.returncode == 0 and len(done) == 1 and done[0]["reflection"] == "some", r.stdout + r.stderr + repr(done))
+    with tempfile.TemporaryDirectory() as tmp:
+        _main, wt1 = _claimed(tmp)
+        write(os.path.join(wt1, "work.txt"), "x")
+        r = run_task(wt1, "finish", "T-100", "--reflection", "bogus", "--result-file", "-", "--message", "x",
+                     "--add", "work.txt", stdin=RESULT)
+        check("不正な値は終了コード2で DONE も COMMITTED も無く、done は記録されない",
+              r.returncode == 2 and "DONE" not in r.stdout and "COMMITTED" not in r.stdout
+              and not [e for e in flow_rows(wt1) if e["event"] == "done"], r.stdout + r.stderr)
 
 
 def test_finish_stops_on_stop_lines() -> None:
@@ -145,6 +163,7 @@ TESTS = (
     test_finish_prints_open_span,
     test_finish_stops_on_commits_since_claim,
     test_finish_bundles_done_commit_ship,
+    test_finish_reflection_flag,
     test_finish_stops_on_stop_lines,
 )
 

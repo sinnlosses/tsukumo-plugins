@@ -80,7 +80,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     ),
     "done": (
         "`## 結果` を comment に入れ、label `ship:done`／`ship:dropped` を立てる。",
-        r"""`## 結果` を comment に入れ、label `ship:done`／`ship:dropped` を立てる（stage もコミットもしない・印は残す。`bd close` は `ship` が打つ）。`task-open-claims/T-xxx` の控えは消すので、このあとのコミットを `commit-guard` は拒まない。着手の印の控え（`bd kv` の `task-workflow.claim.<Beads ID>`。TRACKER.md の「GitHub との双方向」）も消すので、`ship` までの間に取り込みが印を消しても控えからは戻らない。本文が枠（`## 結果` を除く7節）と違えば書かずに `INVALID`（終了コード3）。`claim` した時点の `HEAD` より後に、主ブランチに無いコミットがあれば `DONE` に続けて知らせる（`commit-guard` をすり抜けたコミットの事後の知らせ。控えの無い古い印では出さない）。`.git` に書かないので、読み取り専用の `.git` でも通る。ドラフト（印は立たない）に `--dropped` を打つと、`## 結果` を comment に入れ、label `cancelled` を足して `bd close` までその場で打つ（`claim`・コミット・`ship` は要らず、着手の控えと `COMMITS_SINCE_CLAIM` は見ない）。ドラフトに `--dropped` なしで打つと `NOT_READY\tT-xxx\tDRAFT`（終了コード4）
+        r"""`## 結果` を comment に入れ、label `ship:done`／`ship:dropped` を立てる（`--reflection none|some|skipped` を渡すと、台帳の `done` の `reflection` はその値になり `## 結果` の `- 振り返り:` の行を見ない。渡さなければ従来どおりその行から決める。ほかの値は終了コード2。stage もコミットもしない・印は残す。`bd close` は `ship` が打つ）。`task-open-claims/T-xxx` の控えは消すので、このあとのコミットを `commit-guard` は拒まない。着手の印の控え（`bd kv` の `task-workflow.claim.<Beads ID>`。TRACKER.md の「GitHub との双方向」）も消すので、`ship` までの間に取り込みが印を消しても控えからは戻らない。本文が枠（`## 結果` を除く7節）と違えば書かずに `INVALID`（終了コード3）。`claim` した時点の `HEAD` より後に、主ブランチに無いコミットがあれば `DONE` に続けて知らせる（`commit-guard` をすり抜けたコミットの事後の知らせ。控えの無い古い印では出さない）。`.git` に書かないので、読み取り専用の `.git` でも通る。ドラフト（印は立たない）に `--dropped` を打つと、`## 結果` を comment に入れ、label `cancelled` を足して `bd close` までその場で打つ（`claim`・コミット・`ship` は要らず、着手の控えと `COMMITS_SINCE_CLAIM` は見ない）。ドラフトに `--dropped` なしで打つと `NOT_READY\tT-xxx\tDRAFT`（終了コード4）
 
 出力: `DONE`（`COMMITS_SINCE_CLAIM` が続くことがある。ドラフトは `DONE\tT-xxx\tbeads:<id>\tドラフトを閉じた`）・`NOT_OWNER`・`NOT_READY`・`INVALID`""",
     ),
@@ -98,7 +98,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     ),
     "finish": (
         "`done` → `--add` のファイルを個別に `git add` して `--message` で1コミット → `ship` を順に打つ。",
-        r"""`done` → `--add` のファイルを個別に `git add` して `--message` で1コミット → `ship` を順に打つ。`--add` が無いか、追加しても差分が無ければコミットせず `NO_COMMIT` を出して `ship` へ進む。`done` が `NOT_OWNER` で止まればコミットも `ship` も打たない。`git` が失敗したら標準エラーに出して終了コード1
+        r"""`done` → `--add` のファイルを個別に `git add` して `--message` で1コミット → `ship` を順に打つ（`--reflection` は `done` へそのまま渡す）。`--add` が無いか、追加しても差分が無ければコミットせず `NO_COMMIT` を出して `ship` へ進む。`done` が `NOT_OWNER` で止まればコミットも `ship` も打たない。`git` が失敗したら標準エラーに出して終了コード1
 
 出力: `done` の行（`DONE`・`COMMITS_SINCE_CLAIM` など）、`COMMITTED\t<sha>`／`NO_COMMIT\t(理由)`、`ship` の行。最後の行が `ship` の判定で、`SHIPPED`・`NOTHING` 以外は `ship` の説明のとおり止まる。`done` の出力に `COMMITS_SINCE_CLAIM` の行があれば、`done` は済んだまま、コミットも `ship` も打たずにその行までを出して終了コード12で止まる（続きは個別の `git add`・`git commit`・`tw ship`。`finish` や `done` を打ち直すと `## 結果` の comment が二重になる）""",
     ),
@@ -298,6 +298,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_done.add_argument("task_id")
     p_done.add_argument("--dropped", action="store_true")
     p_done.add_argument("--result-file", required=True)
+    p_done.add_argument("--reflection", choices=tw_claim.REFLECTION_VALUES, default=None)
 
     sub.add_parser("ship")
     p_finish = sub.add_parser("finish")
@@ -305,6 +306,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_finish.add_argument("--dropped", action="store_true")
     p_finish.add_argument("--result-file", required=True)
     p_finish.add_argument("--message", required=True)
+    p_finish.add_argument("--reflection", choices=tw_claim.REFLECTION_VALUES, default=None)
     p_finish.add_argument("--add", dest="files", action="append", default=[])
     sub.add_parser("land").add_argument("branch")
 
@@ -477,11 +479,11 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
         elif args.command == "release":
             tw_claim.cmd_release(toplevel, args.task_id, args.force)
         elif args.command == "done":
-            tw_claim.cmd_done(toplevel, args.task_id, args.dropped, args.result_file)
+            tw_claim.cmd_done(toplevel, args.task_id, args.dropped, args.result_file, args.reflection)
         elif args.command == "ship":
             tw_ship.cmd_ship(toplevel)
         elif args.command == "finish":
-            tw_finish.cmd_finish(toplevel, args.task_id, args.dropped, args.result_file, args.message, args.files)
+            tw_finish.cmd_finish(toplevel, args.task_id, args.dropped, args.result_file, args.message, args.files, args.reflection)
         elif args.command == "show":
             tw_status.cmd_show(toplevel, args.task_id)
         elif args.command == "find":

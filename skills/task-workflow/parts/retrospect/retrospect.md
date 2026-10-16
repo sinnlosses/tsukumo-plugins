@@ -5,7 +5,7 @@
 | 受け入れ役の `- 材料:` の行とタスクの ID | `## 結果` に入れる `- 振り返り:` の1行と、積んだドラフトの ID | 作業ツリーを書き換えない |
 
 並びに振り返りの段が無ければ、この段を通らない（lap も打たない）。手順7の `## 結果` の行は `- 振り返り: 設定で外した`
-（`tw done` の記録は近道と同じく `reflection` が `skipped`）。
+（手順7の `tw finish` には近道と同じく `--reflection skipped` を打つ）。通ったときは、兆候なしなら `--reflection none`、ドラフトを積んだか兆候に当たったなら `--reflection some` を打つ。
 
 6a. **振り返る**（`/loop` から回っているときも。委譲せずメインで行う）: 頭に `tw lap T-xxx retro start` を打ち（振り返りを終えて手順7の `tw finish` を打つ直前に `tw lap T-xxx retro end`）、
    受け入れ役の最後の返却の `- 材料: friction=… reverify=… fixes=… human=… review=…` の5つの値を、

@@ -21,9 +21,15 @@ STRAY_COMMITS_EXIT = 12
 
 
 def cmd_finish(
-    toplevel: str, task_id: str, dropped: bool, result_path: str, message: str, files: list[str]
+    toplevel: str,
+    task_id: str,
+    dropped: bool,
+    result_path: str,
+    message: str,
+    files: list[str],
+    reflection: str | None = None,
 ) -> None:
-    if _done_found_stray_commits(toplevel, task_id, dropped, result_path):
+    if _done_found_stray_commits(toplevel, task_id, dropped, result_path, reflection):
         raise SystemExit(STRAY_COMMITS_EXIT)
     _commit(toplevel, message, files)
     tw_ship.cmd_ship(toplevel)
@@ -33,7 +39,9 @@ def cmd_finish(
         print(f"OPEN_SPAN\t{shown}\t{stage}")
 
 
-def _done_found_stray_commits(toplevel: str, task_id: str, dropped: bool, result_path: str) -> bool:
+def _done_found_stray_commits(
+    toplevel: str, task_id: str, dropped: bool, result_path: str, reflection: str | None
+) -> bool:
     """`tw done` の出力をそのまま出し、`COMMITS_SINCE_CLAIM` の行があれば `True`。
 
     `tw done` は済んでいる。続きは個別の `git add`・`git commit`・`tw ship` で打つ（`tw done` を打ち直すと
@@ -42,7 +50,7 @@ def _done_found_stray_commits(toplevel: str, task_id: str, dropped: bool, result
     buffer = io.StringIO()
     try:
         with contextlib.redirect_stdout(buffer):
-            tw_claim.cmd_done(toplevel, task_id, dropped, result_path)
+            tw_claim.cmd_done(toplevel, task_id, dropped, result_path, reflection)
     finally:
         sys.stdout.write(buffer.getvalue())
         sys.stdout.flush()

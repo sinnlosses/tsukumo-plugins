@@ -15,7 +15,8 @@ import tw_base
 import tw_plan
 
 
-REFLECTION_SKIPPED_LINE = "- 振り返り: 近道（省いた）"
+REFLECTION_VALUES = ("none", "some", "skipped")
+REFLECTION_SKIPPED_LINE ="- 振り返り: 近道（省いた）"
 REFLECTION_OFF_LINE = "- 振り返り: 設定で外した"
 
 
@@ -116,7 +117,9 @@ def cmd_release(toplevel: str, task_id: str, force: bool) -> None:
     tw_base.print_lines(pulled + trk.after([bd_id]))
 
 
-def cmd_done(toplevel: str, task_id: str, dropped: bool, result_path: str) -> None:
+def cmd_done(
+    toplevel: str, task_id: str, dropped: bool, result_path: str, reflection: str | None = None
+) -> None:
     bd_id = tw_base.bd_task_id(task_id)
     shown = beads.to_task_id(bd_id)
     actor = tw_base.actor(toplevel)
@@ -147,7 +150,9 @@ def cmd_done(toplevel: str, task_id: str, dropped: bool, result_path: str) -> No
     )
     beads.clear_claim_snapshot(toplevel, bd_id)
     print(f"DONE\t{shown}\tbeads:{bd_id}\tship で閉じる")
-    tw_base.record(toplevel, "done", shown, issue, dropped=dropped, reflection=_reflection_of(result))
+    tw_base.record(
+        toplevel, "done", shown, issue, dropped=dropped, reflection=reflection or _reflection_of(result)
+    )
     ledger.clear_open_claim(shown, cwd=toplevel)
     metadata = issue.raw.get("metadata")
     head = metadata.get(beads.CLAIM_HEAD_KEY) if isinstance(metadata, dict) else None
@@ -236,7 +241,7 @@ def _clear_open_claim_in(worktree: str, task_id: str) -> None:
 
 
 def _reflection_of(result: str) -> str:
-    """`## 結果` の `- 振り返り:` の行が `none`（兆候なし）・`skipped`（近道か設定で省いた）・`some`・`unknown`（行が無い）。"""
+    """`--reflection` が無いときだけ使う。`## 結果` の `- 振り返り:` の行が `none`（兆候なし）・`skipped`（近道か設定で省いた）・`some`・`unknown`（行が無い）。"""
     for line in result.splitlines():
         if line.startswith("- 振り返り:"):
             if line.strip() in (REFLECTION_SKIPPED_LINE, REFLECTION_OFF_LINE):

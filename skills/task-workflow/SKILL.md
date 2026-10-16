@@ -92,7 +92,7 @@ lap は並びのスキルではなくこのスキルが段の前後で打つ。
    受け入れのあとの `tw verify-check` の出力は `${CLAUDE_SKILL_DIR}/parts/acceptor/verify-check.md` で読む。
 
 6a. **振り返る**（並びの段 retrospect-step の本文。`/loop` から回っているときも。委譲せずメインで行う）: `${CLAUDE_SKILL_DIR}/parts/retrospect/retrospect.md` を読んで従う。
-   並びに `retrospect-step` が無ければ、この手順を通らず（`tw lap T-xxx retro` も打たず）、`## 結果` の行は `- 振り返り: 設定で外した` にする。
+   並びに `retrospect-step` が無ければ、この手順を通らず（`tw lap T-xxx retro` も打たず）、`tw finish` に `--reflection skipped` を打ち、`## 結果` の行は `- 振り返り: 設定で外した` にする。
 
 6b. **合流する**（手順6で `tw verify` を背景で起こしたときだけ。`VERIFIED_SAME` で起こさなかったときは手順7へ）:
    `${CLAUDE_SKILL_DIR}/parts/acceptor/verify-merge.md` を読んで従う（背景の `tw verify` の完了を待ち、出力の最後の行で分ける表）。
