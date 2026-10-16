@@ -691,6 +691,21 @@ def test_handback_guard_structure() -> None:
               run_handback_guard(tmp, wt1, *handback, body="段 2/2 | 済\n\n## 構造の変更\nなし: 構造は変わらない\n") is None)
         check("本文が読めない経路（SubagentStop）では見ない", run_handback_guard(tmp, wt1) is None)
 
+        def shaped(section: str) -> bool:
+            return run_handback_guard(tmp, wt1, *handback, body=f"段 2/2 | 済\n\n## 構造の変更\n{section}") is None
+
+        check("辺の行が複数あり、- と ~ の印と空行があっても通す", shaped("+ A -> B\n\n- C -> D: 語\n~ E -> F\n"))
+        check("節のあとに別の見出しが続いても、節の中だけを見る",
+              run_handback_guard(tmp, wt1, *handback, body=with_section + "\n## 次\n形の違う行\n") is None)
+        check("中身が空の節は拒む", not shaped(""))
+        check("空行だけの節は拒む", not shaped("\n\n"))
+        check("形の違う行は拒む", not shaped("構造は変わらない\n"))
+        check("印の無い辺の行は拒む", not shaped("A -> B\n"))
+        check("辺の行のあとに形の違う行があれば拒む", not shaped("+ A -> B\n説明\n"))
+        check("なし: の理由が空なら拒む", not shaped("なし: \n"))
+        check("なし: と辺の行の混在は拒む", not shaped("なし: 変わらない\n+ A -> B\n"))
+        check("なし: が2行あれば拒む", not shaped("なし: 一\nなし: 二\n"))
+
         run_task(wt2, "claim", "T-101")
         check("作業の無い返却は節が無くても通す",
               run_handback_guard(tmp, wt2, *handback, body="計画 0/1 | 前提が誤り\n") is None)
