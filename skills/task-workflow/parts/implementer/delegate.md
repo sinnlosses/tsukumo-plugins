@@ -47,7 +47,7 @@
      （違う ID は `NOT_OWNER` で拒まれる）」
 
    `loopable: Y` で着手したあと利用者に聞く必要が出たら、`AskUserQuestion` は hook（`tw ask-guard`）に拒まれる。
-   理由の文に従って `N` に直し、`## 注意` に理由を書いて `tw release` で止める。
+   理由の文に従って `tw edit T-xxx --status hold` にし、`## 注意` に論点を書いて `tw release` で外す。続行は `${CLAUDE_SKILL_DIR}/completion-report.md` の「`/loop` の続行判断」に従う。
 
    **(e) 並列の段**: `tw plan-check T-xxx` が `PARALLEL` の行を出したら、続く `STEP\tT-xxx\t<n>\t<待つ段,…|なし>` の
    行に従い、待つ段がすべて返った段から同時に起こす（並列にするかは計画の欄と `plan-check` の出力だけで決め、

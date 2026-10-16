@@ -109,7 +109,7 @@ def test_ask_guard() -> None:
         run_task(wt1, "claim", "T-100")
         reason = run_ask_guard(tmp, wt1)
         check("loopable: Y の控えの作業ツリーは理由つきで拒む",
-              reason is not None and "T-100" in reason and "tw edit T-100 --loopable N" in reason
+              reason is not None and "T-100" in reason and "tw edit T-100 --status hold" in reason
               and "tw release T-100" in reason,
               str(reason))
         subagent = {"agent_id": "a-implementer", "agent_type": "my-implementer"}
