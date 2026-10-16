@@ -664,7 +664,69 @@ def test_draft_to_todo() -> None:
               and meta.get(beads.FROM_DRAFT_KEY) == beads.FROM_DRAFT_UNKNOWN, r.stdout + r.stderr + str(meta))
 
 
+@weight(3)
+def test_opus_question_and_viewpoint() -> None:
+    say("task.py new・edit: opus の論点とドラフトの観点・色の検査は終了コード2で拒み、既存のタスクの編集は壊さない")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, _wt1, _wt2 = make_repo(tmp, branch="切らない")
+        asked = task_body([("書く", "x")], ["shared.txt"], question="どちらに寄せるか")
+        unasked = task_body([("書く", "x")], ["shared.txt"])
+
+        def new(difficulty: str, body: str, *extra: str) -> subprocess.CompletedProcess:
+            return run_task(main_path, "new", "--summary", "検査", "--difficulty", difficulty, "--loopable", "Y", *extra,
+                            "--body-file", "-", stdin=body)
+
+        def created(r: subprocess.CompletedProcess) -> str:
+            return r.stdout.split("\t")[1] if r.stdout.startswith("CREATED\t") else ""
+
+        before = issue_count(main_path)
+        r = new("opus", unasked)
+        check("論点が無い opus の new は終了コード2で作らない", r.returncode == 2 and issue_count(main_path) == before,
+              r.stdout + r.stderr)
+        r = new("opus", unasked, "--hold")
+        check("--hold でも論点が無い opus は拒む", r.returncode == 2 and issue_count(main_path) == before, r.stdout + r.stderr)
+        r = new("opus", asked)
+        check("論点がある opus の new は通る", created(r) != "", r.stdout + r.stderr)
+
+        sonnet = created(new("sonnet", unasked))
+        r = run_task(main_path, "edit", sonnet, "--difficulty", "opus")
+        check("論点が無いタスクを --difficulty opus だけで上げる edit は終了コード2",
+              r.returncode == 2 and metadata(main_path, sonnet).get(beads.DIFFICULTY_KEY) == "sonnet", r.stdout + r.stderr)
+        r = run_task(main_path, "edit", sonnet, "--difficulty", "opus", "--section", "解くべき論点", "--body-file", "-",
+                     stdin="どちらに寄せるか\n")
+        check("論点を書くのと一緒なら opus に上げられる", r.returncode == 0 and r.stdout.startswith(f"EDITED\t{sonnet}")
+              and metadata(main_path, sonnet).get(beads.DIFFICULTY_KEY) == "opus", r.stdout + r.stderr)
+        r = run_task(main_path, "edit", sonnet, "--section", "解くべき論点", "--body-file", "-", stdin="なし\n")
+        check("opus の論点を「なし」に戻す edit は終了コード2", r.returncode == 2, r.stdout + r.stderr)
+
+        old = created(new("sonnet", unasked))
+        subprocess.run(["bd", "update", beads.to_bd_id(old), "--set-metadata", "difficulty=opus"], cwd=main_path,
+                       capture_output=True, text=True)
+        r = run_task(main_path, "edit", old, "--section", "注意", "--body-file", "-", stdin="- 追記\n")
+        check("論点が空のまま opus になっている既存のタスクの別の節の edit は通る",
+              r.returncode == 0 and r.stdout.startswith(f"EDITED\t{old}"), r.stdout + r.stderr)
+
+        before = issue_count(main_path)
+        r = new("sonnet", "## 目的・背景\n\n- 観点: 緑 道案内\n", "--draft")
+        check("語彙外の観点のドラフトは終了コード2で積まない", r.returncode == 2 and issue_count(main_path) == before,
+              r.stdout + r.stderr)
+        r = new("sonnet", "## 目的・背景\n\n- 観点: 規則の棚卸し\n", "--draft")
+        check("色の無い横断の観点のドラフトは積める", created(r) != "", r.stdout + r.stderr)
+
+        pointed = task_body([("書く", "x")], ["shared.txt"], purpose="x\n- 観点: 黄 道案内")
+        draft = created(new("sonnet", pointed, "--draft"))
+        r = run_task(main_path, "edit", draft, "--difficulty", "opus", "--status", "todo")
+        check("論点が無いドラフトを opus で todo に進めると NOT_READY DRAFT で変わらない",
+              r.returncode == 4 and r.stdout.startswith(f"NOT_READY\t{draft}\tDRAFT\t")
+              and "\nstatus: draft\n" in shown(main_path, draft), r.stdout + r.stderr)
+        r = run_task(main_path, "edit", draft, "--difficulty", "opus", "--status", "todo", "--section", "解くべき論点",
+                     "--body-file", "-", stdin="どちらに寄せるか\n")
+        check("論点を書けば opus のドラフトを todo に進められる", r.returncode == 0
+              and "\nstatus: todo\n" in shown(main_path, draft), r.stdout + r.stderr)
+
+
 TESTS = (
+    test_opus_question_and_viewpoint,
     test_draft_to_todo,
     test_registered_plan,
     test_edit_and_plan_check,

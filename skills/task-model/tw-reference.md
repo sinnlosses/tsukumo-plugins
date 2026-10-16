@@ -9,7 +9,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | サブコマンド | すること | 主な出力 |
 | --- | --- | --- |
 | `status [--all] [--check]` | 一覧と判定を読むだけで見るとき（`--check` は課題の形の判定） | 行 `id/status/…`、`---` の後に `counts`・`ready`・`todo_loopable`・`stale`・`invalid`・`triage`・`jira_close`・`retrospect_due`。`--check` は `OK`・`INVALID` |
-| `new --summary … --difficulty … --loopable Y\|N [--deps …] [--hold\|--draft] [--direct] [--kind <種類>] --body-file <path\|->` | タスクやドラフトを登録するとき | `CREATED`・`LOCKED` |
+| `new --summary … --difficulty … --loopable Y\|N [--deps …] [--hold\|--draft] [--direct] [--kind <種類>] --body-file <path\|->` | タスクやドラフトを登録するとき（`opus` で `## 解くべき論点` が空か「なし」、ドラフトの `- 観点:` が語彙の外なら終了コード2。`adopt` も論点は同じ） | `CREATED`・`LOCKED` |
 | `claim T-xxx` | 作業を始めるとき（着手の印を立て、git の hook `ref-guard` を置く。置けなければ標準エラーに `ref-guard:` の1行） | `CLAIMED`・`TAKEN`・`NOT_READY`・`DIRTY`・`UNSHIPPED`・`GIT_READ_ONLY` |
 | `release T-xxx [--force]` | 着手の印を外すとき | `RELEASED`・`NOT_CLAIMED`・`NOT_OWNER` |
 | `done T-xxx [--dropped] [--reflection none\|some\|skipped] --result-file <path\|->` | 結果を書いて作業を閉じるとき（コミットも送りもしない）。ドラフトの却下にも使う | `DONE`（`COMMITS_SINCE_CLAIM` が続くことがある）・`NOT_OWNER`・`NOT_READY`・`INVALID` |
@@ -17,7 +17,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | `land <枝>` | 作業先が別のリポジトリのタスクの受け入れで、その枝を主ブランチへ ff で合流し、作業ツリーと枝を消すとき | `LANDED`（`SUBMODULE_NOT_SYNCED`・`REMOVED`・`DELETED` が続く）・`NOT_REMOVED`・`NOT_LANDED`・`GIT_READ_ONLY` |
 | `show T-xxx` | タスクを読むだけで見るとき | 本文。無ければ `NOT_READY` |
 | `find [<語>…] [--kind <種類>]` | ID の無い頼み文の語と種類で `READY` を1件に絞るとき（読むだけ。当て方は WORKFLOW.md「kind（種類）」） | `FOUND`・`MANY`（`CANDIDATE`・`MORE` が続く）・`NONE`（どれも終了コード0） |
-| `edit T-xxx [--body-file <path\|->] [--section <節名>]（組は繰り返せる） [--after-work] [--change-frame] [--summary …] [--difficulty …] [--loopable Y\|N] [--status todo\|hold] [--add-deps …] [--remove-deps …] [--direct Y\|N] [--kind <種類>\|-]` | 本文・属性・依存を直すとき（`--section` で節だけ。`--section`・`--body-file` の組を繰り返すと複数の節が1回で書け、反映も1回。ドラフトを `todo` に進めるのも `--status`） | `EDITED`（`PLAN_AFTER_WORK`・`DIRECT_OFF` が続くことがある）・`NOT_READY`・`WORK_BEFORE_PLAN`・`FRAME_CHANGED` |
+| `edit T-xxx [--body-file <path\|->] [--section <節名>]（組は繰り返せる） [--after-work] [--change-frame] [--summary …] [--difficulty …] [--loopable Y\|N] [--status todo\|hold] [--add-deps …] [--remove-deps …] [--direct Y\|N] [--kind <種類>\|-]` | 本文・属性・依存を直すとき（`--section` で節だけ。`--section`・`--body-file` の組を繰り返すと複数の節が1回で書け、反映も1回。ドラフトを `todo` に進めるのも `--status`。変えた節だけを見て、`opus` に上げる編集か論点を変える編集で `## 解くべき論点` が空か「なし」、`## 目的・背景` を変える編集で `- 観点:` が語彙の外なら終了コード2） | `EDITED`（`PLAN_AFTER_WORK`・`DIRECT_OFF` が続くことがある）・`NOT_READY`・`WORK_BEFORE_PLAN`・`FRAME_CHANGED` |
 | `adopt <ID> --difficulty … --loopable … [--summary …] [--direct] [--kind <種類>] --body-file …` | 振り分け前の課題をタスクにするとき | `ADOPTED` |
 | `sync` | トラッカーと同期するとき | `TRACKER\tOK\|FAILED`・`NOTHING`・`BUSY`（終了コード5） |
 | `backup` | Beads のバックアップを取るとき | `BACKUP\tOK\|FAILED` |
@@ -26,7 +26,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | `plan-phases T-xxx [--through <段>] [--also <n,…>] [--skipped <段,…>]` | tsukumo の `work_plan` に渡す段の並びと位置を読むだけで出すとき（実装のあとの段は `steps` の並びの2つ目以降のスキルから組む。既定の並びなら「受け入れ」「振り返り」「送り出し」。`--skipped` は飛ばした段で、出力の `skippedPhases` に入る。使い方はオーケストレーターの「進み具合の帯（`work_plan`）」） | `PHASES\tT-xxx\t<JSON 1行>`。`NO_PHASE`（終了コード2）・`NOT_OWNER` |
 | `verify [T-xxx]` | 検証コマンドを打つとき（主ブランチの取り込み・整形・中身の鍵の控えも担う。ID は基本付けない） | `FOLDED`（取り込んだとき先頭）・`VERIFIED`・`VERIFIED_UNSTAMPED`・`VERIFY_NOT_PASSED`・`FORMAT_FAILED`・`PLAN_MISSING`・`CONFLICT`・`GIT_READ_ONLY`・`NOTHING`。末尾40行のあとに判定行をもう一度出すので、`tail` で切っても最後の行（取り込んだときは最後の2行）で判定が取れる |
 | `verify-check` | 中身が `verify` の控えと同じかを読むだけで見るとき（同じなら検証を省く） | `VERIFIED_SAME`・`NOT_VERIFIED\t<理由>`（終了コード0）・`NOTHING` |
-| `accept T-xxx [--after-review]` | 受け入れの機械的な並び（機械的な判定と `verify-check`）を打つとき | `REVIEW`・`SKIP`・`NOTHING`・`NO_RANGE`・`SNAPSHOT`・`FORMATTED`・`FORMAT_FAILED`・`MISSING`・`INVALID`・`NOT_CLAIMED`・`NOT_OWNER` |
+| `accept T-xxx [--after-review]` | 受け入れの機械的な並び（機械的な判定と `verify-check`）を打つとき。判定の `REVIEW\tcode` は、差分に文書の拡張子でないパス、または設定 `review_code_globs`（WORKFLOW.md の設定の表）の glob に当たるパスがあるとき。全部文書なら `SKIP\tdocs-only` | `REVIEW`・`SKIP`・`NOTHING`・`NO_RANGE`・`SNAPSHOT`・`FORMATTED`・`FORMAT_FAILED`・`MISSING`・`INVALID`・`NOT_CLAIMED`・`NOT_OWNER` |
 | `finish T-xxx [--dropped] [--reflection none\|some\|skipped] --result-file <path\|-> --message <件名> [--add <ファイル>]…` | 結果・コミット・送りを一度に打つとき（`done` → `git add` → コミット → `ship`） | `done` の行、`COMMITTED`・`NO_COMMIT`、`ship` の行。`COMMITS_SINCE_CLAIM` が出れば終了コード12で止まる |
 | `metrics [--days N] [--stages]` | 流れの数と段ごとの所要時間を読むだけで見るとき（振り返り） | `PERIOD`、続けて `shipped`・`lead_median_seconds`・`verify_per_task` など。`--stages` は `STAGE`・`OPEN`。`SKIPPED`・`EMPTY` |
 | `config` | 解けた設定を読むだけで見るとき | `CONFIG`、続けて `<キー>\t<値>\t<config\|default>`（`steps` の値は詰めた JSON の配列）。設定が無ければ `MISSING`（終了コード6） |

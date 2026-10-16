@@ -50,6 +50,7 @@ FEATURE_BRANCH_PATTERN = re.compile(rf"{FEATURE_BRANCH_PREFIX}({ANY_ID_FRAGMENT}
 
 CONFIG_PATH = ".tw/config.toml"
 STEPS_KEY = "steps"
+REVIEW_CODE_GLOBS_KEY = "review_code_globs"
 
 STORE_BEADS = "beads"
 STORE_VALUES = (STORE_BEADS,)
@@ -70,6 +71,7 @@ CONFIG_KEYS = (
     "backup",
     "hook_tally",
     "steps",
+    "review_code_globs",
 )
 
 # 廃止したキーと表。設定に残っていれば `ConfigError` で知らせる。
@@ -104,6 +106,7 @@ class Config:
     backup: str | None = None
     hook_tally: str | None = None
     steps: tuple[str, ...] | None = None
+    review_code_globs: tuple[str, ...] = ()
     written: frozenset = frozenset()
 
     @property
@@ -177,6 +180,8 @@ def parse_config_text(text: str, label: str) -> list[tuple[int, str, str]]:
         seen[key] = lineno
         if key == STEPS_KEY:
             value = _parse_steps_array(rest, f"{label}:{lineno}")
+        elif key == REVIEW_CODE_GLOBS_KEY:
+            value = _parse_globs_array(rest, f"{label}:{lineno}")
         else:
             value = _parse_string(rest, f"{label}:{lineno}")
         if key not in IGNORED_KEYS:
@@ -184,20 +189,33 @@ def parse_config_text(text: str, label: str) -> list[tuple[int, str, str]]:
     return entries
 
 
-def _parse_steps_array(rest: str, where: str) -> str:
-    """`steps = ["…", "…"]` の右辺を、1行の JSON の配列（`steps_text`）にして返す。"""
+def _parse_array(rest: str, where: str, key: str) -> list:
     if not rest.startswith("["):
-        raise ConfigError(f"{where}: steps の値は [\"…\", \"…\"] の文字列の配列だけ: {rest}")
+        raise ConfigError(f"{where}: {key} の値は [\"…\", \"…\"] の文字列の配列だけ: {rest}")
     try:
         items, end = json.JSONDecoder().raw_decode(rest)
     except ValueError:
-        raise ConfigError(f"{where}: steps の配列が読めない: {rest}")
+        raise ConfigError(f"{where}: {key} の配列が読めない: {rest}")
     tail = rest[end:].strip()
     if tail and not tail.startswith("#"):
         raise ConfigError(f"{where}: 値の後ろに続きがある（説明は # コメントに書く）: {tail}")
+    return items
+
+
+def _parse_steps_array(rest: str, where: str) -> str:
+    """`steps = ["…", "…"]` の右辺を、1行の JSON の配列（`steps_text`）にして返す。"""
+    items = _parse_array(rest, where, STEPS_KEY)
     problem = steps_problem(items)
     if problem is not None:
         raise ConfigError(f"{where}: {problem}")
+    return steps_text(items)
+
+
+def _parse_globs_array(rest: str, where: str) -> str:
+    """`review_code_globs = ["…", "…"]` の右辺を、1行の JSON の配列にして返す。空の配列は書ける。"""
+    items = _parse_array(rest, where, REVIEW_CODE_GLOBS_KEY)
+    if not all(isinstance(i, str) and i != "" and i.strip() == i for i in items):
+        raise ConfigError(f"{where}: {REVIEW_CODE_GLOBS_KEY} は空でない glob の文字列の配列でなければならない")
     return steps_text(items)
 
 
@@ -264,6 +282,7 @@ def build_config(source: str | None, values: dict[str, str | None]) -> Config:
         backup=values.get("backup"),
         hook_tally=values.get("hook_tally"),
         steps=tuple(json.loads(values["steps"])) if values.get("steps") else None,
+        review_code_globs=tuple(json.loads(values.get(REVIEW_CODE_GLOBS_KEY) or "[]")),
         written=frozenset(values),
     )
     if config.github_project is not None and config.project_owner_number is None:
