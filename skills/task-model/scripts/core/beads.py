@@ -84,6 +84,8 @@ PLAN_TIP_KEY = "task_plan_tip"
 # この運用が metadata に置く印（GitHub には載らないので、取り込みで消えたら戻す）。
 MARK_KEYS = (CLAIM_BRANCH_KEY, CLAIM_HEAD_KEY, PLAN_KEY, PLAN_BASE_KEY, PLAN_TIP_KEY, DIFFICULTY_KEY, LOOPABLE_KEY, DRAFT_KEY, FROM_DRAFT_KEY)
 RESULT_HEADING = taskfile.RESULT_HEADING
+# 段の申し送りの comment の頭（あとに鍵が付く）。
+RELAY_HEADING_PREFIX = "## 申し送り: "
 
 # 本文の節のうち、`description` 以外へ入るもの。
 ACCEPTANCE_HEADING = taskfile.ACCEPTANCE_HEADING
@@ -341,6 +343,18 @@ def last_result(comment_list: list[dict]) -> str | None:
         if text.startswith(RESULT_HEADING):
             found = text[len(RESULT_HEADING) :].strip("\n")
     return found
+
+
+def last_relay(comment_list: list[dict], key: str) -> str | None:
+    """鍵 `key` の申し送りの comment のうち最後のものの本文（見出しの行を除く）。無いか空なら `None`。"""
+    heading = f"{RELAY_HEADING_PREFIX}{key}"
+    found = None
+    for c in comment_list:
+        text = str(c.get("text") or "")
+        first, _, rest = text.partition("\n")
+        if first == heading:
+            found = rest.strip("\n")
+    return found or None
 
 
 # --- Task への写し ----------------------------------------------------------------

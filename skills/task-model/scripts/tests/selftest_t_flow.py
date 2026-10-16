@@ -287,6 +287,56 @@ def test_lap_edge() -> None:
               [(e["stage"], e.get("edge")) for e in laps] == [("land", "end"), ("sync", None)], repr(laps))
 
 
+def test_relay() -> None:
+    say("task.py relay: 鍵ごとに最後の申し送りを読み、空は消した扱い、書けるのは着手の持ち主だけで、release・done をまたいで残る")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(tmp, branch="切らない")
+        commit_task(main_path, taskfile.Task("T-100", "申し送り", "todo", "sonnet", "Y", (), BODY))
+        relays = lambda: [c for c in beads.comments(wt1, "t-100") if str(c.get("text") or "").startswith(beads.RELAY_HEADING_PREFIX)]
+
+        r = run_task(wt1, "relay", "T-100", "実装", "--body-file", "-", stdin="- 規約: なし\n")
+        check("着手の印が無ければ NOT_OWNER で書かない",
+              r.returncode == 4 and r.stdout.startswith("NOT_OWNER\tT-100") and not relays(), r.stdout + r.stderr)
+        r = run_task(wt1, "relay", "T-100", "実装")
+        check("書いていない鍵は NONE で終了コード0", r.returncode == 0 and r.stdout.strip() == "NONE\tT-100\t実装", r.stdout + r.stderr)
+
+        run_task(wt1, "claim", "T-100")
+        r = run_task(wt2, "relay", "T-100", "実装", "--body-file", "-", stdin="- 規約: なし\n")
+        check("別の作業ツリーの印では NOT_OWNER で書かない", r.returncode == 4 and not relays(), r.stdout + r.stderr)
+        for body in ("- 規約: 古い\n", "- 規約: 新しい\n- ドラフト: x\n"):
+            r = run_task(wt1, "relay", "T-100", "実装", "--body-file", "-", stdin=body)
+            check("書けば RELAYED", r.returncode == 0 and r.stdout.strip() == "RELAYED\tT-100\t実装", r.stdout + r.stderr)
+        run_task(wt1, "relay", "T-100", "受け入れ", "--body-file", "-", stdin="- 材料: friction=0\n")
+        r = run_task(wt2, "relay", "T-100", "実装")
+        check("同じ鍵は最後の本文で、別の作業ツリーからも読める",
+              r.returncode == 0 and r.stdout == "RELAY\tT-100\t実装\n- 規約: 新しい\n- ドラフト: x\n", r.stdout + r.stderr)
+        r = run_task(wt1, "relay", "T-100", "受け入れ")
+        check("鍵ごとに別の本文", r.stdout == "RELAY\tT-100\t受け入れ\n- 材料: friction=0\n", r.stdout)
+
+        run_task(wt1, "relay", "T-100", "受け入れ", "--body-file", "-", stdin="")
+        r = run_task(wt1, "relay", "T-100", "受け入れ")
+        check("空の本文で書いたら NONE", r.stdout.strip() == "NONE\tT-100\t受け入れ", r.stdout)
+
+        run_task(wt1, "release", "T-100")
+        run_task(wt1, "claim", "T-100")
+        r = run_task(wt1, "relay", "T-100", "実装")
+        check("release → claim のあとも残る", r.stdout.startswith("RELAY\tT-100\t実装\n- 規約: 新しい"), r.stdout + r.stderr)
+
+        run_task(wt1, "done", "T-100", "--result-file", "-", stdin="- 検証: x\n- 振り返り: 兆候なし\n")
+        shown = run_task(wt1, "show", "T-100").stdout
+        result = shown.split("## 結果\n", 1)[-1]
+        check("done のあとの ## 結果 は done の本文のままで申し送りが混ざらない",
+              "- 振り返り: 兆候なし" in result and "申し送り" not in result and "規約: 新しい" not in shown, shown)
+        r = run_task(wt1, "relay", "T-100", "実装")
+        check("done のあとも読める", r.stdout.startswith("RELAY\tT-100\t実装\n"), r.stdout)
+
+        for key in ("", " ", "a\tb", "a\nb"):
+            r = run_task(wt1, "relay", "T-100", key)
+            check(f"鍵 {key!r} は終了コード2", r.returncode == 2, r.stdout + r.stderr)
+        r = run_task(wt1, "relay", "T-999", "実装")
+        check("無い ID は NOT_READY で終了コード4", r.returncode == 4 and r.stdout.startswith("NOT_READY\tT-999"), r.stdout + r.stderr)
+
+
 def test_record_normalizes_task_id() -> None:
     say("tw_base.record: どの書き方のタスクIDを渡しても、flow/ の task は表示の形の1つになる")
     with tempfile.TemporaryDirectory() as tmp:
@@ -1003,6 +1053,7 @@ TESTS = (
     test_metrics_stages_parallel_steps,
     test_metrics_stages_edge,
     test_lap_edge,
+    test_relay,
     test_record_normalizes_task_id,
 )
 

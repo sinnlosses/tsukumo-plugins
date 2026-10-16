@@ -42,6 +42,7 @@ import tw_finish
 import tw_handback
 import tw_maint
 import tw_new
+import tw_relay
 import tw_ship
 import tw_status
 import tw_verify
@@ -142,6 +143,12 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
         r"""自分の着手の印のタスクのオーケストレーターの段の頭を、`flow/` に `{"event":"lap","stage":"<段>"}` の1行として足す（メインが打つ。第3引数を付けると `"edge":"start"`／`"end"` も入り、段の所要時間は同じ段の `end − start`。省くと `edge` の欄は書かず、旧い呼び方のまま、その出来事から同じタスクの次の出来事までの差。第3引数が `start`・`end` のどちらでもなければ終了コード2）。`<段>` は `direct`（委譲しない近道でメインが直し始めた）・`delegate`（委譲を投げた）・`accept`（最後の段の返りを受けて受け入れに入った）・`review`（受け入れ役を起こした。差し戻しのあとも打つ）・`retro`（振り返りに入った）・`land`（別のリポジトリへの合流。台帳は着手側と作業先で別なので `tw land` は記録せず、着手した作業ツリーでメインが `start`／`end` を打つ）・`sync`（`tw ship` のあとのトラッカー反映とバックアップ）。ほかの段は終了コード2。着手の印が無ければ記録しない。記録に失敗しても終了コードは 0
 
 出力: `LAPPED\tT-xxx\t<段>`（第3引数を付けたときは末尾に `\t<start|end>`）・`NOT_CLAIMED\tT-xxx`""",
+    ),
+    "relay": (
+        "段の結果を、後の段が読む申し送り（Beads の comment）として鍵ごとに書く・読む。",
+        r"""`--body-file` を付けると、本文を鍵 `<鍵>` の申し送りとして、`## 申し送り: <鍵>` で始まる comment に書く（WORKFLOW.md「段の申し送り」。書けるのは自分の着手の印のタスクだけで、違えば何も書かずに `NOT_OWNER`、終了コード4）。空の本文は消した扱いになる。付けなければ、その鍵の最後の comment の本文を出す（着手の印によらない）。鍵は自由な語で、空かタブ・改行を含めば終了コード2。comment は `release`・`claim` で消えず、GitHub に出さない。無い ID は `NOT_READY`（終了コード4）
+
+出力: `RELAYED\tT-xxx\t<鍵>`・`RELAY\tT-xxx\t<鍵>`（次の行から本文）・`NONE\tT-xxx\t<鍵>`（無いか空）・`NOT_OWNER\tT-xxx`・`NOT_READY\tT-xxx\t存在しない`""",
     ),
     "show": (
         "タスク1件を front matter と本文の形で出す（読むだけ）。",
@@ -323,6 +330,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_lap.add_argument("task_id")
     p_lap.add_argument("stage")
     p_lap.add_argument("edge", nargs="?", default=None)
+    p_relay = sub.add_parser("relay")
+    p_relay.add_argument("task_id")
+    p_relay.add_argument("key")
+    p_relay.add_argument("--body-file", dest="body_file", default=None)
     p_metrics = sub.add_parser("metrics")
     p_metrics.add_argument("--days", type=int, default=metrics.DAYS_DEFAULT)
     p_metrics.add_argument("--stages", action="store_true")
@@ -480,6 +491,8 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
             tw_handback.cmd_step(toplevel, args.task_id, args.step)
         elif args.command == "lap":
             tw_handback.cmd_lap(toplevel, args.task_id, args.stage, args.edge)
+        elif args.command == "relay":
+            tw_relay.cmd_relay(toplevel, args.task_id, args.key, args.body_file)
         elif args.command == "metrics":
             (metrics.cmd_metrics_stages if args.stages else metrics.cmd_metrics)(toplevel, args.days)
         elif args.command == "adopt":
