@@ -305,7 +305,7 @@ def test_find() -> None:
         check("全角・大文字違いの語でも summary に当たれば FOUND",
               r.returncode == 0 and r.stdout == "FOUND\tT-101\tY\thoge の表示を直す\n", r.stdout + r.stderr)
         r = find("render.TS")
-        check("### 名指すファイル のパスだけに当たっても FOUND", r.stdout.startswith("FOUND\tT-102\t"), r.stdout + r.stderr)
+        check("名指すファイルのパスだけに当たっても FOUND", r.stdout.startswith("FOUND\tT-102\t"), r.stdout + r.stderr)
         r = find("一括")
         lines = r.stdout.splitlines()
         check("6件なら MANY 6・先頭4件の CANDIDATE・MORE 2",
