@@ -38,6 +38,7 @@ GitHub で本文を直したあとの取り込みで `open` に戻る。`deferre
 | `## やること` | `notes` |
 | `## やること` を作業より先に書いたかの記録（`first`・`after-work`・`registered`） | metadata `task_plan` |
 | 登録時に `## やること` を書いたときの SHA と、着手時に比べた主ブランチの先端 | metadata `task_plan_base`・`task_plan_tip` |
+| `ship` が送ったコミットの範囲（`<送る前の主ブランチの先端>..<送ったコミット>`。`NOTHING` では書かない。閉じた課題にも残る） | metadata `task_shipped` |
 | `## 目的・背景`・`## 決まっていること`・`## 解くべき論点`・`## 注意`・`## 参考情報` | `description`（見出しのまま）。`tw show` は枠の7節を空でもこの順に出す |
 | `## 結果`（`- 振り返り:` を含む） | `## 結果` で始まる comment（最後のものが正） |
 | 段の申し送り（WORKFLOW.md「段の申し送り」） | `## 申し送り: <鍵>` で始まる comment（鍵ごとに最後のものが正。`tw relay` が書き・読む） |

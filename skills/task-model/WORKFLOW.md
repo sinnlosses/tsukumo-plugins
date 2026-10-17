@@ -260,7 +260,7 @@ front matter（`id`・`summary`・`status`・`difficulty`・`loopable`・近道�
 | 状態 | 表示 | 誰が何をする |
 | --- | --- | --- |
 | **自分の**作業ツリーの印が入口の開始時点で残っている | `CLAIMED`（印の列が自分） | 前のセッションが落ちた。着手せず、`tw release T-xxx`（捨てる）か人が続きを見るかを預けて止まる |
-| 他の作業ツリーの印で、assignee がどの作業ツリーの名前でもない／`ship:*` が立っていて主ブランチに着手より後の `T-xxx:`（`github` なら `GH-<n>:`）の件名のコミットがある／assignee の無い `in_progress` | `STALE:gone`／`STALE:shipped`／`STALE:no-owner` | `tw status` が出すだけ。片付けるのは人（`tw release T-xxx --force` ＝ `bd unclaim --force`） |
+| 他の作業ツリーの印で、assignee がどの作業ツリーの名前でもない／`ship:*` が立っていて、metadata `task_shipped` の範囲の先端が主ブランチに入っている（その記録が無い・祖先でないときは、主ブランチに着手より後の `T-xxx:`〔`github` なら `GH-<n>:`〕の件名のコミットがある）／assignee の無い `in_progress` | `STALE:gone`／`STALE:shipped`／`STALE:no-owner` | `tw status` が出すだけ。片付けるのは人（`tw release T-xxx --force` ＝ `bd unclaim --force`） |
 | それ以外 | `CLAIMED`（経過時間つき） | 触らない。長さだけで取り残しと言わない |
 
 印を時間で自動的に壊さない。取り残しは人に預ける。**`bd reclaim` を打たない**——`--claim` には5分の lease が付くが、
@@ -416,6 +416,11 @@ frame が実装と合わず人が決め直すまで進められないタスク�
   （依存はここで初めて解決する。主ブランチに作業が入る前に後段を開けない）。閉じられなかったものは
   `NOT_CLOSED\tT-xxx\t<理由>` の行。続けて `TRACKER`・`BACKUP` の行が付く（`TRACKER.md`「トラッカー」「バックアップ」）
 - 主ブランチを出している作業ツリーで起こしたときは送る段が無く、印を消して `SHIPPED <主ブランチ>` を返す
+- `bd close` の前に、送った範囲を課題の metadata `task_shipped`（`<送る前の主ブランチの先端>..<送ったコミット>`）に書く。
+  `tw status` の `STALE:shipped` と振り返りの `material.py` が、件名でなくこの範囲でコミットを引く。
+  送る段が無いときは `task_claim_head..HEAD`。`NOTHING` では何も送っていないので書かない。作業先が別のリポジトリのタスクは
+  本体側の `ship` が `NOTHING` になるのが普通で、書かれない。1回の `ship` が複数のタスクを閉じると同じ範囲が各タスクに付く。
+  記録の無い課題（この項の前に閉じたもの・`NOTHING`・別リポジトリ）は従来どおり件名の `T-xxx` で引く。`claim` が前回の記録を消す
 
 `tw verify` が検証の前に主ブランチを取り込むので、`ship` が付け替えるのは、受け入れから送るまでの間に
 主ブランチが進んだときだけ。

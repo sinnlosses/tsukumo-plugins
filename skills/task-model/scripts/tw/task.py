@@ -87,7 +87,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     ),
     "ship": (
         "rebase → （付け替えたら）検証 → ff-only で送り、自分の印を `bd close` する。",
-        r"""rebase → （付け替えたら）検証 → （`verify_before_ship` があれば）付け替えた・借りがある・控えが今の中身と違うときだけそれを（付け替えた回は検証の代わりに） → ff-only で送る（主ブランチを出している別の作業ツリー〔本体〕があれば、そこに `.gitmodules` があるとき `git submodule update --init` を本体で打って、サブモジュールを記録した版へ揃える。揃えるのは本体のサブモジュールだけで、ほかの作業ツリーには触らない。揃えられなくても送りは取り消さず、結果は変えない） → `ship:*` の立った自分の印を `bd close` し、`task-open-claims/T-xxx` の控えを消す → 作業ブランチから降りる → トラッカーへ送り、バックアップを取る。送るものがあって `.git` に書けなければ、rebase の前に `GIT_READ_ONLY` で止まる
+        r"""rebase → （付け替えたら）検証 → （`verify_before_ship` があれば）付け替えた・借りがある・控えが今の中身と違うときだけそれを（付け替えた回は検証の代わりに） → ff-only で送る（主ブランチを出している別の作業ツリー〔本体〕があれば、そこに `.gitmodules` があるとき `git submodule update --init` を本体で打って、サブモジュールを記録した版へ揃える。揃えるのは本体のサブモジュールだけで、ほかの作業ツリーには触らない。揃えられなくても送りは取り消さず、結果は変えない） → `ship:*` の立った自分の印に、送った範囲を metadata `task_shipped`（`<送る前の主ブランチの先端>..<送ったコミット>`。`NOTHING` では書かず、送る段が無いときは `task_claim_head..HEAD`）として書いてから `bd close` し、`task-open-claims/T-xxx` の控えを消す → 作業ブランチから降りる → トラッカーへ送り、バックアップを取る。送るものがあって `.git` に書けなければ、rebase の前に `GIT_READ_ONLY` で止まる
 
 出力: `SHIPPED`・`NOTHING`（どちらも `NOT_CLOSED`・`TRACKER`・`BACKUP` の行が続くことがある。`SHIPPED` の次に `SUBMODULE_NOT_SYNCED\t<本体の作業ツリーのパス>\t<理由の1行>` が出ることがある。本体のサブモジュールを揃えられなかった警告で、終了コードは変わらない）・`MAIN_DIRTY`・`CONFLICT`・`VERIFY_FAILED`・`RACE`・`GIT_READ_ONLY`""",
     ),
