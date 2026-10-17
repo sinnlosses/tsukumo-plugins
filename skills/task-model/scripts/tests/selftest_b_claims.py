@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import shutil
 import subprocess
@@ -18,7 +19,8 @@ sys.path.insert(1, os.path.join(HERE, "..", "tw"))
 import beads  # noqa: E402
 import ledger  # noqa: E402
 import tracker  # noqa: E402
-from selftest_b_fakegithub import FakeGitHub, github, status_labels  # noqa: E402
+import tracker_github  # noqa: E402
+from selftest_b_fakegithub import FakeGitHub, arm_kv_write, github, kv_written_during, status_labels  # noqa: E402
 from selftest_b_support import bd, claim_snapshots, make_repo, new, num, work_and_done  # noqa: E402
 from selftest_fixtures import run_handback_guard, run_task, start_task  # noqa: E402
 from selftest_support import check, git, local, refuse_direct_run, say, write  # noqa: E402
@@ -245,12 +247,58 @@ def test_claim_kept_through_concurrent_syncs() -> None:
                   repr(outs) + str(got and got.raw))
 
 
+def test_pull_sees_other_worktree_kv() -> None:
+    say("着手の戻し: 取り込みの途中に別の作業ツリーが書いた送りの印を見て、戻すかを決める")
+    with github() as (fake, tmp, main_path, wt1):
+        arm_kv_write(tmp)
+        a, a_id, na = _claim_and_push(fake, main_path, wt1, "取り込みの間に送りの印を空にされる")
+        b, b_id, nb = _claim_and_push(fake, main_path, wt1, "送りの印はそのまま")
+        for n in (na, nb):
+            fake.edit(n, labels=[l for l in fake.issues[n]["labels"] if l != "status::in_progress"])
+
+        def edit(task_id: str) -> subprocess.CompletedProcess:
+            return run_task(wt1, "edit", task_id, "--section", "参考情報", "--body-file", "-", stdin="メモ\n")
+
+        with kv_written_during(tmp, "github pull", f"{tracker.PUSHED_KEY_PREFIX}{na}", "") as fired:
+            r = edit(a)
+        rb = edit(b)
+        got_a, got_b = beads.show(main_path, a_id), beads.show(main_path, b_id)
+        check("前提: 取り込みの直前に送りの印を書いた", os.path.exists(fired), r.stdout + r.stderr)
+        check("取り込みの間に印が空にされた課題は、送っていない着手として in_progress と assignee へ戻す",
+              got_a is not None and got_a.status == "in_progress" and got_a.assignee == "wt1",
+              r.stdout + r.stderr + str(got_a and got_a.raw))
+        check("印がそのままの課題は、GitHub で手放されたとして open のまま", got_b is not None and got_b.status == "open",
+              rb.stdout + rb.stderr + str(got_b and got_b.raw))
+
+
+def test_after_sees_other_worktree_kv() -> None:
+    say("Status 欄: 1回の操作の before と after の間に別の作業ツリーが書いた項目の控えを、after が読み直して見る")
+    with github() as (fake, tmp, main_path, wt1):
+        arm_kv_write(tmp)
+        a, b = new(main_path, "着手の間に控えを書かれる"), new(main_path, "控えを書かれない")
+        r = run_task(wt1, "claim", b)
+        want = fake.status_of(num(b))
+        check("前提: claim が Status 欄を書く", r.returncode == 0 and want not in (None, "Todo"), r.stdout + repr(fake.items))
+        key = f"{tracker_github.ITEMS_KEY_PREFIX}{num(a)}"
+        item = json.loads(bd(main_path, "kv", "get", key).stdout)
+        writes = fake.status_writes
+        written = json.dumps({"item": item["item"], "status": want}, ensure_ascii=False)
+        with kv_written_during(tmp, f"kv set {beads.CLAIM_SNAPSHOT_KEY_PREFIX}", key, written) as fired:
+            r = run_task(wt1, "claim", a)
+        check("前提: claim の途中（着手の印の控えを書く前）に項目の控えを書いた", r.returncode == 0 and os.path.exists(fired),
+              r.stdout + r.stderr)
+        check("after は書かれた控え（もう書く値）を見て Status 欄を書かない",
+              fake.status_writes == writes and fake.status_of(num(a)) == "Todo", r.stdout + repr(fake.items))
+
+
 # 長いものから並列に乗せる（後ろに残ると全体がその分延びる）。
 TESTS = (
     test_claim_not_restored_after_release_done_ship,
     test_claim_restored_after_killed_sync,
     test_handback_guard_after_killed_sync,
     test_claim_not_restored_when_released_on_github,
+    test_pull_sees_other_worktree_kv,
+    test_after_sees_other_worktree_kv,
     test_claim_kept_through_concurrent_syncs,
     test_release_force_without_assignee,
     test_release_force_clears_github_label,

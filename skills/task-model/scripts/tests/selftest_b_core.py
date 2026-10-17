@@ -459,9 +459,9 @@ def test_issue_list_reuse_boundary() -> None:
         count = beads.writes(main_path)
         for args in (["show", bd_id, "--json"], ["list", "--all", "-n", "0", "--flat", "--json"],
                      ["kv", "get", "gh853-probe"], ["kv", "list", "--json"], ["config", "get", "issue_prefix"],
-                     ["history", bd_id, "--events", "--json"]):
+                     ["config", "list", "--json"], ["history", bd_id, "--events", "--json"]):
             beads.run(main_path, args)
-        check("読み専用の動詞（show・list・kv get・kv list・config get・history）は書いた回数を進めない",
+        check("読み専用の動詞（show・list・kv get・kv list・config get・config list・history）は書いた回数を進めない",
               beads.writes(main_path) == count and session._issues() is first)
         beads.run(main_path, ["kv", "set", "gh853-probe", "1"])
         check("kv set は課題を変えないので進めない", beads.writes(main_path) == count and session._issues() is first)
@@ -485,6 +485,63 @@ def test_issue_list_reuse_boundary() -> None:
         check("keeps_issues でない bd github（pull・番号の無い push）は進める", beads.writes(main_path) == count + 1)
         other = tracker.Session(os.path.join(tmp, "elsewhere"), tracker.Tracker("github"))
         check("別の作業ツリーの数は混ざらない", beads.writes(other.toplevel) == 0)
+
+
+def test_bd_config_reads() -> None:
+    say("bd の設定: issue_prefix とリポジトリは bd config list の1回の読みから引く")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path = make_repo(tmp)[0]
+        bd(main_path, "config", "set", "github.repository", "o/r")
+        beads.forget_reads(main_path)
+        config = beads.read_bd_config(main_path)
+        check("config list の欄から prefix とリポジトリを引く",
+              config.get("issue_prefix") == beads.PREFIX_LOCAL and beads.prefix_of(config) == beads.PREFIX_LOCAL
+              and tracker_github._repo_of(config) == "o/r" and beads.read_prefix(main_path) == beads.PREFIX_LOCAL,
+              repr(config))
+        nowhere = os.path.join(tmp, "no-beads")
+        os.makedirs(nowhere)
+        empty = beads.read_bd_config(nowhere)
+        check(".beads の無い所では空（prefix は t・リポジトリは無し）", empty == {}
+              and beads.prefix_of(empty) == beads.PREFIX_LOCAL and tracker_github._repo_of(empty) is None, repr(empty))
+    check("issue_prefix が gh なら gh・ほかの値なら t", beads.prefix_of({"issue_prefix": "gh"}) == beads.PREFIX_GITHUB
+          and beads.prefix_of({"issue_prefix": "x"}) == beads.PREFIX_LOCAL)
+    check("github.repository が owner/repo の形でなければ github.owner・github.repo から作る",
+          tracker_github._repo_of({"github.repository": "no-slash", "github.owner": "x", "github.repo": "y"}) == "x/y")
+    check("github.repository が空白を含み、owner・repo も無ければ無し",
+          tracker_github._repo_of({"github.repository": "a b/c"}) is None)
+
+
+def test_tracker_command_bd_calls() -> None:
+    say("トラッカー github・new・claim・edit・done の1回の bd の起動（設定の読みは1回、claim の Project の控えは kv list から）")
+    verbs = {"--actor", "config", "kv", "show", "list", "history", "github", "update", "create", "comment",
+             "comments", "close", "rename", "export", "backup", "dep", "label", "reopen"}
+    with github() as (_fake, tmp, main_path, wt1):
+        a = new(main_path, "数える課題")
+        counted = os.path.join(tmp, "bd-count.txt")
+        local.env = {**local.env, "BD_COUNT_FILE": counted}
+
+        def counted_run(label: str, cwd: str, *args: str, stdin: str | None = None) -> list[str]:
+            open(counted, "w").close()
+            r = run_task(cwd, *args, stdin=stdin)
+            calls = [c for c in open(counted).read().splitlines() if c.split(" ", 1)[0] in verbs]
+            say(f"  {label}: bd {len(calls)} 回")
+            check(f"{label} は成功する", r.returncode == 0 and "TRACKER\tOK\tgithub" in r.stdout, r.stdout + r.stderr)
+            check(f"{label}: config get を打たず、config list は1回以下",
+                  not any(c.startswith("config get") for c in calls)
+                  and sum(c.startswith("config list") for c in calls) <= 1, "\n".join(calls))
+            return calls
+
+        counted_run("new", main_path, "new", "--summary", "数える2", "--difficulty", "sonnet", "--loopable", "Y",
+                    "--body-file", "-", stdin=PLANNED_BODY)
+        calls = counted_run("claim", wt1, "claim", a)
+        check("claim: Project の控えを kv get で読まず、kv list は3回",
+              not any(c.startswith("kv get task-workflow.project") for c in calls)
+              and calls.count("kv list --json") == 3, "\n".join(calls))
+        counted_run("edit", wt1, "edit", a, "--section", "参考情報", "--body-file", "-", stdin="メモ\n")
+        write(os.path.join(wt1, f"{a}.txt"), f"{a}\n")
+        git(wt1, "add", f"{a}.txt")
+        git(wt1, "commit", "-q", "-m", f"{a}: 作業")
+        counted_run("done", wt1, "done", a, "--result-file", "-", stdin=RESULT_FULL)
 
 
 def test_new_bd_calls() -> None:
@@ -540,6 +597,7 @@ def test_new_bd_calls() -> None:
 
 
 TESTS = (
+    test_tracker_command_bd_calls,
     test_new_bd_calls,
     test_issue_list_reuse_boundary,
     test_cycle_done_ship_and_dropped,
@@ -556,6 +614,7 @@ TESTS = (
     test_removed_commands,
     test_id_forms,
     test_bd_time_forms,
+    test_bd_config_reads,
 )
 
 

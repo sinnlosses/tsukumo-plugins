@@ -247,3 +247,37 @@ def github(
 
 def status_labels(fake: "FakeGitHub", n: int) -> list[str]:
     return [l for l in fake.issues[n]["labels"] if l.startswith("status::")]
+
+
+KV_WRITE_ENV = "SELFTEST_KV_WRITE"
+
+
+def arm_kv_write(tmp: str) -> None:
+    """PATH の先頭に、`kv_written_during` の間だけ、引数に `on` を含む `bd` の前に1回だけ `bd kv set` を打つ包みを置く
+    （同じ Beads を使う別の作業ツリーが、1回の `task.py` の途中で kv を書いたことにする）。"""
+    real = shutil.which("bd", path=local.env["PATH"])
+    bin_dir = os.path.join(tmp, "kvbin")
+    write(os.path.join(bin_dir, "bd"), f"""#!{sys.executable}
+import json, os, subprocess, sys
+spec = os.environ.get({KV_WRITE_ENV!r})
+if spec:
+    s = json.loads(spec)
+    if s["on"] in " ".join(sys.argv[1:]) and not os.path.exists(s["fired"]):
+        open(s["fired"], "w").close()
+        subprocess.run([{real!r}, "kv", "set", s["key"], s["value"]], capture_output=True)
+sys.exit(subprocess.run([{real!r}, *sys.argv[1:]]).returncode)
+""")
+    os.chmod(os.path.join(bin_dir, "bd"), 0o755)
+    local.env["PATH"] = bin_dir + os.pathsep + local.env["PATH"]
+
+
+@contextlib.contextmanager
+def kv_written_during(tmp: str, on: str, key: str, value: str) -> Iterator[str]:
+    """`arm_kv_write` の包みを、引数に `on` を含む最初の `bd` の前に `key` へ `value` を書くように向ける。
+    書いたら立つ印のファイルのパスを渡す。"""
+    fired = os.path.join(tmp, f"kv-written-{len(os.listdir(tmp))}")
+    local.env[KV_WRITE_ENV] = json.dumps({"on": on, "key": key, "value": value, "fired": fired})
+    try:
+        yield fired
+    finally:
+        del local.env[KV_WRITE_ENV]

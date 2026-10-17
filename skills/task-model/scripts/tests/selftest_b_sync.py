@@ -18,7 +18,7 @@ import ledger  # noqa: E402
 import tracker  # noqa: E402
 import tracker_claims  # noqa: E402
 import tracker_github  # noqa: E402
-from selftest_b_fakegithub import github  # noqa: E402
+from selftest_b_fakegithub import arm_kv_write, github, kv_written_during  # noqa: E402
 from selftest_b_support import bd, new, num, rows  # noqa: E402
 from selftest_fixtures import run_task, start_task  # noqa: E402
 from selftest_support import check, local, refuse_direct_run, say  # noqa: E402
@@ -379,7 +379,7 @@ def test_tracker_sync_skips_echo() -> None:
 
 def test_tracker_github_conflict() -> None:
     say("トラッカー github・issue_prefix gh（init.py が gh で作る・両側で変えたら Beads が勝つ）")
-    with github(prefix=None) as (fake, _tmp, main_path, _wt1):
+    with github(prefix=None) as (fake, tmp, main_path, _wt1):
         check("トラッカーが github なら init.py は issue_prefix gh で .beads を作る",
               beads.read_prefix(main_path) == beads.PREFIX_GITHUB)
         a = new(main_path, "両側で直す")
@@ -391,6 +391,20 @@ def test_tracker_github_conflict() -> None:
         r = run_task(main_path, "sync")
         check("両側で変えたら CONFLICT の行を出し、Beads が勝つ", f"TRACKER\tCONFLICT\t{a}" in r.stdout
               and fake.issues[n]["title"] == "Beads で直した題", r.stdout + repr(fake.issues[n]))
+
+        arm_kv_write(tmp)
+        fake.clock_offset = 0
+        b = new(main_path, "取り込みの間に同期の時刻を書かれる")
+        nb, b_id = num(b), beads.to_bd_id(b)
+        time.sleep(1.1)
+        bd(main_path, "update", b_id, "--title", "Beads で直した題2")
+        fake.clock_offset = 60
+        fake.edit(nb, body="GitHub でも直した2")
+        later = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 3600))
+        with kv_written_during(tmp, "github pull", f"{tracker_claims.SYNCED_ITEM_PREFIX}{nb}", later) as fired:
+            r = run_task(main_path, "sync")
+        check("取り込みの間に別の作業ツリーが同期の時刻を進めても、取り込みの前に読んだ時刻で CONFLICT を出す",
+              os.path.exists(fired) and f"TRACKER\tCONFLICT\t{b}" in r.stdout, r.stdout + r.stderr)
 
 
 def test_tracker_github_draft() -> None:
