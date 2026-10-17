@@ -260,12 +260,19 @@ def _classify_claim(toplevel: str, issue: beads.Issue, worktree_names: set[str],
     if owner is None:
         return "STALE:no-owner", ""
     shown = beads.to_task_id(issue.bd_id)
-    if beads.ship_mark(issue) is not None and _task_commit_on_base(toplevel, shown, base, issue.started_at):
+    if beads.ship_mark(issue) is not None and (
+        _shipped_by_record(toplevel, issue, base) or _task_commit_on_base(toplevel, shown, base, issue.started_at)
+    ):
         return "STALE:shipped", owner
     if owner not in worktree_names:
         return "STALE:gone", owner
     age = tw_base.age_seconds(issue.started_at)
     return "CLAIMED", f"{owner} {tw_base.format_elapsed(age) if age is not None else '?'}"
+
+
+def _shipped_by_record(toplevel: str, issue: beads.Issue, base: str) -> bool:
+    """`tw ship` が metadata に書いた範囲の先端が、主ブランチに入っているか。使えない記録は偽（件名照合へ戻る）。"""
+    return beads.shipped_range_on_base(issue, base, toplevel) is not None
 
 
 def _task_commit_on_base(toplevel: str, task_id: str, base: str, since: str | None) -> bool:

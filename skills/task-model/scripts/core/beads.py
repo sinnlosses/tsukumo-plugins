@@ -85,8 +85,11 @@ PLAN_KEY = "task_plan"
 PLAN_BASE_KEY = "task_plan_base"
 # 登録時の計画を判定した、着手時の主ブランチの先端。
 PLAN_TIP_KEY = "task_plan_tip"
+# `tw ship` が書く、送ったコミットの範囲（`<送る前の主ブランチの先端>..<送ったコミット>`）。
+SHIPPED_KEY = "task_shipped"
+SHIPPED_RANGE_PATTERN = re.compile(r"([0-9a-f]{40})\.\.([0-9a-f]{40})")
 # この運用が metadata に置く印（GitHub には載らないので、取り込みで消えたら戻す）。
-MARK_KEYS = (CLAIM_BRANCH_KEY, CLAIM_HEAD_KEY, PLAN_KEY, PLAN_BASE_KEY, PLAN_TIP_KEY, DIFFICULTY_KEY, LOOPABLE_KEY, DRAFT_KEY, FROM_DRAFT_KEY)
+MARK_KEYS = (CLAIM_BRANCH_KEY, CLAIM_HEAD_KEY, PLAN_KEY, PLAN_BASE_KEY, PLAN_TIP_KEY, DIFFICULTY_KEY, LOOPABLE_KEY, DRAFT_KEY, FROM_DRAFT_KEY, SHIPPED_KEY)
 RESULT_HEADING = taskfile.RESULT_HEADING
 # 段の申し送りの comment の頭（あとに鍵が付く）。
 RELAY_HEADING_PREFIX = "## 申し送り: "
@@ -440,6 +443,25 @@ def attribute_values(issue: Issue, key: str) -> list[str]:
 def ship_mark(issue: Issue) -> str | None:
     """`task done` が立てた印（`done`／`dropped`）。無ければ `None`。"""
     return next((k for k, v in SHIP_LABELS.items() if v in issue.labels), None)
+
+
+def shipped_range(issue: Issue) -> tuple[str, str] | None:
+    """`tw ship` が metadata に書いた送ったコミットの範囲 `(from, to)`。無い・形が違えば `None`。"""
+    metadata = issue.raw.get("metadata")
+    value = metadata.get(SHIPPED_KEY) if isinstance(metadata, dict) else None
+    m = SHIPPED_RANGE_PATTERN.fullmatch(str(value or ""))
+    return (m.group(1), m.group(2)) if m else None
+
+
+def shipped_range_on_base(issue: Issue, base: str, cwd: str) -> tuple[str, str] | None:
+    """`shipped_range` のうち、先端が主ブランチ `base` の祖先のもの。記録が無い・形が違う・先端が無い／祖先でないときは `None`。
+
+    `tw status` の `STALE:shipped` と `material.py` のコミット照合は、記録を使うかをこの1つで決め、`None` なら件名へ戻る。
+    """
+    shipped = shipped_range(issue)
+    if shipped is None:
+        return None
+    return shipped if gitcmd.run(["merge-base", "--is-ancestor", shipped[1], base], cwd).returncode == 0 else None
 
 
 # --- 本文の出し入れ ----------------------------------------------------------------
