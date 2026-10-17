@@ -75,6 +75,30 @@ def record_event(
         print(f"flow: 記録を書けなかった（{type(e).__name__}）", file=sys.stderr)
 
 
+# --- hook の拒否の記録（共有の git dir の `hook-denials/<年-月>.jsonl`。tsukumo の記録と同じ形）-------
+
+DENIALS_DIR_NAME = "hook-denials"
+DENIAL_RECORD_ENV = "TSUKUMO_HOOK_DENIAL_RECORD"
+
+
+def record_denial(cwd: str | None, hook: str, rule: str, actor: str) -> None:
+    """関門の拒否を1行足す（`at`・`hook`・`rule`・`actor`）。コマンド・パス・会話は入れない。
+
+    失敗しても例外を外へ出さず、何も出さない（関門の出力と終了コードを変えない）。
+    """
+    if os.environ.get(DENIAL_RECORD_ENV) == "off":
+        return
+    try:
+        at = now_iso()
+        d = os.path.join(gitinfo.git_common_dir(cwd), DENIALS_DIR_NAME)
+        os.makedirs(d, exist_ok=True)
+        line = json.dumps({"at": at, "hook": hook, "rule": rule, "actor": actor}, ensure_ascii=False) + "\n"
+        with open(os.path.join(d, f"{at[:7]}.jsonl"), "a", encoding="utf-8") as f:
+            f.write(line)
+    except (OSError, gitinfo.GitCommandError):
+        return
+
+
 # --- sync の錠（台帳に1つ。作業ツリーをまたいで `tw sync` を1本にする）------------
 
 SYNC_LOCK_NAME = "sync.lock"

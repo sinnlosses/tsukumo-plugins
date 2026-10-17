@@ -72,9 +72,11 @@ def run(stdin: IO[str], stdout: IO[str], agent_scoped: bool = False) -> None:
     if not isinstance(payload, dict) or not agent_scope.applies(payload, agent_scoped):
         return
     _note_agent(payload)
-    reason = decide(payload)
-    if reason is None:
+    verdict = _verdict(payload)
+    if verdict is None:
         return
+    rule, reason = verdict
+    agent_scope.record_denial(payload, "tw-commit-guard", rule)
     out = {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -100,6 +102,12 @@ def _note_agent(payload: dict) -> None:
 
 def decide(payload: dict) -> str | None:
     """拒む理由。通すなら `None`。"""
+    verdict = _verdict(payload)
+    return verdict[1] if verdict is not None else None
+
+
+def _verdict(payload: dict) -> tuple[str, str] | None:
+    """`(規則のキー, 拒む理由)`。通すなら `None`。"""
     if payload.get("tool_name") != "Bash":
         return None
     tool_input = payload.get("tool_input")
@@ -111,7 +119,7 @@ def decide(payload: dict) -> str | None:
         for where in dict.fromkeys([start, *(s.where for s in _simple_commands(command, start) if s.where)]):
             claims = _open_claims_at(where)
             if claims:
-                return (
+                return "DISARM_REF_GUARD", (
                     f"着手の印（{','.join(claims)}）が立っていて tw done の前の作業ツリー（{where}）では "
                     f"ref-guard を外す書き方（{gitcmd.REF_GUARD_ALLOW_ENV} を付ける・core.hooksPath を指し直す）をしない。"
                     "コミットせず、変更は作業ツリーに残したまま報告で返す"
@@ -119,7 +127,7 @@ def decide(payload: dict) -> str | None:
     for where, subcommand in _git_commits(command, start):
         claims = _open_claims_at(where)
         if claims and not ref_guard.active(where):
-            return (
+            return "GIT_COMMIT", (
                 f"着手の印（{','.join(claims)}）が立っていて tw done の前の作業ツリー（{where}）では "
                 f"git {subcommand} を拒む。コミットせず、変更は作業ツリーに残したまま報告で返す"
             )
@@ -127,14 +135,14 @@ def decide(payload: dict) -> str | None:
     for path, how in _shell_writes(command, start):
         where, claims = _claims_for_write(path, work_claims)
         if claims:
-            return (
+            return "SHELL_WRITE", (
                 f"着手の印（{','.join(claims)}）が立っていて tw done の前の作業ツリー（{where}）では "
                 f"{how} でファイルを書き換えない。Edit・Write で書く（作業ツリーの外のログへの出力は通る）"
             )
     for where, configured in _verify_commands(command, start):
         claims = _open_claims_at(where) or work_claims.at(where)
         if claims:
-            return (
+            return "DIRECT_VERIFY", (
                 f"着手の印（{','.join(claims)}）が立っていて tw done の前の作業ツリー（{where}）では "
                 f"検証コマンド（{configured}）を直に打たない。`tw verify` で打つ（対象を絞った単体テストの実行は打てる）"
             )

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import re
 
+import ledger
+
 _AGENT_ID = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9._-]*")
 
 
@@ -27,3 +29,10 @@ def session_id(payload: dict) -> str | None:
 
 def applies(payload: dict, agent_scoped: bool) -> bool:
     return not agent_scoped or agent_id(payload) is not None
+
+
+def record_denial(payload: dict, hook: str, rule: str) -> None:
+    """入力の `cwd` の共有の git dir へ拒否を残す。呼び手は `agent_id` があれば `subagent`、無ければ `main`。"""
+    cwd = payload.get("cwd")
+    actor = "subagent" if agent_id(payload) is not None else "main"
+    ledger.record_denial(cwd if isinstance(cwd, str) else None, hook, rule, actor)

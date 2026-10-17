@@ -74,6 +74,8 @@ def decide(payload: dict, refusal: Callable[[str, str | None], str | None]) -> d
     reason = refusal(cwd, _handback_body(payload) if is_handback else None)
     if reason is None:
         return None
+    rule = "PLAN_OR_VERIFY_MISSING" if reason.startswith("着手の印（") else "STRUCTURE_SECTION"
+    agent_scope.record_denial(payload, "tw-handback-guard", rule)
     if is_stop:
         return {"decision": "block", "reason": reason}
     return {
