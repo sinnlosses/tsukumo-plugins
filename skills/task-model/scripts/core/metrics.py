@@ -242,11 +242,9 @@ def task_stage_spans(
     `edge` の対でない区間は `stage_durations` と同じく `verify` の区間を除いた断片に割る。同じ段の区間は重なりうる。
     `ship` 前でも使える。最後の出来事の所要は拾わない。
     """
-    own = [e for e in events if e.task == task_id]
-    claims = [i for i, e in enumerate(own) if e.kind == "claim"]
-    if not claims:
+    run = _since_last_claim(events, task_id)
+    if not run:
         return None
-    run = own[claims[-1] :]
     spans, opens = _run_spans(run)
     verifying = _verify_spans(run)
     pieces: list[tuple[str, datetime, datetime]] = []
