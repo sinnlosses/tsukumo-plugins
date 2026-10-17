@@ -13,7 +13,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | `claim T-xxx` | 作業を始めるとき（着手の印を立て、git の hook `ref-guard` を置く。置けなければ標準エラーに `ref-guard:` の1行） | `CLAIMED`・`TAKEN`・`NOT_READY`・`DIRTY`・`UNSHIPPED`・`GIT_READ_ONLY` |
 | `release T-xxx [--force]` | 着手の印を外すとき | `RELEASED`・`NOT_CLAIMED`・`NOT_OWNER` |
 | `done T-xxx [--dropped] [--reflection none\|some\|skipped] --result-file <path\|->` | 結果を書いて作業を閉じるとき（コミットも送りもしない）。ドラフトの却下にも使う | `DONE`（`COMMITS_SINCE_CLAIM` が続くことがある）・`NOT_OWNER`・`NOT_READY`・`INVALID` |
-| `ship` | コミットを主ブランチへ送るとき（rebase・検証・ff-only・印を閉じる・トラッカーへ送る） | `SHIPPED`・`NOTHING`（`NOT_CLOSED`・`TRACKER`・`BACKUP`・`SUBMODULE_NOT_SYNCED` が続くことがある）・`MAIN_DIRTY`・`CONFLICT`・`VERIFY_FAILED`・`RACE`・`GIT_READ_ONLY` |
+| `ship` | コミットを主ブランチへ送るとき（rebase・検証・ff-only・送った範囲を metadata `task_shipped` に書いて印を閉じる・トラッカーへ送る） | `SHIPPED`・`NOTHING`（`NOT_CLOSED`・`TRACKER`・`BACKUP`・`SUBMODULE_NOT_SYNCED` が続くことがある）・`MAIN_DIRTY`・`CONFLICT`・`VERIFY_FAILED`・`RACE`・`GIT_READ_ONLY` |
 | `land <枝>` | 作業先が別のリポジトリのタスクの受け入れで、その枝を主ブランチへ ff で合流し、作業ツリーと枝を消すとき | `LANDED`（`SUBMODULE_NOT_SYNCED`・`REMOVED`・`DELETED` が続く）・`NOT_REMOVED`・`NOT_LANDED`・`GIT_READ_ONLY` |
 | `show T-xxx` | タスクを読むだけで見るとき | 本文。無ければ `NOT_READY` |
 | `find [<語>…] [--kind <種類>]` | ID の無い頼み文の語と種類で `READY` を1件に絞るとき（読むだけ。当て方は WORKFLOW.md「kind（種類）」） | `FOUND`・`MANY`（`CANDIDATE`・`MORE` が続く）・`NONE`（どれも終了コード0） |

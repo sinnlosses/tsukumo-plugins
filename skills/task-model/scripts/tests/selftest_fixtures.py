@@ -193,6 +193,10 @@ def metadata(repo: str, task_id: str) -> dict:
     return value if isinstance(value, dict) else {}
 
 
+def set_metadata(repo: str, task_id: str, key: str, value: str) -> None:
+    _bd(repo, ["update", beads.to_bd_id(task_id), "--set-metadata", f"{key}={value}"])
+
+
 def unset_metadata(repo: str, task_id: str, key: str) -> None:
     _bd(repo, ["update", beads.to_bd_id(task_id), "--unset-metadata", key])
 

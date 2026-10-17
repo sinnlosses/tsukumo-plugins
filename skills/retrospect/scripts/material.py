@@ -30,7 +30,8 @@
 - **登録から完了までの差分**: `bd history` の最初の版と最後の版の本文の差
   （着手時に書き足した `## やること`・`## 注意` の量が出る）。Beads に無い古いタスクは代わりに
   `docs/history/progress.md` の該当の小節
-- **コミット**: 件名とファイルごとの増減（`--diff` を付けたときだけ中身も）
+- **コミット**: 件名とファイルごとの増減（`--diff` を付けたときだけ中身も）。`tw ship` が課題の
+  metadata `task_shipped` に書いた送った範囲があればそのコミット、無ければ件名にタスクIDを含むコミット
 - **手数**: サブエージェントのトランスクリプトから取った**数だけ**
 - **段の所要時間**: `flow/` から取った、そのタスクの段ごとの秒と割合・終わりの無い段・段のあいだの空き（`metrics.py`）
 - **ドラフトの行方**: 観点ごとに積んだドラフトの採用・却下・未決の数と絞り中（`draft_fate.py`）
@@ -104,7 +105,7 @@ def main() -> None:
 
     if not revs:
         print()
-        print(f"注意\t{task_id} を件名に含むコミットが見つからない（件名の書き方が違う可能性）")
+        print(f"注意\t{task_id} のコミットが見つからない（送った範囲の記録が無く、件名にも無い）")
 
 
 # ---- タスク本文 ---------------------------------------------------------------
@@ -239,12 +240,38 @@ def find_progress_section(path: str, task_id: str) -> str:
 # ---- コミット -----------------------------------------------------------------
 
 
+def shipped_commits(root: str, task_id: str, log_args: tuple[str, ...]) -> str | None:
+    """`tw ship` が metadata `task_shipped` に書いた範囲のコミット（`log_args` の書式）。
+
+    記録が使えない（`beads.shipped_range_on_base` が `None`）・課題を読めない・範囲が引けない・空のときは
+    `None`（呼ぶ側が件名で探す）。
+    """
+    try:
+        issue = beads.show(root, beads.to_bd_id(task_id))
+    except beads.BeadsError:
+        return None
+    if issue is None or beads.shipped_range(issue) is None:
+        return None
+    try:
+        shipped = beads.shipped_range_on_base(issue, gitinfo.base_branch(root), root)
+    except gitinfo.NoBaseBranch:
+        return None
+    if shipped is None:
+        return None
+    out, _ = git_out(root, *log_args, f"{shipped[0]}..{shipped[1]}")
+    return out if out and out.strip() else None
+
+
 def print_commits(root: str, task_id: str, want_diff: bool, diff_bytes: int) -> list[str]:
-    # **件名だけ**で照合する（`--grep` は本文にも当たるので、タスクIDに言及しただけの
-    # 別のコミットを拾ってしまう）。件名にIDを置く運用は task-model の
-    # 「コミットメッセージ」が決めている。
-    out, err = git_out(root, "log", "--reverse", "--no-merges",
-                       "--pretty=format:%h\t%ad\t%s", "--date=short")
+    log_args = ("log", "--reverse", "--no-merges", "--pretty=format:%h\t%ad\t%s", "--date=short")
+    recorded = shipped_commits(root, task_id, log_args)
+    if recorded:
+        out, err = recorded, ""
+    else:
+        # 記録が無いときは**件名だけ**で照合する（`--grep` は本文にも当たるので、タスクIDに言及しただけの
+        # 別のコミットを拾ってしまう）。件名にIDを置く運用は task-model の
+        # 「コミットメッセージ」が決めている。
+        out, err = git_out(root, *log_args)
     if out is None:
         print(f"-\tgit log が読めない: {err}")
         return []
@@ -253,7 +280,7 @@ def print_commits(root: str, task_id: str, want_diff: bool, diff_bytes: int) -> 
         if not ln.strip():
             continue
         h, date, subject = ln.split("\t", 2)
-        if not re.search(rf"\b{task_id}\b", subject):
+        if not recorded and not re.search(rf"\b{task_id}\b", subject):
             continue
         revs.append(h)
         print(f"{h}\t{date}\t{subject}")

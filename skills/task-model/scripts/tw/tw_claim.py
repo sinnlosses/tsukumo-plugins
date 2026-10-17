@@ -56,6 +56,7 @@ def cmd_claim(toplevel: str, task_id: str) -> None:
     head = gitinfo.head_sha_or_none(cwd=toplevel)
     if head is not None:
         claim_args += ["--set-metadata", f"{beads.CLAIM_HEAD_KEY}={head}"]
+    claim_args += ["--unset-metadata", beads.SHIPPED_KEY]
     metadata = issue.raw.get("metadata")
     plan_base = metadata.get(beads.PLAN_BASE_KEY) if isinstance(metadata, dict) else None
     plan = str(issue.raw.get("notes") or "")

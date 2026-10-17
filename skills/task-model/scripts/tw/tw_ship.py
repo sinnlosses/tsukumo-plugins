@@ -30,7 +30,7 @@ def cmd_ship(toplevel: str) -> None:
     if branch == base:
         # 4.4: 主ブランチを出している作業ツリーで起こしたときは送る段が無い。
         stamps.clear_verify_owed(cwd=toplevel)
-        released, not_closed = _close_shipped(toplevel)
+        released, not_closed = _close_shipped(toplevel, from_claim_head=True)
         after = _after_send(toplevel, released, "SHIPPED")
         print(f"SHIPPED\t{base}\t(送る段なし)\treleased={','.join(released) or '-'}")
         tw_base.print_lines(not_closed + after)
@@ -100,7 +100,7 @@ def cmd_ship(toplevel: str) -> None:
         # 印を消す前に読む（戻り先は印にある）。
         branch_note = _leave_feature_branch(toplevel, branch)
 
-    released, not_closed = _close_shipped(toplevel)
+    released, not_closed = _close_shipped(toplevel, sent=(outcome.sent_from, outcome.sent_to))
     after = _after_send(toplevel, released, "SHIPPED")
     submodule_lines = _sync_submodules(base_worktree.path) if base_worktree is not None else []
     new_base = tw_base.run_git(toplevel, ["rev-parse", base]).stdout.strip()
@@ -131,18 +131,30 @@ def _sync_submodules(base_tree: str) -> list[str]:
     return [f"SUBMODULE_NOT_SYNCED\t{base_tree}\t{reason}"]
 
 
-def _close_shipped(toplevel: str) -> tuple[list[str], list[str]]:
+def _close_shipped(
+    toplevel: str, sent: tuple[str, str] | None = None, from_claim_head: bool = False
+) -> tuple[list[str], list[str]]:
     """送り終えたあと、この作業ツリーが着手した `done` を打ったタスクを閉じる。
 
+    閉じる前に、送った範囲を metadata `task_shipped` へ書く。範囲は `sent`（送る前の主ブランチの先端と送ったコミット）、
+    `from_claim_head` なら課題の `task_claim_head` から `HEAD`。どちらも無ければ書かない。
     `(閉じたタスクID, 閉じられなかったものの NOT_CLOSED の行)` を返す。
     """
     actor = tw_base.actor(toplevel)
     closed: list[str] = []
     not_closed: list[str] = []
+    head = gitinfo.head_sha_or_none(cwd=toplevel) if from_claim_head else None
     for issue in beads.list_issues(toplevel):
         mark = beads.ship_mark(issue)
         if issue.status != "in_progress" or issue.assignee != actor or mark is None:
             continue
+        shipped = sent
+        if from_claim_head:
+            metadata = issue.raw.get("metadata")
+            claim_head = metadata.get(beads.CLAIM_HEAD_KEY) if isinstance(metadata, dict) else None
+            shipped = (str(claim_head), head) if claim_head and head and claim_head != head else None
+        if shipped is not None and beads.SHIPPED_RANGE_PATTERN.fullmatch("..".join(shipped)):
+            beads.run(toplevel, ["update", issue.bd_id, "--set-metadata", f"{beads.SHIPPED_KEY}={'..'.join(shipped)}"], actor)
         reason = "cancelled" if mark == "dropped" else "done"
         r = beads.run(toplevel, ["close", issue.bd_id, "--reason", reason], actor)
         if r.returncode != 0:

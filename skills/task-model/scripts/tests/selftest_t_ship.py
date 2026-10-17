@@ -5,11 +5,12 @@ import shutil
 import tempfile
 
 from selftest_support import check, git, refuse_direct_run, say, weight, write  # noqa: E402
+import beads  # noqa: E402
 import gitinfo  # noqa: E402
 import ledger  # noqa: E402
 import stamps  # noqa: E402
 import taskfile  # noqa: E402
-from selftest_fixtures import BODY, FILE_PROTOCOL, FILE_PROTOCOL_ENV, _claim_work_and_done, advance_submodule, body_file, commit_task, flow_rows, make_repo, make_submodule_repo, run_task  # noqa: E402
+from selftest_fixtures import BODY, FILE_PROTOCOL, FILE_PROTOCOL_ENV, _claim_work_and_done, advance_submodule, body_file, commit_task, flow_rows, make_repo, make_submodule_repo, metadata, run_task, set_metadata  # noqa: E402
 
 
 def _no_merge_commits(repo: str, base: str = "main") -> str:
@@ -513,6 +514,111 @@ def test_ship_skips_send_on_main_worktree() -> None:
         check("タスクが done で閉じ、着手の印は消える", _closed(main_path, "T-100"), run_task(main_path, "show", "T-100").stdout)
 
 
+def _shipped_range(repo: str, task_id: str) -> str:
+    return str(metadata(repo, task_id).get(beads.SHIPPED_KEY) or "")
+
+
+def test_ship_records_shipped_range() -> None:
+    say("task.py ship: 閉じる前に送った範囲を metadata task_shipped に書く（付け替え無し・付け替え・NOTHING）")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
+        commit_task(main_path, taskfile.Task("T-100", "追い付く", "todo", "sonnet", "Y", (), BODY))
+        commit_task(main_path, taskfile.Task("T-101", "付け替え", "todo", "sonnet", "Y", (), BODY))
+        commit_task(main_path, taskfile.Task("T-102", "送るものが無い", "todo", "sonnet", "Y", (), BODY))
+
+        run_task(wt1, "claim", "T-100")
+        _claim_work_and_done(wt1, "T-100")
+        before = git(main_path, "rev-parse", "main").stdout.strip()
+        r = run_task(wt1, "ship")
+        after = git(main_path, "rev-parse", "main").stdout.strip()
+        check("付け替え無し: 送る前の main から送ったコミットまで", r.stdout.startswith("SHIPPED\t")
+              and _shipped_range(wt1, "T-100") == f"{before}..{after}", r.stdout + _shipped_range(wt1, "T-100"))
+        check("付け替え無し: 範囲は枝のコミット1件",
+              git(main_path, "rev-list", "--count", f"{before}..{after}").stdout.strip() == "1")
+
+        run_task(wt1, "claim", "T-101")
+        write(os.path.join(main_path, "unrelated.txt"), "x")
+        git(main_path, "add", "-A")
+        git(main_path, "commit", "-q", "-m", "mainだけの変更")
+        main_tip = git(main_path, "rev-parse", "main").stdout.strip()
+        _claim_work_and_done(wt1, "T-101", note="b")
+        r = run_task(wt1, "ship")
+        after = git(main_path, "rev-parse", "main").stdout.strip()
+        check("付け替え: from は付け替え先の main の先端", r.stdout.startswith("SHIPPED\t") and "rebased=yes" in r.stdout
+              and _shipped_range(wt1, "T-101") == f"{main_tip}..{after}", r.stdout + _shipped_range(wt1, "T-101"))
+
+        run_task(wt1, "claim", "T-102")
+        result_path = write(os.path.join(tmp, "result.md"), "検証OK\n")
+        run_task(wt1, "done", "T-102", "--result-file", result_path)
+        r = run_task(wt1, "ship")
+        check("NOTHING は範囲を書かない", r.stdout.startswith("NOTHING\t") and _shipped_range(wt1, "T-102") == "",
+              r.stdout + _shipped_range(wt1, "T-102"))
+
+
+def test_ship_main_worktree_records_range_from_claim_head() -> None:
+    say("task.py ship: main の作業ツリーで起こしたときは task_claim_head から HEAD までを書く")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, _wt1, _wt2 = make_repo(tmp, branch="切らない")
+        commit_task(main_path, taskfile.Task("T-100", "本体で完結", "todo", "sonnet", "Y", (), BODY))
+        run_task(main_path, "claim", "T-100")
+        claim_head = str(metadata(main_path, "T-100").get(beads.CLAIM_HEAD_KEY))
+        _claim_work_and_done(main_path, "T-100")
+        head = git(main_path, "rev-parse", "HEAD").stdout.strip()
+        r = run_task(main_path, "ship")
+        check("送る段なしで claim_head..HEAD", r.stdout.startswith("SHIPPED\tmain\t(送る段なし)")
+              and _shipped_range(main_path, "T-100") == f"{claim_head}..{head}", r.stdout + _shipped_range(main_path, "T-100"))
+
+
+def test_status_stale_shipped_by_record() -> None:
+    say("task.py status: STALE:shipped は送った範囲の記録で決め、記録が無ければ件名で決める")
+    cases = (
+        ("記録あり・件名が規約外", "valid", False, True),
+        ("記録が祖先でない SHA・件名が規約どおり", "bogus", True, True),
+        ("記録なし・件名が規約どおり", None, True, True),
+        ("記録なし・件名が規約外", None, False, False),
+        ("記録の形が壊れている・件名が規約どおり", "malformed", True, True),
+        ("記録の形が壊れている・件名が規約外", "malformed", False, False),
+        ("実在するが祖先でない先端・件名が規約外", "orphan", False, False),
+        ("実在するが祖先でない先端・件名が規約どおり", "orphan", True, True),
+    )
+    for label, record, conforming, stale in cases:
+        with tempfile.TemporaryDirectory() as tmp:
+            main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
+            commit_task(main_path, taskfile.Task("T-100", "取り残し", "todo", "sonnet", "Y", (), BODY))
+            run_task(wt1, "claim", "T-100")
+            before = git(main_path, "rev-parse", "main").stdout.strip()
+            _claim_work_and_done(wt1, "T-100")
+            if not conforming:
+                git(wt1, "commit", "-q", "--amend", "-m", "件名にIDの無い変更")
+            head = git(wt1, "rev-parse", "HEAD").stdout.strip()
+            merged = git(main_path, "merge", "--ff-only", head)
+            if record is not None:
+                orphan = git(main_path, "commit-tree", f"{head}^{{tree}}", "-m", "枝だけ").stdout.strip()
+                value = {
+                    "valid": f"{before}..{head}",
+                    "bogus": f"{'a' * 40}..{'b' * 40}",
+                    "malformed": "壊れた値",
+                    "orphan": f"{before}..{orphan}",
+                }[record]
+                set_metadata(wt1, "T-100", beads.SHIPPED_KEY, value)
+            r = run_task(main_path, "status")
+            row = next((l for l in r.stdout.splitlines() if l.startswith("T-100\t")), "")
+            check(f"{label}: {'STALE:shipped' if stale else 'CLAIMED'}",
+                  merged.returncode == 0 and (("STALE:shipped" in row) == stale) and (stale or "CLAIMED" in row), row + merged.stderr)
+
+
+def test_claim_clears_shipped_range() -> None:
+    say("task.py claim: 前回の task_shipped を持ち越さない")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
+        commit_task(main_path, taskfile.Task("T-100", "再着手", "todo", "sonnet", "Y", (), BODY))
+        sha = "a" * 40
+        set_metadata(wt1, "T-100", beads.SHIPPED_KEY, f"{sha}..{sha}")
+        check("前提: 記録が読める", _shipped_range(wt1, "T-100") == f"{sha}..{sha}")
+        r = run_task(wt1, "claim", "T-100")
+        check("claim が記録を消す", r.stdout.startswith("CLAIMED") and _shipped_range(wt1, "T-100") == "", r.stdout + r.stderr)
+
+
 def test_ship_race_gives_up_after_three_tries() -> None:
     say("task.py ship: 相手に先を越され続けるとRACEで終わる")
     with tempfile.TemporaryDirectory() as tmp:
@@ -761,6 +867,10 @@ TESTS = (
     test_ship_fast_forward,
     test_ship_stale_verify_owed_does_not_block_nothing_or_main_worktree,
     test_ship_nothing_records_ship_event,
+    test_ship_records_shipped_range,
+    test_ship_main_worktree_records_range_from_claim_head,
+    test_claim_clears_shipped_range,
+    test_status_stale_shipped_by_record,
     test_ship_records_sync_span_before_ship,
     test_ship_conflict_aborts_rebase,
     test_ship_verify_failed_keeps_full_log_in_order,
