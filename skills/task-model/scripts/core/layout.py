@@ -297,7 +297,8 @@ def build_config(source: str | None, values: dict[str, str | None]) -> Config:
 
 # --- 設定の欄の形（`tw config --schema`）と書く口（`tw config set`） -----------------
 
-SETTABLE_KEYS = (STEPS_KEY,)
+COMMAND_SETTABLE_KEY = "step_check"
+SETTABLE_KEYS = (STEPS_KEY, COMMAND_SETTABLE_KEY)
 
 
 class ConfigValueError(ValueError):
@@ -532,14 +533,19 @@ def config_text_with(text: str, key: str, value: str, label: str = CONFIG_PATH) 
     """
     if key not in SETTABLE_KEYS:
         raise ConfigValueError(f"書けるキーは {' / '.join(SETTABLE_KEYS)} だけ: {key!r}")
-    try:
-        items = json.loads(value)
-    except ValueError:
-        raise ConfigValueError(f"steps の値が JSON の配列でない: {value!r}")
-    problem = steps_problem(items)
-    if problem is not None:
-        raise ConfigValueError(problem)
-    quoted = "[" + ", ".join(json.dumps(i, ensure_ascii=False) for i in items) + "]"
+    if key == COMMAND_SETTABLE_KEY:
+        if not value.strip() or "\n" in value or "\r" in value:
+            raise ConfigValueError(f"{key} の値は空でない1行のコマンドか {NO_COMMAND}: {value!r}")
+        quoted = '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    else:
+        try:
+            items = json.loads(value)
+        except ValueError:
+            raise ConfigValueError(f"steps の値が JSON の配列でない: {value!r}")
+        problem = steps_problem(items)
+        if problem is not None:
+            raise ConfigValueError(problem)
+        quoted = "[" + ", ".join(json.dumps(i, ensure_ascii=False) for i in items) + "]"
     name = key
     lines = text.splitlines(keepends=True)
     insert_at: int | None = None  # 足す位置（最後のキーの行の次）
