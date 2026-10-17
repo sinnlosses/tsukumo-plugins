@@ -77,7 +77,7 @@ lap は並びのスキルではなくこのスキルが段の前後で打つ。
 5b. **返りを見る**（委譲先の hand-back か、Agent ツールの完了の通知が届くたびに）:
    `${CLAUDE_SKILL_DIR}/parts/implementer/handback-read.md` を読んで従う（返却の種類で分ける表と、`plan-check` の行を読む表）。
 
-5c. **実装の依頼文**: 手順5(d)の依頼に足す項目は `${CLAUDE_SKILL_DIR}/parts/implementer/delegate.md` の手順5c にある。
+5c. **実装の依頼文**: 依頼文は `tw brief implementer T-xxx` が出し、場合分けは `${CLAUDE_SKILL_DIR}/parts/implementer/delegate.md` の手順5c にある。
 
 5d. **委譲先の無応答に対応する**（手順5で投げたあと、報告が来ないまま長く止まったとき。完了の通知が
    「背景の作業を待っている」で届いたときも。手順5(f)の見張りの `SILENT` の通知もここに含める）: `${CLAUDE_SKILL_DIR}/parts/implementer/unresponsive.md` を読んで従う。

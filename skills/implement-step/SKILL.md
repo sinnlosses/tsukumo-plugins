@@ -16,8 +16,9 @@ metadata:
 
 | 副ファイル | 中身 |
 | --- | --- |
-| `delegate.md` | 手順5の (b)〜(f) と手順5c（実装の依頼文） |
-| `implementer-brief.md` | 実装役が最初に読んで従う決まり（依頼で絶対パスを渡す） |
+| `delegate.md` | 手順5の (b)〜(f) と手順5c（実装の依頼文の場合分け） |
+| `implementer-request.md` | 実装の依頼文の型（`tw brief implementer` が節を選んで値を埋める。metadata の `workflow-brief-implementer` が指す） |
+| `implementer-brief.md` | 実装役が最初に読んで従う決まり（依頼文が絶対パスを渡す） |
 | `rewrite-plan.md` | `## やること` を書き直してから委譲するとき |
 | `handback-read.md` | 手順5b（返りを見る） |
 | `return-abnormal.md` | 手順5bの返りの異常系 |

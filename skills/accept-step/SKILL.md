@@ -16,7 +16,8 @@ metadata:
 （https://github.com/sinnlosses/tsukumo/blob/main/docs/architecture/workflow-contract.md）。
 
 判定は受け入れ役のエージェントがこの段の中の道具として行う。選び方（一覧の末尾一致・`model` の渡し方）は
-`parts/acceptor/accept.md` のとおりで、同梱の `agents/acceptor.md`（Opus 固定・`Agent`・`Edit`・`Write`・`NotebookEdit` を持たない）は並びに出さない。
+`parts/acceptor/accept.md` のとおり。受け入れ役への依頼文は `tw brief acceptor` が、metadata の `workflow-brief-acceptor` が指す型
+`parts/acceptor/acceptor-request.md` から出す。同梱の `agents/acceptor.md`（Opus 固定・`Agent`・`Edit`・`Write`・`NotebookEdit` を持たない）は並びに出さない。
 
 ## 受け取るもの
 

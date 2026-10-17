@@ -29,19 +29,12 @@
    （`acceptor` か `tsukumo-workflow:acceptor`。tsukumo-plugins の `agents/acceptor.md`。モデルは Opus 固定で、
    読むだけの定義。書き換えないので返却は `tw handback-guard` に判定されない）があれば、一覧に出ている名前のまま `model` を渡さずに起こす。
    末尾一致が複数当たったら選ばずに止め、行を添えて人に預け `tw release T-xxx` する。
-   無ければ手順5の `subagent_type` の選び方と同じにして `model: opus` を渡す。決まりの本文は貼らず、
-   渡すのは次だけ（受け入れ役は `${CLAUDE_SKILL_DIR}` を持たないので、パスは解決した絶対パスにする）:
-   - 作業ツリーのパス・差分を出すコマンド（`git diff HEAD` と、未追跡の新しいファイルを並べる
-     `git ls-files --others --exclude-standard`）・`tw show T-xxx` の `## 完了条件` の本文・
-     プロジェクトの規約のファイル（AGENTS.md・CLAUDE.md と、そこから引かれるコーディング規約）のパス
-   - `${CLAUDE_SKILL_DIR}/parts/acceptor/acceptor-brief.md` を解決した絶対パスと「最初にそれを読んで従う」
-   - `tw accept` の判定（`REVIEW\t…` か `SKIP`・`NOTHING`・`NO_RANGE`）と、`REVIEW` のときは木の SHA
-   - 目視の完了条件があるときは、委譲先が報告した画像のパス（幅ごと。いちばん狭い幅も）
-   - 振り返りの材料: 委譲先の段ごとの返却の friction log の行（そのまま）と、人の差し戻しの一言メモの数
-   - 「`comment-audit` を Skill ツールで名前を指して読む」こと（一覧の末尾が `comment-audit` の行。リンクで入れたとき
-     `comment-audit`、plugin で入れたとき `tsukumo-workflow:comment-audit`。一覧に出ている名前のまま使う。受け入れ役は
-     Skill ツールを持つ）。差分で足されたコメント行は、受け入れ役がその置き場（Base directory）の
-     `python3 <Base directory>/scripts/diff_added_comment_lines.py HEAD` で拾う
+   無ければ手順5の `subagent_type` の選び方と同じにして `model: opus` を渡す。決まりの本文も依頼文も手で組まず、
+   `tw accept T-xxx` の出力を `tw brief acceptor T-xxx --accept-file -` に渡し（目視の完了条件があるときは、委譲先が報告した
+   画像のパスを幅ごとに `--image <パス>` で。いちばん狭い幅も）、出力の2行目以降をそのまま渡す。依頼文には作業ツリーのパス・
+   差分を出すコマンド・`## 完了条件` の本文・規約のファイルのパス・`acceptor-brief.md` の絶対パス・判定と木の SHA・画像のパス・
+   申し送り `実装` の friction log の行・`comment-audit` の読み方が入る（文面は `${CLAUDE_SKILL_DIR}/parts/acceptor/acceptor-request.md`）。
+   メインが足すのは、人の差し戻しの一言メモの数（振り返りの材料）だけ。`NOT_OWNER`・`MISSING`・`INVALID` が出たら行を添えて人に預け `tw release T-xxx` する。
 
    委譲の依頼文・委譲先の報告の本文・`## やること`・`## 目的・背景` は渡さない。
 
