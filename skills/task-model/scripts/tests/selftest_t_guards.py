@@ -352,12 +352,18 @@ def test_commit_guard_verify() -> None:
             ("# note\n./check.sh", wt1),
             ("if (( 1 )); then ./check.sh; fi", wt1),
             ("./ship-check.sh", wt1),
+            ("./check.sh --plan=x", wt1),
         ):
-            check(f"拒む: {command.splitlines()[-1]}", run_guard(tmp, where, command) is not None)
+            check(f"拒む:{command.splitlines()[-1]}", run_guard(tmp, where, command) is not None)
         for command, where in (
             ("tw verify", wt1),
             ("tw verify T-100", wt1),
             ("./check.sh path/to/one.test.ts", wt1),
+            ("./check.sh --plan", wt1),
+            ("./check.sh --full --plan", wt1),
+            ("./check.sh --help", wt1),
+            ("./check.sh -h", wt1),
+            ("FOO=1 ./check.sh --plan", wt1),
             ("python3 skills/task-model/scripts/tests/selftest_task.py test_x", wt1),
             ("bash ./check.sh", wt1),
             ("echo ./check.sh", wt1),
@@ -380,6 +386,7 @@ def test_commit_guard_verify() -> None:
             ('verify = "なし"\n', "./check.sh", False),
             ('verify = "pnpm run check"\n', "pnpm run check --full", True),
             ('verify = "pnpm run check"\n', "pnpm run test", False),
+            ('verify = "pnpm run check"\n', "pnpm run check --plan", False),
             ("verify = 壊れた\n", "./check.sh", False),
         ):
             write(os.path.join(wt1, ".tw", "config.toml"), text)
