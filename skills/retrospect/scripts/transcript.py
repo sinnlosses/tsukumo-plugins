@@ -4,6 +4,9 @@ Claude Code は作業ディレクトリのパスの英数字以外を `-` に潰
 `<設定ディレクトリ>/projects/<slug>/<セッション>/subagents/<エージェント>.jsonl` に置く
 （設定ディレクトリは `CLAUDE_CONFIG_DIR` が設定されていればそこ、無ければ `~/.claude`）。
 
+どのタスクのものかは、台帳の `agent` の出来事（`session`・`agent`）で決める。出来事が無い古い記録だけ、
+先頭の数行のタスクIDの探索に戻る（`find_transcripts`）。
+
 **会話の中身をここから外へ出さない。** 返すのはツール名・ファイルパス・コマンドの先頭2語・
 件数・時刻だけ（CLAUDE.md「会話内容の扱い」）。本文を返す関数をここに足さない。
 """
@@ -23,7 +26,10 @@ _TASK_MODEL_SCRIPTS = os.path.normpath(
 if _TASK_MODEL_SCRIPTS not in sys.path:
     sys.path.insert(0, _TASK_MODEL_SCRIPTS)
 
+import gitinfo  # noqa: E402
 import layout  # noqa: E402
+import ledger  # noqa: E402
+import metrics  # noqa: E402
 
 TASK_ID = layout.ID_SEARCH_PATTERN
 
@@ -85,7 +91,52 @@ def _slug(path: str) -> str:
 
 
 def find_transcripts(root: str, task_id: str) -> list[str]:
-    """先頭の数行で**最初に出てくるタスクID**が `task_id` の jsonl だけを拾う（mtime では当てにいかない）。
+    """`task_id` の委譲先のトランスクリプトを返す（mtime では当てにいかない）。
+
+    台帳に、そのタスクの最後の `claim` より後の `agent` の出来事（`commit-guard` が委譲先の最初の
+    Bash で残す `session`・`agent`）があれば、`<セッション>/subagents/agent-<エージェント>.jsonl` を
+    組んで実在するものだけを返す（出来事があって1つも実在しなければ空。文字列探索に戻らない）。
+    出来事が1件も無い・台帳が読めない・このリポジトリのディレクトリが無いときだけ、後方互換として
+    先頭の数行で**最初に出てくるタスクID**が `task_id` の jsonl を拾う。
+    """
+    base = project_dir(root)
+    if base is not None:
+        found = _find_by_ledger(root, base, task_id)
+        if found is not None:
+            return found
+    return _find_by_head_text(root, task_id)
+
+
+_FILE_PART = re.compile(r"[A-Za-z0-9._-]+")
+
+
+def _find_by_ledger(root: str, base: str, task_id: str) -> list[str] | None:
+    """台帳の `agent` の出来事から組んだパス。出来事が無い・台帳が読めないときは `None`。"""
+    try:
+        events, _ = metrics.read_events(ledger.ledger_root(cwd=root))
+    except (gitinfo.GitCommandError, OSError):
+        return None
+    mine = [e for e in events if e.task == task_id]
+    claims = [e.at for e in mine if e.kind == "claim"]
+    since = claims[-1] if claims else None
+    agents = [e for e in mine if e.kind == "agent" and (since is None or e.at > since)]
+    if not agents:
+        return None
+    hits = []
+    for e in agents:
+        session, agent = e.fields.get("session"), e.fields.get("agent")
+        if not (isinstance(session, str) and isinstance(agent, str)):
+            continue
+        if not all(_FILE_PART.fullmatch(p) and ".." not in p for p in (session, agent)):
+            continue
+        path = os.path.join(base, session, "subagents", f"agent-{agent}.jsonl")
+        if os.path.isfile(path) and path not in hits:
+            hits.append(path)
+    return hits
+
+
+def _find_by_head_text(root: str, task_id: str) -> list[str]:
+    """先頭の数行で**最初に出てくるタスクID**が `task_id` の jsonl だけを拾う。
 
     委譲の指示は自分のタスクIDから書き始めるので、最初のIDがそのタスク。後ろで依存や後続として
     名前を挙げただけの別のタスクのトランスクリプトは拾わない。
