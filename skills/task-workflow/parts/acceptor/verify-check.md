@@ -10,7 +10,7 @@
 
 | 理由 | 対処 |
 | --- | --- |
-| `none` | `tw verify` を打つ |
+| `none` | `tw verify` を打つ（着手より後のコミットも変更も無いタスクは例外で、`accept.md` の `NO_RANGE` の直後の段落に従う） |
 | `base` | `tw verify` が主ブランチを取り込んでから打つ。送る前の検証コマンドの行があるときは、検証コマンドの代わりにそのコマンドで打って控えを取る。取り込みが衝突しなければ `base` にならず、鍵が同じなら `VERIFIED_SAME` |
 | `head`・`content`・`command` | `tw verify` を打つ |
 | `scheme` | 第3列（照らした側のチェックアウトの `tw_verify.py` のパス）のチェックアウトの `bin/tw` と版を揃えてから `tw verify` を打つ |

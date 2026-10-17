@@ -22,7 +22,7 @@
    | `MISSING`・`INVALID` | review_needed.py が見つからない・失敗した。行を添えて人に預けて終了する |
 
    `plan-check` の行（`PLAN_FIRST`・`PLAN_REGISTERED` など）は、手順5bの表で読んだものと同じに読む。
-   差分もコミットも無い計測だけのタスクは、`tw accept` が `NO_RANGE` を出し、続く `tw verify-check` が `NOT_VERIFIED\tnone` になる（単一のリポジトリで確かめた）。検証する中身が無いので `tw verify` は起こさず、手順6aへ進む（`tw finish` は検証の控えを見ず、`tw ship` は `NOTHING` で返る）。作業先が別のリポジトリのときは確かめていない。
+   着手より後のコミットも作業ツリーの変更も無い計測だけのタスクは、`tw accept` が `NO_RANGE` を出し、続く `tw verify-check` が `NOT_VERIFIED\tnone` になる（単一のリポジトリで確かめた）。検証する中身が無いので `tw verify` は起こさず、手順6aへ進む（`tw finish` は検証の控えを見ない。`tw ship` の戻りは枝の状態による: 主ブランチを出している作業ツリーでは `SHIPPED`、主ブランチより先のコミットが無い別の枝では `NOTHING`）。作業先が別のリポジトリのときは確かめていない。
    作業先が別のリポジトリのタスクでは `tw accept` を使わず、`other-repo.md` のとおり個別に打つ。
 
    受け入れ役は Agent ツールで起こす。`subagent_type` は、Agent ツールの説明に並ぶエージェント末尾が `acceptor` の行
