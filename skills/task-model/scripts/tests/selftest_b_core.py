@@ -21,12 +21,13 @@ import ledger  # noqa: E402
 import taskfile  # noqa: E402
 import tracker  # noqa: E402
 import tracker_github  # noqa: E402
+from selftest_b_fakegithub import github  # noqa: E402
 from selftest_b_support import (  # noqa: E402
-    PLANNED_BODY, bd, claim_snapshots, env, make_repo, new, new_unplanned, rows, tail_line, work_and_done,
+    PLANNED_BODY, bd, claim_snapshots, env, make_repo, new, new_unplanned, num, rows, tail_line, work_and_done,
 )
 from selftest_body import task_body  # noqa: E402
 from selftest_fixtures import disarm_ref_guard, run_guard, run_handback_guard, run_task, start_task  # noqa: E402
-from selftest_support import check, git, refuse_direct_run, say, write  # noqa: E402
+from selftest_support import check, git, local, refuse_direct_run, say, write  # noqa: E402
 
 MATERIAL_PY = os.path.join(HERE, "..", "..", "..", "retrospect", "scripts", "material.py")
 
@@ -486,7 +487,60 @@ def test_issue_list_reuse_boundary() -> None:
         check("別の作業ツリーの数は混ざらない", beads.writes(other.toplevel) == 0)
 
 
+def test_new_bd_calls() -> None:
+    say("new: 双方向で --deps なしなら全件読み（bd list）を打たず、--deps は依存先だけを引く。双方向でない道は全件を読み採番は変わらない")
+    local_prefix = beads.PREFIX_LOCAL
+    for prefix, bidirectional in ((beads.PREFIX_GITHUB, True), (local_prefix, False)):
+        kind = "双方向" if bidirectional else "双方向でない"
+        with github(prefix=prefix) as (_fake, tmp, main_path, _wt1):
+            first = new(main_path, "先にある課題")
+            counted = os.path.join(tmp, "bd-count.txt")
+            local.env = {**local.env, "BD_COUNT_FILE": counted}
+
+            def register(*extra: str) -> tuple[subprocess.CompletedProcess, list[str]]:
+                open(counted, "w").close()
+                r = run_task(main_path, "new", "--summary", "数える", "--difficulty", "sonnet", "--loopable", "Y",
+                             *extra, "--body-file", "-", stdin=PLANNED_BODY)
+                return r, open(counted).read().splitlines()
+
+            r, calls = register()
+            lists = [c for c in calls if c.startswith("list ")]
+            say(f"  {kind}・--deps なし: bd {len(calls)} 回（うち list {len(lists)} 回）")
+            check(f"{kind}・--deps なしは CREATED", r.returncode == 0 and r.stdout.startswith("CREATED\t"), r.stdout + r.stderr)
+            if bidirectional:
+                check("双方向・--deps なしの list は create のあとの取り込みの1回だけ", len(lists) == 1, "\n".join(calls))
+            else:
+                check("双方向でない道は採番のため list を1回打つ", len(lists) == 1, "\n".join(calls))
+                created = r.stdout.split("\t")[1]
+                check("双方向でない道の採番は最大の次", num(created) == num(first) + 1, r.stdout)
+
+            r, calls = register("--deps", first)
+            lists = [c for c in calls if c.startswith("list ")]
+            say(f"  {kind}・--deps 1件: bd {len(calls)} 回（うち list {len(lists)} 回）")
+            check(f"{kind}・--deps ありは CREATED", r.returncode == 0 and r.stdout.startswith("CREATED\t"), r.stdout + r.stderr)
+            if bidirectional:
+                check("双方向・--deps ありは依存先を show で引く",
+                      f"show {beads.to_bd_id(first)} --json" in calls and len(lists) == 1, "\n".join(calls))
+                many = [first, *(new(main_path, f"依存{i}") for i in range(3))]
+                r, calls = register("--deps", ",".join(many))
+                lists = [c for c in calls if c.startswith("list ")]
+                say(f"  {kind}・--deps {len(many)}件: bd {len(calls)} 回（うち list {len(lists)} 回）")
+                check("双方向・--deps が3件を超えたら全件読み1回で確かめ、依存先を show で引かない",
+                      r.returncode == 0 and r.stdout.startswith("CREATED\t") and len(lists) == 2
+                      and not any(f"show {beads.to_bd_id(d)} --json" in calls for d in many), r.stdout + r.stderr + "\n".join(calls))
+                r, calls = register("--deps", ",".join([*many, "GH-99999"]))
+                check("双方向・3件を超える --deps に無い ID があれば終了コード2で拒む",
+                      r.returncode == 2 and "GH-99999" in r.stderr and not any(c.startswith("create ") for c in calls),
+                      r.stdout + r.stderr + "\n".join(calls))
+
+            r, calls = register("--deps", "GH-99999" if bidirectional else "T-99999")
+            check(f"{kind}・無い依存先は終了コード2で拒み、何も作らない",
+                  r.returncode == 2 and "Beads に無い" in r.stderr and not any(c.startswith("create ") for c in calls),
+                  r.stdout + r.stderr + "\n".join(calls))
+
+
 TESTS = (
+    test_new_bd_calls,
     test_issue_list_reuse_boundary,
     test_cycle_done_ship_and_dropped,
     test_commit_guard,

@@ -38,8 +38,13 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
         tw_plan.refuse_direct(args.difficulty, body)
     plan_base = tw_plan.registered_plan_base(toplevel, body) if taskfile.has_plan(body) and not args.draft else None
 
-    snap = tw_base.beads_snapshot(toplevel)
-    missing = [d for d in deps if d not in snap.issues]
+    trk = tracker.session(toplevel)
+    snap = None
+    if not trk.bidirectional or len(deps) > SHOW_DEPS_LIMIT:
+        snap = tw_base.beads_snapshot(toplevel)
+        missing = [d for d in deps if d not in snap.issues]
+    else:
+        missing = [d for d in deps if beads.show(toplevel, beads.to_bd_id(d)) is None]
     if missing:
         print(f"usage: --deps の {','.join(missing)} が Beads に無い（解決済みなら外す）", file=sys.stderr)
         raise SystemExit(2)
@@ -68,7 +73,6 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
             cmd += ["--deps", ",".join(beads.to_bd_id(d) for d in deps)]
         return cmd
 
-    trk = tracker.session(toplevel)
     if trk.bidirectional:
         # 番号は Issue を立てるまで決まらないので、仮の ID で作ってから `gh-<Issue 番号>` へ付け替える。
         provisional = f"{beads.PROVISIONAL_PREFIX}{re.sub(r'[^0-9a-z]+', '-', actor.lower()).strip('-')}-{time.time_ns()}"
@@ -78,6 +82,7 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
         tw_base.print_lines(lines)
         return
 
+    assert snap is not None
     number = _next_number(toplevel, snap)
     for _ in range(NEW_ATTEMPTS):
         bd_id = beads.format_bd_id(number)
@@ -93,6 +98,8 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
     print(f"LOCKED\t{NEW_ATTEMPTS}回続けて番号を取られた")
     raise SystemExit(4)
 
+
+SHOW_DEPS_LIMIT = 3
 
 # 番号の取り合いに続けて負けたら諦める回数（`bd create --id` は同じ番号を1つしか作らない）。
 NEW_ATTEMPTS = 20
