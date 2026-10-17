@@ -354,7 +354,7 @@ def test_commit_guard_verify() -> None:
             ("./ship-check.sh", wt1),
             ("./check.sh --plan=x", wt1),
         ):
-            check(f"拒む:{command.splitlines()[-1]}", run_guard(tmp, where, command) is not None)
+            check(f"拒む: {command.splitlines()[-1]}", run_guard(tmp, where, command) is not None)
         for command, where in (
             ("tw verify", wt1),
             ("tw verify T-100", wt1),
