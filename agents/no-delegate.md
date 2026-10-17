@@ -30,5 +30,4 @@ hooks:
 
 - シェルでの書き換えと検証コマンドの直打ち。拒まれたら `Edit`・`Write` で書き、`tw verify` で打つ
 - `git commit` などコミットを作る git のサブコマンド。`sh -c`・スクリプト越しでも git の hook（`tw ref-guard`）が拒む。拒まれたら、コミットせずに変更を作業ツリーに残したまま報告で返す（hook を外す変数 `TW_REF_GUARD_ALLOW` は付けない）
-- 作業（着手より後のコミットか、タスクのファイル以外の変更）があるのに、`tw plan-check` が `PLAN_FIRST`・`PLAN_REGISTERED` でないか、`tw verify-check` が `VERIFIED_SAME` でない返却と、最後の段の返却で本文に `## 構造の変更` の節が無いもの。拒まれたら理由に従って直してから返す
-- `NOT_VERIFIED scheme <パス>` で拒まれたら、第3列のパスのチェックアウトの `bin/tw`（またはそこへ解決される PATH の `tw`）で `tw verify` を打ち直す
+返却そのものも `tw handback-guard` が拒むことがある。拒まれたら理由に従って直してから返す（拒む形の全体は task-model の `tw-reference.md`「hook の関門」節）。
