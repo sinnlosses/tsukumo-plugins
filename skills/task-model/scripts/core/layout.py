@@ -534,8 +534,8 @@ def config_text_with(text: str, key: str, value: str, label: str = CONFIG_PATH) 
     if key not in SETTABLE_KEYS:
         raise ConfigValueError(f"書けるキーは {' / '.join(SETTABLE_KEYS)} だけ: {key!r}")
     if key == COMMAND_SETTABLE_KEY:
-        if not value.strip() or "\n" in value or "\r" in value:
-            raise ConfigValueError(f"{key} の値は空でない1行のコマンドか {NO_COMMAND}: {value!r}")
+        if not value.strip() or not value.isprintable():
+            raise ConfigValueError(f"{key} の値は空でない1行（タブ・改行などの制御文字なし）のコマンドか {NO_COMMAND}: {value!r}")
         quoted = '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
     else:
         try:

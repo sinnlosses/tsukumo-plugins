@@ -928,7 +928,9 @@ def test_config_set() -> None:
               r.returncode == 0 and step_check_row() == f"step_check\t{quoted_command}\tconfig",
               r.stdout + r.stderr + step_check_row())
         before = read_config_file()
-        for label, value in (("空", ""), ("空白だけ", "  "), ("改行を含む", "a\nb")):
+        for label, value in (("空", ""), ("空白だけ", "  "), ("改行を含む", "a\nb"),
+                             ("復帰を含む", "a\rb"), ("タブを含む", "a\tb"), ("行区切りの制御文字を含む", "a\x0bb"),
+                             ("Unicode の行区切りを含む", "a b")):
             r = run_task(repo, "config", "set", "step_check", value)
             check(f"step_check の値が{label}なら終了コード2でファイルを変えない",
                   r.returncode == 2 and r.stdout == "" and read_config_file() == before, r.stdout + r.stderr)
