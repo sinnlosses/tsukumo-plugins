@@ -83,46 +83,46 @@ fi
 if stage "install.sh・uninstall.sh の自己テスト" \
   install.sh uninstall.sh scripts/links.sh scripts/selftest_links.sh 'agents/*' 'bin/*' \
   'skills/*/SKILL.md' 'skills/*/REQUIRES'; then
-  $LOWPRIsh "$here/scripts/selftest_links.sh"
+  $LOWPRI sh "$here/scripts/selftest_links.sh"
 fi
 
 if stage "task-model: scripts・task コマンドの自己テスト" \
   'skills/task-model/scripts/*' 'agents/*' 'hooks/*' 'bin/*' 'skills/retrospect/scripts/*'; then
-  $LOWPRIpython3 "$here/skills/task-model/scripts/tests/selftest.py"
-  $LOWPRIpython3 "$here/skills/task-model/scripts/tests/selftest_review_needed.py"
-  $LOWPRIpython3 "$here/skills/task-model/scripts/tests/selftest_review_snapshot.py"
+  $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest.py"
+  $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_review_needed.py"
+  $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_review_snapshot.py"
   echo
   echo "-- task コマンド（develop/task/ + 台帳） --"
-  $LOWPRIpython3 "$here/skills/task-model/scripts/tests/selftest_task.py"
+  $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_task.py"
   echo
   echo "-- task コマンド（Beads 方式。bd が無ければ飛ばす） --"
-  $LOWPRIpython3 "$here/skills/task-model/scripts/tests/selftest_beads.py"
+  $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_beads.py"
 fi
 
 if stage "task-model: WORKFLOW.md・tw-reference.md を読む検査" skills/task-model/WORKFLOW.md skills/task-model/tw-reference.md; then
-  $LOWPRIpython3 "$here/skills/task-model/scripts/tests/selftest_task.py" test_readonly_commands_stay_out_of_git
+  $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_task.py" test_readonly_commands_stay_out_of_git
 fi
 
 if stage "retrospect scripts の自己テスト" \
   'skills/retrospect/*' 'skills/task-model/scripts/*'; then
-  $LOWPRIpython3 "$here/skills/retrospect/scripts/selftest.py"
+  $LOWPRI python3 "$here/skills/retrospect/scripts/selftest.py"
 fi
 
 if stage "plan-tasks scripts の自己テスト" 'skills/plan-tasks/*'; then
-  $LOWPRIpython3 "$here/skills/plan-tasks/scripts/selftest_removed_lines.py"
+  $LOWPRI python3 "$here/skills/plan-tasks/scripts/selftest_removed_lines.py"
 fi
 
 if stage "comment-audit scripts の自己テスト" 'skills/comment-audit/*'; then
-  $LOWPRIpython3 "$here/skills/comment-audit/scripts/selftest_diff_added_comment_lines.py"
+  $LOWPRI python3 "$here/skills/comment-audit/scripts/selftest_diff_added_comment_lines.py"
 fi
 
 if stage "task-workflow scripts の自己テスト" 'skills/task-workflow/scripts/*' 'skills/task-model/scripts/core/gitcmd.py' 'skills/comment-audit/*'; then
-  $LOWPRIpython3 "$here/skills/task-workflow/scripts/selftest_self_review.py"
+  $LOWPRI python3 "$here/skills/task-workflow/scripts/selftest_self_review.py"
 fi
 
 echo
 echo "== リポジトリの整合 =="
 if [ "$mode" != plan ]; then
-  $LOWPRIpython3 "$here/scripts/selftest_check_repo.py"
+  $LOWPRI python3 "$here/scripts/selftest_check_repo.py"
   python3 "$here/scripts/check_repo.py"
 fi
