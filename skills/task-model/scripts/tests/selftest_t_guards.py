@@ -12,6 +12,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 from selftest_support import RESULT_FULL, RESULT_REQUIRED, check, git, git_env, refuse_direct_run, say, weight, write  # noqa: E402
 import beads  # noqa: E402
 import gitinfo  # noqa: E402
+import handback_guard  # noqa: E402
 import ledger  # noqa: E402
 import metrics  # noqa: E402
 import ref_guard  # noqa: E402
@@ -1665,17 +1666,20 @@ def test_guard_denial_record() -> None:
         run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-", stdin="### 1. 書く\n")
         write(os.path.join(wt1, "work.txt"), "x\n")
         out = run_handback_guard(tmp, wt1)
-        check("検証の無い返却を拒む", out is not None and out["reason"].startswith("着手の印（"), str(out))
+        check("検証の無い返却を拒む", out is not None and "NOT_VERIFIED" in out["reason"], str(out))
         recorded("handback-guard の検証欠け", "tw-handback-guard", "PLAN_OR_VERIFY_MISSING", "main", n)
         n += 1
         r = run_task(wt1, "verify")
         handback = ("PreToolUse", "SubagentHandback")
         out = run_handback_guard(tmp, wt1, *handback, body="段 1/1 | 済\n")
         reason = (out or {}).get("hookSpecificOutput", {}).get("permissionDecisionReason", "")
-        check("構造の節が無い返却を拒み、理由は着手の印（で始まらない",
-              r.returncode == 0 and "構造の変更" in reason and not reason.startswith("着手の印（"), r.stdout + reason)
+        check("構造の節が無い返却を拒む", r.returncode == 0 and "構造の変更" in reason, r.stdout + reason)
         recorded("handback-guard の構造の節", "tw-handback-guard", "STRUCTURE_SECTION", "main", n)
         n += 1
+        for rule, text in (("PLAN_OR_VERIFY_MISSING", "構造の節の言い回し"), ("STRUCTURE_SECTION", "着手の印（言い回し")):
+            handback_guard.decide({"hook_event_name": "SubagentStop", "cwd": wt1}, lambda _where, _body: (rule, text))
+            recorded(f"拒否文の言い回しを変えても {rule} のまま", "tw-handback-guard", rule, "main", n)
+            n += 1
 
         check("loopable: Y の AskUserQuestion を拒む", run_ask_guard(tmp, wt1) is not None)
         recorded("ask-guard", "tw-ask-guard", "LOOPABLE_ASK", "main", n)

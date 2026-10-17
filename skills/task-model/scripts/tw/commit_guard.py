@@ -72,7 +72,7 @@ def run(stdin: IO[str], stdout: IO[str], agent_scoped: bool = False) -> None:
     if not isinstance(payload, dict) or not agent_scope.applies(payload, agent_scoped):
         return
     _note_agent(payload)
-    verdict = _verdict(payload)
+    verdict = decide(payload)
     if verdict is None:
         return
     rule, reason = verdict
@@ -100,13 +100,7 @@ def _note_agent(payload: dict) -> None:
         return
 
 
-def decide(payload: dict) -> str | None:
-    """拒む理由。通すなら `None`。"""
-    verdict = _verdict(payload)
-    return verdict[1] if verdict is not None else None
-
-
-def _verdict(payload: dict) -> tuple[str, str] | None:
+def decide(payload: dict) -> tuple[str, str] | None:
     """`(規則のキー, 拒む理由)`。通すなら `None`。"""
     if payload.get("tool_name") != "Bash":
         return None

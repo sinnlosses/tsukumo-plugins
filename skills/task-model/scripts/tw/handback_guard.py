@@ -25,7 +25,7 @@ WRITE_TOOLS = ("Edit", "Write", "NotebookEdit")
 
 
 def run(
-    stdin: IO[str], stdout: IO[str], refusal: Callable[[str, str | None], str | None], agent_scoped: bool = False
+    stdin: IO[str], stdout: IO[str], refusal: Callable[[str, str | None], tuple[str, str] | None], agent_scoped: bool = False
 ) -> None:
     try:
         payload = json.loads(stdin.read())
@@ -63,7 +63,7 @@ def _handback_body(payload: dict) -> str | None:
     return message if isinstance(message, str) else None
 
 
-def decide(payload: dict, refusal: Callable[[str, str | None], str | None]) -> dict | None:
+def decide(payload: dict, refusal: Callable[[str, str | None], tuple[str, str] | None]) -> dict | None:
     """出す JSON。通すなら `None`。"""
     event = payload.get("hook_event_name")
     is_stop = event in STOP_EVENTS
@@ -71,10 +71,10 @@ def decide(payload: dict, refusal: Callable[[str, str | None], str | None]) -> d
     cwd = payload.get("cwd")
     if not (is_stop or is_handback) or not isinstance(cwd, str):
         return None
-    reason = refusal(cwd, _handback_body(payload) if is_handback else None)
-    if reason is None:
+    verdict = refusal(cwd, _handback_body(payload) if is_handback else None)
+    if verdict is None:
         return None
-    rule = "PLAN_OR_VERIFY_MISSING" if reason.startswith("着手の印（") else "STRUCTURE_SECTION"
+    rule, reason = verdict
     agent_scope.record_denial(payload, "tw-handback-guard", rule)
     if is_stop:
         return {"decision": "block", "reason": reason}
