@@ -171,12 +171,14 @@ def section_changed(old_body: str, new_body: str, heading: str) -> bool:
 @dataclass(frozen=True)
 class PlanStep:
     """`## やること` の段1つ。`after` は前の段の番号（欄が無ければ直前の段）、`files` は触るファイル（欄が無ければ空）、
-    `covers` は満たす完了条件の行番号（欄が無ければ `None`、`なし` なら空）。"""
+    `covers` は満たす完了条件の行番号（欄が無ければ `None`、`なし` なら空）。
+    `no_files` は触るファイルの欄が `なし` と書かれていること。"""
 
     name: str
     after: tuple[int, ...]
     files: tuple[str, ...]
     covers: tuple[int, ...] | None = None
+    no_files: bool = False
 
 
 def plan_steps(body: str) -> tuple[tuple[str, ...], str | None]:
@@ -228,9 +230,10 @@ def plan_step_specs(body: str) -> tuple[tuple[PlanStep, ...], str | None]:
             covers, error = _parse_covers(n, fields.get(PLAN_COVERS_FIELD))
         if error is not None:
             return (), error
-        specs.append(PlanStep(name, after, files, covers))
+        no_files = (fields.get(PLAN_TOUCHED_FIELD) or "").strip() == "なし"
+        specs.append(PlanStep(name, after, files, covers, no_files))
     for a, b in _unordered_pairs(_joined_after(specs)):
-        bare = [n for n in (a, b) if not specs[n - 1].files]
+        bare = [n for n in (a, b) if not specs[n - 1].files and not specs[n - 1].no_files]
         if bare:
             return (), f"段 {a} と段 {b} は並列になるので、段 {bare[0]} に `- {PLAN_TOUCHED_FIELD}:` を書く"
     return tuple(specs), None
@@ -304,7 +307,7 @@ def _parse_after(n: int, raw: str | None) -> tuple[tuple[int, ...], str | None]:
 
 
 def _parse_touched(n: int, raw: str | None) -> tuple[tuple[str, ...], str | None]:
-    if raw is None:
+    if raw is None or raw.strip() == "なし":
         return (), None
     items = [x.strip() for x in raw.split(",")]
     paths: list[str] = []
