@@ -231,6 +231,8 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
 
 出力: 拒むときだけ PreToolUse の deny の JSON 1行（理由は「コミットせず…報告で返す」か「…`Edit`・`Write` で書く」か「検証コマンド…を直に打たない。`tw verify` で打つ」）。通すときは何も出さない
 
+拒否の判定とは別に、入力に `agent_id`・`session_id` があり `cwd` の作業ツリーの着手の控えがちょうど1件なら、台帳の `flow/` へ `agent` の出来事（`agent`・`session`）を最初の1回だけ足す（印は `.tw/local/task-agent-tasks/<agent_id>`。振り返りが transcript をタスクに紐付ける）
+
 """
         + HOOK_NOTE,
     ),
