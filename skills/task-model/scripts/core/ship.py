@@ -33,6 +33,8 @@ class ShipOutcome:
     verify_tail: str = ""
     verify_log: str = ""
     preship_ran: bool = False
+    sent_from: str = ""
+    sent_to: str = ""
 
 
 def read_stamp_command(toplevel: str) -> str | None:
@@ -135,6 +137,7 @@ def attempt(
         # 枝の名前ではなくコミットで送る（detached HEAD の `HEAD` は本体の側では本体自身を指す）。
         head = _run(toplevel, ["rev-parse", "HEAD"]).stdout.strip()
         if base_worktree is not None:
+            seen = _run(base_worktree.path, ["rev-parse", base]).stdout.strip()
             sent = _run(base_worktree.path, ["merge", "--ff-only", head]).returncode == 0
         else:
             # 見たときの位置と突き合わせる更新（同じ1つの枝名で `rev-parse` と `update-ref` を
@@ -149,6 +152,8 @@ def attempt(
                 verify_state=verify_state,
                 tries=tries,
                 preship_ran=preship_ran,
+                sent_from=seen,
+                sent_to=head,
             )
 
     return ShipOutcome(kind="RACE", rebased=rebased_any, verify_state=verify_state, tries=MAX_TRIES)
