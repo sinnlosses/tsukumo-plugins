@@ -23,7 +23,8 @@ from selftest_support import git, write  # noqa: E402
 
 STUB = """\
 import subprocess
-out = subprocess.run(["git", "diff", "HEAD", "-U0"], capture_output=True, text=True).stdout
+import sys
+out = subprocess.run(["git", "diff", *(sys.argv[1:] or ["HEAD"]), "-U0"], capture_output=True, text=True).stdout
 for line in out.splitlines():
     if line.startswith("+") and not line.startswith("+++") and line[1:].lstrip().startswith("#"):
         print("x:1\\t" + line[1:])
@@ -40,8 +41,8 @@ def check(label: str, cond: bool, detail: str = "") -> None:
         failures.append(label)
 
 
-def run(repo: str, script: str, sub: str = "") -> list[list[str]]:
-    out = subprocess.run([sys.executable, script], cwd=os.path.join(repo, sub), capture_output=True, text=True)
+def run(repo: str, script: str, sub: str = "", *args: str) -> list[list[str]]:
+    out = subprocess.run([sys.executable, script, *args], cwd=os.path.join(repo, sub), capture_output=True, text=True)
     check("非0で終わらない", out.returncode == 0, out.stderr)
     return [line.split("\t") for line in out.stdout.splitlines()]
 
@@ -213,6 +214,49 @@ def test_doc_vs_check() -> None:
         with_repo(False, body)
 
 
+def test_range() -> None:
+    print("範囲: 段ごとにコミット済みで作業ツリーに差分が無くても、範囲を渡すと性質が出る")
+
+    def commit_on_branch(r: str) -> None:
+        git(r, "checkout", "-q", "-b", "feat")
+        write(r, "a.py", "x = 1\n# 言い直し\nLIMIT = 3\ndef f():\n    pass\n")
+        write(r, "README.md", "b\n")
+        write(r, "selftest_a.py", "y = 2\n")
+        git(r, "add", "a.py", "README.md", "selftest_a.py")
+        git(r, "commit", "-q", "-m", "stage 1")
+
+    def committed(r: str, s: str) -> None:
+        commit_on_branch(r)
+        check("引数なしでは NOTHING", run(r, s) == [["NOTHING"]])
+        rows = run(r, s, "", "main..feat")
+        check("範囲を渡すと4性質とも出る",
+              kinds(rows) == ["comment", "type-shape", "repeat-shape", "doc-vs-check"], repr(rows))
+        check("コマンドが範囲を指す", all("main..feat" in x[2] for x in rows if x[1] != "repeat-shape"), repr(rows))
+
+    def ignores_worktree(r: str, s: str) -> None:
+        commit_on_branch(r)
+        write(r, "b.py", "Z = 2\n")
+        rows = run(r, s, "", "main..feat")
+        check("範囲の外の未追跡のファイルは見ない", all("b.py" not in x[2] for x in rows), repr(rows))
+        check("引数なしは作業ツリーの差分を読む", "b.py" in " ".join(x[2] for x in run(r, s)))
+
+    def empty_range(r: str, s: str) -> None:
+        commit_on_branch(r)
+        check("差分の無い範囲は NOTHING", run(r, s, "", "feat..feat") == [["NOTHING"]])
+
+    def broken_range(r: str, s: str) -> None:
+        out = subprocess.run([sys.executable, s, "main..nobranch"], cwd=r, capture_output=True, text=True)
+        check("壊れた範囲は1で終わり stderr に理由", out.returncode == 1 and out.stderr.strip() != "", repr(out))
+        check("stdout は空", out.stdout == "", repr(out.stdout))
+
+    def too_many(r: str, s: str) -> None:
+        out = subprocess.run([sys.executable, s, "main..HEAD", "x"], cwd=r, capture_output=True, text=True)
+        check("引数が2つ以上は1で終わる", out.returncode == 1 and "使い方" in out.stderr, repr(out))
+
+    for body in (committed, ignores_worktree, empty_range, broken_range, too_many):
+        with_repo(True, body)
+
+
 def main() -> int:
     test_nothing()
     test_comment()
@@ -221,6 +265,7 @@ def main() -> int:
     test_type_shape()
     test_repeat_shape()
     test_doc_vs_check()
+    test_range()
     if failures:
         print(f"\n{len(failures)} 件落ちた: {', '.join(failures)}")
         return 1

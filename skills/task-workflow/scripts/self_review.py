@@ -2,7 +2,11 @@
 """最後の段の担当が `tw verify` の前に自己点検する性質を、作業ツリーの差分から決める。
 
 使い方:
-  python3 self_review.py
+  python3 self_review.py                # 作業ツリーの差分（HEAD との差。未追跡のファイルを含む）
+  python3 self_review.py main..<枝>     # 範囲の差分（段ごとにコミット済みで作業ツリーに差分が無いとき）
+
+範囲を渡したときは、範囲の差分だけを読む（作業ツリーの未コミットの変更と未追跡のファイルは見ない）。
+範囲が git に通らなければ、git のエラーを出して 1 で終わる。引数は 1 つまで。
 
 出力は当たった性質ごとに1行（タブ区切り）。何も当たらなければ `NOTHING` の1行:
   SELF<TAB><性質><TAB><コマンド><TAB><問い>
@@ -69,13 +73,16 @@ QUESTIONS = {
 
 
 def main() -> int:
+    if len(sys.argv) > 2:
+        sys.exit("使い方: self_review.py [<範囲>]")
+    base = sys.argv[1] if len(sys.argv) == 2 else "HEAD"
     os.chdir(git_lines("rev-parse", "--show-toplevel")[0])
-    untracked = set(git_lines("ls-files", "--others", "--exclude-standard"))
-    paths = sorted(set(git_lines("diff", "--name-only", "HEAD")) | untracked)
+    untracked = set(git_lines("ls-files", "--others", "--exclude-standard")) if base == "HEAD" else set()
+    paths = sorted(set(git_lines("diff", "--name-only", base)) | untracked)
     comment_script = find_comment_script()
     if comment_script is None and any(ext(p) not in DOC_EXTENSIONS for p in paths):
         print("SKIPPED\tcomment\tcomment-audit のスクリプトが見つからないので、コメントの性質は判定していない")
-    lines = decide(paths, untracked, comment_script)
+    lines = decide(paths, untracked, comment_script, base)
     print("\n".join(lines) if lines else "NOTHING")
     return 0
 
@@ -86,18 +93,18 @@ def find_comment_script() -> str | None:
     return candidate if os.path.isfile(candidate) else None
 
 
-def decide(paths: list[str], untracked: set[str], comment_script: str | None) -> list[str]:
+def decide(paths: list[str], untracked: set[str], comment_script: str | None, base: str = "HEAD") -> list[str]:
     out: list[str] = []
     code = [p for p in paths if ext(p) not in DOC_EXTENSIONS]
 
-    if comment_script is not None and comment_hit(code, untracked, comment_script):
-        cmd = f"python3 {shlex.quote(comment_script)} HEAD"
+    if comment_script is not None and comment_hit(code, untracked, comment_script, base):
+        cmd = f"python3 {shlex.quote(comment_script)} {shlex.quote(base)}"
         out.append(row("comment", cmd))
 
-    lines = {p: diff_lines(p, untracked) for p in paths}
+    lines = {p: diff_lines(p, untracked, base) for p in paths}
     shaped = [p for p in paths if hits(TYPE_SHAPE, p, lines[p], both=True)]
     if shaped:
-        out.append(row("type-shape", show_command(shaped, untracked)))
+        out.append(row("type-shape", show_command(shaped, untracked, base)))
 
     repeated = [p for p in paths if hits(REPEAT_SHAPE, p, lines[p], both=False)]
     if repeated:
@@ -109,17 +116,17 @@ def decide(paths: list[str], untracked: set[str], comment_script: str | None) ->
     docs = [p for p in paths if ext(p) in DOC_EXTENSIONS]
     checks = [p for p in paths if CHECK_PATH.search(p)]
     if docs and checks:
-        out.append(row("doc-vs-check", "git diff HEAD -- " + quote_all(docs + checks)))
+        out.append(row("doc-vs-check", f"git diff {shlex.quote(base)} -- " + quote_all(docs + checks)))
 
     return out
 
 
-def show_command(paths: list[str], untracked: set[str]) -> str:
+def show_command(paths: list[str], untracked: set[str], base: str) -> str:
     new = [p for p in paths if p in untracked]
     old = [p for p in paths if p not in new]
     parts = []
     if old:
-        parts.append("git diff HEAD -U0 -- " + quote_all(old))
+        parts.append(f"git diff {shlex.quote(base)} -U0 -- " + quote_all(old))
     if new:
         parts.append("cat " + quote_all(new))
     return " ; ".join(parts)
@@ -146,14 +153,14 @@ def hits(table: dict[str, str], path: str, lines: tuple[list[str], list[str]], b
     return any(re.search(pattern, line) for line in target)
 
 
-def comment_hit(code: list[str], untracked: set[str], script: str) -> bool:
+def comment_hit(code: list[str], untracked: set[str], script: str, base: str) -> bool:
     if any(p in untracked for p in code):
         return True
-    out = subprocess.run(["python3", script, "HEAD"], capture_output=True, text=True)
+    out = subprocess.run(["python3", script, base], capture_output=True, text=True)
     return out.returncode == 0 and bool(out.stdout.strip())
 
 
-def diff_lines(path: str, untracked: set[str]) -> tuple[list[str], list[str]]:
+def diff_lines(path: str, untracked: set[str], base: str) -> tuple[list[str], list[str]]:
     if path in untracked:
         try:
             with open(path, encoding="utf-8") as f:
@@ -162,7 +169,7 @@ def diff_lines(path: str, untracked: set[str]) -> tuple[list[str], list[str]]:
             return [], []
     added: list[str] = []
     removed: list[str] = []
-    for line in git_lines("diff", "HEAD", "-U0", "--", path):
+    for line in git_lines("diff", base, "-U0", "--", path):
         if line.startswith("+++") or line.startswith("---"):
             continue
         if line.startswith("+"):

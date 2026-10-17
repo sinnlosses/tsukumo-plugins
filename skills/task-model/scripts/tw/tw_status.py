@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import unicodedata
@@ -71,19 +72,15 @@ def cmd_status(toplevel: str, show_all: bool, check: bool) -> None:
 CONFIG_COMMAND_KEYS = ("verify", "verify_before_ship", "format", "hook_tally")
 
 
-def cmd_config(toplevel: str) -> None:
-    """解けた設定を `<キー>\\t<値>\\t<config|default>` で出す（読むだけ）。"""
-    config = layout.read_config(toplevel)
-    if config.source is None:
-        print(f"MISSING\t{layout.CONFIG_PATH}")
-        raise SystemExit(6)
-    print(f"CONFIG\t{config.source}")
+def config_rows(toplevel: str, config: layout.Config) -> list[tuple[str, str | list[str], str]]:
+    """解けた設定の `(キー, 値, config|default)`。値は文字列で、`steps`・`review_code_globs` だけ文字列の配列。"""
+    rows: list[tuple[str, str | list[str], str]] = []
     for key in layout.CONFIG_KEYS:
         value = getattr(config, key)
         if key == layout.STEPS_KEY:
-            value = layout.steps_text(list(value) if value is not None else tw_config.steps_default(toplevel))
+            value = list(value) if value is not None else tw_config.steps_default(toplevel)
         elif key == layout.REVIEW_CODE_GLOBS_KEY:
-            value = layout.steps_text(list(value))
+            value = list(value)
         elif key == "base_branch" and value is None:
             try:
                 value = gitinfo.base_branch(toplevel)
@@ -93,7 +90,25 @@ def cmd_config(toplevel: str) -> None:
             value = beads.backup_dir(toplevel)
         if value is None:
             value = layout.NO_COMMAND if key in CONFIG_COMMAND_KEYS else "-"
-        print(f"{key}\t{value}\t{'config' if key in config.written else 'default'}")
+        rows.append((key, value, "config" if key in config.written else "default"))
+    return rows
+
+
+def cmd_config(toplevel: str, as_json: bool = False) -> None:
+    """解けた設定を `<キー>\\t<値>\\t<config|default>`（`as_json` なら 1行の JSON）で出す（読むだけ）。"""
+    config = layout.read_config(toplevel)
+    if config.source is None:
+        print(f"MISSING\t{layout.CONFIG_PATH}")
+        raise SystemExit(6)
+    rows = config_rows(toplevel, config)
+    if as_json:
+        keys = [{"key": key, "value": value, "source": source} for key, value, source in rows]
+        print(json.dumps({"config": config.source, "keys": keys}, ensure_ascii=False))
+        return
+    print(f"CONFIG\t{config.source}")
+    for key, value, source in rows:
+        text = layout.steps_text(value) if isinstance(value, list) else value
+        print(f"{key}\t{text}\t{source}")
 
 
 def cmd_show(toplevel: str, task_id: str) -> None:

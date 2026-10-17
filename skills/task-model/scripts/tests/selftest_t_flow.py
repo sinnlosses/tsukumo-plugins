@@ -684,6 +684,52 @@ def test_config_command() -> None:
               r.stdout + r.stderr)
 
 
+def test_config_json() -> None:
+    say("task.py config --json: TSV と同じキー・値・出どころを 1行の JSON で出す")
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = _make_config_doctor_repo(tmp, "no-config", with_config=False)
+        r = run_task(repo, "config", "--json")
+        check("設定ファイルが無ければ --json も MISSING（終了コード6、JSON にしない）",
+              r.returncode == 6 and r.stdout == "MISSING\n", r.stdout + r.stderr)
+
+        write(os.path.join(repo, ".tw", "config.toml"),
+              'verify = "./check.sh"  # 説明\nbranch = "切らない"\nreview_code_globs = ["a/**"]\n')
+        tsv = run_task(repo, "config")
+        r = run_task(repo, "config", "--json")
+        check("--json は終了コード0で 1行", r.returncode == 0 and len(r.stdout.splitlines()) == 1, r.stdout + r.stderr)
+        data = json.loads(r.stdout)
+        tsv_lines = tsv.stdout.splitlines()
+        check("config は設定ファイルのパスで、TSV の1行目と同じ",
+              data["config"] == ".tw/config.toml" and tsv_lines[0] == f"CONFIG\t{data['config']}", repr(data["config"]))
+        as_tsv = [
+            f"{k['key']}\t{_compact_json_array(k['value']) if isinstance(k['value'], list) else k['value']}\t{k['source']}"
+            for k in data["keys"]
+        ]
+        check("keys は TSV の行と同じ順・同じキー・値・出どころ", as_tsv == tsv_lines[1:], repr(as_tsv))
+        by_key = {k["key"]: k for k in data["keys"]}
+        check("steps は配列で、出どころは default",
+              isinstance(by_key["steps"]["value"], list) and by_key["steps"]["value"] != []
+              and by_key["steps"]["source"] == "default", repr(by_key["steps"]))
+        check("review_code_globs は配列で、書いた値と出どころ config",
+              by_key["review_code_globs"] == {"key": "review_code_globs", "value": ["a/**"], "source": "config"},
+              repr(by_key["review_code_globs"]))
+        check("書いた値は文字列で config、書いていない値は default",
+              by_key["verify"] == {"key": "verify", "value": "./check.sh", "source": "config"}
+              and by_key["format"] == {"key": "format", "value": "なし", "source": "default"}, repr(by_key))
+        for args in (("--schema",), ("set", "steps", '["a"]')):
+            r = run_task(repo, "config", "--json", *args)
+            check(f"--json は {args[0]} と一緒に打てない（終了コード2）", r.returncode == 2 and r.stdout == "", r.stdout + r.stderr)
+
+        write(os.path.join(repo, ".tw", "config.toml"), 'verify = "x"\nbranch = 1\n')
+        r = run_task(repo, "config", "--json")
+        check("読めなければ --json も INVALID（終了コード3）",
+              r.returncode == 3 and r.stdout.startswith("INVALID\t.tw/config.toml:2:"), r.stdout + r.stderr)
+
+
+def _compact_json_array(items: list[str]) -> str:
+    return json.dumps(items, ensure_ascii=False, separators=(",", ":"))
+
+
 def test_config_schema() -> None:
     say("task.py config --schema: 欄の形を1行の JSON で出す（設定にも git にもよらない）")
     with tempfile.TemporaryDirectory() as tmp:
@@ -998,6 +1044,7 @@ TESTS = (
     test_config_doctor_prerequisites,
     test_bin_tw_python_floor,
     test_config_command,
+    test_config_json,
     test_config_schema,
     test_step_candidates,
     test_default_steps_order,
