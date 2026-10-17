@@ -552,6 +552,67 @@ def test_task_material() -> None:
         check("bd が無くても落ちずにアーカイブから出す", r.returncode == 0 and "古い本文" in lines_of("タスク", r.stdout), r.stdout + r.stderr)
 
 
+def test_material_commits() -> None:
+    print("material.py のコミット照合（送った範囲の記録・件名・記録が壊れたとき）")
+    if shutil.which("bd") is None:
+        check("bd が PATH にある（material.py はタスクを Beads から読む）", False)
+        return
+    with tempfile.TemporaryDirectory() as d:
+        home = os.path.join(d, "home")
+        write(os.path.join(home, ".config", "bd", "config.yaml"), "metrics:\n    disabled: true\n    notice_shown: true\nno-git-ops: true\n")
+        env = {
+            **os.environ,
+            "HOME": home,
+            "XDG_CONFIG_HOME": os.path.join(home, ".config"),
+            "XDG_DATA_HOME": os.path.join(home, ".local", "share"),
+            "CLAUDE_CONFIG_DIR": os.path.join(d, "cfg"),
+        }
+        env.pop("BEADS_ACTOR", None)
+        env.pop("GITHUB_TOKEN", None)
+        root = os.path.join(d, "repo")
+        os.makedirs(root)
+        git(root, "init", "-q", "-b", "main")
+        git(root, "config", "beads.role", "maintainer")
+        git(root, "config", "user.email", "t@example.com")
+        git(root, "config", "user.name", "t")
+
+        def bd(*args: str, stdin: str | None = None) -> None:
+            subprocess.run(["bd", *args], cwd=root, env=env, input=stdin, check=True, capture_output=True, text=True)
+
+        def commit(subject: str) -> str:
+            write(os.path.join(root, "f.txt"), subject)
+            git(root, "add", "f.txt")
+            git(root, "commit", "-q", "-m", subject)
+            return subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True, check=True).stdout.strip()
+
+        def material(task_id: str) -> str:
+            r = subprocess.run([sys.executable, os.path.join(HERE, "material.py"), root, task_id], capture_output=True, text=True, env=env)
+            return "\n".join(lines_of("コミット", r.stdout)) + "\n" + r.stdout.rsplit("=====", 1)[-1]
+
+        bd("init", "--stealth", "-p", "t", "--non-interactive", "--skip-hooks", "--quiet")
+        for n in (10, 11, 12, 13, 14):
+            bd("create", "--id", f"t-0{n}", "--title", f"課題{n}", "--body-file", "-", "--silent",
+               "--metadata", '{"difficulty": "sonnet", "loopable": "Y"}', stdin="## 目的・背景\n\nx\n")
+
+        base = commit("初期")
+        first = commit("件名にIDが無い変更")
+        last = commit("もう一つ規約外の変更")
+        outside = commit("T-010 に言及しただけの別の変更")
+        t11 = commit("T-011: 件名に規約どおりID")
+        bd("update", "t-010", "--set-metadata", f"task_shipped={base}..{last}")
+        bd("update", "t-013", "--set-metadata", f"task_shipped={'a' * 40}..{'b' * 40}")
+
+        out = material("T-010")
+        check("記録あり・件名が規約外: 範囲のコミットを出す", first[:7] in out and last[:7] in out and "該当するコミットが無い" not in out, out)
+        check("記録あり: 範囲の外の言及だけのコミットは出さない", outside[:7] not in out, out)
+        out = material("T-011")
+        check("記録なし・件名にID: 件名で引く（従来どおり）", t11[:7] in out, out)
+        out = material("T-012")
+        check("記録なし・件名にも無い: 該当なしと注意", "該当するコミットが無い" in out and "見つからない" in out, out)
+        out = material("T-013")
+        check("記録が存在しない SHA: 件名へ戻り、件名にも無ければ該当なし", "該当するコミットが無い" in out, out)
+
+
 def test_draft_fate() -> None:
     print("draft_fate（ドラフトの行方の表と絞り）")
     sys.path.insert(0, HERE)
@@ -672,6 +733,7 @@ def main() -> None:
     test_gate_ledger()
     test_stage_signals()
     test_task_material()
+    test_material_commits()
     test_draft_fate()
     print()
     if failures:

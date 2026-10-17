@@ -569,6 +569,33 @@ def test_ship_main_worktree_records_range_from_claim_head() -> None:
               and _shipped_range(main_path, "T-100") == f"{claim_head}..{head}", r.stdout + _shipped_range(main_path, "T-100"))
 
 
+def test_status_stale_shipped_by_record() -> None:
+    say("task.py status: STALE:shipped は送った範囲の記録で決め、記録が無ければ件名で決める")
+    cases = (
+        ("記録あり・件名が規約外", "valid", False, True),
+        ("記録が祖先でない SHA・件名が規約どおり", "bogus", True, True),
+        ("記録なし・件名が規約どおり", None, True, True),
+        ("記録なし・件名が規約外", None, False, False),
+    )
+    for label, record, conforming, stale in cases:
+        with tempfile.TemporaryDirectory() as tmp:
+            main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
+            commit_task(main_path, taskfile.Task("T-100", "取り残し", "todo", "sonnet", "Y", (), BODY))
+            run_task(wt1, "claim", "T-100")
+            before = git(main_path, "rev-parse", "main").stdout.strip()
+            _claim_work_and_done(wt1, "T-100")
+            if not conforming:
+                git(wt1, "commit", "-q", "--amend", "-m", "件名にIDの無い変更")
+            head = git(wt1, "rev-parse", "HEAD").stdout.strip()
+            merged = git(main_path, "merge", "--ff-only", head)
+            if record is not None:
+                set_metadata(wt1, "T-100", beads.SHIPPED_KEY, f"{before}..{head}" if record == "valid" else f"{'a' * 40}..{'b' * 40}")
+            r = run_task(main_path, "status")
+            row = next((l for l in r.stdout.splitlines() if l.startswith("T-100\t")), "")
+            check(f"{label}: {'STALE:shipped' if stale else 'CLAIMED'}",
+                  merged.returncode == 0 and (("STALE:shipped" in row) == stale) and (stale or "CLAIMED" in row), row + merged.stderr)
+
+
 def test_claim_clears_shipped_range() -> None:
     say("task.py claim: 前回の task_shipped を持ち越さない")
     with tempfile.TemporaryDirectory() as tmp:
@@ -832,6 +859,7 @@ TESTS = (
     test_ship_records_shipped_range,
     test_ship_main_worktree_records_range_from_claim_head,
     test_claim_clears_shipped_range,
+    test_status_stale_shipped_by_record,
     test_ship_records_sync_span_before_ship,
     test_ship_conflict_aborts_rebase,
     test_ship_verify_failed_keeps_full_log_in_order,

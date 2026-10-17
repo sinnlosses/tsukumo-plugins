@@ -245,12 +245,22 @@ def _classify_claim(toplevel: str, issue: beads.Issue, worktree_names: set[str],
     if owner is None:
         return "STALE:no-owner", ""
     shown = beads.to_task_id(issue.bd_id)
-    if beads.ship_mark(issue) is not None and _task_commit_on_base(toplevel, shown, base, issue.started_at):
+    if beads.ship_mark(issue) is not None and (
+        _shipped_by_record(toplevel, issue, base) or _task_commit_on_base(toplevel, shown, base, issue.started_at)
+    ):
         return "STALE:shipped", owner
     if owner not in worktree_names:
         return "STALE:gone", owner
     age = tw_base.age_seconds(issue.started_at)
     return "CLAIMED", f"{owner} {tw_base.format_elapsed(age) if age is not None else '?'}"
+
+
+def _shipped_by_record(toplevel: str, issue: beads.Issue, base: str) -> bool:
+    """`tw ship` が metadata に書いた範囲の先端が、主ブランチに入っているか。記録が無い・形が違えば偽（件名照合へ戻る）。"""
+    shipped = beads.shipped_range(issue)
+    if shipped is None:
+        return False
+    return tw_base.run_git(toplevel, ["merge-base", "--is-ancestor", shipped[1], base]).returncode == 0
 
 
 def _task_commit_on_base(toplevel: str, task_id: str, base: str, since: str | None) -> bool:
