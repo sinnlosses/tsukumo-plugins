@@ -154,7 +154,11 @@ def sort_key(task_id: str) -> tuple[int, int, str]:
 
 def read_bd_config(toplevel: str) -> dict:
     """`bd config list --json` の全部（`{キー: 値}`）。読めなければ空。"""
-    r = run(toplevel, ["config", "list", "--json"])
+    return _read_dict(toplevel, ["config", "list", "--json"])
+
+
+def _read_dict(toplevel: str, args: list[str]) -> dict:
+    r = run(toplevel, args)
     try:
         listed = json.loads(r.stdout) if r.returncode == 0 and r.stdout.strip() else {}
     except ValueError:
@@ -591,12 +595,7 @@ def clear_claim_snapshot(toplevel: str, bd_id: str) -> None:
 
 def read_kv(toplevel: str) -> dict:
     """`bd kv list --json` の全部（`{キー: 値の文字列}`）。読めなければ空。"""
-    r = run(toplevel, ["kv", "list", "--json"])
-    try:
-        listed = json.loads(r.stdout) if r.returncode == 0 and r.stdout.strip() else {}
-    except ValueError:
-        return {}
-    return listed if isinstance(listed, dict) else {}
+    return _read_dict(toplevel, ["kv", "list", "--json"])
 
 
 def claim_snapshots(listed: dict) -> dict[str, Issue]:
