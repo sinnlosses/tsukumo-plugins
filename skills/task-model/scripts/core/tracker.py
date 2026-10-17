@@ -38,12 +38,12 @@ from tracker_github import (
     LEGACY_ITEMS_KEY,
     STATUS_OPTIONS,
     _bd,
-    _default_repo,
     _Failed,
     _gh,
     _issue_url,
     _loads,
     _ref_number,
+    _repo_of,
     _tail,
 )
 from tracker_claims import (
@@ -110,6 +110,7 @@ class Session:
         self.tracker = tracker
         self._actor = os.path.basename(toplevel)
         self._env: dict | None = None
+        self._config: dict | None = None
         self._prefix: str | None = None
         self._repo: str | None = None
         self._project: dict | None = None
@@ -133,8 +134,13 @@ class Session:
         if self.tracker.kind != "github":
             return False
         if self._prefix is None:
-            self._prefix = beads.read_prefix(self.toplevel)
+            self._prefix = beads.prefix_of(self._bd_config())
         return self._prefix == beads.PREFIX_GITHUB
+
+    def _bd_config(self) -> dict:
+        if self._config is None:
+            self._config = beads.read_bd_config(self.toplevel)
+        return self._config
 
     # --- 1件の操作 -------------------------------------------------------------
 
@@ -627,7 +633,7 @@ class Session:
 
     def _repository_or_none(self) -> str | None:
         if self._repo is None:
-            self._repo = _default_repo(self.toplevel) or ""
+            self._repo = _repo_of(self._bd_config()) or ""
         return self._repo or None
 
     def _repository(self) -> str:

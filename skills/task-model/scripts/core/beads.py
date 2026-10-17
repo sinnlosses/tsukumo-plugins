@@ -152,10 +152,25 @@ def sort_key(task_id: str) -> tuple[int, int, str]:
     return (2, 0, f"{m.group(3)}-{int(m.group(4)):012d}")
 
 
-def read_prefix(toplevel: str) -> str:
-    """Beads の `issue_prefix`（`gh` か `t`）。ほかの値や未設定は `t` として扱う。"""
-    value = run(toplevel, ["config", "get", "issue_prefix"]).stdout.strip()
+def read_bd_config(toplevel: str) -> dict:
+    """`bd config list --json` の全部（`{キー: 値}`）。読めなければ空。"""
+    r = run(toplevel, ["config", "list", "--json"])
+    try:
+        listed = json.loads(r.stdout) if r.returncode == 0 and r.stdout.strip() else {}
+    except ValueError:
+        return {}
+    return listed if isinstance(listed, dict) else {}
+
+
+def prefix_of(config: dict) -> str:
+    """`read_bd_config` の結果の `issue_prefix`（`gh` か `t`）。ほかの値や未設定は `t` として扱う。"""
+    value = str(config.get("issue_prefix") or "").strip()
     return PREFIX_GITHUB if value == PREFIX_GITHUB else PREFIX_LOCAL
+
+
+def read_prefix(toplevel: str) -> str:
+    """Beads の `issue_prefix`（`gh` か `t`）。"""
+    return prefix_of(read_bd_config(toplevel))
 
 
 # --- bd の呼び出し ----------------------------------------------------------------
@@ -163,7 +178,7 @@ def read_prefix(toplevel: str) -> str:
 
 # 1つのプロセスの中で、同じ読みの結果を使い回す。`kv` は読んで重ねて書く（別の作業ツリーの値を消さない）ので
 # 使い回さない。
-_READS = ("list", "show", "comments", "history", "config get")
+_READS = ("list", "show", "comments", "history", "config get", "config list")
 _KV_READS = ("kv get", "kv list")
 _KEEP_READS_AFTER =("backup status", "backup sync")
 READ_REUSE_SECONDS = 10.0
@@ -191,7 +206,7 @@ def _forget_after(toplevel: str, args: list[str]) -> None:
     if head in _KEEP_READS_AFTER or args[:1] == ["export"]:
         return
     if head == "kv set" or head == "backup init":
-        for key in [k for k in _read_cache if k[1][:2] == ("config", "get")]:
+        for key in [k for k in _read_cache if k[1][:2] in (("config", "get"), ("config", "list"))]:
             del _read_cache[key]
         return
     forget_reads(toplevel)

@@ -288,13 +288,13 @@ def _issue_url(external_ref: str | None, default_repo: str | None) -> str | None
     return None
 
 
-def _default_repo(toplevel: str) -> str | None:
-    r = beads.run(toplevel, ["config", "get", "github.repository"])
-    value = r.stdout.strip()
-    if r.returncode == 0 and "/" in value and " " not in value:
+def _repo_of(config: dict) -> str | None:
+    """`beads.read_bd_config` の結果のリポジトリ（`owner/repo`）。`github.repository` が無ければ `github.owner`・`github.repo`。"""
+    value = str(config.get("github.repository") or "").strip()
+    if "/" in value and " " not in value:
         return value
-    owner = beads.run(toplevel, ["config", "get", "github.owner"]).stdout.strip()
-    repo = beads.run(toplevel, ["config", "get", "github.repo"]).stdout.strip()
+    owner = str(config.get("github.owner") or "").strip()
+    repo = str(config.get("github.repo") or "").strip()
     if owner and repo and " " not in owner + repo:
         return f"{owner}/{repo}"
     return None
