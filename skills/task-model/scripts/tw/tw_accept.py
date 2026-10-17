@@ -44,10 +44,11 @@ class _OtherRepo:
 
 
 def cmd_accept(toplevel: str, task_id: str, after_review: bool) -> None:
-    if not after_review:
-        _run_part(lambda: tw_handback.cmd_lap(toplevel, task_id, "accept", "start"))
     shown = beads.to_task_id(tw_base.bd_task_id(task_id))
     issue = beads.show(toplevel, tw_base.bd_task_id(task_id))
+    if not after_review:
+        _check_last_step(toplevel, shown, issue)
+        _run_part(lambda: tw_handback.cmd_lap(toplevel, task_id, "accept", "start"))
     other = _other_repo(toplevel, shown, issue)
     if other is not None:
         _check_main_dirty(toplevel, shown, other)
@@ -58,7 +59,26 @@ def cmd_accept(toplevel: str, task_id: str, after_review: bool) -> None:
     if other is None:
         _format(toplevel)
     _run_part(lambda: tw_verify.cmd_verify_check(toplevel if other is None else other.tree))
-    tw_base.record(toplevel, "lap", task_id, stage="accept", edge="end")
+    tw_handback.close_open_lap(toplevel, task_id, "accept")
+
+
+def _check_last_step(toplevel: str, shown: str, issue: beads.Issue | None) -> None:
+    """段が2つ以上の計画で、着手側の段の控え（`step`・`pause`）が `1..N-1` のどれかを欠けば `NOT_LAST_STEP` で終了コード4。
+
+    着手していない・`loopable: N`（メインで行う流れ）・段が読めないか1つの計画は見ない。
+    """
+    if issue is None or shown not in tw_base.claimed_here(toplevel):
+        return
+    if beads.attribute_values(issue, beads.LOOPABLE_KEY) == ["N"]:
+        return
+    specs, error = taskfile.plan_step_specs(f"{taskfile.PLAN_HEADING}\n{issue.raw.get('notes') or ''}\n")
+    if error is not None or len(specs) < 2:
+        return
+    stamped = {s.step for s in stamps.read_step_stamps(cwd=toplevel) if s.task_id == shown}
+    missing = [str(n) for n in range(1, len(specs)) if n not in stamped]
+    if missing:
+        print(f"NOT_LAST_STEP\t{shown}\t{','.join(missing)}/{len(specs)}")
+        raise SystemExit(4)
 
 
 def _other_repo(toplevel: str, shown: str, issue: beads.Issue | None) -> _OtherRepo | None:

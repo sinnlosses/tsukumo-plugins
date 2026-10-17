@@ -8,6 +8,7 @@ import tempfile
 from selftest_support import check, git, refuse_direct_run, say, write  # noqa: E402
 import beads  # noqa: E402
 import taskfile  # noqa: E402
+from selftest_body import task_body  # noqa: E402
 from selftest_fixtures import PLANNED_BODY, commit_task, flow_rows, make_repo, run_task  # noqa: E402
 
 
@@ -166,12 +167,16 @@ REVIEW_SNAPSHOT_PY = os.path.normpath(
 
 
 def _other_repo_claimed(
-    tmp: str, difficulty: str = "sonnet", before_claim: str | None = None, worktree: bool = True
+    tmp: str,
+    difficulty: str = "sonnet",
+    before_claim: str | None = None,
+    worktree: bool = True,
+    steps: tuple[tuple[str, str], ...] = (("書く", "x"),),
 ) -> tuple[str, str, str]:
     """着手側の作業ツリー・作業先の本体・作業先の作業ツリー（枝 `t-100`）。`before_claim` は着手の前に本体へ置く未追跡のファイル。"""
     own_main, wt1, _ = make_repo(os.path.join(tmp, "own"), branch="切らない", verify="`true`", format_command="`true`")
     work_main, _, _ = make_repo(os.path.join(tmp, "work"), verify="`true`")
-    body = PLANNED_BODY.replace("## 完了条件", f"### 作業先\n- `{work_main}`\n\n## 完了条件")
+    body = task_body(steps, ["shared.txt"], work_main)
     commit_task(own_main, taskfile.Task("T-100", "作業先で直す", "todo", difficulty, "Y", (), body))
     if before_claim is not None:
         write(os.path.join(work_main, before_claim), "before\n")
@@ -271,7 +276,75 @@ def test_accept_other_repo_main_dirty() -> None:
         )
 
 
+THREE_STEPS = (("書く", "x"), ("試す", "x"), ("直す", "x"))
+
+
+def test_accept_not_last_step() -> None:
+    say("task.py accept: 段が2つ以上の計画で 1..N-1 の段の控えが欠ければ NOT_LAST_STEP で止まり、lap も書かない")
+    accept_laps = lambda wt: [e for e in flow_rows(wt) if e["event"] == "lap" and e.get("stage") == "accept"]
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない", verify="`true`")
+        commit_task(main_path, taskfile.Task("T-100", "段が3つ", "todo", "sonnet", "Y", (), task_body(THREE_STEPS, ["shared.txt"])))
+        run_task(wt1, "claim", "T-100")
+        r = run_task(wt1, "accept", "T-100")
+        check("控えが無ければ欠けた段を並べて終了コード4、accept の lap を書かない",
+              r.returncode == 4 and r.stdout == "NOT_LAST_STEP\tT-100\t1,2/3\n" and accept_laps(wt1) == [],
+              r.stdout + r.stderr)
+        run_task(wt1, "step", "T-100", "1")
+        r = run_task(wt1, "accept", "T-100")
+        check("段1の控えのあとは段2だけが欠ける", r.returncode == 4 and r.stdout == "NOT_LAST_STEP\tT-100\t2/3\n", r.stdout + r.stderr)
+        run_task(wt1, "pause", "T-100", "2")
+        r = run_task(wt1, "accept", "T-100")
+        check("pause の段の控えでも揃い、従来の並びに進む",
+              r.returncode == 0 and r.stdout.startswith("LAPPED\t") and "NOT_LAST_STEP" not in r.stdout, r.stdout + r.stderr)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない", verify="`true`")
+        commit_task(main_path, taskfile.Task("T-100", "メインで行う", "todo", "sonnet", "N", (), task_body(THREE_STEPS, ["shared.txt"])))
+        run_task(wt1, "claim", "T-100")
+        r = run_task(wt1, "accept", "T-100")
+        check("loopable: N（メインで行う流れ）は控えが無くても進む",
+              r.returncode == 0 and "NOT_LAST_STEP" not in r.stdout, r.stdout + r.stderr)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1, _work_main, work_tree = _other_repo_claimed(tmp, steps=THREE_STEPS[:2])
+        _commit(work_tree, "note.md", "x\n")
+        r = run_task(wt1, "accept", "T-100")
+        check("別のリポジトリの作業先でも着手側の控えで判定する", r.returncode == 4 and r.stdout == "NOT_LAST_STEP\tT-100\t1/2\n", r.stdout + r.stderr)
+        run_task(wt1, "step", "T-100", "1")
+        run_task(work_tree, "verify")
+        r = run_task(wt1, "accept", "T-100")
+        check("段1の控えのあとは作業先の verify-check まで進む",
+              r.returncode == 0 and r.stdout.splitlines()[-1].startswith("VERIFIED_SAME\t"), r.stdout + r.stderr)
+
+
+def test_lap_end_not_doubled() -> None:
+    say("task.py lap・accept: end は開いている段にだけ書き、手打ちと tw の end が重ならない")
+    edges = lambda wt, stage: [e.get("edge") for e in flow_rows(wt) if e["event"] == "lap" and e.get("stage") == stage]
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1 = _claimed_repo(tmp)
+        run_task(wt1, "lap", "T-100", "delegate", "start")
+        write(os.path.join(wt1, "note.md"), "x\n")
+        run_task(wt1, "verify")
+        run_task(wt1, "accept", "T-100")
+        r = run_task(wt1, "lap", "T-100", "delegate", "end")
+        check("accept が閉じた delegate へ手で end を打っても LAPPED を出し、end は1つのまま",
+              r.stdout == "LAPPED\tT-100\tdelegate\tend\n" and edges(wt1, "delegate") == ["start", "end"],
+              repr(edges(wt1, "delegate")) + r.stdout + r.stderr)
+        run_task(wt1, "accept", "T-100", "--after-review")
+        run_task(wt1, "accept", "T-100", "--after-review")
+        check("--after-review を重ねても accept の end は1つ", edges(wt1, "accept") == ["start", "end"], repr(edges(wt1, "accept")))
+        r = run_task(wt1, "lap", "T-100", "land", "end")
+        check("開いていない段への end は何も書かない",
+              r.stdout == "LAPPED\tT-100\tland\tend\n" and edges(wt1, "land") == [], repr(edges(wt1, "land")) + r.stdout)
+        run_task(wt1, "lap", "T-100", "land", "start")
+        run_task(wt1, "lap", "T-100", "land", "end")
+        check("開いた段への手打ちの end は書く", edges(wt1, "land") == ["start", "end"], repr(edges(wt1, "land")))
+
+
 TESTS = (
+    test_accept_not_last_step,
+    test_lap_end_not_doubled,
     test_accept_closes_open_delegate,
     test_accept_end_pairs_with_start_for_any_id_spelling,
     test_accept_records_accept_end,

@@ -142,8 +142,12 @@ def cmd_lap(toplevel: str, task_id: str, stage: str, edge: str | None = None) ->
         tw_base.record(toplevel, "lap", shown, stage=stage)
         print(f"LAPPED\t{shown}\t{stage}")
         return
+    if edge == "end":
+        close_open_lap(toplevel, shown, stage)
+        print(f"LAPPED\t{shown}\t{stage}\t{edge}")
+        return
     tw_base.record(toplevel, "lap", shown, stage=stage, edge=edge)
-    if (stage, edge) == ("accept", "start"):
+    if stage == "accept":
         close_open_lap(toplevel, shown, "delegate")
     print(f"LAPPED\t{shown}\t{stage}\t{edge}")
 
