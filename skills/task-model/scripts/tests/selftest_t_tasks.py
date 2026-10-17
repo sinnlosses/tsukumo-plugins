@@ -10,6 +10,7 @@ import tempfile
 from selftest_support import RESULT_FULL, RESULT_REQUIRED, check, git, refuse_direct_run, say, write  # noqa: E402
 import beads  # noqa: E402
 import gitinfo  # noqa: E402
+import ledger  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
 from selftest_fixtures import BODY, PLANNED_BODY, body_file, commit_task, issue_count, issue_json, make_repo, run_task, shown, start_task, unset_metadata  # noqa: E402
@@ -566,8 +567,22 @@ def test_done_required_lines() -> None:
         check("verify が通る", r.returncode == 0 and r.stdout.startswith("VERIFIED"), r.stdout + r.stderr)
         r = run_task(wt1, "done", "T-100", "--result-file", "-", stdin=without_verify)
         check("台帳の直近の verify が通っていれば - 検証コマンド: を補って通る",
-              r.returncode == 0 and "- 検証コマンド: 通過（直近の tw verify が VERIFIED）" in shown(wt1, "T-100"),
+              r.returncode == 0 and "- 検証コマンド: 通過（直近の tw verify が通過）" in shown(wt1, "T-100"),
               r.stdout + r.stderr)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1 = claimed(tmp)
+        ledger.record_event(wt1, "verify", "T-100", "sonnet", result="VERIFIED_UNSTAMPED", seconds=0)
+        r = run_task(wt1, "done", "T-100", "--result-file", "-", stdin=without_verify)
+        check("直近の verify が VERIFIED_UNSTAMPED でも同じ文言で補って通る",
+              r.returncode == 0 and "- 検証コマンド: 通過（直近の tw verify が通過）" in shown(wt1, "T-100"),
+              r.stdout + r.stderr)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1 = claimed(tmp)
+        ledger.record_event(wt1, "verify", "T-100", "sonnet", result="VERIFY_NOT_PASSED", seconds=0)
+        r = run_task(wt1, "done", "T-100", "--result-file", "-", stdin=without_verify)
+        check("直近の verify が落ちていれば補わず拒む", refused(r, wt1, "- 検証コマンド:"), r.stdout + r.stderr)
 
     with tempfile.TemporaryDirectory() as tmp:
         wt1 = claimed(tmp, task_body(acceptance="- 画面を目視で確かめる"))

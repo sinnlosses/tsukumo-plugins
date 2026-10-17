@@ -22,7 +22,7 @@ REFLECTION_SKIPPED_LINE ="- 振り返り: 近道（省いた）"
 REFLECTION_OFF_LINE = "- 振り返り: 設定で外した"
 REQUIRED_RESULT_LINES = ("- 検証コマンド:", "- 規約:", "- 規約の指摘:", "- 振り返り:")
 VISUAL_RESULT_LINE = "- 目視:"
-VERIFY_FILLED_LINE = "- 検証コマンド: 通過（直近の tw verify が VERIFIED）"
+VERIFY_FILLED_LINE = "- 検証コマンド: 通過（直近の tw verify が通過）"
 
 
 def cmd_claim(toplevel: str, task_id: str) -> None:
