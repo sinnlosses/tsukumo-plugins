@@ -1,7 +1,8 @@
 """`tw commit-guard`: Claude Code の PreToolUse hook の入力（stdin の JSON）を読み、次の2つの実効の作業先に、
 `done` 前の着手の控え（`ledger.open_claims`）があれば拒む。
 コミットを作る git のサブコマンドと、シェルでのファイルの書き換え（`sed -i`・`perl -i`・`>`・`>>`・`tee`・
-python の書き込み）と、設定の `verify`・`verify_before_ship` と同じコマンドの直打ちと、`ref-guard` を外す書き方
+python の書き込み）と、設定の `verify`・`verify_before_ship` と同じコマンドの直打ち
+（段を流さない読むだけの旗 `--plan`・`--help`・`-h` を含む打ち方は通す）と、`ref-guard` を外す書き方
 （`TW_REF_GUARD_ALLOW=`・`export TW_REF_GUARD_ALLOW`・`core.hooksPath` を書き換える形。読むだけのコマンドは通す）。判定しきれない書き方は通す。
 コミットは、作業先で `ref-guard` が効いていれば（`ref_guard.inactive_reason` が `None`）拒まず git の hook に任せる。
 書き換えと直打ちは、入力の `cwd` の控えのタスクの `### 作業先` の作業ツリー（`tw_handback.task_trees`）にも控えがあるとみなして拒む。
@@ -26,6 +27,7 @@ import ledger
 import ref_guard
 
 COMMIT_SUBCOMMANDS = ("commit", "merge", "pull", "cherry-pick", "revert", "am", "rebase")
+READ_ONLY_FLAGS = ("--plan", "--help", "-h")
 
 _OPERATOR_CHARS = ";&|()\n<>"
 _SHELL_KEYWORDS = ("do", "then", "else", "elif", "if", "while", "until", "!", "{")
@@ -170,11 +172,14 @@ def _verify_commands(command: str, start: str) -> list[tuple[str, str]]:
 
 
 def _same_command(words: list[str], where: str, toplevel: str, configured: str) -> bool:
-    """`words` が設定のコマンドと同じか。設定のコマンドが単純コマンド1つのときだけ判定し、続く語は旗だけなら同じとする。"""
+    """`words` が設定のコマンドと同じか。設定のコマンドが単純コマンド1つのときだけ判定し、続く語は旗だけなら同じとする。
+    続く語に読むだけの旗（`READ_ONLY_FLAGS`）が1つでもあれば、段を流さないので同じとしない。"""
     tokens = _tokens(configured)
     if not tokens or any(t.op for t in tokens):
         return False
     cw = [t.text for t in tokens]
+    if any(w in READ_ONLY_FLAGS for w in words[len(cw) :]):
+        return False
     return (
         len(words) >= len(cw)
         and words[1 : len(cw)] == cw[1:]
