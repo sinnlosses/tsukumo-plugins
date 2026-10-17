@@ -576,6 +576,10 @@ def test_status_stale_shipped_by_record() -> None:
         ("記録が祖先でない SHA・件名が規約どおり", "bogus", True, True),
         ("記録なし・件名が規約どおり", None, True, True),
         ("記録なし・件名が規約外", None, False, False),
+        ("記録の形が壊れている・件名が規約どおり", "malformed", True, True),
+        ("記録の形が壊れている・件名が規約外", "malformed", False, False),
+        ("実在するが祖先でない先端・件名が規約外", "orphan", False, False),
+        ("実在するが祖先でない先端・件名が規約どおり", "orphan", True, True),
     )
     for label, record, conforming, stale in cases:
         with tempfile.TemporaryDirectory() as tmp:
@@ -589,7 +593,14 @@ def test_status_stale_shipped_by_record() -> None:
             head = git(wt1, "rev-parse", "HEAD").stdout.strip()
             merged = git(main_path, "merge", "--ff-only", head)
             if record is not None:
-                set_metadata(wt1, "T-100", beads.SHIPPED_KEY, f"{before}..{head}" if record == "valid" else f"{'a' * 40}..{'b' * 40}")
+                orphan = git(main_path, "commit-tree", f"{head}^{{tree}}", "-m", "枝だけ").stdout.strip()
+                value = {
+                    "valid": f"{before}..{head}",
+                    "bogus": f"{'a' * 40}..{'b' * 40}",
+                    "malformed": "壊れた値",
+                    "orphan": f"{before}..{orphan}",
+                }[record]
+                set_metadata(wt1, "T-100", beads.SHIPPED_KEY, value)
             r = run_task(main_path, "status")
             row = next((l for l in r.stdout.splitlines() if l.startswith("T-100\t")), "")
             check(f"{label}: {'STALE:shipped' if stale else 'CLAIMED'}",

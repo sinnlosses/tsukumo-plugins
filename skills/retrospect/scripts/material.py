@@ -243,13 +243,19 @@ def find_progress_section(path: str, task_id: str) -> str:
 def shipped_commits(root: str, task_id: str, log_args: tuple[str, ...]) -> str | None:
     """`tw ship` が metadata `task_shipped` に書いた範囲のコミット（`log_args` の書式）。
 
-    記録が無い・課題を読めない・範囲が引けない・空のときは `None`（呼ぶ側が件名で探す）。
+    記録が使えない（`beads.shipped_range_on_base` が `None`）・課題を読めない・範囲が引けない・空のときは
+    `None`（呼ぶ側が件名で探す）。
     """
     try:
         issue = beads.show(root, beads.to_bd_id(task_id))
     except beads.BeadsError:
         return None
-    shipped = beads.shipped_range(issue) if issue is not None else None
+    if issue is None or beads.shipped_range(issue) is None:
+        return None
+    try:
+        shipped = beads.shipped_range_on_base(issue, gitinfo.base_branch(root), root)
+    except gitinfo.NoBaseBranch:
+        return None
     if shipped is None:
         return None
     out, _ = git_out(root, *log_args, f"{shipped[0]}..{shipped[1]}")

@@ -590,7 +590,7 @@ def test_material_commits() -> None:
             return "\n".join(lines_of("コミット", r.stdout)) + "\n" + r.stdout.rsplit("=====", 1)[-1]
 
         bd("init", "--stealth", "-p", "t", "--non-interactive", "--skip-hooks", "--quiet")
-        for n in (10, 11, 12, 13, 14):
+        for n in (10, 11, 12, 13, 14, 15):
             bd("create", "--id", f"t-0{n}", "--title", f"課題{n}", "--body-file", "-", "--silent",
                "--metadata", '{"difficulty": "sonnet", "loopable": "Y"}', stdin="## 目的・背景\n\nx\n")
 
@@ -600,7 +600,13 @@ def test_material_commits() -> None:
         outside = commit("T-010 に言及しただけの別の変更")
         t11 = commit("T-011: 件名に規約どおりID")
         bd("update", "t-010", "--set-metadata", f"task_shipped={base}..{last}")
+        t14 = commit("T-014: 記録の形が壊れた課題")
         bd("update", "t-013", "--set-metadata", f"task_shipped={'a' * 40}..{'b' * 40}")
+        bd("update", "t-014", "--set-metadata", "task_shipped=壊れた値")
+        git(root, "checkout", "-q", "-b", "side")
+        side = commit("T-015: 主ブランチに入っていない枝のコミット")
+        git(root, "checkout", "-q", "main")
+        bd("update", "t-015", "--set-metadata", f"task_shipped={base}..{side}")
 
         out = material("T-010")
         check("記録あり・件名が規約外: 範囲のコミットを出す", first[:7] in out and last[:7] in out and "該当するコミットが無い" not in out, out)
@@ -611,6 +617,11 @@ def test_material_commits() -> None:
         check("記録なし・件名にも無い: 該当なしと注意", "該当するコミットが無い" in out and "見つからない" in out, out)
         out = material("T-013")
         check("記録が存在しない SHA: 件名へ戻り、件名にも無ければ該当なし", "該当するコミットが無い" in out, out)
+        out = material("T-014")
+        check("記録の形が壊れている: 件名へ戻る", t14[:7] in out, out)
+        out = material("T-015")
+        check("実在するが主ブランチの祖先でない先端: 範囲を使わず件名へ戻り、主ブランチに無いコミットを出さない",
+              side[:7] not in out and "該当するコミットが無い" in out, out)
 
 
 def test_draft_fate() -> None:

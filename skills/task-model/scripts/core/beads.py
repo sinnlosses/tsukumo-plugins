@@ -453,6 +453,17 @@ def shipped_range(issue: Issue) -> tuple[str, str] | None:
     return (m.group(1), m.group(2)) if m else None
 
 
+def shipped_range_on_base(issue: Issue, base: str, cwd: str) -> tuple[str, str] | None:
+    """`shipped_range` のうち、先端が主ブランチ `base` の祖先のもの。記録が無い・形が違う・先端が無い／祖先でないときは `None`。
+
+    `tw status` の `STALE:shipped` と `material.py` のコミット照合は、記録を使うかをこの1つで決め、`None` なら件名へ戻る。
+    """
+    shipped = shipped_range(issue)
+    if shipped is None:
+        return None
+    return shipped if gitcmd.run(["merge-base", "--is-ancestor", shipped[1], base], cwd).returncode == 0 else None
+
+
 # --- 本文の出し入れ ----------------------------------------------------------------
 
 

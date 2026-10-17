@@ -256,11 +256,8 @@ def _classify_claim(toplevel: str, issue: beads.Issue, worktree_names: set[str],
 
 
 def _shipped_by_record(toplevel: str, issue: beads.Issue, base: str) -> bool:
-    """`tw ship` が metadata に書いた範囲の先端が、主ブランチに入っているか。記録が無い・形が違えば偽（件名照合へ戻る）。"""
-    shipped = beads.shipped_range(issue)
-    if shipped is None:
-        return False
-    return tw_base.run_git(toplevel, ["merge-base", "--is-ancestor", shipped[1], base]).returncode == 0
+    """`tw ship` が metadata に書いた範囲の先端が、主ブランチに入っているか。使えない記録は偽（件名照合へ戻る）。"""
+    return beads.shipped_range_on_base(issue, base, toplevel) is not None
 
 
 def _task_commit_on_base(toplevel: str, task_id: str, base: str, since: str | None) -> bool:
