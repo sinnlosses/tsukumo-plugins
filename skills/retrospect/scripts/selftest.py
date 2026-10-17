@@ -230,6 +230,67 @@ def test_slow_calls() -> None:
         check("コマンドの本文を出さない", "SECRET-COMMAND-BODY" not in r.stdout, r.stdout)
 
 
+def test_transcript_binding() -> None:
+    print("transcript.py の紐付け（台帳の agent の出来事。無い記録だけ先頭のタスクIDの探索）")
+    sys.path.insert(0, HERE)
+    import transcript
+
+    base = datetime.now(timezone.utc) - timedelta(hours=1)
+
+    def at(sec: int) -> str:
+        return (base + timedelta(seconds=sec)).isoformat(timespec="seconds")
+
+    def line(text: str) -> str:
+        return json.dumps({"type": "user", "timestamp": "2026-10-01T00:00:00Z", "message": {"content": text}}, ensure_ascii=False) + "\n"
+
+    with tempfile.TemporaryDirectory() as d:
+        root = os.path.join(d, "repo")
+        os.makedirs(root)
+        git(root, "init", "-q", "-b", "main")
+        slug = "".join(c if c.isalnum() else "-" for c in os.path.abspath(root))
+        sub = os.path.join(d, "cfg", "projects", slug)
+
+        def put(session: str, name: str, text: str) -> str:
+            return write(os.path.join(sub, session, "subagents", name), line(text))
+
+        a1 = put("s1", "agent-aaa.jsonl", "GH-2 を先に書いた GH-1 の委譲")
+        a2 = put("s1", "agent-bbb.jsonl", "IDを含まない依頼")
+        put("s1", "agent-old.jsonl", "GH-4 の古い委譲")
+        new = put("s2", "agent-new.jsonl", "GH-4 の新しい委譲")
+        legacy = put("s3", "agent-legacy.jsonl", "GH-3 の古い記録")
+        write(
+            os.path.join(root, ".git", "task-workflow", "flow", "2026-10.jsonl"),
+            flow_row(at(0), "claim", "GH-1") + flow_row(at(5), "agent", "GH-1", agent="aaa", session="s1")
+            + flow_row(at(0), "claim", "GH-2") + flow_row(at(5), "agent", "GH-2", agent="bbb", session="s1")
+            + flow_row(at(0), "claim", "GH-4") + flow_row(at(5), "agent", "GH-4", agent="old", session="s1")
+            + flow_row(at(100), "claim", "GH-4") + flow_row(at(105), "agent", "GH-4", agent="new", session="s2")
+            + flow_row(at(0), "claim", "GH-5") + flow_row(at(5), "agent", "GH-5", agent="missing", session="s9")
+            + flow_row(at(0), "claim", "GH-6") + flow_row(at(5), "agent", "GH-6", agent="aaa", session="../s1")
+            + flow_row(at(6), "agent", "GH-6", agent="../agent-aaa", session="s1")
+            + flow_row(at(0), "claim", "GH-3"),
+        )
+        env = {**os.environ, "CLAUDE_CONFIG_DIR": os.path.join(d, "cfg")}
+        saved = os.environ.get("CLAUDE_CONFIG_DIR")
+        os.environ["CLAUDE_CONFIG_DIR"] = env["CLAUDE_CONFIG_DIR"]
+        try:
+            found = lambda task: transcript.find_transcripts(root, task)  # noqa: E731
+            check("先頭に別のタスクIDがあっても、agent の出来事を持つタスクに紐付き、先頭のIDのタスクには紐付かない",
+                  found("GH-1") == [a1] and a1 not in found("GH-2"), repr((found("GH-1"), found("GH-2"))))
+            check("先頭にタスクIDの無い transcript も出来事で紐付く", found("GH-2") == [a2], repr(found("GH-2")))
+            check("agent の出来事が無いタスクは先頭3行のタスクID探索に戻る", found("GH-3") == [legacy], repr(found("GH-3")))
+            check("最後の claim より前の agent の出来事は使わない", found("GH-4") == [new], repr(found("GH-4")))
+            check("出来事があってファイルが無いときは文字列探索に戻らず空", found("GH-5") == [], repr(found("GH-5")))
+            check("session・agent に ../ を入れた出来事は読み捨てる", found("GH-6") == [], repr(found("GH-6")))
+            r = subprocess.run([sys.executable, os.path.join(HERE, "material.py"), root, "GH-1", "--signals"],
+                               capture_output=True, text=True, env=env)
+            check("material.py --signals の出典に agent-<id>.jsonl が出る", "出典\tagent-aaa.jsonl" in r.stdout, r.stdout + r.stderr)
+        finally:
+            if saved is None:
+                os.environ.pop("CLAUDE_CONFIG_DIR", None)
+            else:
+                os.environ["CLAUDE_CONFIG_DIR"] = saved
+
+
 def test_gate() -> None:
     print("material.py --gate の判定（台帳が読めないときは引数に戻る）")
     quiet = {"--friction": "none", "--human": "0"}
@@ -740,6 +801,7 @@ def main() -> None:
     test_viewpoint_vocabulary()
     test_weekly()
     test_slow_calls()
+    test_transcript_binding()
     test_gate()
     test_gate_ledger()
     test_stage_signals()
