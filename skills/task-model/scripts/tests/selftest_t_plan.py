@@ -94,6 +94,36 @@ def test_edit_and_plan_check() -> None:
                   "PLAN_FIRST\tT-106", "PARALLEL\tT-106\t1,2", "PARALLEL\tT-106\t2,3", "SERIAL\tT-106\t1,3\tsrc/a.py",
                   "STEP\tT-106\t1\tなし", "STEP\tT-106\t2\tなし", "STEP\tT-106\t3\t1", "STEP\tT-106\t4\t2,3",
               ], r.stdout + r.stderr)
+        none_steps = [
+            ("書く", "- 触るファイル: `src/a.py`"),
+            ("撮る", "- 前の段: なし\n- 触るファイル: なし"),
+            ("試す", "- 前の段: なし\n- 触るファイル: `src/a.py`"),
+            ("合わせる", "x"),
+        ]
+        none_plan = task_body(none_steps)
+        none_named = task_body(none_steps, ["docs/"])
+        r = run_task(wt1, "edit", "T-106", "--body-file", "-", stdin=none_plan)
+        check("触るファイルが なし の段を含む計画を edit が受ける", r.returncode == 0
+              and r.stdout.strip() == "EDITED\tT-106", r.stdout + r.stderr)
+        r = run_task(wt1, "plan-check", "T-106")
+        check("なし の段は欄があって何とも重ならず、並列の組に入る", r.returncode == 0
+              and r.stdout.splitlines() == [
+                  "PLAN_FIRST\tT-106", "PARALLEL\tT-106\t1,2", "PARALLEL\tT-106\t2,3", "SERIAL\tT-106\t1,3\tsrc/a.py",
+                  "STEP\tT-106\t1\tなし", "STEP\tT-106\t2\tなし", "STEP\tT-106\t3\t1", "STEP\tT-106\t4\t2,3",
+              ], r.stdout + r.stderr)
+        r = run_task(wt1, "edit", "T-106", "--body-file", "-", stdin=none_plan.replace("触るファイル: なし", "触るファイル: なしです"))
+        check("パスのコンマ区切りでも なし でもない値はこれまでの文言で拒む", r.returncode == 2
+              and "段 2 の `- 触るファイル:` は `` `パス` `` のコンマ区切り: なしです" in r.stderr, r.stdout + r.stderr)
+        r = run_task(main_path, "new", "--summary", "触らない段", "--difficulty", "sonnet", "--loopable", "Y",
+                     "--body-file", "-", stdin=none_named)
+        check("触るファイルが なし の段を含む計画を new が受ける", r.returncode == 0 and r.stdout.startswith("CREATED\t"),
+              r.stdout + r.stderr)
+        subprocess.run(["bd", "create", "--id", "t-none", "--title", "取り込み", "--silent"], cwd=main_path,
+                       capture_output=True, text=True)
+        r = run_task(main_path, "adopt", "T-NONE", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", "-",
+                     stdin=none_named)
+        check("触るファイルが なし の段を含む計画を adopt が受ける", r.returncode == 0 and r.stdout.startswith("ADOPTED\t"),
+              r.stdout + r.stderr)
         reset("T-106")
 
         run_task(wt1, "claim", "T-103")
