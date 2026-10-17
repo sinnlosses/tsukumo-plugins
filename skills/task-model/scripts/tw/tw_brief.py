@@ -7,22 +7,31 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 import sys
 from dataclasses import dataclass
 
+import beads
 import gitinfo
 import layout
 import taskfile
+import tw_base
 import tw_config
 import tw_edit
 import tw_plan
 
 ROLE_IMPLEMENTER = "implementer"
+ROLE_ACCEPTOR = "acceptor"
 TASK_MODEL_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+SNAPSHOT_SCRIPT = os.path.join(TASK_MODEL_DIR, "scripts", "core", "review_snapshot.py")
 VISUAL_WORD = "目視"
+RULE_FILES = ("AGENTS.md", "CLAUDE.md")
+RELAY_IMPLEMENT_KEY = "実装"
+VERDICT_WORDS = ("REVIEW", "SKIP", "NOTHING", "NO_RANGE")
 _PLACEHOLDER = re.compile(r"\{\{(\w+)\}\}")
 
 IMPLEMENTER_SECTIONS = ("常に", "計画どおり", "書き直し", "古い計画", "別のリポジトリ", "並列の段", "目視")
+ACCEPTOR_SECTIONS = ("常に", "同じリポジトリ", "別のリポジトリ", "レビュー", "目視", "目視待ち", "2回目以降")
 
 
 @dataclass(frozen=True)
@@ -71,6 +80,110 @@ def cmd_brief_implementer(toplevel: str, task_id: str, step: int | None, rewrite
     if visual or VISUAL_WORD in str(issue.raw.get("acceptance_criteria") or ""):
         chosen.append("目視")
     _print_brief(shown, ROLE_IMPLEMENTER, sections, chosen, values)
+
+
+def cmd_brief_acceptor(
+    toplevel: str,
+    task_id: str,
+    accept_file: str | None,
+    images: list[str],
+    visual_wait: bool,
+    round_number: int | None,
+    since: str | None,
+) -> None:
+    if visual_wait and (round_number is not None or accept_file is not None):
+        _usage("brief acceptor: --visual-wait は --round・--accept-file と一緒に打てない")
+    if visual_wait and not images:
+        _usage("brief acceptor: --visual-wait には --image が要る")
+    if round_number is not None and (since is None or accept_file is not None):
+        _usage("brief acceptor: --round には --since が要り、--accept-file とは一緒に打てない")
+    if round_number is None and since is not None:
+        _usage("brief acceptor: --since は --round と一緒に打つ")
+    if not visual_wait and round_number is None and accept_file is None:
+        _usage("brief acceptor: --accept-file（tw accept か review_needed.py の出力）が要る")
+    verdict, tree_sha = _read_verdict(tw_base.read_body(accept_file)) if accept_file is not None else ("", None)
+    shown, issue, plan_body, _mark, _base, _drift = tw_edit.own_plan(toplevel, task_id)
+    template_path, sections = _template(toplevel, ROLE_ACCEPTOR, ACCEPTOR_SECTIONS)
+    criteria = str(issue.raw.get("acceptance_criteria") or "").strip("\n")
+    work = work_repo(toplevel, shown, plan_body)
+    if work is not None and not os.path.isdir(work.worktree):
+        print(f"INVALID\t作業先 {work.root} に枝 {work.branch} の作業ツリーが無い")
+        raise SystemExit(3)
+    tree = work.worktree if work is not None else toplevel
+    values = {
+        "task_id": shown,
+        "here": os.path.dirname(template_path),
+        "worktree": tree,
+        "images": "\n".join(f"- `{p}`" for p in images),
+    }
+    if visual_wait:
+        lines = [line for line in criteria.splitlines() if VISUAL_WORD in line]
+        values["visual_criteria"] = "\n".join(lines) or "（`## 完了条件` に目視の行が無い）"
+        _print_brief(shown, ROLE_ACCEPTOR, sections, ["目視待ち"], values)
+        return
+    if round_number is not None:
+        now = _snapshot(tree)
+        values.update(round=str(round_number), since=since or "", now=now)
+        _print_brief(shown, ROLE_ACCEPTOR, sections, ["2回目以降"], values, now)
+        return
+    chosen = ["常に"]
+    if work is None:
+        chosen.append("同じリポジトリ")
+    else:
+        chosen.append("別のリポジトリ")
+        values.update(branch=work.branch, base=work.base)
+    if verdict.startswith("REVIEW"):
+        chosen.append("レビュー")
+        values["tree"] = tree_sha or _snapshot(tree)
+    if images or VISUAL_WORD in criteria:
+        chosen.append("目視")
+        if not images:
+            values["images"] = "（報告に画像のパスが無い）"
+    rules = [os.path.join(tree, name) for name in RULE_FILES if os.path.isfile(os.path.join(tree, name))]
+    values.update(
+        criteria=criteria,
+        rules="・".join(f"`{p}`" for p in rules) or "無い（作業ツリーの根に規約のファイルが無い）",
+        verdict="`" + verdict.replace("\t", "\\t") + "`",
+        friction=_friction_lines(toplevel, shown),
+    )
+    _print_brief(shown, ROLE_ACCEPTOR, sections, chosen, values)
+
+
+def _read_verdict(text: str) -> tuple[str, str | None]:
+    """`tw accept` か `review_needed.py` の出力から `(判定の行, SNAPSHOT の木)`。判定の行が無ければ終了コード2。"""
+    lines = text.splitlines()
+    verdict = next((line for line in lines if line.split("\t", 1)[0] in VERDICT_WORDS), None)
+    if verdict is None:
+        _usage("brief acceptor: --accept-file に判定の行（REVIEW・SKIP・NOTHING・NO_RANGE）が無い")
+    snapshot = next((line.split("\t", 1)[1] for line in lines if line.startswith("SNAPSHOT\t")), None)
+    return verdict or "", snapshot
+
+
+def _snapshot(tree: str) -> str:
+    r = subprocess.run([sys.executable, SNAPSHOT_SCRIPT], cwd=tree, capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f"INVALID\treview_snapshot.py: {r.stderr.strip() or r.stdout.strip()}")
+        raise SystemExit(3)
+    return r.stdout.strip()
+
+
+def _friction_lines(toplevel: str, shown: str) -> str:
+    """申し送り `実装` の本文から、`- ドラフト:`（子項目ごと）と `- 規約:` の行を除いたもの。"""
+    body = beads.last_relay(beads.comments(toplevel, beads.to_bd_id(shown)), RELAY_IMPLEMENT_KEY)
+    if body is None:
+        return "（申し送り `実装` が無い。friction log を書いていない返却として扱う）"
+    kept: list[str] = []
+    in_draft = False
+    for line in body.splitlines():
+        if line.startswith("- ドラフト:"):
+            in_draft = True
+            continue
+        if in_draft and line[:1] in (" ", "\t"):
+            continue
+        in_draft = False
+        if not line.startswith("- 規約:"):
+            kept.append(line)
+    return "\n".join(kept).strip("\n") or "（申し送り `実装` に friction log の行が無い）"
 
 
 def work_repo(toplevel: str, shown: str, plan_body: str) -> WorkRepo | None:
@@ -143,7 +256,9 @@ def _template(toplevel: str, role: str, known: tuple[str, ...]) -> tuple[str, di
     return path, sections
 
 
-def _print_brief(shown: str, role: str, sections: dict[str, str], chosen: list[str], values: dict[str, str]) -> None:
+def _print_brief(
+    shown: str, role: str, sections: dict[str, str], chosen: list[str], values: dict[str, str], tail: str | None = None
+) -> None:
     missing_sections = [s for s in chosen if s not in sections]
     if missing_sections:
         print(f"INVALID\t型に節 {', '.join(missing_sections)} が無い")
@@ -153,7 +268,7 @@ def _print_brief(shown: str, role: str, sections: dict[str, str], chosen: list[s
     if unknown:
         print(f"INVALID\t型の値 {', '.join(unknown)} が埋まらない")
         raise SystemExit(3)
-    print(f"BRIEF\t{shown}\t{role}\t{','.join(chosen)}")
+    print(f"BRIEF\t{shown}\t{role}\t{','.join(chosen)}" + (f"\t{tail}" if tail else ""))
     print(_PLACEHOLDER.sub(lambda m: values[m.group(1)], text))
 
 

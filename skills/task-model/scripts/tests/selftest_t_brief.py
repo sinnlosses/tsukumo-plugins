@@ -158,6 +158,95 @@ def test_brief_implementer_visual() -> None:
         check("--visual なら付く", r.returncode == 0 and _head(r).endswith(",目視"), r.stdout + r.stderr)
 
 
+def _acceptor(wt: str, *extra: str, stdin: str | None = None) -> subprocess.CompletedProcess:
+    return run_task(wt, "brief", "acceptor", "T-100", *extra, stdin=stdin)
+
+
+TREE_SHA = re.compile(r"[0-9a-f]{40}")
+
+
+def test_brief_acceptor_review() -> None:
+    say("task.py brief acceptor: tw accept の出力から判定と木を読み、差分のコマンド・完了条件・規約のファイル・friction の行を埋める")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _ = make_repo(tmp, branch="切らない")
+        _claim_with_plan(wt1, main_path, "### 1. 書く\nx\n", acceptance="1. 通る\n2. 動く")
+        write(os.path.join(wt1, "CLAUDE.md"), "# 規約\n")
+        write(os.path.join(wt1, "code.py"), "x = 1\n")
+        r = _acceptor(wt1, "--accept-file", "-", stdin=run_task(wt1, "accept", "T-100").stdout)
+        tree = r.stdout.split("1回目の木の SHA（2・3回目の差分の起点）: ", 1)[-1].split("\n", 1)[0]
+        check("REVIEW は 常に・同じリポジトリ・レビュー で、SNAPSHOT の木を出す",
+              r.returncode == 0 and _head(r) == "BRIEF\tT-100\tacceptor\t常に,同じリポジトリ,レビュー"
+              and TREE_SHA.fullmatch(tree) is not None, r.stdout + r.stderr)
+        body = r.stdout.split("\n", 1)[1]
+        check("差分のコマンド・完了条件の本文・判定・CLAUDE.md の絶対パスが入り、{{ が残らない",
+              "`git diff HEAD`" in body and "1. 通る\n2. 動く" in body and "`REVIEW\\tcode\\t" in body
+              and f"`{os.path.join(os.path.realpath(wt1), 'CLAUDE.md')}`" in body and "{{" not in body, body)
+        check("acceptor-brief.md の絶対パスが実在する", _paths_exist(body), body)
+        check("申し送りが無ければその旨", "申し送り `実装` が無い" in body, body)
+
+        run_task(wt1, "relay", "T-100", "実装", "--body-file", "-",
+                 stdin="- 黄: 段1でテストが1回落ちた（a.py）\n- ドラフト: 何かを変える\n  - 根拠: x\n- 規約: なし\n")
+        r = _acceptor(wt1, "--accept-file", "-", stdin="SKIP\tdocs-only\n")
+        body = r.stdout
+        check("SKIP は レビュー を付けない", r.returncode == 0 and _head(r) == "BRIEF\tT-100\tacceptor\t常に,同じリポジトリ", body)
+        check("friction の行はそのまま、ドラフト（子項目ごと）と規約の行は除く",
+              "- 黄: 段1でテストが1回落ちた（a.py）" in body and "ドラフト" not in body and "根拠: x" not in body
+              and "- 規約: なし" not in body, body)
+
+
+def test_brief_acceptor_other_repo() -> None:
+    say("task.py brief acceptor: 作業先が別のリポジトリなら、作業先の作業ツリーと主ブランチからの範囲で差分を出し、木もそこで取る")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _ = make_repo(tmp, branch="切らない")
+        work = _work_repo(os.path.join(tmp, "accept-work-repo"))
+        _claim_with_plan(wt1, main_path, f"### 1. 書く\nx\n\n### 作業先\n- `{work}`\n")
+        r = _acceptor(wt1, "--accept-file", "-", stdin="REVIEW\tcode\t1\n")
+        check("作業先の作業ツリーが無ければ INVALID", r.returncode == 3 and r.stdout.startswith("INVALID\t"), r.stdout + r.stderr)
+        tree = os.path.join(tmp, "t100")
+        git(work, "worktree", "add", "-q", "-b", "t-100", tree, "main")
+        write(os.path.join(tree, "AGENTS.md"), "# 作業先の規約\n")
+        r = _acceptor(wt1, "--accept-file", "-", stdin="REVIEW\tcode\t1\n")
+        check("別のリポジトリ と レビュー、範囲つきの差分と作業先の作業ツリー・その木・その規約のファイル",
+              r.returncode == 0 and _head(r) == "BRIEF\tT-100\tacceptor\t常に,別のリポジトリ,レビュー"
+              and "`git diff main...t-100`" in r.stdout and "`main..t-100`" in r.stdout
+              and f"作業ツリー: {os.path.realpath(tree)}" in r.stdout
+              and f"`{os.path.join(os.path.realpath(tree), 'AGENTS.md')}`" in r.stdout
+              and TREE_SHA.search(r.stdout) is not None, r.stdout + r.stderr)
+
+
+def test_brief_acceptor_visual() -> None:
+    say("task.py brief acceptor: 目視の完了条件か --image で 目視、--visual-wait は 目視待ち だけ")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _ = make_repo(tmp, branch="切らない")
+        _claim_with_plan(wt1, main_path, "### 1. 書く\nx\n", acceptance="1. 通る\n2. 画面を目視で確かめる")
+        r = _acceptor(wt1, "--accept-file", "-", "--image", "/tmp/a-375.png", "--image", "/tmp/a-1280.png", stdin="SKIP\tdocs-only\n")
+        check("目視 と画像の2行", r.returncode == 0 and _head(r).endswith(",目視")
+              and "- `/tmp/a-375.png`\n- `/tmp/a-1280.png`" in r.stdout, r.stdout + r.stderr)
+        r = _acceptor(wt1, "--accept-file", "-", stdin="SKIP\tdocs-only\n")
+        check("目視の完了条件で画像が無ければ、その旨を出す", _head(r).endswith(",目視") and "報告に画像のパスが無い" in r.stdout,
+              r.stdout + r.stderr)
+        r = _acceptor(wt1, "--visual-wait", "--image", "/tmp/a-375.png")
+        check("--visual-wait は 目視待ち だけで、目視の行だけを添える",
+              r.returncode == 0 and _head(r) == "BRIEF\tT-100\tacceptor\t目視待ち"
+              and "2. 画面を目視で確かめる" in r.stdout and "1. 通る" not in r.stdout, r.stdout + r.stderr)
+        r = _acceptor(wt1, "--visual-wait")
+        check("--visual-wait に画像が無ければ終了コード2", r.returncode == 2, r.stdout + r.stderr)
+
+
+def test_brief_acceptor_round() -> None:
+    say("task.py brief acceptor: --round は前の木といまの木を添え、BRIEF の行の末尾にいまの木を出す")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _ = make_repo(tmp, branch="切らない")
+        _claim_with_plan(wt1, main_path, "### 1. 書く\nx\n")
+        r = _acceptor(wt1, "--round", "2", "--since", "1" * 40)
+        now = _head(r).split("\t")[-1]
+        check("2回目以降 だけで、末尾のいまの木が本文の git diff に入る",
+              r.returncode == 0 and _head(r).startswith("BRIEF\tT-100\tacceptor\t2回目以降\t") and TREE_SHA.fullmatch(now) is not None
+              and f"git diff {'1' * 40} {now}" in r.stdout and "2回目の受け入れ" in r.stdout, r.stdout + r.stderr)
+        r = _acceptor(wt1, "--round", "2")
+        check("--round に --since が無ければ終了コード2", r.returncode == 2, r.stdout + r.stderr)
+
+
 def test_brief_refusals() -> None:
     say("task.py brief: 着手していなければ NOT_OWNER、並びに型を持つスキルが無ければ MISSING")
     with tempfile.TemporaryDirectory() as tmp:
@@ -170,6 +259,16 @@ def test_brief_refusals() -> None:
         r = _brief(wt1)
         check("型を持つスキルが並びに無ければ MISSING（終了コード6）",
               r.returncode == 6 and r.stdout.startswith("MISSING\tbrief-implementer"), r.stdout + r.stderr)
+        r = _acceptor(wt1, "--accept-file", "-", stdin="SKIP\tdocs-only\n")
+        check("受け入れ役も MISSING", r.returncode == 6 and r.stdout.startswith("MISSING\tbrief-acceptor"), r.stdout + r.stderr)
+        r = _acceptor(wt1)
+        check("受け入れ役に --accept-file が無ければ終了コード2", r.returncode == 2, r.stdout + r.stderr)
+        r = _acceptor(wt1, "--accept-file", "-", stdin="FORMATTED\n")
+        check("--accept-file に判定の行が無ければ終了コード2", r.returncode == 2, r.stdout + r.stderr)
+        r = _brief(wt1, "--image", "/tmp/a.png")
+        check("実装役に受け入れ役の旗は終了コード2", r.returncode == 2, r.stdout + r.stderr)
+        r = _acceptor(wt1, "--step", "1")
+        check("受け入れ役に実装役の旗は終了コード2", r.returncode == 2, r.stdout + r.stderr)
 
 
 TESTS = (
@@ -178,6 +277,10 @@ TESTS = (
     test_brief_implementer_other_repo,
     test_brief_implementer_parallel,
     test_brief_implementer_visual,
+    test_brief_acceptor_review,
+    test_brief_acceptor_other_repo,
+    test_brief_acceptor_visual,
+    test_brief_acceptor_round,
     test_brief_refusals,
 )
 

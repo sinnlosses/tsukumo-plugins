@@ -123,10 +123,10 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
 出力: 部品の行に加え、`REVIEW\topus`・`REVIEW\tcode\t<数>`・`SKIP\tdocs-only`・`NOTHING`・`NO_RANGE`（判定。`NO_RANGE` は範囲なしで作業ツリーの変更が空）、`SNAPSHOT\t<木の SHA>`（レビューが要るとき。最後の行）、`FORMATTED`（整形が通った）、`FORMAT_FAILED\t<コマンド>`（続けて出力の末尾40行。終了コード10）、`MISSING\t<パス>`（`review_needed.py` が無い。終了コード6）、`INVALID\t…`（判定の失敗。終了コード3）。`NOT_CLAIMED`・`NOT_OWNER` は終了コード4で止まる。それ以外の終了コードは部品のもの""",
     ),
     "brief": (
-        "委譲先（実装役）への依頼文を、並びのスキルが持つ型から場合に当たる節を選んで出す。",
-        r"""自分の着手の印のタスクについて、委譲先への依頼文を出す（Beads にも作業ツリーにも書かない）。依頼文の文面は型が持ち、ここは場合に当たる節を選んで値を埋めるだけ。型は、`steps` の並び（無ければ既定の並び）の順で、SKILL.md の frontmatter の `metadata` に `workflow-brief-<役>`（SKILL.md のディレクトリからの相対パス）を持つ最初のスキルのもの。型は `## <節名>` の節の並びで、最初の `## ` より前は出さず、`{{名前}}` を値で埋める。役 `implementer`（実装役）の節は、いつも `常に`。`plan-check` と同じ印で、登録時の計画（`registered`）か作業より先に書いた計画（`first`）で段が読め、`- 満たす完了条件:` の欄が `## 完了条件` を覆い、`--rewrite` が無ければ `計画どおり`（段は `--step`、無ければ1）、それ以外は `書き直し`。`書き直し` で登録時の計画が古ければ（`PLAN_STALE` と同じ判定）`古い計画`。`計画どおり` で渡す段が並列の組（`plan-check` の `PARALLEL`）に入れば `並列の段`。`### 作業先` が別のリポジトリなら `別のリポジトリ`。`## 完了条件` に「目視」を含むか `--visual` なら `目視`。値は `task_id`・`step`・`here`（型のディレクトリの絶対パス）・`task_model`（この `tw` の置き場の絶対パス）・`claimed`（着手した作業ツリー）・`touched`（渡す段の触るファイル）・`stale_files`（変わったファイル）・`work_repo`・`branch`（タスクIDの小文字）・`worktree`・`base`（作業先の主ブランチ）。作業先の作業ツリーの道は、作業先に枝 `branch` の作業ツリーがあればそのパス、無ければ、着手した作業ツリーが本体でなければ `<着手した作業ツリーの親の親>/<作業先の名前>/<branch>`、本体なら `<作業先の親>/<作業先の名前>-<branch>`。`--step` を `書き直し` に付ける・段の外の番号は終了コード2
+        "実装役・受け入れ役への依頼文を、並びのスキルが持つ型から場合に当たる節を選んで出す。",
+        r"""自分の着手の印のタスクについて、実装役（`implementer`）か受け入れ役（`acceptor`）への依頼文を出す（Beads にも作業ツリーにも書かない。受け入れ役の木の控えは git の object を書く）。依頼文の文面は型が持ち、ここは場合に当たる節を選んで値を埋めるだけ。型は、`steps` の並び（無ければ既定の並び）の順で、SKILL.md の frontmatter の `metadata` に `workflow-brief-<役>`（SKILL.md のディレクトリからの相対パス）を持つ最初のスキルのもの。型は `## <節名>` の節の並びで、最初の `## ` より前は出さず、`{{名前}}` を値で埋める。役 `implementer`（実装役）の節は、いつも `常に`。`plan-check` と同じ印で、登録時の計画（`registered`）か作業より先に書いた計画（`first`）で段が読め、`- 満たす完了条件:` の欄が `## 完了条件` を覆い、`--rewrite` が無ければ `計画どおり`（段は `--step`、無ければ1）、それ以外は `書き直し`。`書き直し` で登録時の計画が古ければ（`PLAN_STALE` と同じ判定）`古い計画`。`計画どおり` で渡す段が並列の組（`plan-check` の `PARALLEL`）に入れば `並列の段`。`### 作業先` が別のリポジトリなら `別のリポジトリ`。`## 完了条件` に「目視」を含むか `--visual` なら `目視`。値は `task_id`・`step`・`here`（型のディレクトリの絶対パス）・`task_model`（この `tw` の置き場の絶対パス）・`claimed`（着手した作業ツリー）・`touched`（渡す段の触るファイル）・`stale_files`（変わったファイル）・`work_repo`・`branch`（タスクIDの小文字）・`worktree`・`base`（作業先の主ブランチ）。作業先の作業ツリーの道は、作業先に枝 `branch` の作業ツリーがあればそのパス、無ければ、着手した作業ツリーが本体でなければ `<着手した作業ツリーの親の親>/<作業先の名前>/<branch>`、本体なら `<作業先の親>/<作業先の名前>-<branch>`。`--step` を `書き直し` に付ける・段の外の番号は終了コード2。役 `acceptor`（受け入れ役）の見る作業ツリーは、`### 作業先` が別のリポジトリなら枝 `branch` の作業先の作業ツリー（無ければ `INVALID`）、それ以外は着手した作業ツリー。旗の組は3つ: 既定は `--accept-file <path|->`（`accept` か `review_needed.py` の出力。判定の行 `REVIEW`・`SKIP`・`NOTHING`・`NO_RANGE` が要る）で、節は `常に`・`同じリポジトリ`か`別のリポジトリ`（差分のコマンドとコメント行の範囲。別のリポジトリは `<base>...<branch>`・`<base>..<branch>`）・判定が `REVIEW` なら `レビュー`（木は `SNAPSHOT` の行、無ければ見る作業ツリーで `review_snapshot.py` を打って取る）・`## 完了条件` に「目視」を含むか `--image` があれば `目視`。`--visual-wait --image <パス>…` は `目視待ち` だけ（`## 完了条件` の目視の行を添える）。`--round <n> --since <前の木>` は `2回目以降` だけで、見る作業ツリーで `review_snapshot.py` を打ったいまの木を添える。値は `task_id`・`here`・`worktree`・`criteria`（`## 完了条件` の本文）・`visual_criteria`・`rules`（見る作業ツリーの根の `AGENTS.md`・`CLAUDE.md`）・`verdict`・`tree`・`images`・`friction`（申し送り `実装` の本文から `- ドラフト:`〔子項目ごと〕と `- 規約:` の行を除いたもの）・`branch`・`base`・`round`・`since`・`now`。旗の組が合わない・役に無い旗は終了コード2
 
-出力: 1行目 `BRIEF\tT-xxx\t<役>\t<選んだ節名,…>`、2行目から依頼文（そのまま渡す）。`NOT_OWNER`（終了コード4）。`MISSING\tbrief-<役>`（並びに型を持つスキルが無い）・`MISSING\t<型のパス>`（読めない。どちらも終了コード6）。`INVALID`（終了コード3。型に知らない節・選んだ節が無い・埋まらない値、作業先が読めない、作業ツリーの道に別のものがあるか作業先の中に入る）""",
+出力: 1行目 `BRIEF\tT-xxx\t<役>\t<選んだ節名,…>`（`2回目以降` は末尾に `\t<いまの木>`。次の回の `--since` に渡す）、2行目から依頼文（そのまま渡す）。`NOT_OWNER`（終了コード4）。`MISSING\tbrief-<役>`（並びに型を持つスキルが無い）・`MISSING\t<型のパス>`（読めない。どちらも終了コード6）。`INVALID`（終了コード3。型に知らない節・選んだ節が無い・埋まらない値、作業先が読めない、作業ツリーの道に別のものがあるか作業先の中に入る）""",
     ),
     "verify": (
         "タスクIDは基本付けない。主ブランチを取り込んでから検証コマンドを打つ。",
@@ -357,11 +357,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_accept.add_argument("--after-review", dest="after_review", action="store_true")
 
     p_brief = sub.add_parser("brief")
-    p_brief.add_argument("role", choices=(tw_brief.ROLE_IMPLEMENTER,))
+    p_brief.add_argument("role", choices=(tw_brief.ROLE_IMPLEMENTER, tw_brief.ROLE_ACCEPTOR))
     p_brief.add_argument("task_id")
     p_brief.add_argument("--step", type=int, default=None)
     p_brief.add_argument("--rewrite", action="store_true")
     p_brief.add_argument("--visual", action="store_true")
+    p_brief.add_argument("--accept-file", dest="accept_file", default=None)
+    p_brief.add_argument("--image", dest="images", action="append", default=[])
+    p_brief.add_argument("--visual-wait", dest="visual_wait", action="store_true")
+    p_brief.add_argument("--round", dest="round_number", type=int, default=None)
+    p_brief.add_argument("--since", default=None)
 
     sub.add_parser("verify").add_argument("task_id", nargs="?")
     sub.add_parser("verify-check")
@@ -436,6 +441,14 @@ def main(argv: list[str] | None = None) -> None:
         if args.schema:
             tw_config.cmd_config_schema()
             return
+
+    if args.command == "brief":
+        acceptor_flags = args.accept_file is not None or args.images or args.visual_wait or args.round_number is not None or args.since
+        implementer_flags = args.step is not None or args.rewrite or args.visual
+        if args.role == tw_brief.ROLE_IMPLEMENTER and acceptor_flags:
+            parser.error("brief implementer: 受け入れ役の旗（--accept-file・--image・--visual-wait・--round・--since）は付けられない")
+        if args.role == tw_brief.ROLE_ACCEPTOR and implementer_flags:
+            parser.error("brief acceptor: 実装役の旗（--step・--rewrite・--visual）は付けられない")
 
     if args.command == "commit-guard":
         commit_guard.run(sys.stdin, sys.stdout, args.agent_scoped)
@@ -527,8 +540,12 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
             tw_edit.cmd_plan_phases(toplevel, args.task_id, args.through, args.also, args.skipped)
         elif args.command == "accept":
             tw_accept.cmd_accept(toplevel, args.task_id, args.after_review)
-        elif args.command == "brief":
+        elif args.command == "brief" and args.role == tw_brief.ROLE_IMPLEMENTER:
             tw_brief.cmd_brief_implementer(toplevel, args.task_id, args.step, args.rewrite, args.visual)
+        elif args.command == "brief":
+            tw_brief.cmd_brief_acceptor(
+                toplevel, args.task_id, args.accept_file, args.images, args.visual_wait, args.round_number, args.since
+            )
         elif args.command == "verify":
             tw_verify.cmd_verify(toplevel, args.task_id)
         elif args.command == "verify-check":
