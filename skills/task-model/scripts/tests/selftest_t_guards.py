@@ -198,11 +198,12 @@ def test_ask_guard() -> None:
             (("accept", "end"), False),
             (("delegate", "start"), True),
             (("direct",), True),
+            (("accept", "start"), True),
             (("accept", "end"), False),
             (("retro", "start"), False),
             (("retro", "end"), False),
             (("land", "start"), False),
-            (("sync", "end"), False),
+            (("sync", "start"), False),
         ):
             run_task(wt1, "lap", "T-100", *lap)
             check(f"主のセッションは最後の lap が {' '.join(lap)} なら{'拒む' if refused else '通す'}",

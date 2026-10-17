@@ -280,6 +280,7 @@ def test_lap_edge() -> None:
         main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
         commit_task(main_path, taskfile.Task("T-100", "段", "todo", "sonnet", "Y", (), BODY))
         run_task(wt1, "claim", "T-100")
+        run_task(wt1, "lap", "T-100", "land", "start")
         r = run_task(wt1, "lap", "T-100", "land", "end")
         check("land end は LAPPED", r.returncode == 0 and r.stdout.strip() == "LAPPED\tT-100\tland\tend", r.stdout + r.stderr)
         run_task(wt1, "lap", "T-100", "sync")
@@ -287,7 +288,7 @@ def test_lap_edge() -> None:
         check("不正な第3引数は終了コード2", r.returncode == 2, r.stdout + r.stderr)
         laps = [e for e in flow_rows(wt1) if e["event"] == "lap"]
         check("edge は与えた行だけに残り、不正な呼び出しは記録しない",
-              [(e["stage"], e.get("edge")) for e in laps] == [("land", "end"), ("sync", None)], repr(laps))
+              [(e["stage"], e.get("edge")) for e in laps] == [("land", "start"), ("land", "end"), ("sync", None)], repr(laps))
 
 
 def test_relay() -> None:
