@@ -23,8 +23,12 @@
 # 当たる段は `./check.sh --plan` で見る。
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
-NICE=
-command -v nice >/dev/null 2>&1 && NICE="nice -n 10"
+LOWPRI=
+if command -v taskpolicy >/dev/null 2>&1; then
+  LOWPRI="taskpolicy -c utility"
+elif command -v nice >/dev/null 2>&1; then
+  LOWPRI="nice -n 10"
+fi
 
 mode=scoped
 case "${1:-}" in
@@ -79,46 +83,46 @@ fi
 if stage "install.sh・uninstall.sh の自己テスト" \
   install.sh uninstall.sh scripts/links.sh scripts/selftest_links.sh 'agents/*' 'bin/*' \
   'skills/*/SKILL.md' 'skills/*/REQUIRES'; then
-  $NICE sh "$here/scripts/selftest_links.sh"
+  $LOWPRIsh "$here/scripts/selftest_links.sh"
 fi
 
 if stage "task-model: scripts・task コマンドの自己テスト" \
   'skills/task-model/scripts/*' 'agents/*' 'hooks/*' 'bin/*' 'skills/retrospect/scripts/*'; then
-  $NICE python3 "$here/skills/task-model/scripts/tests/selftest.py"
-  $NICE python3 "$here/skills/task-model/scripts/tests/selftest_review_needed.py"
-  $NICE python3 "$here/skills/task-model/scripts/tests/selftest_review_snapshot.py"
+  $LOWPRIpython3 "$here/skills/task-model/scripts/tests/selftest.py"
+  $LOWPRIpython3 "$here/skills/task-model/scripts/tests/selftest_review_needed.py"
+  $LOWPRIpython3 "$here/skills/task-model/scripts/tests/selftest_review_snapshot.py"
   echo
   echo "-- task コマンド（develop/task/ + 台帳） --"
-  $NICE python3 "$here/skills/task-model/scripts/tests/selftest_task.py"
+  $LOWPRIpython3 "$here/skills/task-model/scripts/tests/selftest_task.py"
   echo
   echo "-- task コマンド（Beads 方式。bd が無ければ飛ばす） --"
-  $NICE python3 "$here/skills/task-model/scripts/tests/selftest_beads.py"
+  $LOWPRIpython3 "$here/skills/task-model/scripts/tests/selftest_beads.py"
 fi
 
 if stage "task-model: WORKFLOW.md・tw-reference.md を読む検査" skills/task-model/WORKFLOW.md skills/task-model/tw-reference.md; then
-  $NICE python3 "$here/skills/task-model/scripts/tests/selftest_task.py" test_readonly_commands_stay_out_of_git
+  $LOWPRIpython3 "$here/skills/task-model/scripts/tests/selftest_task.py" test_readonly_commands_stay_out_of_git
 fi
 
 if stage "retrospect scripts の自己テスト" \
   'skills/retrospect/*' 'skills/task-model/scripts/*'; then
-  $NICE python3 "$here/skills/retrospect/scripts/selftest.py"
+  $LOWPRIpython3 "$here/skills/retrospect/scripts/selftest.py"
 fi
 
 if stage "plan-tasks scripts の自己テスト" 'skills/plan-tasks/*'; then
-  $NICE python3 "$here/skills/plan-tasks/scripts/selftest_removed_lines.py"
+  $LOWPRIpython3 "$here/skills/plan-tasks/scripts/selftest_removed_lines.py"
 fi
 
 if stage "comment-audit scripts の自己テスト" 'skills/comment-audit/*'; then
-  $NICE python3 "$here/skills/comment-audit/scripts/selftest_diff_added_comment_lines.py"
+  $LOWPRIpython3 "$here/skills/comment-audit/scripts/selftest_diff_added_comment_lines.py"
 fi
 
 if stage "task-workflow scripts の自己テスト" 'skills/task-workflow/scripts/*' 'skills/task-model/scripts/core/gitcmd.py' 'skills/comment-audit/*'; then
-  $NICE python3 "$here/skills/task-workflow/scripts/selftest_self_review.py"
+  $LOWPRIpython3 "$here/skills/task-workflow/scripts/selftest_self_review.py"
 fi
 
 echo
 echo "== リポジトリの整合 =="
 if [ "$mode" != plan ]; then
-  $NICE python3 "$here/scripts/selftest_check_repo.py"
+  $LOWPRIpython3 "$here/scripts/selftest_check_repo.py"
   python3 "$here/scripts/check_repo.py"
 fi
