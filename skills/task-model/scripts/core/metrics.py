@@ -146,27 +146,44 @@ def _overlap_seconds(spans: list[tuple[datetime, datetime]], start: datetime, en
     return sum(max(0.0, (min(end, e) - max(start, s)).total_seconds()) for s, e in spans)
 
 
-def _closing_edge(run: list[Event], start: Event, after: int) -> Event | None:
-    """`start` と同じ段の、`run[after:]` にある最初の `edge: end` の `lap`。"""
+def _closing_index(run: list[Event], start: Event, after: int) -> int | None:
+    """`start` と同じ段の、`run[after:]` にある最初の `edge: end` の `lap` の位置。"""
     return next(
-        (n for n in run[after:] if n.kind == "lap" and n.fields.get("edge") == "end" and n.fields.get("stage") == start.fields.get("stage")),
+        (
+            j
+            for j in range(after, len(run))
+            if run[j].kind == "lap" and run[j].fields.get("edge") == "end" and run[j].fields.get("stage") == start.fields.get("stage")
+        ),
         None,
     )
 
 
-def open_stages(events: list[Event], task_id: str) -> list[str]:
-    """そのタスクの最後の `claim` 以降で、`edge: start` の `lap` に `edge: end` が続かない段（出現順、重複なし）。"""
+def _since_last_claim(events: list[Event], task_id: str) -> list[Event]:
+    """そのタスクの最後の `claim` 以降の出来事。`claim` が無ければ空。"""
     own = [e for e in events if e.task == task_id]
     claims = [i for i, e in enumerate(own) if e.kind == "claim"]
-    if not claims:
-        return []
-    run = own[claims[-1] :]
+    return own[claims[-1] :] if claims else []
+
+
+def last_edge(events: list[Event], task_id: str, stage: str) -> str | None:
+    """そのタスクの最後の `claim` 以降で、段 `stage` の `edge` 付きの最後の `lap` の `edge`。無ければ `None`。"""
+    edges = [
+        e.fields.get("edge")
+        for e in _since_last_claim(events, task_id)
+        if e.kind == "lap" and e.fields.get("stage") == stage and e.fields.get("edge") in ("start", "end")
+    ]
+    return str(edges[-1]) if edges else None
+
+
+def open_stages(events: list[Event], task_id: str) -> list[str]:
+    """そのタスクの最後の `claim` 以降で、`edge: start` の `lap` に `edge: end` が続かない段（出現順、重複なし）。"""
+    run = _since_last_claim(events, task_id)
     stages: list[str] = []
     for i, e in enumerate(run):
         if e.kind != "lap" or e.fields.get("edge") != "start":
             continue
         stage = str(e.fields.get("stage"))
-        if _closing_edge(run, e, i + 1) is None and stage not in stages:
+        if _closing_index(run, e, i + 1) is None and stage not in stages:
             stages.append(stage)
     return stages
 
@@ -174,11 +191,12 @@ def open_stages(events: list[Event], task_id: str) -> list[str]:
 def _run_spans(run: list[Event]) -> tuple[list[tuple[str, str, datetime, datetime, float]], list[str]]:
     """`run`（1回の着手以降の出来事）から `(段, difficulty, 始め, 終わり, 所要秒)` の並びと、終わりの無い `start` の段名の並びを拾う。
 
-    最後の出来事は次の出来事が無いので拾わない。
+    最後の出来事は次の出来事が無いので拾わない。同じ段の前の `start` がまだ閉じていない `start`（手打ちと hook が重ねた lap）は数えない。
     """
     spans: list[tuple[str, str, datetime, datetime, float]] = []
     opens: list[str] = []
     verifying = _verify_spans(run)
+    covered: dict[str, int | None] = {}
     for i, e in enumerate(run[:-1]):
         stage = _stage_of(e)
         if stage is None:
@@ -187,11 +205,17 @@ def _run_spans(run: list[Event]) -> tuple[list[tuple[str, str, datetime, datetim
         if edge == "end":
             continue
         if edge == "start":
-            closing = _closing_edge(run, e, i + 1)
-            if closing is None:
+            lap_stage = str(e.fields.get("stage"))
+            if lap_stage in covered:
+                until = covered[lap_stage]
+                if until is None or until > i:
+                    continue
+            closing_at = _closing_index(run, e, i + 1)
+            covered[lap_stage] = closing_at
+            if closing_at is None:
                 opens.append(stage)
                 continue
-            begin, end = e.at, closing.at
+            begin, end = e.at, run[closing_at].at
             seconds = (end - begin).total_seconds()
         elif e.kind == "verify":
             recorded = e.fields.get("seconds")

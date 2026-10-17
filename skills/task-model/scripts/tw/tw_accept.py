@@ -29,6 +29,7 @@ FORMAT_TAIL_LINES = 40
 def cmd_accept(toplevel: str, task_id: str, after_review: bool) -> None:
     if not after_review:
         _run_part(lambda: tw_handback.cmd_lap(toplevel, task_id, "accept", "start"))
+        tw_handback.close_open_lap(toplevel, task_id, "delegate")
         _run_part(lambda: tw_edit.cmd_plan_check(toplevel, task_id))
         if _review_gate(toplevel, task_id):
             return
