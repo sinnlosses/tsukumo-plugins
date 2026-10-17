@@ -74,22 +74,45 @@ def _plan_repo(toplevel: str, body: str) -> str | None:
     return path
 
 
-def registered_plan_changes(toplevel: str, base_sha: str | None, tip: str | None, body: str) -> list[str] | None:
-    """登録時の計画が名指すファイルのうち、控えた `base_sha` から `tip` までに変わったもの。控えが無ければ `None`。"""
+def registered_plan_drift(toplevel: str, base_sha: str | None, tip: str | None, body: str) -> tuple[list[str], str] | None:
+    """登録時の計画が古いか。控えが無ければ `None`、あれば `(変わったファイル, 理由)`。ファイルが空なら古くない（理由も空）。
+
+    名指すファイルが控えた `base_sha` から `tip` までに変わっていても、覆いが保たれ（`PLAN_UNCOVERED` が出ない）、
+    名指すパスが `tip` の木に残り、差分の追加・削除行に段の本文の識別子（`taskfile.plan_identifiers`）が出なければ古くない。
+    理由は `touched:<語,…>`・`legacy`（満たす完了条件の欄が無い旧い計画）・`uncovered`・`path-missing`・`no-identifier`・`unreadable`。
+    """
     if base_sha is None:
         return None
     repo = _plan_repo(toplevel, body)
     if repo is None:
-        return ["(作業先が読めない)"]
+        return ["(作業先が読めない)"], "unreadable"
     if tip is None or tw_base.run_git(repo, ["cat-file", "-e", f"{base_sha}^{{commit}}"]).returncode != 0:
-        return ["(控えた SHA が無い)"]
+        return ["(控えた SHA が無い)"], "unreadable"
     paths, _ = taskfile.plan_files(body)
     if not paths:
-        return ["(名指すファイルが読めない)"]
+        return ["(名指すファイルが読めない)"], "unreadable"
     r = tw_base.run_git(repo, ["diff", "--name-only", base_sha, tip, "--", *paths])
     if r.returncode != 0:
-        return ["(差分が引けない)"]
-    return [line for line in r.stdout.splitlines() if line]
+        return ["(差分が引けない)"], "unreadable"
+    changed = [line for line in r.stdout.splitlines() if line]
+    if not changed:
+        return [], ""
+    specs, error = taskfile.plan_step_specs(body)
+    if error is not None or all(s.covers is None for s in specs):
+        return changed, "legacy"
+    if any(taskfile.plan_coverage(body)):
+        return changed, "uncovered"
+    if any(tw_base.run_git(repo, ["cat-file", "-e", f"{tip}:{p.rstrip('/')}"]).returncode != 0 for p in paths):
+        return changed, "path-missing"
+    words = taskfile.plan_identifiers(body)
+    if not words:
+        return changed, "no-identifier"
+    diff = tw_base.run_git(repo, ["diff", "-U0", base_sha, tip, "--", *paths])
+    if diff.returncode != 0:
+        return changed, "unreadable"
+    lines = [x[1:] for x in diff.stdout.splitlines() if x[:1] in ("+", "-") and not x.startswith(("+++", "---"))]
+    touched = [w for w in words if any(w in line for line in lines)]
+    return (changed, f"touched:{','.join(touched)}") if touched else ([], "")
 
 
 def plan_tip(toplevel: str, body: str) -> str | None:

@@ -64,13 +64,17 @@ def cmd_claim(toplevel: str, task_id: str) -> None:
     metadata = issue.raw.get("metadata")
     plan_base = metadata.get(beads.PLAN_BASE_KEY) if isinstance(metadata, dict) else None
     plan = str(issue.raw.get("notes") or "")
-    plan_body = f"{taskfile.PLAN_HEADING}\n{plan}\n"
+    plan_body = (
+        f"{taskfile.PLAN_HEADING}\n{plan}\n\n"
+        f"{taskfile.ACCEPTANCE_HEADING}\n{issue.raw.get('acceptance_criteria') or ''}\n"
+    )
     registered = False
     if plan_base and not taskfile.is_blank(plan):
         tip = tw_plan.plan_tip(toplevel, plan_body)
         if tip is not None:
             claim_args += ["--set-metadata", f"{beads.PLAN_TIP_KEY}={tip}"]
-        if tw_plan.registered_plan_changes(toplevel, plan_base, tip, plan_body) == []:
+        drift = tw_plan.registered_plan_drift(toplevel, plan_base, tip, plan_body)
+        if drift is not None and not drift[0]:
             claim_args += ["--set-metadata", f"{beads.PLAN_KEY}={tw_plan.PLAN_REGISTERED}"]
             registered = True
         else:

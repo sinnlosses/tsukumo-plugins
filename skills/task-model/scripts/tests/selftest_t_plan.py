@@ -8,7 +8,7 @@ from selftest_support import RESULT_FULL, check, git, refuse_direct_run, say, we
 import beads  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
-from selftest_fixtures import BODY, PLANNED_BODY, _claim_work_and_done, commit_task, issue_count, make_repo, make_submodule_repo, drift_submodule, metadata, run_task, set_plan_directly, shown, shown_body  # noqa: E402
+from selftest_fixtures import BODY, PLANNED_BODY, _claim_work_and_done, commit_task, issue_count, make_repo, make_submodule_repo, drift_submodule, metadata, run_task, set_acceptance_directly, set_plan_directly, shown, shown_body  # noqa: E402
 
 
 @weight(21)
@@ -338,6 +338,9 @@ def test_registered_plan() -> None:
     def plan_body(*paths: str, work_repo: str | None = None) -> str:
         return task_body([("書く", "x")], paths, work_repo)
 
+    def cover_body(path: str, text: str) -> str:
+        return task_body([("書く", f"- {taskfile.PLAN_COVERS_FIELD}: 1\n{text}")], [path])
+
     def new_id(r: subprocess.CompletedProcess) -> str:
         return r.stdout.split("\t")[1] if r.stdout.startswith("CREATED\t") else ""
 
@@ -349,6 +352,8 @@ def test_registered_plan() -> None:
         main_path, wt1, wt2 = make_repo(tmp, branch="切らない")
         write(os.path.join(main_path, "src", "a.txt"), "a\n")
         write(os.path.join(main_path, "other.txt"), "o\n")
+        for name in "cdefg":
+            write(os.path.join(main_path, "docs", f"{name}.txt"), f"{name}\n")
         git(main_path, "add", "-A")
         git(main_path, "commit", "-q", "-m", "src を足す")
         work = os.path.join(tmp, "work")
@@ -389,6 +394,12 @@ def test_registered_plan() -> None:
         remote_same = new_id(r4)
         r5 = register("作業先で変わる", plan_body("lib/y.txt", work_repo=work))
         remote_changed = new_id(r5)
+        keep_id = new_id(register("識別子に触れない", cover_body("docs/d.txt", "`unused_marker` を使う")))
+        hit_id = new_id(register("識別子に触れる", cover_body("docs/c.txt", "`hit_marker` を使う")))
+        gone_id = new_id(register("パスが消える", cover_body("docs/e.txt", "`gone_marker` を使う")))
+        bare_id = new_id(register("識別子が無い", cover_body("docs/f.txt", "識別子は書かない")))
+        loose_id = new_id(register("覆いが崩れる", cover_body("docs/g.txt", "`loose_marker` を使う")))
+        set_acceptance_directly(main_path, loose_id, "1. 通る\n2. 動く")
         head = git(main_path, "rev-parse", "main").stdout.strip()
         work_head = git(work, "rev-parse", "main").stdout.strip()
         plan_base = lambda tid: metadata(main_path, tid).get(beads.PLAN_BASE_KEY)  # noqa: E731
@@ -404,6 +415,11 @@ def test_registered_plan() -> None:
         check("--hold の登録を todo に戻す", r.returncode == 0, r.stdout + r.stderr)
         write(os.path.join(main_path, "other.txt"), "o2\n")
         write(os.path.join(main_path, "src", "new.txt"), "n\n")
+        write(os.path.join(main_path, "docs", "c.txt"), "hit_marker\n")
+        write(os.path.join(main_path, "docs", "d.txt"), "d2\n")
+        os.remove(os.path.join(main_path, "docs", "e.txt"))
+        write(os.path.join(main_path, "docs", "f.txt"), "f2\n")
+        write(os.path.join(main_path, "docs", "g.txt"), "g2\n")
         git(main_path, "add", "-A")
         git(main_path, "commit", "-q", "-m", "主ブランチが進む")
         tip = git(main_path, "rev-parse", "main").stdout.strip()
@@ -423,15 +439,16 @@ def test_registered_plan() -> None:
 
         run_task(wt2, "claim", changed)
         r = run_task(wt2, "plan-check", changed)
-        check("名指したファイルが変わっていれば PLAN_STALE と変わったファイル（終了コード0）", r.returncode == 0
-              and r.stdout.strip() == f"PLAN_STALE\t{changed}\tsrc/new.txt", r.stdout + r.stderr)
+        check("満たす完了条件の欄が無い旧い計画は、名指したファイルが変わっていれば PLAN_STALE と変わったファイルと legacy（終了コード0）",
+              r.returncode == 0 and r.stdout.strip() == f"PLAN_STALE\t{changed}\tsrc/new.txt\tlegacy", r.stdout + r.stderr)
         check("claim が判定した主ブランチの先端を metadata に控える",
               metadata(main_path, changed).get(beads.PLAN_TIP_KEY) == tip)
         write(os.path.join(main_path, "src", "later.txt"), "l\n")
         git(main_path, "add", "-A")
         git(main_path, "commit", "-q", "-m", "着手のあとに主ブランチが進む")
         r = run_task(wt2, "plan-check", changed)
-        check("着手のあとに主ブランチが進んでも判定は変わらない", r.stdout.strip() == f"PLAN_STALE\t{changed}\tsrc/new.txt", r.stdout)
+        check("着手のあとに主ブランチが進んでも判定は変わらない",
+              r.stdout.strip() == f"PLAN_STALE\t{changed}\tsrc/new.txt\tlegacy", r.stdout)
         r = run_task(wt2, "edit", changed, "--body-file", "-", stdin=plan_body("src/", "shared.txt"))
         r2 = run_task(wt2, "plan-check", changed)
         check("PLAN_STALE のあとに書き直すと PLAN_FIRST", r.returncode == 0
@@ -455,8 +472,26 @@ def test_registered_plan() -> None:
         run_task(wt1, "claim", remote_changed)
         r = run_task(wt1, "plan-check", remote_changed)
         check("作業先で名指したファイルが変わっていれば PLAN_STALE と作業先の中のパス", r.returncode == 0
-              and r.stdout.strip() == f"PLAN_STALE\t{remote_changed}\tlib/y.txt", r.stdout + r.stderr)
+              and r.stdout.strip() == f"PLAN_STALE\t{remote_changed}\tlib/y.txt\tlegacy", r.stdout + r.stderr)
         run_task(wt1, "release", remote_changed)
+
+        run_task(wt1, "claim", keep_id)
+        r = run_task(wt1, "plan-check", keep_id)
+        check("覆いが保たれ、変わったファイルに段の本文の識別子が出なければ PLAN_REGISTERED のまま",
+              r.returncode == 0 and r.stdout.strip() == f"PLAN_REGISTERED\t{keep_id}\t{head}", r.stdout + r.stderr)
+        check("そのとき claim は印に registered を残す", metadata(main_path, keep_id).get(beads.PLAN_KEY) == "registered")
+        run_task(wt1, "release", keep_id)
+        for tid, files, why, label in [
+            (hit_id, "docs/c.txt", "touched:hit_marker", "変わった行に段の本文の識別子が出れば PLAN_STALE と touched"),
+            (gone_id, "docs/e.txt", "path-missing", "名指したパスが木から消えていれば PLAN_STALE と path-missing"),
+            (bare_id, "docs/f.txt", "no-identifier", "段の本文に識別子が無ければ PLAN_STALE と no-identifier"),
+            (loose_id, "docs/g.txt", "uncovered", "覆いが崩れていれば PLAN_STALE と uncovered"),
+        ]:
+            run_task(wt1, "claim", tid)
+            r = run_task(wt1, "plan-check", tid)
+            expected = f"PLAN_STALE\t{tid}\t{files}\t{why}"
+            check(label, r.returncode == 0 and r.stdout.splitlines()[0] == expected, r.stdout + r.stderr)
+            run_task(wt1, "release", tid)
 
         git(wt1, "merge", "-q", "--ff-only", "main")
         run_task(wt1, "claim", same)

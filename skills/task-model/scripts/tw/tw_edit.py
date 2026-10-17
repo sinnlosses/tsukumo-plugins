@@ -134,8 +134,8 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
     tw_base.print_lines(pulled + trk.after([bd_id]))
 
 
-def _own_plan(toplevel: str, task_id: str) -> tuple[str, beads.Issue, str, str | None, str | None, list[str] | None]:
-    """自分の着手の印のタスクの `(表示ID, 課題, 計画の本文, 印, 控えた SHA, 変わったファイル)`。持ち主でなければ `NOT_OWNER`（終了コード4）。"""
+def _own_plan(toplevel: str, task_id: str) -> tuple[str, beads.Issue, str, str | None, str | None, tuple[list[str], str] | None]:
+    """自分の着手の印のタスクの `(表示ID, 課題, 計画の本文, 印, 控えた SHA, 変わったファイルと古い理由)`。持ち主でなければ `NOT_OWNER`（終了コード4）。"""
     bd_id = tw_base.bd_task_id(task_id)
     shown = beads.to_task_id(bd_id)
     issue = beads.listed(toplevel, bd_id) if tw_base.owns(toplevel, shown) else None
@@ -149,13 +149,13 @@ def _own_plan(toplevel: str, task_id: str) -> tuple[str, beads.Issue, str, str |
         f"{taskfile.ACCEPTANCE_HEADING}\n{issue.raw.get('acceptance_criteria') or ''}\n"
     )
     plan_base = metadata.get(beads.PLAN_BASE_KEY) or None
-    stale = tw_plan.registered_plan_changes(toplevel, plan_base, metadata.get(beads.PLAN_TIP_KEY) or None, plan_body)
-    return shown, issue, plan_body, metadata.get(beads.PLAN_KEY) or None, plan_base, stale
+    drift = tw_plan.registered_plan_drift(toplevel, plan_base, metadata.get(beads.PLAN_TIP_KEY) or None, plan_body)
+    return shown, issue, plan_body, metadata.get(beads.PLAN_KEY) or None, plan_base, drift
 
 
 def cmd_plan_check(toplevel: str, task_id: str) -> None:
-    shown, _issue, plan_body, mark, plan_base, stale = _own_plan(toplevel, task_id)
-    _print_plan_check(shown, plan_body, mark, plan_base, stale)
+    shown, _issue, plan_body, mark, plan_base, drift = _own_plan(toplevel, task_id)
+    _print_plan_check(shown, plan_body, mark, plan_base, drift)
 
 
 def cmd_plan_phases(
@@ -343,9 +343,9 @@ def _refuse_plan_after_work(shown: str, state: str, after_work: bool) -> None:
 
 
 def _print_plan_check(
-    shown: str, body: str, mark: str | None, plan_base: str | None, stale: list[str] | None
+    shown: str, body: str, mark: str | None, plan_base: str | None, drift: tuple[list[str], str] | None
 ) -> None:
-    """`stale` は登録時の計画が名指すファイルのうち着手時までに変わったもの（`tw_plan.registered_plan_changes`）。
+    """`drift` は登録時の計画が名指すファイルの変わりと、古いとみなす理由（`tw_plan.registered_plan_drift`）。
 
     段（`taskfile.plan_steps`）の読めない計画は、印によらず書き直しの経路（`PLAN_NOT_FIRST`・`steps`）へ回す。
     """
@@ -358,8 +358,8 @@ def _print_plan_check(
         print(f"PLAN_FIRST\t{shown}")
     elif has_plan and mark == tw_plan.PLAN_REGISTERED:
         print(f"PLAN_REGISTERED\t{shown}\t{plan_base or '?'}")
-    elif has_plan and mark is None and stale is not None:
-        print(f"PLAN_STALE\t{shown}\t{','.join(stale) or '?'}")
+    elif has_plan and mark is None and drift is not None:
+        print(f"PLAN_STALE\t{shown}\t{','.join(drift[0]) or '?'}\t{drift[1] or '?'}")
     else:
         print(f"PLAN_NOT_FIRST\t{shown}\t{'missing' if not has_plan else (mark or 'unrecorded')}")
     if not specs:

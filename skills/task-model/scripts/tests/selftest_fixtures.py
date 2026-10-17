@@ -213,6 +213,11 @@ def set_plan_directly(repo: str, task_id: str, plan: str) -> None:
     _bd(repo, ["update", beads.to_bd_id(task_id), "--notes", plan])
 
 
+def set_acceptance_directly(repo: str, task_id: str, acceptance: str) -> None:
+    """`tw edit` を通さずに `## 完了条件` の中身（Beads の acceptance_criteria）を書き換える。"""
+    _bd(repo, ["update", beads.to_bd_id(task_id), "--acceptance", acceptance])
+
+
 def _bd(cwd: str, args: list[str], stdin: str | None = None) -> None:
     r = subprocess.run(["bd", *args], cwd=cwd, capture_output=True, text=True, input=stdin)
     if r.returncode != 0:

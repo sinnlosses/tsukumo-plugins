@@ -594,6 +594,33 @@ def plan_files(body: str) -> tuple[tuple[str, ...], str | None]:
     return tuple(paths), None
 
 
+PLAN_IDENTIFIER_MIN = 4
+_PLAN_IDENTIFIER = re.compile(r"`([^`\n]+)`")
+
+
+def plan_identifiers(body: str) -> tuple[str, ...]:
+    """`## やること` のバッククォートで囲んだ識別子（出現順・重複なし）。
+
+    `### 名指すファイル`・`### 作業先` の節は読まない。4 字（`PLAN_IDENTIFIER_MIN`）に満たない語・`/` や空白を含む語（パス・コマンド）・
+    名指すパスと同じ語は識別子に数えない。`tw plan-check` が、名指したファイルの差分に触れたかを見るのに使う。
+    """
+    lines = dict(_frame_sections(body)[1]).get(PLAN_HEADING, "").split("\n")
+    paths, _ = plan_files(body)
+    skipped = False
+    words: list[str] = []
+    for line in lines:
+        if line.startswith("### "):
+            skipped = line.rstrip() in (PLAN_FILES_HEADING, PLAN_WORK_REPO_HEADING)
+            continue
+        if skipped:
+            continue
+        for word in _PLAN_IDENTIFIER.findall(line):
+            plain = len(word) >= PLAN_IDENTIFIER_MIN and "/" not in word and not any(c.isspace() for c in word)
+            if plain and word not in paths and word not in words:
+                words.append(word)
+    return tuple(words)
+
+
 def direct_refusal(difficulty: str, body: str) -> str | None:
     """近道の印を置けない理由。基準に当たれば `None`。"""
     if difficulty != DIRECT_DIFFICULTY:
