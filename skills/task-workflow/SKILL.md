@@ -16,7 +16,7 @@ user-invocable: false
 既定の並びの各スキルの本文は手順5〜8で、5 委譲（implement-step）→ 6 受け入れ（accept-step）→ 6a 振り返り・6b 合流（retrospect-step）→ 7・8 送り出し（ship-step）。
 流れの変種は `flows/`（近道 `direct.md`・メインで行う `main.md`・`HOLD` を決める `hold.md`）、
 各段の手順の副ファイルは `parts/implementer/`・`parts/acceptor/`・`parts/retrospect/`・`parts/ship/` にある。
-lap は並びのスキルではなくこのスキルが段の前後で打つ。
+lap は並びのスキルではなく、このスキル（オーケストレーター）と `tw` と hook が段の前後で書く（段ごとに誰が書くかは task-model の `tw-reference.md`「hook の関門」節の lap の段落）。
 
 ## このプロジェクトの設定（`tw config`）
 
