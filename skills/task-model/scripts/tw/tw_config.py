@@ -11,13 +11,13 @@ import gitinfo
 import layout
 
 
-def _step_candidates(project_root: str | None) -> list[layout.StepCandidate]:
+def step_candidates(project_root: str | None) -> list[layout.StepCandidate]:
     return layout.step_candidates(project_root, os.path.expanduser("~"), layout.own_plugin_root())
 
 
 def steps_default(toplevel: str) -> list[str]:
     """`steps` を書いていないときの並び（schema 2 の `default`）。"""
-    return layout.default_steps(_step_candidates(toplevel))
+    return layout.default_steps(step_candidates(toplevel))
 
 
 def cmd_config_schema() -> None:
@@ -43,7 +43,7 @@ def cmd_config_set(toplevel: str, key: str, value: str) -> None:
         new_text = layout.config_text_with(text, key, value)
         if key == layout.STEPS_KEY:
             items = json.loads(value)
-            allowed = {c.value for c in _step_candidates(toplevel)} | set(config.steps or ())
+            allowed = {c.value for c in step_candidates(toplevel)} | set(config.steps or ())
             unknown = [i for i in items if i not in allowed]
             if unknown:
                 raise layout.ConfigValueError(f"steps の候補にも今の値にも無い名前: {', '.join(unknown)}")

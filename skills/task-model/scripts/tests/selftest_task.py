@@ -18,6 +18,7 @@ sys.path.insert(1, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 sys.path.insert(1, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tw"))
 
 import selftest_t_accept  # noqa: E402
+import selftest_t_brief  # noqa: E402
 import selftest_t_finish  # noqa: E402
 import selftest_t_flow  # noqa: E402
 import selftest_t_guards  # noqa: E402
@@ -35,6 +36,7 @@ MODULES = (
     selftest_t_phases,
     selftest_t_guards,
     selftest_t_accept,
+    selftest_t_brief,
     selftest_t_finish,
     selftest_t_flow,
     selftest_t_ship,

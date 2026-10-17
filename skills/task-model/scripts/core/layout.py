@@ -309,6 +309,8 @@ class ConfigValueError(ValueError):
 STEP_MARK_KEY = "workflow-step"
 STEP_ORDER_KEY = "workflow-step-order"  # 既定の並びでの位置（整数の文字）。`tw` と同じ plugin のスキルだけが使う
 STEP_TITLE_KEY = "workflow-step-title"
+BRIEF_KEY_PREFIX = "workflow-brief-"  # 後ろに役の名。値は SKILL.md のディレクトリからの依頼文の型のパス
+BRIEF_ROLES = ("implementer", "acceptor")
 PLUGIN_MANIFEST_PATH = os.path.join(".claude-plugin", "plugin.json")
 
 
@@ -320,6 +322,10 @@ class StepCandidate:
     own: bool  # `tw` と同じチェックアウトの plugin のスキルか
     order: int | None = None
     title: str = ""  # 日本語の段の名前。`workflow-step-title` が無ければ `label` と同じ
+    briefs: tuple[tuple[str, str], ...] = ()  # (役, 依頼文の型の絶対パス)
+
+    def brief(self, role: str) -> str | None:
+        return next((path for r, path in self.briefs if r == role), None)
 
 
 def _scalar(text: str) -> str:
@@ -380,8 +386,10 @@ def _skill_dirs(skills_root: str) -> list[str]:
     return [os.path.join(skills_root, n) for n in names if os.path.isfile(os.path.join(skills_root, n, "SKILL.md"))]
 
 
-def _read_skill(skill_dir: str) -> tuple[str, str, bool, int | None, str | None] | None:
-    """`(name, description, 印があるか, 既定の並びでの位置, 段の名前)`。読めなければ `None`。位置は整数でなければ `None`、名前は無ければ `None`。"""
+def _read_skill(
+    skill_dir: str,
+) -> tuple[str, str, bool, int | None, str | None, tuple[tuple[str, str], ...]] | None:
+    """`(name, description, 印があるか, 既定の並びでの位置, 段の名前, 依頼文の型)`。読めなければ `None`。位置は整数でなければ `None`、名前は無ければ `None`。"""
     try:
         with open(os.path.join(skill_dir, "SKILL.md"), encoding="utf-8") as f:
             front = parse_skill_frontmatter(f.read())
@@ -394,12 +402,18 @@ def _read_skill(skill_dir: str) -> tuple[str, str, bool, int | None, str | None]
     order_text = metadata.get(STEP_ORDER_KEY) if isinstance(metadata, dict) else None
     order = int(order_text) if isinstance(order_text, str) and re.fullmatch(r"-?[0-9]+", order_text) else None
     title_text = metadata.get(STEP_TITLE_KEY) if isinstance(metadata, dict) else None
+    briefs: list[tuple[str, str]] = []
+    for role in BRIEF_ROLES:
+        rel = metadata.get(BRIEF_KEY_PREFIX + role) if isinstance(metadata, dict) else None
+        if isinstance(rel, str) and rel:
+            briefs.append((role, os.path.realpath(os.path.join(os.path.realpath(skill_dir), rel))))
     return (
         name if isinstance(name, str) and name else os.path.basename(skill_dir),
         description if isinstance(description, str) else "",
         marked,
         order,
         title_text if isinstance(title_text, str) and title_text else None,
+        tuple(briefs),
     )
 
 
@@ -449,14 +463,14 @@ def step_candidates(
             skill = _read_skill(skill_dir)
             if skill is None or not skill[2]:
                 continue
-            name, description, _, order, title = skill
+            name, description, _, order, title, briefs = skill
             value = f"{prefix}:{name}" if prefix else name
             if value in value_seen:
                 continue
             real_seen.add(real)
             value_seen.add(value)
             own = plugin is not None and real.startswith(os.path.realpath(plugin[0]) + os.sep)
-            found.append(StepCandidate(value, name, description, own, order, title or name))
+            found.append(StepCandidate(value, name, description, own, order, title or name, briefs))
     return found
 
 

@@ -6,6 +6,7 @@ metadata:
   workflow-step: "true"
   workflow-step-order: "1"
   workflow-step-title: "実装"
+  workflow-brief-implementer: "../task-workflow/parts/implementer/implementer-request.md"
 ---
 
 # 実装の段

@@ -134,7 +134,7 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
     tw_base.print_lines(pulled + trk.after([bd_id]))
 
 
-def _own_plan(toplevel: str, task_id: str) -> tuple[str, beads.Issue, str, str | None, str | None, tuple[list[str], str] | None]:
+def own_plan(toplevel: str, task_id: str) -> tuple[str, beads.Issue, str, str | None, str | None, tuple[list[str], str] | None]:
     """自分の着手の印のタスクの `(表示ID, 課題, 計画の本文, 印, 控えた SHA, 変わったファイルと古い理由)`。持ち主でなければ `NOT_OWNER`（終了コード4）。"""
     bd_id = tw_base.bd_task_id(task_id)
     shown = beads.to_task_id(bd_id)
@@ -154,7 +154,7 @@ def _own_plan(toplevel: str, task_id: str) -> tuple[str, beads.Issue, str, str |
 
 
 def cmd_plan_check(toplevel: str, task_id: str) -> None:
-    shown, _issue, plan_body, mark, plan_base, drift = _own_plan(toplevel, task_id)
+    shown, _issue, plan_body, mark, plan_base, drift = own_plan(toplevel, task_id)
     _print_plan_check(shown, plan_body, mark, plan_base, drift)
 
 
@@ -162,7 +162,7 @@ def cmd_plan_phases(
     toplevel: str, task_id: str, through: str | None, also: str | None, skipped: str | None = None
 ) -> None:
     """`work_plan` の引数を `PHASES\\tT-xxx\\t<JSON 1行>` で出す。指定が並びに合わなければ `NO_PHASE`（終了コード2）。"""
-    shown, issue, plan_body, mark, _base, _stale = _own_plan(toplevel, task_id)
+    shown, issue, plan_body, mark, _base, _stale = own_plan(toplevel, task_id)
     specs, steps_error = taskfile.plan_step_specs(plan_body) if taskfile.has_plan(plan_body) else ((), None)
     if specs and steps_error is None and mark == tw_plan.PLAN_REGISTERED:
         plan_state = taskfile.PLAN_REGISTERED_STATE

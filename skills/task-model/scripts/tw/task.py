@@ -3,7 +3,7 @@
 # 宣言が無いと Python 3.9 が、長い日本語の行の読み込み位置によって「Non-UTF-8 code」で落ちる。
 """Beads に置いたタスクの運用を操作する入口コマンド。
 
-使い方: tw <status|new|claim|release|done|ship|finish|land|config|config-doctor|show|find|edit|plan-check|plan-phases|verify|verify-check|accept|pause|step|lap|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|ask-guard|ref-guard> ...
+使い方: tw <status|new|claim|release|done|ship|finish|land|config|config-doctor|show|find|edit|plan-check|plan-phases|verify|verify-check|accept|brief|pause|step|lap|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|ask-guard|ref-guard> ...
 
 `install.sh` が PATH 上に張る `tw` と、plugin の `bin/tw` から呼ぶ。`commit-guard`・`handback-guard` の
 `--agent-scoped` は plugin の `hooks/hooks.json` が付け、入力に `agent_id` があるとき（サブエージェント）だけ関門を掛ける。
@@ -36,6 +36,7 @@ import taskfile
 import tracker
 import tw_accept
 import tw_base
+import tw_brief
 import tw_claim
 import tw_config
 import tw_edit
@@ -120,6 +121,12 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
         r"""受け入れの機械的な並びを打つ。`lap T-xxx accept start` → `plan-check T-xxx` → `scripts/review_needed.py`（タスクの `difficulty` で判定）の順で、`REVIEW` なら `lap T-xxx review start` を打って木の控えを出して区切る。`SKIP`・`NOTHING`・`NO_RANGE` なら続けて設定の `format`（あれば）→ `verify-check`。`--after-review` は `lap accept`・`plan-check`・判定を飛ばし、`format` → `verify-check` だけ打つ。部品の出力の行をそのまま打った順に並べ、止まる行が出たらそこで以降を打たない
 
 出力: 部品の行に加え、`REVIEW\topus`・`REVIEW\tcode\t<数>`・`SKIP\tdocs-only`・`NOTHING`・`NO_RANGE`（判定。`NO_RANGE` は範囲なしで作業ツリーの変更が空）、`SNAPSHOT\t<木の SHA>`（レビューが要るとき。最後の行）、`FORMATTED`（整形が通った）、`FORMAT_FAILED\t<コマンド>`（続けて出力の末尾40行。終了コード10）、`MISSING\t<パス>`（`review_needed.py` が無い。終了コード6）、`INVALID\t…`（判定の失敗。終了コード3）。`NOT_CLAIMED`・`NOT_OWNER` は終了コード4で止まる。それ以外の終了コードは部品のもの""",
+    ),
+    "brief": (
+        "委譲先（実装役）への依頼文を、並びのスキルが持つ型から場合に当たる節を選んで出す。",
+        r"""自分の着手の印のタスクについて、委譲先への依頼文を出す（Beads にも作業ツリーにも書かない）。依頼文の文面は型が持ち、ここは場合に当たる節を選んで値を埋めるだけ。型は、`steps` の並び（無ければ既定の並び）の順で、SKILL.md の frontmatter の `metadata` に `workflow-brief-<役>`（SKILL.md のディレクトリからの相対パス）を持つ最初のスキルのもの。型は `## <節名>` の節の並びで、最初の `## ` より前は出さず、`{{名前}}` を値で埋める。役 `implementer`（実装役）の節は、いつも `常に`。`plan-check` と同じ印で、登録時の計画（`registered`）か作業より先に書いた計画（`first`）で段が読め、`- 満たす完了条件:` の欄が `## 完了条件` を覆い、`--rewrite` が無ければ `計画どおり`（段は `--step`、無ければ1）、それ以外は `書き直し`。`書き直し` で登録時の計画が古ければ（`PLAN_STALE` と同じ判定）`古い計画`。`計画どおり` で渡す段が並列の組（`plan-check` の `PARALLEL`）に入れば `並列の段`。`### 作業先` が別のリポジトリなら `別のリポジトリ`。`## 完了条件` に「目視」を含むか `--visual` なら `目視`。値は `task_id`・`step`・`here`（型のディレクトリの絶対パス）・`task_model`（この `tw` の置き場の絶対パス）・`claimed`（着手した作業ツリー）・`touched`（渡す段の触るファイル）・`stale_files`（変わったファイル）・`work_repo`・`branch`（タスクIDの小文字）・`worktree`・`base`（作業先の主ブランチ）。作業先の作業ツリーの道は、作業先に枝 `branch` の作業ツリーがあればそのパス、無ければ、着手した作業ツリーが本体でなければ `<着手した作業ツリーの親の親>/<作業先の名前>/<branch>`、本体なら `<作業先の親>/<作業先の名前>-<branch>`。`--step` を `書き直し` に付ける・段の外の番号は終了コード2
+
+出力: 1行目 `BRIEF\tT-xxx\t<役>\t<選んだ節名,…>`、2行目から依頼文（そのまま渡す）。`NOT_OWNER`（終了コード4）。`MISSING\tbrief-<役>`（並びに型を持つスキルが無い）・`MISSING\t<型のパス>`（読めない。どちらも終了コード6）。`INVALID`（終了コード3。型に知らない節・選んだ節が無い・埋まらない値、作業先が読めない、作業ツリーの道に別のものがあるか作業先の中に入る）""",
     ),
     "verify": (
         "タスクIDは基本付けない。主ブランチを取り込んでから検証コマンドを打つ。",
@@ -349,6 +356,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_accept.add_argument("task_id")
     p_accept.add_argument("--after-review", dest="after_review", action="store_true")
 
+    p_brief = sub.add_parser("brief")
+    p_brief.add_argument("role", choices=(tw_brief.ROLE_IMPLEMENTER,))
+    p_brief.add_argument("task_id")
+    p_brief.add_argument("--step", type=int, default=None)
+    p_brief.add_argument("--rewrite", action="store_true")
+    p_brief.add_argument("--visual", action="store_true")
+
     sub.add_parser("verify").add_argument("task_id", nargs="?")
     sub.add_parser("verify-check")
     p_lap = sub.add_parser("lap")
@@ -513,6 +527,8 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
             tw_edit.cmd_plan_phases(toplevel, args.task_id, args.through, args.also, args.skipped)
         elif args.command == "accept":
             tw_accept.cmd_accept(toplevel, args.task_id, args.after_review)
+        elif args.command == "brief":
+            tw_brief.cmd_brief_implementer(toplevel, args.task_id, args.step, args.rewrite, args.visual)
         elif args.command == "verify":
             tw_verify.cmd_verify(toplevel, args.task_id)
         elif args.command == "verify-check":
