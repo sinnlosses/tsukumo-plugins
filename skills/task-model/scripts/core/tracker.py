@@ -432,7 +432,9 @@ class Session:
 
     def _load_project(self) -> dict:
         if self._project is None:
-            self._project = gh.load_project(self.toplevel, self.tracker, self._remaining)
+            self._project = gh.load_project(
+                self.toplevel, self.tracker, self._kv_listing().get(gh.PROJECT_KEY), self._remaining
+            )
         return self._project
 
     def _load_items(self) -> dict:

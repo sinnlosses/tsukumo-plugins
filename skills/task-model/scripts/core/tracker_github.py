@@ -135,10 +135,13 @@ def fill_items(toplevel: str, project: dict, items: dict, dirty: set[str], repo:
         after = info.get("endCursor")
 
 
-def load_project(toplevel: str, tracker, remaining: Remaining) -> dict:
-    """`bd kv` の控えの Project（設定の Project と合うもの）。無ければ GitHub から引く。"""
+def load_project(toplevel: str, tracker, cached_raw: object, remaining: Remaining) -> dict:
+    """`bd kv` の控えの Project（設定の Project と合うもの）。無ければ GitHub から引く。
+
+    `cached_raw` は `bd kv list` で読んだ `PROJECT_KEY` の値。
+    """
     key = f"{tracker.project_owner}/{tracker.project_number}"
-    cached = _loads(beads.run(toplevel, ["kv", "get", PROJECT_KEY]).stdout)
+    cached = _loads(cached_raw) if isinstance(cached_raw, str) else None
     if isinstance(cached, dict) and cached.get("project") == key and cached.get("id") and cached.get("field"):
         return cached
     return fetch_project(toplevel, tracker, remaining)
