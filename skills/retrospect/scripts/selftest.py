@@ -397,7 +397,7 @@ def test_gate_ledger() -> None:
     rounds = {
         "GH-61": row("claim", "GH-61") + verify("GH-61", "VERIFY_NOT_PASSED") + verify("GH-61", "VERIFIED"),
         "GH-62": row("claim", "GH-62") + verify("GH-62", "FORMAT_FAILED") + verify("GH-62", "VERIFY_NOT_PASSED") + verify("GH-62", "VERIFIED"),
-        # delegate の lap を打たない流れ（loopable: N など）で2回差し戻した
+        # delegate の lap が無い記録（メインの流れが実装の段を delegate で囲む前の旧い記録）で2回差し戻した
         "GH-63": row("claim", "GH-63") + lap("GH-63", "accept") + lap("GH-63", "review") + verify("GH-63", "VERIFIED")
         + lap("GH-63", "review") + verify("GH-63", "VERIFIED") + lap("GH-63", "review"),
         # delegate の lap を打つ流れで1回差し戻した（lap の有無で結果が変わらない）
