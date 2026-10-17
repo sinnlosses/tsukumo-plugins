@@ -275,6 +275,15 @@ def test_accept_other_repo_main_dirty() -> None:
             r.stdout + r.stderr,
         )
 
+        os.remove(os.path.join(work_main, "note.md"))
+        os.remove(os.path.join(wt1, ".tw", "local", "task-main-dirty", "T-100"))
+        r = run_task(wt1, "accept", "T-100", "--after-review")
+        check(
+            "控えの無い着手では着手の前からの汚れも MAIN_DIRTY_UNKNOWN で止まる",
+            r.returncode == 4 and r.stdout.splitlines() == ["MAIN_DIRTY_UNKNOWN\tpre.txt"],
+            r.stdout + r.stderr,
+        )
+
 
 THREE_STEPS = (("書く", "x"), ("試す", "x"), ("直す", "x"))
 
