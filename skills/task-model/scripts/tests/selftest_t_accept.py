@@ -148,6 +148,15 @@ def test_accept_closes_open_delegate() -> None:
         run_task(wt1, "accept", "T-100")
         check("delegate の無い流れには何も書かない", all(stage != "delegate" for stage, _ in laps(wt1)), repr(laps(wt1)))
 
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1 = _claimed_repo(tmp)
+        run_task(wt1, "lap", "T-100", "delegate", "start")
+        r = run_task(wt1, "lap", "T-100", "accept", "start")
+        check("tw accept を使わない受け入れ（別のリポジトリ）で手で打つ accept の start も、開いた delegate を閉じる",
+              laps(wt1) == [("delegate", "start"), ("accept", "start"), ("delegate", "end")]
+              and r.stdout == "LAPPED\tT-100\taccept\tstart\n",
+              repr(laps(wt1)) + r.stdout + r.stderr)
+
 
 TESTS = (
     test_accept_closes_open_delegate,

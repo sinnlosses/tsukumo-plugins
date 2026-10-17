@@ -7,7 +7,9 @@
 並びに振り返りの段が無ければ、この段を通らない（lap も打たない）。手順7の `## 結果` の行は `- 振り返り: 設定で外した`
 （手順7の `tw finish` には近道と同じく `--reflection skipped` を打つ）。通ったときは、兆候なしなら `--reflection none`、ドラフトを積んだか兆候に当たったなら `--reflection some` を打つ。
 
-6a. **振り返る**（`/loop` から回っているときも。委譲せずメインで行う）: 頭に `tw lap T-xxx retro start` を打ち（振り返りを終えて手順7の `tw finish` を打つ直前に `tw lap T-xxx retro end`）、
+6a. **振り返る**（`/loop` から回っているときも。委譲せずメインで行う）: 振り返りの lap（`retro` の start）は、plugin で入れたときは振り返りのスキルを呼ぶと
+   `hooks/hooks.json` の `tw lap-hook` が書くので打たない。リンクだけで入れたとき（`hooks/hooks.json` が読まれない）だけ、呼ぶ直前に `tw lap T-xxx retro start` を打つ
+   （重なって打っても所要の集計は二重に数えない）。end は手順7の `tw finish` が `done` の前に書くので打たない。
    受け入れ役の最後の返却の `- 材料: friction=… human=…` の2つの値を、
    振り返りのスキルを Skill ツールで名前を指して呼び（一覧の末尾が `retrospect` の行。リンクで入れたとき `retrospect`、plugin で入れたとき `tsukumo-workflow:retrospect`。
    一覧に出ている名前のまま使い、一覧に無ければ代えずに行を添えて人に預ける。複数当たったら選ばずに止めて人に預ける）、

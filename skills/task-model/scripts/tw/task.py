@@ -118,7 +118,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     ),
     "accept": (
         "受け入れの機械的な並びを打つ。",
-        r"""受け入れの機械的な並びを打つ。`lap T-xxx accept start`（通ったら、最後の `claim` 以降で段 `delegate` が開いていれば続けて `delegate` の `end` を `flow/` に書く。出力の行は足さない）→ `plan-check T-xxx` → `scripts/review_needed.py`（タスクの `difficulty` で判定）の順で、`REVIEW` なら `lap T-xxx review start` を打って木の控えを出して区切る。`SKIP`・`NOTHING`・`NO_RANGE` なら続けて設定の `format`（あれば）→ `verify-check`。`--after-review` は `lap accept`・`plan-check`・判定を飛ばし、`format` → `verify-check` だけ打つ。部品の出力の行をそのまま打った順に並べ、止まる行が出たらそこで以降を打たない
+        r"""受け入れの機械的な並びを打つ。`lap T-xxx accept start`（開いた `delegate` を閉じる。`lap` の説明）→ `plan-check T-xxx` → `scripts/review_needed.py`（タスクの `difficulty` で判定）の順で、`REVIEW` なら `lap T-xxx review start` を打って木の控えを出して区切る。`SKIP`・`NOTHING`・`NO_RANGE` なら続けて設定の `format`（あれば）→ `verify-check`。`--after-review` は `lap accept`・`plan-check`・判定を飛ばし、`format` → `verify-check` だけ打つ。部品の出力の行をそのまま打った順に並べ、止まる行が出たらそこで以降を打たない
 
 出力: 部品の行に加え、`REVIEW\topus`・`REVIEW\tcode\t<数>`・`SKIP\tdocs-only`・`NOTHING`・`NO_RANGE`（判定。`NO_RANGE` は範囲なしで作業ツリーの変更が空）、`SNAPSHOT\t<木の SHA>`（レビューが要るとき。最後の行）、`FORMATTED`（整形が通った）、`FORMAT_FAILED\t<コマンド>`（続けて出力の末尾40行。終了コード10）、`MISSING\t<パス>`（`review_needed.py` が無い。終了コード6）、`INVALID\t…`（判定の失敗。終了コード3）。`NOT_CLAIMED`・`NOT_OWNER` は終了コード4で止まる。それ以外の終了コードは部品のもの""",
     ),
@@ -142,7 +142,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     ),
     "lap": (
         "オーケストレーターの段の頭を、`flow/` に `lap` の1行として足す。",
-        r"""自分の着手の印のタスクのオーケストレーターの段の頭を、`flow/` に `{"event":"lap","stage":"<段>"}` の1行として足す（メインが打つ。`delegate`・`retro` の `start` は plugin の hook〔`lap-hook`〕も書き、`end` は `accept`〔`delegate`〕・`finish`〔`retro`〕が書く。打ったものも重ねて書き、所要の集計は閉じていない同じ段の2つ目の `start` を数えない。第3引数を付けると `"edge":"start"`／`"end"` も入り、段の所要時間は同じ段の `end − start`。省くと `edge` の欄は書かず、旧い呼び方のまま、その出来事から同じタスクの次の出来事までの差。第3引数が `start`・`end` のどちらでもなければ終了コード2）。`<段>` は `direct`（委譲しない近道でメインが直し始めた）・`delegate`（委譲を投げた。メインで行う流れでは実装の段に入った）・`accept`（最後の段の返りを受けて受け入れに入った）・`review`（受け入れ役を起こした。差し戻しのあとも打つ）・`retro`（振り返りに入った）・`land`（別のリポジトリへの合流。台帳は着手側と作業先で別なので `tw land` は記録せず、着手した作業ツリーでメインが `start`／`end` を打つ）・`sync`（`tw ship` のあとのトラッカー反映とバックアップ）。ほかの段は終了コード2。着手の印が無ければ記録しない。記録に失敗しても終了コードは 0
+        r"""自分の着手の印のタスクのオーケストレーターの段の頭を、`flow/` に `{"event":"lap","stage":"<段>"}` の1行として足す（メインが打つ。`delegate`・`retro` の `start` は plugin の hook〔`lap-hook`〕も書き、`end` は `lap T-xxx accept start`〔`tw accept` が打つものも手で打つものも。最後の `claim` 以降で段 `delegate` が開いていれば、続けてその `end` を書く。出力の行は足さない〕・`finish`〔`retro`〕が書く。打ったものも重ねて書き、所要の集計は閉じていない同じ段の2つ目の `start` を数えない。第3引数を付けると `"edge":"start"`／`"end"` も入り、段の所要時間は同じ段の `end − start`。省くと `edge` の欄は書かず、旧い呼び方のまま、その出来事から同じタスクの次の出来事までの差。第3引数が `start`・`end` のどちらでもなければ終了コード2）。`<段>` は `direct`（委譲しない近道でメインが直し始めた）・`delegate`（委譲を投げた。メインで行う流れでは実装の段に入った）・`accept`（最後の段の返りを受けて受け入れに入った）・`review`（受け入れ役を起こした。差し戻しのあとも打つ）・`retro`（振り返りに入った）・`land`（別のリポジトリへの合流。台帳は着手側と作業先で別なので `tw land` は記録せず、着手した作業ツリーでメインが `start`／`end` を打つ）・`sync`（`tw ship` のあとのトラッカー反映とバックアップ）。ほかの段は終了コード2。着手の印が無ければ記録しない。記録に失敗しても終了コードは 0
 
 出力: `LAPPED\tT-xxx\t<段>`（第3引数を付けたときは末尾に `\t<start|end>`）・`NOT_CLAIMED\tT-xxx`""",
     ),
@@ -257,7 +257,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     ),
     "lap-hook": (
         "Claude Code の hook から呼ばれ、委譲と振り返りの段の頭の `lap` を台帳に書く。手で打たない。",
-        r"""Claude Code の hook（plugin の `hooks/hooks.json` の `SubagentStart` と、matcher `Skill` の `PreToolUse`。`"${CLAUDE_PLUGIN_ROOT}/bin/tw"` の絶対パスで呼ぶ）から呼ばれる。`install.sh` のリンクだけで入れたときは `hooks/hooks.json` が読まれないので呼ばれない。関門ではなく記録で、何も拒まない。入力の `cwd` の作業ツリーの `.tw/local/task-open-claims/` の控え（`commit-guard` と同じ読む順）がちょうど1件のとき、そのタスクの `flow/` に次の `lap` の `start` を1行足す: `SubagentStart` で `agent_type` の最後の `:` より後ろが `no-delegate`・`general-purpose` なら段 `delegate`（受け入れ役 `acceptor` などほかの名前は書かない。`accept` が開いているあいだ〔受け入れ中の差し戻しの再開〕も書かない）。主のセッション（入力に `agent_id` が無い）の `Skill` で `tool_input.skill` の最後の `:` より後ろが `retrospect` なら段 `retro`（最後の `claim` 以降の `accept` の最後の端が `end` のときだけ）。どちらも、最後の `claim` 以降でその段が開いていれば（`start` に `end` が続かない。手打ちの `lap` を含む）書かない。控えが0件か2件以上・ほかのイベントやツールは何もしない。end は `accept`（`delegate`）・`finish`（`retro`）が書く。`bd` は記録の `difficulty` を引くために読む
+        r"""Claude Code の hook（plugin の `hooks/hooks.json` の `SubagentStart` と、matcher `Skill` の `PreToolUse`。`"${CLAUDE_PLUGIN_ROOT}/bin/tw"` の絶対パスで呼ぶ）から呼ばれる。`install.sh` のリンクだけで入れたときは `hooks/hooks.json` が読まれないので呼ばれない。関門ではなく記録で、何も拒まない。入力の `cwd` の作業ツリーの `.tw/local/task-open-claims/` の控え（`commit-guard` と同じ読む順）がちょうど1件のとき、そのタスクの `flow/` に次の `lap` の `start` を1行足す: `SubagentStart` で `agent_type` の最後の `:` より後ろが `no-delegate`・`general-purpose` なら段 `delegate`（受け入れ役 `acceptor` などほかの名前は書かない。`accept` が開いているあいだ〔受け入れ中の差し戻しの再開〕も書かない）。主のセッション（入力に `agent_id` が無い）の `Skill` で `tool_input.skill` の最後の `:` より後ろが `retrospect` なら段 `retro`（最後の `claim` 以降の `accept` の最後の端が `end` のときだけ）。どちらも、最後の `claim` 以降でその段が開いていれば（`start` に `end` が続かない。手打ちの `lap` を含む）書かない。控えが0件か2件以上・ほかのイベントやツールは何もしない。end は `lap T-xxx accept start`（`delegate`。`tw accept` が打つ）・`finish`（`retro`）が書く。`bd` は記録の `difficulty` を引くために読む
 
 出力: 何も出さない（`SubagentStart` の stdout は委譲先の文脈に入りうる）。終了コードはいつも0。読めない入力も何もせずに通す""",
     ),
