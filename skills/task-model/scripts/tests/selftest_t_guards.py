@@ -100,6 +100,72 @@ def run_ask_guard(tmp: str, where: str, tool: str = "AskUserQuestion", extra: di
     return out["permissionDecisionReason"]
 
 
+def run_lap_hook(tmp: str, where: str, payload: dict) -> None:
+    """`tw lap-hook` を git の外（`tmp`）から打つ。終了コード0で stdout が空でなければ例外。"""
+    r = run_task(tmp, "lap-hook", stdin=json.dumps({"cwd": where, **payload}))
+    if r.returncode != 0 or r.stdout != "":
+        raise RuntimeError(f"lap-hook が {r.returncode} で {r.stdout!r} を出した: {r.stderr}")
+
+
+def _subagent_start(agent_type: str) -> dict:
+    return {"hook_event_name": "SubagentStart", "session_id": "s-1", "agent_id": "a-start", "agent_type": agent_type}
+
+
+def _skill_call(skill: str, **extra: str) -> dict:
+    return {"hook_event_name": "PreToolUse", "session_id": "s-1", "tool_name": "Skill", "tool_input": {"skill": skill}, **extra}
+
+
+@weight(6)
+def test_lap_hook() -> None:
+    say("task.py lap-hook: 委譲先の起動で delegate の start、主の振り返りのスキルで retro の start を、着手の控えが1件のときだけ書く")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp)
+        commit_task(main_path, taskfile.Task("T-100", "記録", "todo", "sonnet", "Y", (), BODY))
+        commit_task(main_path, taskfile.Task("T-101", "二つ目", "todo", "sonnet", "Y", (), BODY))
+
+        def laps() -> list[tuple]:
+            return [(e["task"], e.get("stage"), e.get("edge")) for e in flow_rows(wt1) if e["event"] == "lap"]
+
+        run_lap_hook(tmp, wt1, _subagent_start("no-delegate"))
+        check("着手の控えが無ければ書かない", laps() == [], repr(laps()))
+        run_task(wt1, "claim", "T-100")
+        for agent_type in ("acceptor", "tsukumo-workflow:acceptor", "Explore"):
+            run_lap_hook(tmp, wt1, _subagent_start(agent_type))
+        check("実装役でない名前（acceptor・Explore）は書かない", laps() == [], repr(laps()))
+        run_lap_hook(tmp, wt1, _skill_call("retrospect"))
+        check("受け入れの前の振り返りのスキルは書かない", laps() == [], repr(laps()))
+        for agent_type in ("no-delegate", "tsukumo-workflow:no-delegate", "general-purpose"):
+            run_lap_hook(tmp, wt1, _subagent_start(agent_type))
+        check("実装役の起動で delegate の start を1行だけ書く（開いているあいだは重ねない）",
+              laps() == [("T-100", "delegate", "start")], repr(laps()))
+
+        run_task(wt1, "lap", "T-100", "delegate", "end")
+        run_task(wt1, "lap", "T-100", "accept", "start")
+        run_lap_hook(tmp, wt1, _subagent_start("no-delegate"))
+        check("accept が開いているあいだ（差し戻しの再開）は書かない", laps()[-1] == ("T-100", "accept", "start"), repr(laps()))
+        run_task(wt1, "lap", "T-100", "accept", "end")
+        for skill, extra in (("retrospect-step", {}), ("tsukumo-workflow:accept-step", {}), ("retrospect", {"agent_id": "a-sub"})):
+            run_lap_hook(tmp, wt1, _skill_call(skill, **extra))
+        check("ほかのスキルの名前・サブエージェントの Skill は書かない", laps()[-1] == ("T-100", "accept", "end"), repr(laps()))
+        for skill in ("tsukumo-workflow:retrospect", "retrospect"):
+            run_lap_hook(tmp, wt1, _skill_call(skill))
+        check("受け入れの後の振り返りのスキルで retro の start を1行だけ書く",
+              laps()[-1] == ("T-100", "retro", "start") and laps().count(("T-100", "retro", "start")) == 1, repr(laps()))
+        run_lap_hook(tmp, wt1, {"hook_event_name": "Notification"})
+        r = run_task(tmp, "lap-hook", stdin="not json")
+        check("読めない入力・ほかのイベントは何も書かず stdout 空で0",
+              r.returncode == 0 and r.stdout == "" and laps()[-1] == ("T-100", "retro", "start"), r.stdout + r.stderr)
+        run_lap_hook(tmp, os.path.join(tmp, "missing"), _subagent_start("no-delegate"))
+
+        run_task(wt1, "lap", "T-100", "retro", "end")
+        before = laps()
+        run_task(wt1, "claim", "T-101")
+        run_lap_hook(tmp, wt1, _subagent_start("no-delegate"))
+        check("控えが2件で決められないときは書かない", laps() == before, repr(laps()))
+        run_task(wt1, "release", "T-101")
+        run_task(wt1, "release", "T-100")
+
+
 @weight(6)
 def test_ask_guard() -> None:
     say("task.py ask-guard: loopable: Y の着手の控えがある作業ツリーで AskUserQuestion を拒む")
@@ -146,6 +212,16 @@ def test_ask_guard() -> None:
         check("release のあとは通す", run_ask_guard(tmp, wt1) is None)
         run_task(wt1, "claim", "T-100")
         check("claim し直すと前の accept end より後の lap が無いので拒む", run_ask_guard(tmp, wt1) is not None)
+        for label, act, refused in (
+            ("hook の delegate", lambda: run_lap_hook(tmp, wt1, _subagent_start("no-delegate")), True),
+            ("手打ちの delegate start", lambda: run_task(wt1, "lap", "T-100", "delegate", "start"), True),
+            ("tw accept", lambda: run_task(wt1, "accept", "T-100"), False),
+            ("受け入れの後の hook の delegate（委譲し直し）", lambda: run_lap_hook(tmp, wt1, _subagent_start("no-delegate")), True),
+            ("hook の retro", lambda: run_lap_hook(tmp, wt1, _skill_call("retrospect")), False),
+        ):
+            act()
+            check(f"hook と手打ちを混ぜた並びでも、{label} のあとは{'拒む' if refused else '通す'}",
+                  (run_ask_guard(tmp, wt1) is not None) == refused, repr([(e.get("stage"), e.get("edge")) for e in flow_rows(wt1)[-6:]]))
         run_task(wt1, "release", "T-100")
 
         run_task(wt2, "claim", "T-101")
@@ -414,8 +490,19 @@ def test_agent_scoped_guard() -> None:
               r.returncode == 0 and r.stdout != "", r.stdout + r.stderr)
 
         all_hooks = _plugin_hook_commands()
-        hooks = [h for h in all_hooks if " ask-guard" not in h]
+        hooks = [h for h in all_hooks if " ask-guard" not in h and " lap-hook" not in h]
         ask_hooks = [h for h in all_hooks if " ask-guard" in h]
+        with open(HOOKS_JSON, encoding="utf-8") as f:
+            by_event = json.load(f)["hooks"]
+        lap_hooks = {
+            (event, g.get("matcher")): [h["command"] for h in g["hooks"]]
+            for event, groups in by_event.items() for g in groups if any(" lap-hook" in h["command"] for h in g["hooks"])
+        }
+        check("hooks/hooks.json は SubagentStart と Skill の PreToolUse で --agent-scoped なしの lap-hook を1つずつ呼ぶ",
+              sorted(lap_hooks) == [("PreToolUse", "Skill"), ("SubagentStart", None)]
+              and all(len(cs) == 1 and cs[0].startswith('"${CLAUDE_PLUGIN_ROOT}/bin/tw" lap-hook ')
+                      and "--agent-scoped" not in cs[0] for cs in lap_hooks.values()),
+              str(lap_hooks))
         check("hooks/hooks.json は --agent-scoped 付きで ${CLAUDE_PLUGIN_ROOT}/bin/tw を呼ぶ hook を4つ持つ",
               len(hooks) == 4 and all(
                   h.startswith('"${CLAUDE_PLUGIN_ROOT}/bin/tw" ') and " --agent-scoped " in h for h in hooks),
@@ -446,6 +533,13 @@ def test_agent_scoped_guard() -> None:
                 r = subprocess.run(["sh", "-c", hook], input=json.dumps(payload), capture_output=True, text=True, env=env)
                 check(f"hooks.json の {hook} は agent_id={agent_id} で{'拒む' if refused else '通す'}",
                       r.returncode == 0 and (r.stdout != "") == refused, r.stdout + r.stderr)
+        start_hook = lap_hooks.get(("SubagentStart", None), [""])[0]
+        payload = {"hook_event_name": "SubagentStart", "cwd": wt1, "agent_id": "a-new", "agent_type": "tsukumo-workflow:no-delegate"}
+        r = subprocess.run(["sh", "-c", start_hook], input=json.dumps(payload), capture_output=True, text=True, env=env)
+        delegate_laps = [e for e in flow_rows(wt1) if e["event"] == "lap" and e.get("stage") == "delegate"]
+        check("hooks.json の SubagentStart の lap-hook は控え1件の作業ツリーに delegate の start を書き、stdout は空",
+              r.returncode == 0 and r.stdout == "" and [(e["task"], e.get("edge")) for e in delegate_laps] == [("T-100", "start")],
+              repr(delegate_laps) + r.stdout + r.stderr)
         for code, expected_exit in ((1, 1), (78, 0), (127, 0)):
             fake_root = tempfile.mkdtemp(dir=tmp)
             os.makedirs(os.path.join(fake_root, "bin"))
@@ -453,7 +547,7 @@ def test_agent_scoped_guard() -> None:
             write(fake_tw, f"#!/bin/sh\necho boom >&2\nexit {code}\n")
             os.chmod(fake_tw, 0o755)
             for hook in all_hooks:
-                guard = "ask-guard" if " ask-guard" in hook else "commit-guard" if "commit-guard" in hook else "handback-guard"
+                guard = next((g for g in ("ask-guard", "lap-hook", "commit-guard") if f" {g}" in hook), "handback-guard")
                 r = subprocess.run(["sh", "-c", hook], input="{}", capture_output=True, text=True,
                                    env={**env, "CLAUDE_PLUGIN_ROOT": fake_root})
                 if code == 1:
@@ -1532,6 +1626,7 @@ TESTS = (
     test_handback_guard_skipped_steps,
     test_commit_guard,
     test_ask_guard,
+    test_lap_hook,
     test_commit_guard_shell_edit,
     test_commit_guard_verify,
     test_commit_guard_other_repo,

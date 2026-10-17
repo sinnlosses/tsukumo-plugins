@@ -16,7 +16,7 @@ user-invocable: false
 既定の並びの各スキルの本文は手順5〜8で、5 委譲（implement-step）→ 6 受け入れ（accept-step）→ 6a 振り返り・6b 合流（retrospect-step）→ 7・8 送り出し（ship-step）。
 流れの変種は `flows/`（近道 `direct.md`・メインで行う `main.md`・`HOLD` を決める `hold.md`）、
 各段の手順の副ファイルは `parts/implementer/`・`parts/acceptor/`・`parts/retrospect/`・`parts/ship/` にある。
-lap は並びのスキルではなくこのスキルが段の前後で打つ。
+lap は並びのスキルではなく、このスキル（オーケストレーター）と `tw` と hook が段の前後で書く（段ごとに誰が書くかは task-model の `tw-reference.md`「hook の関門」節の lap の段落）。
 
 ## このプロジェクトの設定（`tw config`）
 
@@ -63,7 +63,10 @@ lap は並びのスキルではなくこのスキルが段の前後で打つ。
    委譲は `## やること` の段（`### <n>. <名前>`）を1段ずつ頼む。最初の委譲で段1を渡し、
    委譲先は段を1つ済ませるたびに返す。次の段は手順5bで、**同じ委譲先を `SendMessage` で再開して**渡す
    （新しい委譲先は起こさない。例外は `difficulty` を上げるときと手順5dの引き継ぎと、(e) の並列の段だけ）。
-   最初の委譲を投げる直前に `tw lap T-xxx delegate start` を打つ（並列の段でも1回だけ）。
+   委譲の lap（`delegate` の start）は、plugin で入れたとき（スキルの一覧の名前が `tsukumo-workflow:` で始まる）は
+   `hooks/hooks.json` の `tw lap-hook` が委譲先の起動（`SubagentStart`）で書くので打たない。
+   リンクだけで入れたとき（`hooks/hooks.json` が読まれない）だけ、最初の委譲を投げる直前に `tw lap T-xxx delegate start` を打つ（並列の段でも1回だけ）。
+   hook と重なって打っても、所要の集計は二重に数えない。end は手順6の受け入れの頭の `accept` の start で `tw` が書く。
    投げた直後に (f) の見張りを起こす。
 
    **(a) 近道と `loopable: N`**: `CLAIMED` の行末が `direct=Y` で `tw plan-check T-xxx` が `PLAN_REGISTERED` なら、
@@ -84,7 +87,7 @@ lap は並びのスキルではなくこのスキルが段の前後で打つ。
 
 6. **受け入れる**（並びの段 accept-step の本文。受け入れ役の返却の行は `${CLAUDE_SKILL_DIR}/parts/acceptor/acceptor-return.md`）: 作業ツリーを直し始める前に、委譲先の最後の段（段 `N`）の hand-back が届いていることを
    確かめる（並列の段の担当を起こしたときは、どの担当も最後に渡した段を返していることを確かめる）。
-   確かめた直後に手順5(f)の見張りを `TaskStop` で畳み、`tw lap T-xxx delegate end` を打ち（メインで行う流れ〔`flows/main.md`〕では実装の段の終わりに打ち済みなので打たない）、作業ツリーを cwd にした残りのプロセスが無いかを `ps` で見て（あれば止める）、`tw accept T-xxx` を打つ（出力の読み方は下の `accept.md`）。
+   確かめた直後に手順5(f)の見張りを `TaskStop` で畳み、作業ツリーを cwd にした残りのプロセスが無いかを `ps` で見て（あれば止める）、`tw accept T-xxx` を打つ（出力の読み方は下の `accept.md`。`tw accept` が打つ `accept` の start が、開いた `delegate` を閉じるので `delegate end` は打たない）。
    届いていなければ `TaskStop` か `SendMessage` で止めてから触る。報告をそのまま信用しない。
 
    受け入れの続き（目視待ちの報告・完了条件の目視・`tw accept` の出力の表・受け入れ役の起こし方と判定の表・

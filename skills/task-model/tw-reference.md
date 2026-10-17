@@ -42,6 +42,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | `relay T-xxx <鍵> [--body-file <path\|->]` | 段の結果を後の段へ申し送りとして書くとき（`--body-file` 付き。着手の印の持ち主だけ）と、前の段の申し送りを鍵で引くとき（欄と鍵は WORKFLOW.md「段の申し送り」） | `RELAYED`・`RELAY`（次の行から本文）・`NONE`・`NOT_OWNER`・`NOT_READY` |
 | `handback-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ JSON 1行（`SubagentStop` は `block`、`PreToolUse` は deny）。通すときは何も出さない |
 | `ask-guard` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ deny の JSON 1行（理由はタスクIDと次の一手）。通すときは何も出さない |
+| `lap-hook` | hook が呼ぶ（手で打たない）。委譲と振り返りの段の頭の lap を書く記録で、何も拒まない（下の「hook の関門」節の lap の段落） | 何も出さない |
 | `ref-guard <state>` | git の `reference-transaction` hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ標準エラーに理由の1行と終了コード1（git の hook の取り決め）。通すときは何も出さず0 |
 
 | 終了コード | 先頭語 | 意味 | スキルがすること |
@@ -68,17 +69,17 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 
 ### hook の関門
 
-hook 4種（Claude Code の hook 3種と git の hook `ref-guard`）の仕様の正典はこの節。判定の細部（何をコミット・書き換えとみなすか、通す書き方、読む控えの順）は `tw commit-guard --help`・`tw handback-guard --help`・`tw ask-guard --help`・`tw ref-guard --help` が持つ。
+hook 4種（Claude Code の hook 3種と git の hook `ref-guard`）の仕様の正典はこの節。判定の細部（何をコミット・書き換えとみなすか、通す書き方、読む控えの順）は `tw commit-guard --help`・`tw handback-guard --help`・`tw ask-guard --help`・`tw ref-guard --help` が持つ。同じ `hooks/hooks.json` から呼ぶ `lap-hook` は拒まない記録で、関門に数えない（下の lap の段落）。
 
 | hook | 掛かる場面 | 拒むもの | 拒まれた側の次の一手 |
 | --- | --- | --- | --- |
 | `commit-guard` | 着手の印（`.tw/local/task-open-claims/T-xxx`）が立ってから `done` を打つまでの作業ツリーで、サブエージェント（入力に `agent_id` がある。名前は問わない）の Bash | コミットを作る git のサブコマンド（その作業ツリーで `ref-guard` が効いていないときだけ。効いていれば git の hook に任せる）・`ref-guard` を外す書き方のコマンド（`TW_REF_GUARD_ALLOW=`・`export TW_REF_GUARD_ALLOW`・`core.hooksPath` を書き換える形。読むだけのコマンドは通す。形は下の「掛かる口」の段落）・シェルでのファイルの書き換え・設定の検証コマンドの直打ち。タスクの `### 作業先` が別のリポジトリなら、作業先の作業ツリー（枝の名前がタスクIDの小文字）での書き換えと検証コマンドの直打ちも拒む（そこでのコミットは拒まない） | 回避しない。書き換えは `Edit`・`Write` で、検証は `tw verify` で打つ。コミットはせず、変更を作業ツリーに残して返す |
 | `handback-guard` | 同じ作業ツリーで、`Edit`・`Write`・`NotebookEdit` を一度でも使ったサブエージェント（名前は問わない。使ったことは `agent_id` ごとの印 `.tw/local/task-agent-writers/<agent_id>` に残り、着手の控えが無くなると消える）の返却（`SubagentStop` と、`PreToolUse` の `SubagentHandback`）。書き換えない受け入れ役の返却には掛からない | 作業（着手より後のコミットか、タスクのファイル以外の変更）があるのに、`plan-check` が `PLAN_FIRST`・`PLAN_REGISTERED` でないか、`verify-check` が `VERIFIED_SAME` でない返却。段が2つ以上の計画で `tw step` の控えが1つも無い返却。最後の段の返却の本文（`SubagentHandback`）に `## 構造の変更` の節が無いか、節が空か、中身が形（各行が `+|-|~ A -> B`、または全体が `なし: <理由>` の1行）に合わないもの。作業の無い返却（前提が誤り・`dropped`・計画だけの回）は通す。作業先が別のリポジトリなら、枝の名前がタスクIDの小文字の作業先の作業ツリーにも同じ判定を当てる（別の名前の枝は見ない。作業先で `tw verify` が `MISSING`・`INVALID` を返すか、設定に検証コマンドが無ければ検証を求めずに通す） | 理由に従って直してから返す（計画は `tw edit`、検証は `tw verify`、途中の段は `tw step`、止める返却は `tw pause`）。`NOT_VERIFIED scheme <パス>` なら、第3列（照らした側のチェックアウトの `tw_verify.py` のパス）のチェックアウトの `bin/tw`（またはそこへ解決される PATH の `tw`）で `tw verify` を打ち直す |
-| `ask-guard` | 着手の印が立った作業ツリーでの `AskUserQuestion`（主のセッションにもサブエージェントにも掛かる） | 控えのタスクが `loopable: Y` で、作業の段の後でない質問。作業の段の後とは、主のセッション（入力に `agent_id` が無い）で、最後の `claim` より後の最後の `tw lap` が `accept` の `end` か、段 `retro`・`land`・`sync` のとき（振り返りを外した流れでも受け入れの後は通る）。サブエージェントの質問は段によらず拒む。`report` の `favor`・許可確認・道具を呼ばずにターンを終える止まり方は捕まえない（WORKFLOW.md「loopable（`/loop` に載せてよいか）」節の表で先に防ぐ） | `tw release T-xxx` で着手を戻し、`tw edit T-xxx --status hold` で `hold` にして、`## 注意` に論点を書く（着手中は `--status` を直せない。続行はオーケストレーターの `/loop` の続行判断） |
+| `ask-guard` | 着手の印が立った作業ツリーでの `AskUserQuestion`（主のセッションにもサブエージェントにも掛かる） | 控えのタスクが `loopable: Y` で、作業の段の後でない質問。作業の段の後とは、主のセッション（入力に `agent_id` が無い）で、最後の `claim` より後の最後の lap が `accept` の `end` か、段 `retro`・`land`・`sync` のとき（振り返りを外した流れでも受け入れの後は通る）。サブエージェントの質問は段によらず拒む。`report` の `favor`・許可確認・道具を呼ばずにターンを終える止まり方は捕まえない（WORKFLOW.md「loopable（`/loop` に載せてよいか）」節の表で先に防ぐ） | `tw release T-xxx` で着手を戻し、`tw edit T-xxx --status hold` で `hold` にして、`## 注意` に論点を書く（着手中は `--status` を直せない。続行はオーケストレーターの `/loop` の続行判断） |
 | `ref-guard`（git の `reference-transaction`） | 着手の印が立ってから `done`・`release`・`ship` で控えが消えるまでの作業ツリーで打たれた git の参照の更新。呼び手（主のセッションかサブエージェントか）もシェルの書き方（`sh -c`・スクリプト越し・`--no-verify`）も問わない | `HEAD` か今の枝を、主ブランチの祖先でないコミットへ動かす更新（`commit`・`commit --amend`・`merge`・`cherry-pick`・`rebase`・`reset` など）。`tw` 自身の git（`ship`・`verify` の取り込み・`claim` の枝切り・`finish` のコミット）は変数 `TW_REF_GUARD_ALLOW` を付けるので拒まない。控えの無い作業ツリー・ほかの枝の更新・主ブランチへの早送り・同じコミットへの更新（`stash` など）は通す | 回避しない。コミットはせず、変更を作業ツリーに残して返す。メインは `tw finish`（`done` で控えを消してからコミットする）で送る。控えがあるうちにメインが `tw` を通さずにどうしてもコミットするときだけ、`TW_REF_GUARD_ALLOW=1` を付けて打つ |
 
 **掛かる口**: plugin で入れると、`hooks/hooks.json` が `"${CLAUDE_PLUGIN_ROOT}/bin/tw"` を呼ぶ（plugin のエージェント定義は frontmatter の `hooks` を無視するため）。
-`commit-guard`・`handback-guard` は `--agent-scoped` 付きで、入力に `agent_id` があるときだけ掛かる（`agent_type` は `--agent` で起こした主のセッションにも入るので見ない）。`handback-guard` は `Edit`・`Write`・`NotebookEdit` の `PreToolUse` でも呼ばれ、書いた印を残す。`commit-guard` は、入力に `agent_id`・`session_id` があり `cwd` の作業ツリーの着手の控えがちょうど1件なら、拒否の判定とは別に、台帳の `flow/` へ `agent` の出来事（`agent`・`session`）を最初の1回だけ足す（`WORKFLOW.md`「ファイル配置と設定ファイル」）。`ask-guard` は付けずに呼び、主のセッションにも掛かる。
+`commit-guard`・`handback-guard` は `--agent-scoped` 付きで、入力に `agent_id` があるときだけ掛かる（`agent_type` は `--agent` で起こした主のセッションにも入るので見ない）。`handback-guard` は `Edit`・`Write`・`NotebookEdit` の `PreToolUse` でも呼ばれ、書いた印を残す。`commit-guard` は、入力に `agent_id`・`session_id` があり `cwd` の作業ツリーの着手の控えがちょうど1件なら、拒否の判定とは別に、台帳の `flow/` へ `agent` の出来事（`agent`・`session`）を最初の1回だけ足す（`WORKFLOW.md`「ファイル配置と設定ファイル」）。`ask-guard` は付けずに呼び、主のセッションにも掛かる。`lap-hook` も付けずに `SubagentStart` と matcher `Skill` の `PreToolUse` で呼ばれる（下の lap の段落）。
 `install.sh` のリンクだけで入れると `hooks/hooks.json` は読まれず、同梱の実装役のエージェント定義（`agents/` の下）の frontmatter の hook が PATH の `tw` で `commit-guard`・`handback-guard` を掛ける（`ask-guard` は掛からない）。この口は同梱の実装役にしか掛からず、frontmatter に hook を持たない自作の実装役には掛からない（導入経路の一本化 GH-771 の結論に任せる）。
 リンクと plugin を併用すると、同梱の実装役への委譲で両方の口が走り、PATH の `tw` と plugin の `bin/tw` の版が違うと `tw verify` のあとの関門が `NOT_VERIFIED scheme` で止まるので、2つを同じチェックアウトに揃える。
 `ref-guard` は `tw claim` が共有の git dir の `hooks/reference-transaction` に置く薄い殻で、全作業ツリーに1つ。控えの無い作業ツリーでは何もしないので、`done`・`ship` では消さない（消してよい。次の `claim` が置き直す）。
@@ -93,7 +94,19 @@ Bash のコマンド文字列に `git` が出ないコミット（`sh -c`・ス�
 スクリプトの中で外した git・`git -C <控えの無い作業ツリー>`・今の枝でない参照の `update-ref` は拒まない。
 これらと、`Edit`・`Write`・`NotebookEdit` を使わずに書き換えたサブエージェントの返却は、`finish`・`done` の `COMMITS_SINCE_CLAIM` と受け入れの `plan-check`・`verify-check` が事後に拾う。
 
-**lap は並びのスキルではなくオーケストレーターが段の前後で打つ**（`tw lap`。段の名前は `direct`・`delegate`・`accept`・`review`・`retro`・`land`・`sync` で固定）。`ask-guard` はこの段で境を決め、並びのスキルの名前は見ない。
+**lap は並びのスキルではなく、オーケストレーターと `tw` と hook が段の前後で書く**（段の名前は `direct`・`delegate`・`accept`・`review`・`retro`・`land`・`sync` で固定）。`ask-guard` はこの段で境を決め、誰が書いたかも並びのスキルの名前も見ない。
+
+| 段 | start を書くもの | end を書くもの |
+| --- | --- | --- |
+| `direct` | メイン（`tw lap`。端なし） | — |
+| `delegate` | plugin で入れたときは `lap-hook`（委譲先の起動）。リンクだけで入れたとき・委譲しないメインの流れはメイン | `accept` の start（`tw accept` が打つものも手で打つものも） |
+| `accept` | `tw accept`。`tw accept` を使わない別のリポジトリの受け入れはメイン | `tw accept`（別のリポジトリの受け入れはメイン） |
+| `review` | 1回目は `tw accept`、2回目からはメイン | メイン |
+| `retro` | plugin で入れたときは `lap-hook`（振り返りのスキルの呼び出し）。リンクだけで入れたときはメイン | `tw finish`（`done` の前） |
+| `land`・`sync` | メイン | メイン |
+
+`lap-hook` は関門ではなく記録で、何も拒まず stdout に何も出さない。書くのは控えがちょうど1件の作業ツリーで、その段が開いていないときだけ（判定の細部は `tw lap-hook --help`）。
+メインの手打ちと hook が重なって同じ段の start が続いても、所要の集計（`tw metrics --stages`・振り返りの段の所要時間）は閉じていない同じ段の2つ目の start を数えない。
 
 **`commit-guard`・`handback-guard`・`ask-guard` は Claude Code の hook の取り決めに従う**: 出力は TSV でなく JSON で、終了コードはいつも0（`ref-guard` は git の hook の取り決めに従い、拒むときだけ終了コード1）。
 読めない入力も何も出さずに通す。タスク運用を始めていないリポジトリ・git の外でも打てる。

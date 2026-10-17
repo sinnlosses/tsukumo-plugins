@@ -157,10 +157,38 @@ def test_finish_prints_open_span() -> None:
         r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT)
         open_lines = [l for l in r.stdout.splitlines() if l.startswith("OPEN_SPAN")]
         check(
-            "手順書の形（<段> start だけ打って end を打ち漏らす）は、どの段も OPEN_SPAN に出る",
-            r.returncode == 0 and open_lines == [f"OPEN_SPAN\tT-100\t{s}" for s in stages],
+            "<段> start だけ打って end を打ち漏らすと、tw が閉じる delegate（accept の start）・retro（finish）のほかはどの段も OPEN_SPAN に出る",
+            r.returncode == 0 and open_lines == [f"OPEN_SPAN\tT-100\t{s}" for s in stages if s not in ("delegate", "retro")],
             r.stdout + r.stderr,
         )
+
+
+def test_finish_closes_open_retro() -> None:
+    say("task.py finish: 開いた retro の end を done の前に1行だけ書き、開いていなければ書かない")
+    retro_edges = lambda wt: [e.get("edge") for e in flow_rows(wt) if e["event"] == "lap" and e.get("stage") == "retro"]
+    with tempfile.TemporaryDirectory() as tmp:
+        _main, wt1 = _claimed(tmp)
+        run_task(wt1, "lap", "T-100", "retro", "start")
+        run_task(wt1, "lap", "T-100", "retro", "start")
+        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT)
+        kinds = [(e["event"], e.get("stage"), e.get("edge")) for e in flow_rows(wt1)]
+        check("重ねた start に end が1つ続き、OPEN_SPAN は出ない",
+              r.returncode == 0 and retro_edges(wt1) == ["start", "start", "end"] and "OPEN_SPAN" not in r.stdout,
+              repr(kinds) + r.stdout + r.stderr)
+        check("retro の end は done より前",
+              kinds.index(("lap", "retro", "end")) < next(i for i, k in enumerate(kinds) if k[0] == "done"), repr(kinds))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        _main, wt1 = _claimed(tmp)
+        run_task(wt1, "lap", "T-100", "retro", "start")
+        run_task(wt1, "lap", "T-100", "retro", "end")
+        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT)
+        check("手で閉じた retro には end を足さない", r.returncode == 0 and retro_edges(wt1) == ["start", "end"], r.stdout + r.stderr)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        _main, wt1 = _claimed(tmp)
+        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT)
+        check("retro の無い流れには何も書かない", r.returncode == 0 and retro_edges(wt1) == [], r.stdout + r.stderr)
 
 
 def test_finish_open_span_for_any_id_spelling() -> None:
@@ -177,6 +205,7 @@ def test_finish_open_span_for_any_id_spelling() -> None:
 TESTS = (
     test_finish_open_span_for_any_id_spelling,
     test_finish_prints_open_span,
+    test_finish_closes_open_retro,
     test_finish_stops_on_commits_since_claim,
     test_finish_bundles_done_commit_ship,
     test_finish_reflection_flag,

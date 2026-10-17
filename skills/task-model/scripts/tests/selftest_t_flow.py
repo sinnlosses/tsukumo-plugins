@@ -1017,6 +1017,35 @@ def test_task_stage_spans() -> None:
           got is not None and got[1:] == (["反映"], at(2), at(8)), repr(got))
 
 
+def test_stage_spans_skip_overlapping_start() -> None:
+    say("metrics: 閉じていない同じ段の2つ目の start（手打ちと hook の重なり）は区間にも OPEN にも数えない")
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    at = lambda sec: t0 + timedelta(seconds=sec)
+    row = lambda sec, kind, **f: metrics.Event(at(sec), kind, "T-100", {"event": kind, "difficulty": "opus", **f})
+    events = [
+        row(0, "claim"),
+        row(1, "lap", stage="delegate", edge="start"),
+        row(2, "lap", stage="delegate", edge="start"),
+        row(5, "lap", stage="delegate", edge="end"),
+        row(6, "lap", stage="delegate", edge="start"),
+        row(8, "lap", stage="delegate", edge="end"),
+        row(9, "lap", stage="retro", edge="start"),
+        row(10, "lap", stage="retro", edge="start"),
+        row(11, "done"),
+    ]
+    got = metrics.task_stage_spans(events, "T-100")
+    delegated = [s for s in got[0] if s[0] == "委譲"] if got is not None else None
+    check("重なった start は1本に数え、閉じたあとの start は別の区間になる",
+          delegated == [("委譲", at(1), at(5)), ("委譲", at(6), at(8))], repr(got))
+    check("閉じていない段が重なっても OPEN は1つ", got is not None and got[1] == ["振り返り"], repr(got))
+    now = datetime.now(timezone.utc)
+    shipped = [metrics.Event(now - timedelta(seconds=20 - e.at.second), e.kind, e.task, e.fields) for e in events]
+    shipped.append(metrics.Event(now, "ship", "T-100", {"event": "ship", "result": "SHIPPED"}))
+    durations, opens = metrics.stage_durations(shipped, 7)
+    check("stage_durations も委譲を2本、OPEN の振り返りを1つに数える",
+          durations.get(("委譲", "opus", "normal")) == [4.0, 2.0] and opens == {"振り返り": 1}, repr((durations, opens)))
+
+
 def unregistered_tests(module: types.ModuleType) -> list[str]:
     registered = set(getattr(module, "TESTS", ()))
     return [n for n, f in vars(module).items() if n.startswith("test_") and callable(f) and f not in registered]
@@ -1052,6 +1081,7 @@ def test_all_tests_registered() -> None:
 TESTS = (
     test_open_stages,
     test_task_stage_spans,
+    test_stage_spans_skip_overlapping_start,
     test_flow_records_and_metrics,
     test_config_file_agents_md_and_conflict,
     test_retrospect_due,

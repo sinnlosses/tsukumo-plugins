@@ -117,7 +117,49 @@ def test_accept_end_pairs_with_start_for_any_id_spelling() -> None:
             check(f"{spelling}: start と end が T-100 に残る", r.returncode == 0 and edges == [("T-100", "start"), ("T-100", "end")], repr(edges) + r.stdout + r.stderr)
 
 
+def test_accept_closes_open_delegate() -> None:
+    say("task.py accept: 最初の呼び出しで、開いた delegate の end を accept の start の直後に1行だけ書く")
+    laps = lambda wt: [(e.get("stage"), e.get("edge")) for e in flow_rows(wt) if e["event"] == "lap"]
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1 = _claimed_repo(tmp)
+        run_task(wt1, "lap", "T-100", "delegate", "start")
+        write(os.path.join(wt1, "code.py"), "x = 1\n")
+        r = run_task(wt1, "accept", "T-100")
+        check("開いた delegate は accept の start の直後に閉じる",
+              laps(wt1) == [("delegate", "start"), ("accept", "start"), ("delegate", "end"), ("review", "start")],
+              repr(laps(wt1)) + r.stdout + r.stderr)
+        check("閉じた行は LAPPED として表に出さない", r.stdout.count("LAPPED") == 2, r.stdout)
+        run_task(wt1, "accept", "T-100", "--after-review")
+        check("--after-review は delegate を閉じ直さない", laps(wt1).count(("delegate", "end")) == 1, repr(laps(wt1)))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1 = _claimed_repo(tmp)
+        run_task(wt1, "lap", "T-100", "delegate", "start")
+        run_task(wt1, "lap", "T-100", "delegate", "end")
+        write(os.path.join(wt1, "note.md"), "x\n")
+        run_task(wt1, "verify")
+        run_task(wt1, "accept", "T-100")
+        check("手で閉じた delegate には end を足さない", laps(wt1).count(("delegate", "end")) == 1, repr(laps(wt1)))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1 = _claimed_repo(tmp)
+        write(os.path.join(wt1, "note.md"), "x\n")
+        run_task(wt1, "verify")
+        run_task(wt1, "accept", "T-100")
+        check("delegate の無い流れには何も書かない", all(stage != "delegate" for stage, _ in laps(wt1)), repr(laps(wt1)))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1 = _claimed_repo(tmp)
+        run_task(wt1, "lap", "T-100", "delegate", "start")
+        r = run_task(wt1, "lap", "T-100", "accept", "start")
+        check("tw accept を使わない受け入れ（別のリポジトリ）で手で打つ accept の start も、開いた delegate を閉じる",
+              laps(wt1) == [("delegate", "start"), ("accept", "start"), ("delegate", "end")]
+              and r.stdout == "LAPPED\tT-100\taccept\tstart\n",
+              repr(laps(wt1)) + r.stdout + r.stderr)
+
+
 TESTS = (
+    test_accept_closes_open_delegate,
     test_accept_end_pairs_with_start_for_any_id_spelling,
     test_accept_records_accept_end,
     test_accept_bundles_acceptance_steps,

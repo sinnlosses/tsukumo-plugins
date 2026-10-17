@@ -14,6 +14,7 @@ import beads
 import gitinfo
 import layout
 import ledger
+import metrics
 import stamps
 import ship
 import taskfile
@@ -142,7 +143,20 @@ def cmd_lap(toplevel: str, task_id: str, stage: str, edge: str | None = None) ->
         print(f"LAPPED\t{shown}\t{stage}")
         return
     tw_base.record(toplevel, "lap", shown, stage=stage, edge=edge)
+    if (stage, edge) == ("accept", "start"):
+        close_open_lap(toplevel, shown, "delegate")
     print(f"LAPPED\t{shown}\t{stage}\t{edge}")
+
+
+def close_open_lap(toplevel: str, task_id: str, stage: str) -> None:
+    """最後の `claim` 以降で段 `stage` が開いていれば、その `end` を `flow/` に書く（何も出さない）。"""
+    shown = beads.to_task_id(beads.to_bd_id(task_id))
+    try:
+        events = metrics.read_events(ledger.ledger_root(cwd=toplevel))[0]
+    except (OSError, gitinfo.GitCommandError):
+        return
+    if stage in metrics.open_stages(events, shown):
+        tw_base.record(toplevel, "lap", shown, stage=stage, edge="end")
 
 
 def task_trees(toplevel: str, task_id: str) -> list[str]:

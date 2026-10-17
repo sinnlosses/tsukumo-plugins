@@ -15,6 +15,7 @@ import ledger
 import metrics
 import tw_base
 import tw_claim
+import tw_handback
 import tw_ship
 
 STRAY_COMMITS_EXIT = 12
@@ -29,6 +30,7 @@ def cmd_finish(
     files: list[str],
     reflection: str | None = None,
 ) -> None:
+    tw_handback.close_open_lap(toplevel, tw_base.bd_task_id(task_id), "retro")
     if _done_found_stray_commits(toplevel, task_id, dropped, result_path, reflection):
         raise SystemExit(STRAY_COMMITS_EXIT)
     _commit(toplevel, message, files)
