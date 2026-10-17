@@ -24,6 +24,7 @@ SHIP_VERIFY_LOG_FILE_NAME = "task-ship-verify.log"
 PAUSE_STAMP_FILE_NAME = "task-pause-stamp"
 STEP_STAMPS_DIR_NAME = "task-step-stamps"
 OPEN_CLAIMS_DIR_NAME = "task-open-claims"
+MAIN_DIRTY_DIR_NAME = "task-main-dirty"
 # `.tw/local/` を作るときに旧い置き場（`.tw/` 直下、無ければ `git_dir`）から移すもの。
 _CARRIED_OVER = (
     VERIFY_OWED_FILE_NAME,
@@ -306,6 +307,25 @@ def remove_step_stamps(task_ids: list[str], cwd: str | None = None) -> None:
             path = os.path.join(d, f"{stamp.task_id}.{stamp.step}")
             if os.path.exists(path):
                 os.remove(path)
+
+
+def write_main_dirty(task_id: str, paths: list[str], cwd: str | None = None) -> None:
+    """着手した時点の、作業先（別のリポジトリ）の本体の汚れたパス。タスクごとに1つで、前の控えを置き換える。"""
+    d = os.path.join(worktree_state_dir(cwd), MAIN_DIRTY_DIR_NAME)
+    os.makedirs(d, exist_ok=True)
+    path = os.path.join(d, task_id)
+    with open(path + ".tmp", "w", encoding="utf-8") as f:
+        f.write("".join(f"{p}\n" for p in paths))
+    os.replace(path + ".tmp", path)
+
+
+def read_main_dirty(task_id: str, cwd: str | None = None) -> list[str] | None:
+    """`write_main_dirty` の控え。無ければ `None`。"""
+    path = os.path.join(worktree_state_read_dir(cwd), MAIN_DIRTY_DIR_NAME, task_id)
+    if not os.path.isfile(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        return [line for line in f.read().split("\n") if line]
 
 
 def _write_key(path: str, key: ContentKey, extra: tuple[str, ...] = ()) -> None:

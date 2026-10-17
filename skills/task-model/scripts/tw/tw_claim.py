@@ -11,6 +11,7 @@ import gitinfo
 import ledger
 import metrics
 import ref_guard
+import stamps
 import taskfile
 import tracker
 import tw_base
@@ -89,6 +90,7 @@ def cmd_claim(toplevel: str, task_id: str) -> None:
     if claimed is not None:
         beads.write_claim_snapshot(toplevel, claimed)
     ledger.mark_open_claim(shown, cwd=toplevel)
+    _snapshot_work_main_dirty(toplevel, shown, plan_body)
     _install_ref_guard(toplevel)
     tw_base.record(toplevel, "claim", shown, issue)
     _claim_branch_out(
@@ -256,6 +258,32 @@ def _claim_branch_out(
         print(f"CLAIMED\t{task_id}\t{where}\tbranch={feature_branch}{direct}")
     else:
         print(f"CLAIMED\t{task_id}\t{where}\tbranch={branch_after_sync}{direct}")
+
+
+def other_repo_main(toplevel: str, plan_body: str) -> str | None:
+    """`## やること` の `### 作業先` が別のリポジトリなら、その本体の作業ツリー（`git worktree list` の先頭）。
+    同じリポジトリ・作業先が無い・読めないときは `None`。"""
+    root, _ = taskfile.plan_work_repo(plan_body)
+    if root is None or not os.path.isdir(root):
+        return None
+    try:
+        if gitinfo.git_common_dir(root) == gitinfo.git_common_dir(toplevel):
+            return None
+        worktrees = gitinfo.list_worktrees(cwd=root)
+    except gitinfo.GitCommandError:
+        return None
+    return worktrees[0].path if worktrees else None
+
+
+def _snapshot_work_main_dirty(toplevel: str, shown: str, plan_body: str) -> None:
+    """作業先が別のリポジトリなら、その本体の汚れたパスを控える。読めなければ標準エラーに1行出すだけ。"""
+    main = other_repo_main(toplevel, plan_body)
+    if main is None:
+        return
+    try:
+        stamps.write_main_dirty(shown, gitinfo.dirty_paths(cwd=main), cwd=toplevel)
+    except (OSError, gitinfo.GitCommandError) as e:
+        print(f"main-dirty: 作業先の本体 {main} の汚れを控えられない（{type(e).__name__}: {e}）", file=sys.stderr)
 
 
 def _install_ref_guard(toplevel: str) -> None:

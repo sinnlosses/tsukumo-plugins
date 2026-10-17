@@ -68,6 +68,25 @@ def is_clean(cwd: str | None = None) -> bool:
     return _git(["status", "--porcelain"], cwd) == ""
 
 
+def dirty_paths(cwd: str | None = None) -> list[str]:
+    """`git status --porcelain` に出るパス（未追跡はファイルごと、改名は新しいパス）。"""
+    entries = gitcmd.run(["status", "--porcelain", "-z", "--untracked-files=all"], cwd)
+    if entries.returncode != 0:
+        raise GitCommandError(f"git status が失敗（{entries.returncode}）: {entries.stderr.strip()}")
+    fields = entries.stdout.split("\0")
+    paths: list[str] = []
+    i = 0
+    while i < len(fields):
+        entry = fields[i]
+        i += 1
+        if len(entry) < 4:
+            continue
+        paths.append(entry[3:])
+        if entry[0] in "RC":
+            i += 1
+    return paths
+
+
 def head_sha_or_none(cwd: str | None = None) -> str | None:
     """`git rev-parse HEAD`。引けなければ `None`（`claim` が `head` を控えずに済ませる）。"""
     r = gitcmd.run(["rev-parse", "HEAD"], cwd)
