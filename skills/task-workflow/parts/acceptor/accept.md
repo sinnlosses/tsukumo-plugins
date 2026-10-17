@@ -10,20 +10,22 @@
    `## やること` は手順5と5bで見た（計画どおりに委譲したときは `tw plan-check T-xxx` が
    `PLAN_REGISTERED` を返し、`PLAN_FIRST` と同じに読む）。
 
-   **束ねた受け入れの準備**: `tw accept T-xxx` は `tw lap T-xxx accept start`・`tw plan-check T-xxx`・レビューの要否の判定
+   **束ねた受け入れの準備**: `tw accept T-xxx` は最後の段の控えの確かめ・`tw lap T-xxx accept start`・`tw plan-check T-xxx`・レビューの要否の判定
    （`review_needed.py`）を順に打ち、その行をそのまま並べる。出力の最後の行で分ける（止まる行が出たらそこで以降を打たず、
    行の終了コードで終わる。`NOT_CLAIMED`・`NOT_OWNER` は手順4の印が無い合図で、メインで原因を見る）。
+   作業先が別のリポジトリのタスクも同じく着手した作業ツリーで打つ（判定・木の控え・`verify-check` は `tw` が作業先の作業ツリーで打つ。別のリポジトリに特有の行は `other-repo.md`）。
 
    | 出力 | すること |
    | --- | --- |
    | 最後が `SNAPSHOT\t<木の SHA>`（その前に `REVIEW\topus`・`REVIEW\tcode\t<数>`） | レビューが要る。`lap review`（start）は打ってあり、木の SHA が1回目の控え。下の受け入れ役を起こす。判定を受けた直後に `tw lap T-xxx review end` を打つ（差し戻しで受け入れ役を起こし直すたびに、起こす直前の `tw lap T-xxx review start` と判定直後の `review end` を対で打つ）。直しのあとは `tw accept T-xxx --after-review`（終わりで `accept` の end を `tw` が出す） |
-   | 最後が `tw verify-check` の行（その前に `SKIP\tdocs-only`・`NOTHING`・`NO_RANGE`、設定に `format` があれば `FORMATTED`） | レビューは要らない（`accept` の end は `tw` が出した）。下の受け入れ役を `SKIP`・`NOTHING`・`NO_RANGE` の依頼（目視と材料だけ）で起こす。`NO_RANGE` は範囲なしで作業ツリーの変更が空という意味で、作業先が別のリポジトリのタスクでは範囲の渡し忘れの合図なので、`other-repo.md` のとおり範囲つきで打ち直す |
+   | 最後が `tw verify-check` の行（その前に `SKIP\tdocs-only`・`NOTHING`・`NO_RANGE`、設定に `format` があれば `FORMATTED`） | レビューは要らない（`accept` の end は `tw` が出した）。下の受け入れ役を `SKIP`・`NOTHING`・`NO_RANGE` の依頼（目視と材料だけ）で起こす。`NO_RANGE` は範囲なしで作業ツリーの変更が空という意味（作業先が別のリポジトリのタスクでは `tw` が範囲を渡すので出ない） |
+   | `NOT_LAST_STEP\tT-xxx\t<欠けた段の番号,…>/<段の数>`（終了コード4。lap は書いていない） | 段が2つ以上の計画で、途中の段の控え（`tw step`・段を名指した `tw pause`）が欠けた。欠けた段の返却が届いているかを確かめ、届いていれば委譲先に `SendMessage` で `tw step T-xxx <n>` を打たせてから `tw accept T-xxx` を打ち直す。届いていなければ手順5bに戻る |
+   | `MAIN_DIRTY_FROM_DELEGATE`・`MAIN_DIRTY_UNKNOWN`（終了コード4）・`MAIN_DIRTY_BEFORE` | 作業先が別のリポジトリのタスクの本体の汚れ。`other-repo.md` の表のとおり |
    | `FORMAT_FAILED\t<コマンド>` | 整形が落ちた。続く末尾の行を読んで直し、`tw accept T-xxx --after-review` を打ち直す |
-   | `MISSING`・`INVALID` | review_needed.py が見つからない・失敗した。行を添えて人に預けて終了する |
+   | `MISSING`・`INVALID` | review_needed.py が見つからない・失敗した、または作業先の作業ツリーが無い（`MISSING\t作業先 …`）。行を添えて人に預けて終了する |
 
    `plan-check` の行（`PLAN_FIRST`・`PLAN_REGISTERED` など）は、手順5bの表で読んだものと同じに読む。
-   着手より後のコミットも作業ツリーの変更も無い計測だけのタスクは、`tw accept` が `NO_RANGE` を出し、続く `tw verify-check` が `NOT_VERIFIED\tnone` になる（単一のリポジトリで確かめた）。検証する中身が無いので `tw verify` は起こさず、手順6aへ進む（`tw finish` は検証の控えを見ない。`tw ship` の戻りは枝の状態による: 主ブランチを出している作業ツリーでは `SHIPPED`、主ブランチより先のコミットが無い別の枝では `NOTHING`）。作業先が別のリポジトリのときは確かめていない。
-   作業先が別のリポジトリのタスクでは `tw accept` を使わず、`other-repo.md` のとおり個別に打つ。
+   着手より後のコミットも作業ツリーの変更も無い計測だけのタスクは、`tw accept` が `NO_RANGE` を出し、続く `tw verify-check` が `NOT_VERIFIED\tnone` になる（単一のリポジトリで確かめた）。検証する中身が無いので `tw verify` は起こさず、手順6aへ進む（`tw finish` は検証の控えを見ない。`tw ship` の戻りは枝の状態による: 主ブランチを出している作業ツリーでは `SHIPPED`、主ブランチより先のコミットが無い別の枝では `NOTHING`）。作業先が別のリポジトリのときは、範囲つきの判定なので `NO_RANGE` ではなく `NOTHING` になる（`review_needed.py` のコードで確かめた。実行では確かめていない）。
 
    受け入れ役は Agent ツールで起こす。`subagent_type` は、Agent ツールの説明に並ぶエージェント末尾が `acceptor` の行
    （`acceptor` か `tsukumo-workflow:acceptor`。tsukumo-plugins の `agents/acceptor.md`。モデルは Opus 固定で、

@@ -10,7 +10,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | --- | --- | --- |
 | `status [--all] [--check]` | 一覧と判定を読むだけで見るとき（`--check` は課題の形の判定） | 行 `id/status/…`、`---` の後に `counts`・`ready`・`todo_loopable`・`stale`・`invalid`・`triage`・`jira_close`・`retrospect_due`。`--check` は `OK`・`INVALID` |
 | `new --summary … --difficulty … --loopable Y\|N [--deps …] [--hold\|--draft] [--direct] [--kind <種類>] --body-file <path\|->` | タスクやドラフトを登録するとき（`opus` で `## 解くべき論点` が空か「なし」、ドラフトの `- 観点:` が語彙の外なら終了コード2。`adopt` も論点は同じ） | `CREATED`・`LOCKED` |
-| `claim T-xxx` | 作業を始めるとき（着手の印を立て、git の hook `ref-guard` を置く。置けなければ標準エラーに `ref-guard:` の1行） | `CLAIMED`・`TAKEN`・`NOT_READY`・`DIRTY`・`UNSHIPPED`・`GIT_READ_ONLY` |
+| `claim T-xxx` | 作業を始めるとき（着手の印を立て、git の hook `ref-guard` を置く。置けなければ標準エラーに `ref-guard:` の1行。作業先が別のリポジトリなら、その本体の汚れたパスを控える。控えられなければ標準エラーに `main-dirty:` の1行） | `CLAIMED`・`TAKEN`・`NOT_READY`・`DIRTY`・`UNSHIPPED`・`GIT_READ_ONLY` |
 | `release T-xxx [--force]` | 着手の印を外すとき | `RELEASED`・`NOT_CLAIMED`・`NOT_OWNER` |
 | `done T-xxx [--dropped] [--reflection none\|some\|skipped] --result-file <path\|->` | 結果を書いて作業を閉じるとき（コミットも送りもしない）。ドラフトの却下にも使う。`--dropped` でなければ `## 結果` に必須行（`- 検証コマンド:`・`- 規約:`・`- 規約の指摘:`・`- 振り返り:`、完了条件に目視があれば `- 目視:`）が要り、欠ければ終了コード 2 で何も書かない（`- 検証コマンド:` だけは、台帳の直近の `verify` が通っていれば件数なしで tw が補う。`finish` も同じ） | `DONE`（`COMMITS_SINCE_CLAIM` が続くことがある）・`NOT_OWNER`・`NOT_READY`・`INVALID` |
 | `ship` | コミットを主ブランチへ送るとき（rebase・検証・ff-only・送った範囲を metadata `task_shipped` に書いて印を閉じる・トラッカーへ送る） | `SHIPPED`・`NOTHING`（`NOT_CLOSED`・`TRACKER`・`BACKUP`・`SUBMODULE_NOT_SYNCED` が続くことがある）・`MAIN_DIRTY`・`CONFLICT`・`VERIFY_FAILED`・`RACE`・`GIT_READ_ONLY` |
@@ -26,7 +26,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | `plan-phases T-xxx [--through <段>] [--also <n,…>] [--skipped <段,…>]` | tsukumo の `work_plan` に渡す段の並びと位置を読むだけで出すとき（実装のあとの段は `steps` の並びの2つ目以降のスキルから組む。既定の並びなら「受け入れ」「振り返り」「送り出し」。`--skipped` は飛ばした段で、出力の `skippedPhases` に入る。使い方はオーケストレーターの「進み具合の帯（`work_plan`）」） | `PHASES\tT-xxx\t<JSON 1行>`。`NO_PHASE`（終了コード2）・`NOT_OWNER` |
 | `verify [T-xxx]` | 検証コマンドを打つとき（主ブランチの取り込み・整形・中身の鍵の控えも担う。ID は基本付けない） | `FOLDED`（取り込んだとき先頭）・`VERIFIED`・`VERIFIED_UNSTAMPED`・`VERIFY_NOT_PASSED`・`FORMAT_FAILED`・`PLAN_MISSING`・`CONFLICT`・`GIT_READ_ONLY`・`NOTHING`。末尾40行のあとに判定行をもう一度出すので、`tail` で切っても最後の行（取り込んだときは最後の2行）で判定が取れる |
 | `verify-check` | 中身が `verify` の控えと同じかを読むだけで見るとき（同じなら検証を省く） | `VERIFIED_SAME`・`NOT_VERIFIED\t<理由>`（終了コード0）・`NOTHING` |
-| `accept T-xxx [--after-review]` | 受け入れの機械的な並び（機械的な判定と `verify-check`）を打つとき。判定の `REVIEW\tcode` は、差分に文書の拡張子でないパス、または設定 `review_code_globs`（WORKFLOW.md の設定の表）の glob に当たるパスがあるとき。全部文書なら `SKIP\tdocs-only` | `REVIEW`・`SKIP`・`NOTHING`・`NO_RANGE`・`SNAPSHOT`・`FORMATTED`・`FORMAT_FAILED`・`MISSING`・`INVALID`・`NOT_CLAIMED`・`NOT_OWNER` |
+| `accept T-xxx [--after-review]` | 受け入れの機械的な並び（機械的な判定と `verify-check`）を打つとき。判定の `REVIEW\tcode` は、差分に文書の拡張子でないパス、または設定 `review_code_globs`（WORKFLOW.md の設定の表）の glob に当たるパスがあるとき。全部文書なら `SKIP\tdocs-only`。段が2つ以上の計画で途中の段の控えが欠ければ、lap の前に `NOT_LAST_STEP` で止まる（`loopable: N` は見ない）。作業先が別のリポジトリなら、判定（主ブランチから枝までの範囲つき）・木の控え・`verify-check` を作業先の作業ツリーで打ち、整形は打たず、作業先の本体の汚れを `claim` の控えと比べて `MAIN_DIRTY_*` の行で出す（読み方は task-workflow の `other-repo.md`） | `REVIEW`・`SKIP`・`NOTHING`・`NO_RANGE`・`SNAPSHOT`・`FORMATTED`・`FORMAT_FAILED`・`NOT_LAST_STEP`・`MAIN_DIRTY_FROM_DELEGATE`・`MAIN_DIRTY_UNKNOWN`・`MAIN_DIRTY_BEFORE`・`MISSING`・`INVALID`・`NOT_CLAIMED`・`NOT_OWNER` |
 | `brief <役> T-xxx [--step <n>] [--rewrite] [--visual]`（実装役）・`brief <役> T-xxx [--accept-file <path\|->] [--image <パス>]… [--visual] [--visual-wait] [--round <n> --since <前の木>]`（受け入れ役） | 実装役・受け入れ役への依頼文を手で組まずに出すとき（メインが打ち、出力の2行目以降をそのまま渡す。`<役>` の語は `tw brief --help`）。文面は並びのスキルの `metadata` の `workflow-brief-<役>` が指す型にあり、tw は場合（計画どおり・書き直し・別のリポジトリ・並列の段・目視、受け入れ役は判定・目視待ち・2回目以降）に当たる節を選んで、パス・枝・作業ツリーの道を埋める（節と値は `tw brief --help`）。目視はタスクの本文の語では決めず、`--visual`・`--image` の旗だけで決める | `BRIEF\tT-xxx\t<役>\t<節,…>`（受け入れ役の `--round` は末尾にいまの木）に続けて依頼文。`NOT_OWNER`・`MISSING`（終了コード6）・`INVALID`（終了コード3） |
 | `finish T-xxx [--dropped] [--reflection none\|some\|skipped] --result-file <path\|-> --message <件名> [--add <ファイル>]…` | 結果・コミット・送りを一度に打つとき（`done` → `git add` → コミット → `ship`） | `done` の行、`COMMITTED`・`NO_COMMIT`、`ship` の行。`COMMITS_SINCE_CLAIM` が出れば終了コード12で止まる |
 | `metrics [--days N] [--stages]` | 流れの数と段ごとの所要時間を読むだけで見るとき（振り返り） | `PERIOD`、続けて `shipped`・`lead_median_seconds`・`verify_per_task` など。`--stages` は `STAGE`・`OPEN`。`SKIPPED`・`EMPTY` |
@@ -38,7 +38,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | `commit-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ deny の JSON 1行。通すときは何も出さない |
 | `pause [T-xxx [<n>]]` | 判断が要って止める・目視待ち・計画を作業の後に書いた返却の直前に打つ（委譲先。並列の段の担当は ID と段の番号を付ける） | `PAUSED`・`NOT_OWNER` |
 | `step T-xxx <n>` | 最後でない段を済ませて返す直前に打つ（委譲先。着手した作業ツリーで打つ。別のリポジトリのタスクでは、出力の鍵は着手側のもの。作業先の作業ツリーの控えは作業先の中身の鍵で別に書かれる）。設定に `step_check` があれば、控えを書く前にタスクの各作業ツリー（着手した木と、作業先の別のリポジトリの木）でその木の設定の `step_check` を打ち、落ちたら控えを書かない | `STEPPED`・`LAST_STEP`（終了コード4。最後の段は `tw verify` を通して返す）・`STEP_CHECK_FAILED`（終了コード4。続けて出力の末尾20行。直してから打ち直す）・`NOT_OWNER` |
-| `lap T-xxx <段> [start\|end]` | オーケストレーターの段の頭と終わりを記録するとき（メイン。段は `direct`・`delegate`・`accept`・`review`・`retro`・`land`・`sync`） | `LAPPED`・`NOT_CLAIMED` |
+| `lap T-xxx <段> [start\|end]` | オーケストレーターの段の頭と終わりを記録するとき（メイン。段は `direct`・`delegate`・`accept`・`review`・`retro`・`land`・`sync`。`end` は段が開いているときだけ記録する） | `LAPPED`・`NOT_CLAIMED` |
 | `relay T-xxx <鍵> [--body-file <path\|->]` | 段の結果を後の段へ申し送りとして書くとき（`--body-file` 付き。着手の印の持ち主だけ）と、前の段の申し送りを鍵で引くとき（欄と鍵は WORKFLOW.md「段の申し送り」） | `RELAYED`・`RELAY`（次の行から本文）・`NONE`・`NOT_OWNER`・`NOT_READY` |
 | `handback-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ JSON 1行（`SubagentStop` は `block`、`PreToolUse` は deny）。通すときは何も出さない |
 | `ask-guard` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ deny の JSON 1行（理由はタスクIDと次の一手）。通すときは何も出さない |
@@ -51,7 +51,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | 1 | （traceback） | 環境の故障 | エラー出力を報告して止まる。**手で代用しない** |
 | 2 | （stderr） | 渡した引数・本文の誤り | 直して打ち直す |
 | 3 | `INVALID` | データの不備（読めない課題〔label の語彙の外など〕、設定が読めない、主ブランチが決まらない、`--check` の重複、トラッカーの付け替え先が既にある） | 理由をそのまま報告して止まる。**直しに行かない** |
-| 4 | `TAKEN`・`NOT_READY`・`DIRTY`・`MAIN_DIRTY`・`UNSHIPPED`・`LOCKED`・`NOT_OWNER`・`WORK_BEFORE_PLAN`・`FRAME_CHANGED`・`LAST_STEP`・`STEP_CHECK_FAILED`・`NOT_LANDED`・`NOT_REMOVED` | いまの状態では進めない | 各スキルの表のとおり（別の1件を選ぶか止まる） |
+| 4 | `TAKEN`・`NOT_READY`・`DIRTY`・`MAIN_DIRTY`・`UNSHIPPED`・`LOCKED`・`NOT_OWNER`・`WORK_BEFORE_PLAN`・`FRAME_CHANGED`・`LAST_STEP`・`NOT_LAST_STEP`・`MAIN_DIRTY_FROM_DELEGATE`・`MAIN_DIRTY_UNKNOWN`・`STEP_CHECK_FAILED`・`NOT_LANDED`・`NOT_REMOVED` | いまの状態では進めない | 各スキルの表のとおり（別の1件を選ぶか止まる） |
 | 5 | `BUSY`（`sync` だけ） | 別の `tw sync` が台帳の錠を持っている（待たずに返った。何も書き換えていない）。持ち主のプロセスが無い古い錠なら、行にその旨が添えてある | 少し置いて打ち直す。古い錠の注記があれば、行を添えて人に預ける（錠のファイルは人が確かめて消す） |
 | 6 | `MISSING`・`MISSING\t<.beads のパス>` | タスク運用を始めていない（`.tw/config.toml` が無い）／設定はあるのに `.beads` が無い | 用意の入口（WORKFLOW.md の用語）を案内して止まる |
 | 7 | `CONFLICT` | `ship` の rebase が衝突した（`--abort` 済み）か、`verify` の主ブランチの取り込みが衝突した（何も書き換えていない） | 衝突したファイルを添えて人に預ける。`verify` の衝突を解いたあとは `tw verify` を打ち直す |
@@ -100,12 +100,13 @@ Bash のコマンド文字列に `git` が出ないコミット（`sh -c`・ス�
 | --- | --- | --- |
 | `direct` | メイン（`tw lap`。端なし） | — |
 | `delegate` | plugin で入れたときは `lap-hook`（委譲先の起動）。リンクだけで入れたとき・委譲しないメインの流れはメイン | `accept` の start（`tw accept` が打つものも手で打つものも） |
-| `accept` | `tw accept`。`tw accept` を使わない別のリポジトリの受け入れはメイン | `tw accept`（別のリポジトリの受け入れはメイン） |
+| `accept` | `tw accept`（作業先が別のリポジトリのタスクも） | `tw accept`（開いているときだけ書くので、`--after-review` を打ち直しても1つ） |
 | `review` | 1回目は `tw accept`、2回目からはメイン | メイン |
 | `retro` | plugin で入れたときは `lap-hook`（振り返りのスキルの呼び出し）。リンクだけで入れたときはメイン | `tw finish`（`done` の前） |
 | `land`・`sync` | メイン | メイン |
 
 `lap-hook` は関門ではなく記録で、何も拒まず stdout に何も出さない。書くのは控えがちょうど1件の作業ツリーで、その段が開いていないときだけ（判定の細部は `tw lap-hook --help`）。
+end は手で打つものも `tw` が書くものも、最後の `claim` 以降でその段が開いているときだけ書く（手打ちの `tw lap … end` は開いていなくても `LAPPED` を出すが記録しない）ので、`tw` が閉じた段に手で end を重ねても end は1つ。
 メインの手打ちと hook が重なって同じ段の start が続いても、所要の集計（`tw metrics --stages`・振り返りの段の所要時間）は閉じていない同じ段の2つ目の start を数えない。
 
 **`commit-guard`・`handback-guard`・`ask-guard` は Claude Code の hook の取り決めに従う**: 出力は TSV でなく JSON で、終了コードはいつも0（`ref-guard` は git の hook の取り決めに従い、拒むときだけ終了コード1）。
