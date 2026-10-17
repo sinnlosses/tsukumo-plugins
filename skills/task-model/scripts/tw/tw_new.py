@@ -99,7 +99,6 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
     raise SystemExit(4)
 
 
-# 双方向で依存先を1件ずつ引く上限。これを超えるなら全件読み1回のほうが安い。
 SHOW_DEPS_LIMIT = 3
 
 # 番号の取り合いに続けて負けたら諦める回数（`bd create --id` は同じ番号を1つしか作らない）。

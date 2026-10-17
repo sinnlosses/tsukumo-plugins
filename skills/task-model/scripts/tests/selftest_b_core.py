@@ -519,8 +519,19 @@ def test_new_bd_calls() -> None:
             say(f"  {kind}・--deps 1件: bd {len(calls)} 回（うち list {len(lists)} 回）")
             check(f"{kind}・--deps ありは CREATED", r.returncode == 0 and r.stdout.startswith("CREATED\t"), r.stdout + r.stderr)
             if bidirectional:
-                check("双方向・--deps ありは依存先を show で引く", any(c.startswith("show ") for c in calls) and len(lists) == 1,
-                      "\n".join(calls))
+                check("双方向・--deps ありは依存先を show で引く",
+                      f"show {beads.to_bd_id(first)} --json" in calls and len(lists) == 1, "\n".join(calls))
+                many = [first, *(new(main_path, f"依存{i}") for i in range(3))]
+                r, calls = register("--deps", ",".join(many))
+                lists = [c for c in calls if c.startswith("list ")]
+                say(f"  {kind}・--deps {len(many)}件: bd {len(calls)} 回（うち list {len(lists)} 回）")
+                check("双方向・--deps が3件を超えたら全件読み1回で確かめ、依存先を show で引かない",
+                      r.returncode == 0 and r.stdout.startswith("CREATED\t") and len(lists) == 2
+                      and not any(f"show {beads.to_bd_id(d)} --json" in calls for d in many), r.stdout + r.stderr + "\n".join(calls))
+                r, calls = register("--deps", ",".join([*many, "GH-99999"]))
+                check("双方向・3件を超える --deps に無い ID があれば終了コード2で拒む",
+                      r.returncode == 2 and "GH-99999" in r.stderr and not any(c.startswith("create ") for c in calls),
+                      r.stdout + r.stderr + "\n".join(calls))
 
             r, calls = register("--deps", "GH-99999" if bidirectional else "T-99999")
             check(f"{kind}・無い依存先は終了コード2で拒み、何も作らない",
