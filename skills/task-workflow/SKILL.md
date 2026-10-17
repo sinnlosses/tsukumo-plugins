@@ -84,7 +84,7 @@ lap は並びのスキルではなくこのスキルが段の前後で打つ。
 
 6. **受け入れる**（並びの段 accept-step の本文。受け入れ役の返却の行は `${CLAUDE_SKILL_DIR}/parts/acceptor/acceptor-return.md`）: 作業ツリーを直し始める前に、委譲先の最後の段（段 `N`）の hand-back が届いていることを
    確かめる（並列の段の担当を起こしたときは、どの担当も最後に渡した段を返していることを確かめる）。
-   確かめた直後に手順5(f)の見張りを `TaskStop` で畳み、`tw lap T-xxx delegate end` を打ち、作業ツリーを cwd にした残りのプロセスが無いかを `ps` で見て（あれば止める）、`tw accept T-xxx` を打つ（出力の読み方は下の `accept.md`）。
+   確かめた直後に手順5(f)の見張りを `TaskStop` で畳み、`tw lap T-xxx delegate end` を打ち（メインで行う流れ〔`flows/main.md`〕では実装の段の終わりに打ち済みなので打たない）、作業ツリーを cwd にした残りのプロセスが無いかを `ps` で見て（あれば止める）、`tw accept T-xxx` を打つ（出力の読み方は下の `accept.md`）。
    届いていなければ `TaskStop` か `SendMessage` で止めてから触る。報告をそのまま信用しない。
 
    受け入れの続き（目視待ちの報告・完了条件の目視・`tw accept` の出力の表・受け入れ役の起こし方と判定の表・
