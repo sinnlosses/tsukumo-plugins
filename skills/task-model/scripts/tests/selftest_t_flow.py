@@ -905,6 +905,34 @@ def test_config_set() -> None:
         r = run_task(repo, "config", "set", "steps")
         check("値の無い set は終了コード2", r.returncode == 2, r.stdout + r.stderr)
 
+        def step_check_row() -> str:
+            rows = [l for l in run_task(repo, "config").stdout.splitlines() if l.startswith("step_check\t")]
+            return rows[0] if rows else ""
+
+        r = run_task(repo, "config", "set", "step_check", "pnpm run lint")
+        check("step_check が無ければ最後のキーの次に足され、tw config が config で出す",
+              r.returncode == 0 and r.stdout == "SET\tstep_check\tpnpm run lint\n"
+              and read_config_file() == original + 'step_check = "pnpm run lint"\n'
+              and step_check_row() == "step_check\tpnpm run lint\tconfig", r.stdout + r.stderr + read_config_file())
+        write(path, original.replace('branch = "切らない"\n', 'branch = "切らない"\nstep_check = "old"  # 段\n'))
+        r = run_task(repo, "config", "set", "step_check", "new")
+        check("step_check がある設定は値だけ変わり、ほかの行・コメントはそのまま",
+              r.returncode == 0 and read_config_file() == original.replace('branch = "切らない"\n', 'branch = "切らない"\nstep_check = "new"  # 段\n'),
+              read_config_file())
+        r = run_task(repo, "config", "set", "step_check", "なし")
+        check("step_check なしは打たない設定に読む",
+              r.returncode == 0 and step_check_row().startswith("step_check\tなし\t"), r.stdout + r.stderr + step_check_row())
+        quoted_command = 'echo "a\\b" && true'
+        r = run_task(repo, "config", "set", "step_check", quoted_command)
+        check("引用符とバックスラッシュを含む値は読み直すと元のまま",
+              r.returncode == 0 and step_check_row() == f"step_check\t{quoted_command}\tconfig",
+              r.stdout + r.stderr + step_check_row())
+        before = read_config_file()
+        for label, value in (("空", ""), ("空白だけ", "  "), ("改行を含む", "a\nb")):
+            r = run_task(repo, "config", "set", "step_check", value)
+            check(f"step_check の値が{label}なら終了コード2でファイルを変えない",
+                  r.returncode == 2 and r.stdout == "" and read_config_file() == before, r.stdout + r.stderr)
+
     with tempfile.TemporaryDirectory() as tmp:
         repo = _make_config_doctor_repo(tmp, "no-config", with_config=False)
         r = run_task(repo, "config", "set", "steps", '["a"]')
