@@ -702,7 +702,7 @@ def test_config_json() -> None:
         check("config は設定ファイルのパスで、TSV の1行目と同じ",
               data["config"] == ".tw/config.toml" and tsv_lines[0] == f"CONFIG\t{data['config']}", repr(data["config"]))
         as_tsv = [
-            f"{k['key']}\t{layout_steps_text(k['value']) if isinstance(k['value'], list) else k['value']}\t{k['source']}"
+            f"{k['key']}\t{_compact_json_array(k['value']) if isinstance(k['value'], list) else k['value']}\t{k['source']}"
             for k in data["keys"]
         ]
         check("keys は TSV の行と同じ順・同じキー・値・出どころ", as_tsv == tsv_lines[1:], repr(as_tsv))
@@ -726,7 +726,7 @@ def test_config_json() -> None:
               r.returncode == 3 and r.stdout.startswith("INVALID\t.tw/config.toml:2:"), r.stdout + r.stderr)
 
 
-def layout_steps_text(items: list[str]) -> str:
+def _compact_json_array(items: list[str]) -> str:
     return json.dumps(items, ensure_ascii=False, separators=(",", ":"))
 
 
