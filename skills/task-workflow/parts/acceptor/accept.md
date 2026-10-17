@@ -30,8 +30,8 @@
    読むだけの定義。書き換えないので返却は `tw handback-guard` に判定されない）があれば、一覧に出ている名前のまま `model` を渡さずに起こす。
    末尾一致が複数当たったら選ばずに止め、行を添えて人に預け `tw release T-xxx` する。
    無ければ手順5の `subagent_type` の選び方と同じにして `model: opus` を渡す。決まりの本文も依頼文も手で組まず、
-   `tw accept T-xxx` の出力を `tw brief acceptor T-xxx --accept-file -` に渡し（目視の完了条件があるときは、委譲先が報告した
-   画像のパスを幅ごとに `--image <パス>` で。いちばん狭い幅も）、出力の2行目以降をそのまま渡す。依頼文には作業ツリーのパス・
+   `tw accept T-xxx` の出力を `tw brief acceptor T-xxx --accept-file -` に渡し（実装の依頼に `--visual` を付けたタスクでは、委譲先が報告した
+   画像のパスを幅ごとに `--image <パス>` で。いちばん狭い幅も。パスが無ければ `--visual`。`visual-review.md`）、出力の2行目以降をそのまま渡す。依頼文には作業ツリーのパス・
    差分を出すコマンド・`## 完了条件` の本文・規約のファイルのパス・`acceptor-brief.md` の絶対パス・判定と木の SHA・画像のパス・
    申し送り `実装` の friction log の行・`comment-audit` の読み方が入る（文面は `${CLAUDE_SKILL_DIR}/parts/acceptor/acceptor-request.md`）。
    メインが足すのは、人の差し戻しの一言メモの数（振り返りの材料）だけ。`NOT_OWNER`・`MISSING`・`INVALID` が出たら行を添えて人に預け `tw release T-xxx` する。

@@ -24,7 +24,6 @@ ROLE_IMPLEMENTER = "implementer"
 ROLE_ACCEPTOR = "acceptor"
 TASK_MODEL_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 SNAPSHOT_SCRIPT = os.path.join(TASK_MODEL_DIR, "scripts", "core", "review_snapshot.py")
-VISUAL_WORD = "目視"
 RULE_FILES = ("AGENTS.md", "CLAUDE.md")
 RELAY_IMPLEMENT_KEY = "実装"
 VERDICT_WORDS = ("REVIEW", "SKIP", "NOTHING", "NO_RANGE")
@@ -43,7 +42,7 @@ class WorkRepo:
 
 
 def cmd_brief_implementer(toplevel: str, task_id: str, step: int | None, rewrite: bool, visual: bool) -> None:
-    shown, issue, plan_body, mark, _base, drift = tw_edit.own_plan(toplevel, task_id)
+    shown, _issue, plan_body, mark, _base, drift = tw_edit.own_plan(toplevel, task_id)
     template_path, sections = _template(toplevel, ROLE_IMPLEMENTER, IMPLEMENTER_SECTIONS)
     specs, steps_error = taskfile.plan_step_specs(plan_body) if taskfile.has_plan(plan_body) else ((), "missing")
     uncovered, unknown = taskfile.plan_coverage(plan_body) if specs else ((), ())
@@ -77,7 +76,7 @@ def cmd_brief_implementer(toplevel: str, task_id: str, step: int | None, rewrite
     if work is not None:
         chosen.append("別のリポジトリ")
         values.update(work_repo=work.root, branch=work.branch, worktree=work.worktree, base=work.base)
-    if visual or VISUAL_WORD in str(issue.raw.get("acceptance_criteria") or ""):
+    if visual:
         chosen.append("目視")
     _print_brief(shown, ROLE_IMPLEMENTER, sections, chosen, values)
 
@@ -87,12 +86,15 @@ def cmd_brief_acceptor(
     task_id: str,
     accept_file: str | None,
     images: list[str],
+    visual: bool,
     visual_wait: bool,
     round_number: int | None,
     since: str | None,
 ) -> None:
     if visual_wait and (round_number is not None or accept_file is not None):
         _usage("brief acceptor: --visual-wait は --round・--accept-file と一緒に打てない")
+    if visual and (visual_wait or round_number is not None):
+        _usage("brief acceptor: --visual は --accept-file と打つ（--visual-wait・--round とは一緒に打てない）")
     if visual_wait and not images:
         _usage("brief acceptor: --visual-wait には --image が要る")
     if round_number is not None and (since is None or accept_file is not None):
@@ -117,8 +119,7 @@ def cmd_brief_acceptor(
         "images": "\n".join(f"- `{p}`" for p in images),
     }
     if visual_wait:
-        lines = [line for line in criteria.splitlines() if VISUAL_WORD in line]
-        values["visual_criteria"] = "\n".join(lines) or "（`## 完了条件` に目視の行が無い）"
+        values["criteria"] = criteria
         _print_brief(shown, ROLE_ACCEPTOR, sections, ["目視待ち"], values)
         return
     if round_number is not None:
@@ -135,7 +136,7 @@ def cmd_brief_acceptor(
     if verdict.startswith("REVIEW"):
         chosen.append("レビュー")
         values["tree"] = tree_sha or _snapshot(tree)
-    if images or VISUAL_WORD in criteria:
+    if images or visual:
         chosen.append("目視")
         if not images:
             values["images"] = "（報告に画像のパスが無い）"

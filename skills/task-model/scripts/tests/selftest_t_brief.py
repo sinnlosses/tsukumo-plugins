@@ -143,19 +143,22 @@ def test_brief_implementer_parallel() -> None:
 
 
 def test_brief_implementer_visual() -> None:
-    say("task.py brief implementer: 完了条件に目視があるか --visual なら 目視 を足す")
+    say("task.py brief implementer: 目視 は --visual だけで決め、完了条件に「目視」の語があるか無いかでは変わらない")
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, wt2 = make_repo(tmp, branch="切らない")
-        _claim_with_plan(wt1, main_path, "### 1. 書く\nx\n", acceptance="画面を目視で確かめる")
+        _claim_with_plan(wt1, main_path, "### 1. 書く\nx\n", acceptance="目視ありの依頼文を生成する")
         r = _brief(wt1)
-        check("完了条件に目視があれば 目視", r.returncode == 0 and _head(r).endswith(",目視"), r.stdout + r.stderr)
+        check("完了条件に「目視」の語があっても --visual が無ければ付かない",
+              r.returncode == 0 and "目視" not in _head(r), r.stdout + r.stderr)
+        r = _brief(wt1, "--visual")
+        check("語があって --visual なら付く", r.returncode == 0 and _head(r).endswith(",目視"), r.stdout + r.stderr)
         commit_task(main_path, taskfile.Task("T-101", "見た目なし", "todo", "sonnet", "Y", (), BODY))
         run_task(wt2, "claim", "T-101")
         run_task(wt2, "edit", "T-101", "--section", "やること", "--body-file", "-", stdin="### 1. 書く\nx\n")
         r = run_task(wt2, "brief", "implementer", "T-101")
-        check("目視が無ければ付かない", r.returncode == 0 and not _head(r).endswith(",目視"), r.stdout + r.stderr)
+        check("語が無く --visual も無ければ付かない", r.returncode == 0 and "目視" not in _head(r), r.stdout + r.stderr)
         r = run_task(wt2, "brief", "implementer", "T-101", "--visual")
-        check("--visual なら付く", r.returncode == 0 and _head(r).endswith(",目視"), r.stdout + r.stderr)
+        check("語が無くても --visual なら付く", r.returncode == 0 and _head(r).endswith(",目視"), r.stdout + r.stderr)
 
 
 def _acceptor(wt: str, *extra: str, stdin: str | None = None) -> subprocess.CompletedProcess:
@@ -215,22 +218,38 @@ def test_brief_acceptor_other_repo() -> None:
 
 
 def test_brief_acceptor_visual() -> None:
-    say("task.py brief acceptor: 目視の完了条件か --image で 目視、--visual-wait は 目視待ち だけ")
+    say("task.py brief acceptor: 目視 は --image か --visual だけで決め、完了条件の「目視」の語では変わらない。--visual-wait は 目視待ち だけ")
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _ = make_repo(tmp, branch="切らない")
-        _claim_with_plan(wt1, main_path, "### 1. 書く\nx\n", acceptance="1. 通る\n2. 画面を目視で確かめる")
-        r = _acceptor(wt1, "--accept-file", "-", "--image", "/tmp/a-375.png", "--image", "/tmp/a-1280.png", stdin="SKIP\tdocs-only\n")
-        check("目視 と画像の2行", r.returncode == 0 and _head(r).endswith(",目視")
-              and "- `/tmp/a-375.png`\n- `/tmp/a-1280.png`" in r.stdout, r.stdout + r.stderr)
-        r = _acceptor(wt1, "--accept-file", "-", stdin="SKIP\tdocs-only\n")
-        check("目視の完了条件で画像が無ければ、その旨を出す", _head(r).endswith(",目視") and "報告に画像のパスが無い" in r.stdout,
-              r.stdout + r.stderr)
-        r = _acceptor(wt1, "--visual-wait", "--image", "/tmp/a-375.png")
-        check("--visual-wait は 目視待ち だけで、目視の行だけを添える",
-              r.returncode == 0 and _head(r) == "BRIEF\tT-100\tacceptor\t目視待ち"
-              and "2. 画面を目視で確かめる" in r.stdout and "1. 通る" not in r.stdout, r.stdout + r.stderr)
+        main_path, wt1, wt2 = make_repo(tmp, branch="切らない")
+        _claim_with_plan(wt1, main_path, "### 1. 書く\nx\n", acceptance="1. 通る\n2. 目視ありの依頼文を生成する")
+        plain = "1. 画面が崩れない\n2. 通る"
+        commit_task(main_path, taskfile.Task("T-101", "語なし", "todo", "sonnet", "Y", (), task_body(acceptance=plain)))
+        run_task(wt2, "claim", "T-101")
+        run_task(wt2, "edit", "T-101", "--section", "やること", "--body-file", "-", stdin="### 1. 書く\nx\n")
+        cases = ((wt1, "T-100", "語あり", "1. 通る\n2. 目視ありの依頼文を生成する"), (wt2, "T-101", "語なし", plain))
+        for tree, task_id, label, criteria in cases:
+            def acceptor(*extra: str, stdin: str | None = None) -> subprocess.CompletedProcess:
+                return run_task(tree, "brief", "acceptor", task_id, *extra, stdin=stdin)
+
+            r = acceptor("--accept-file", "-", stdin="SKIP\tdocs-only\n")
+            check(f"{label}: 旗が無ければ 目視 は付かない", r.returncode == 0 and "目視" not in _head(r)
+                  and "報告に画像のパスが無い" not in r.stdout, r.stdout + r.stderr)
+            r = acceptor("--accept-file", "-", "--image", "/tmp/a-375.png", "--image", "/tmp/a-1280.png", stdin="SKIP\tdocs-only\n")
+            check(f"{label}: --image なら 目視 と画像の2行", r.returncode == 0 and _head(r).endswith(",目視")
+                  and "- `/tmp/a-375.png`\n- `/tmp/a-1280.png`" in r.stdout, r.stdout + r.stderr)
+            r = acceptor("--accept-file", "-", "--visual", stdin="SKIP\tdocs-only\n")
+            check(f"{label}: --visual だけなら 目視 で、画像が無い旨を出す", r.returncode == 0 and _head(r).endswith(",目視")
+                  and "報告に画像のパスが無い" in r.stdout, r.stdout + r.stderr)
+            r = acceptor("--visual-wait", "--image", "/tmp/a-375.png")
+            check(f"{label}: --visual-wait は 目視待ち だけで、完了条件の本文をそのまま添える",
+                  r.returncode == 0 and _head(r) == f"BRIEF\t{task_id}\tacceptor\t目視待ち"
+                  and criteria in r.stdout and "{{" not in r.stdout, r.stdout + r.stderr)
         r = _acceptor(wt1, "--visual-wait")
         check("--visual-wait に画像が無ければ終了コード2", r.returncode == 2, r.stdout + r.stderr)
+        r = _acceptor(wt1, "--visual-wait", "--visual", "--image", "/tmp/a-375.png")
+        check("--visual は --visual-wait と打てない（終了コード2）", r.returncode == 2, r.stdout + r.stderr)
+        r = _acceptor(wt1, "--round", "2", "--since", "abc", "--visual")
+        check("--visual は --round と打てない（終了コード2）", r.returncode == 2, r.stdout + r.stderr)
 
 
 def test_brief_acceptor_round() -> None:
