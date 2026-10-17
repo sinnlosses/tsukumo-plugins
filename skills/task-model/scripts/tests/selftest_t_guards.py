@@ -13,6 +13,7 @@ from selftest_support import check, git, git_env, refuse_direct_run, say, weight
 import beads  # noqa: E402
 import gitinfo  # noqa: E402
 import ledger  # noqa: E402
+import metrics  # noqa: E402
 import ref_guard  # noqa: E402
 import stamps  # noqa: E402
 import taskfile  # noqa: E402
@@ -516,6 +517,55 @@ def test_agent_scoped_reader_handback() -> None:
         run_task(wt1, "release", "T-100")
         check("控えが無くなると印も消える",
               not os.path.exists(os.path.join(wt1, ".tw", "local", ledger.AGENT_WRITERS_DIR_NAME)))
+
+
+def _send_bash(tmp: str, where: str, **ids: str) -> None:
+    """サブエージェントの `Bash` の `PreToolUse` を `commit-guard --agent-scoped` に渡す（`agent` の出来事を残させる）。
+
+    `agent_id`・`session_id` の入り方は Agent SDK の `BaseHookInput` の型定義に従う（実機の hook 入力のダンプではない）。
+    """
+    payload = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "tw show T-100"}, "cwd": where, **ids}
+    r = run_task(tmp, "commit-guard", "--agent-scoped", stdin=json.dumps(payload))
+    if r.returncode != 0 or r.stdout != "":
+        raise RuntimeError(f"commit-guard の Bash が {r.returncode} で {r.stdout!r} を出した: {r.stderr}")
+
+
+@weight(6)
+def test_agent_task_record() -> None:
+    say("task.py commit-guard: 委譲先の最初の Bash で agent の出来事（agent_id・session_id・タスク）を台帳に1回だけ残す")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(tmp, verify="`true`")
+        commit_task(main_path, taskfile.Task("T-100", "対応", "todo", "sonnet", "Y", (), BODY))
+        commit_task(main_path, taskfile.Task("T-101", "二つ目", "todo", "sonnet", "Y", (), BODY))
+
+        def agent_rows() -> list[dict]:
+            return [r for r in flow_rows(wt1) if r["event"] == "agent"]
+
+        _send_bash(tmp, wt1, agent_id="a-one", session_id="s-1")
+        check("着手の控えが無い作業ツリーでは残さない", agent_rows() == [])
+        run_task(wt1, "claim", "T-100")
+        _send_bash(tmp, wt1, agent_id="a-one", session_id="s-1")
+        _send_bash(tmp, wt1, agent_id="a-one", session_id="s-1")
+        rows = agent_rows()
+        check("控えが1件なら agent の出来事を1回だけ残す（2回送っても1行）",
+              len(rows) == 1 and rows[0]["task"] == "T-100" and rows[0]["agent"] == "a-one" and rows[0]["session"] == "s-1",
+              str(rows))
+        _send_bash(tmp, wt1, session_id="s-1")
+        _send_bash(tmp, wt1, agent_id="a-two")
+        _send_bash(tmp, wt1, agent_id="../x", session_id="s-1")
+        _send_bash(tmp, wt1, agent_id="a-two", session_id="../s")
+        check("agent_id の無い主・session_id の無い入力・ファイル名に使えない文字は残さない", len(agent_rows()) == 1, str(agent_rows()))
+        check("agent の出来事が入っても台帳の集計（metrics）は読める",
+              any(e.kind == "agent" for e in metrics.read_events(ledger.ledger_root(cwd=wt1))[0]))
+
+        run_task(wt1, "claim", "T-101")
+        _send_bash(tmp, wt1, agent_id="a-three", session_id="s-1")
+        check("控えが2件で決められないときは残さない", len(agent_rows()) == 1, str(agent_rows()))
+
+        run_task(wt1, "release", "T-100")
+        run_task(wt1, "release", "T-101")
+        check("控えが無くなると agent の印も消える",
+              not os.path.exists(os.path.join(wt1, ".tw", "local", ledger.AGENT_TASKS_DIR_NAME)))
 
 
 def _check_hook_line(
@@ -1433,6 +1483,7 @@ TESTS = (
     test_commit_guard_other_repo,
     test_agent_scoped_guard,
     test_agent_scoped_reader_handback,
+    test_agent_task_record,
     test_readonly_git,
     test_lap,
     test_done_reflection_flag,

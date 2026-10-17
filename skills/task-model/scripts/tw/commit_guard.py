@@ -71,6 +71,7 @@ def run(stdin: IO[str], stdout: IO[str], agent_scoped: bool = False) -> None:
         return
     if not isinstance(payload, dict) or not agent_scope.applies(payload, agent_scoped):
         return
+    _note_agent(payload)
     reason = decide(payload)
     if reason is None:
         return
@@ -82,6 +83,19 @@ def run(stdin: IO[str], stdout: IO[str], agent_scoped: bool = False) -> None:
         }
     }
     stdout.write(json.dumps(out, ensure_ascii=False) + "\n")
+
+
+def _note_agent(payload: dict) -> None:
+    """サブエージェントの呼び出しなら、入力の `cwd` の着手の控えのタスクとの対応を台帳に残す（失敗は握る）。"""
+    agent_id = agent_scope.agent_id(payload)
+    session_id = agent_scope.session_id(payload)
+    cwd = payload.get("cwd")
+    if agent_id is None or session_id is None or not isinstance(cwd, str) or not os.path.isdir(cwd):
+        return
+    try:
+        ledger.record_agent_task(agent_id, session_id, cwd=cwd)
+    except (gitinfo.GitCommandError, OSError):
+        return
 
 
 def decide(payload: dict) -> str | None:

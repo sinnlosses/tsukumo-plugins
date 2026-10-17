@@ -21,6 +21,7 @@ import stamps
 LEDGER_DIR_NAME = "task-workflow"
 STATE_DIR_ENV = "TW_STATE_DIR"
 AGENT_WRITERS_DIR_NAME = "task-agent-writers"
+AGENT_TASKS_DIR_NAME = "task-agent-tasks"
 
 
 def ledger_root(cwd: str | None = None) -> str:
@@ -139,7 +140,8 @@ def clear_open_claim(task_id: str, cwd: str | None = None) -> None:
     if os.path.exists(path):
         os.remove(path)
     if not open_claims(cwd):
-        shutil.rmtree(os.path.join(stamps.worktree_state_dir(cwd), AGENT_WRITERS_DIR_NAME), ignore_errors=True)
+        for name in (AGENT_WRITERS_DIR_NAME, AGENT_TASKS_DIR_NAME):
+            shutil.rmtree(os.path.join(stamps.worktree_state_dir(cwd), name), ignore_errors=True)
 
 
 def open_claims(cwd: str | None = None) -> list[str]:
@@ -158,6 +160,25 @@ def mark_agent_writer(agent_id: str, cwd: str | None = None) -> None:
     os.makedirs(d, exist_ok=True)
     with open(os.path.join(d, agent_id), "w", encoding="utf-8"):
         pass
+
+
+def record_agent_task(agent_id: str, session_id: str, cwd: str | None = None) -> bool:
+    """着手の控えがちょうど1件の作業ツリーで、サブエージェントの最初の呼び出しに `agent` の出来事を台帳へ1回だけ残す。
+
+    `agent_id`・`session_id` はファイル名に使える文字だけのものを渡す。残したら `True`。
+    """
+    claims = open_claims(cwd)
+    if len(claims) != 1:
+        return False
+    d = os.path.join(stamps.worktree_state_dir(cwd), AGENT_TASKS_DIR_NAME)
+    mark = os.path.join(d, agent_id)
+    if os.path.exists(mark):
+        return False
+    os.makedirs(d, exist_ok=True)
+    with open(mark, "w", encoding="utf-8"):
+        pass
+    record_event(cwd, "agent", claims[0], "", agent=agent_id, session=session_id)
+    return True
 
 
 def is_agent_writer(agent_id: str, cwd: str | None = None) -> bool:

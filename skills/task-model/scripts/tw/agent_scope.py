@@ -19,5 +19,11 @@ def agent_id(payload: dict) -> str | None:
     return value if isinstance(value, str) and _AGENT_ID.fullmatch(value) else None
 
 
+def session_id(payload: dict) -> str | None:
+    """入力の `session_id`。無いか、ファイル名に使えない文字を含めば `None`。"""
+    value = payload.get("session_id")
+    return value if isinstance(value, str) and _AGENT_ID.fullmatch(value) else None
+
+
 def applies(payload: dict, agent_scoped: bool) -> bool:
     return not agent_scoped or agent_id(payload) is not None

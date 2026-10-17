@@ -53,7 +53,7 @@
 | 台帳 `$(git rev-parse --path-format=absolute --git-common-dir)/task-workflow/`（環境変数 `TW_STATE_DIR` があれば `$TW_STATE_DIR/<本体の作業ツリーの名前>-<共有の git dir の realpath の sha1 の先頭12桁>/`） | 着手から送り出しまでの出来事（`flow/<YYYY-MM>.jsonl`。1行1出来事。`tw metrics` が読む。会話・コマンド・パスは入れない。消えない）。コミットしない。全作業ツリーで1つ。`TW_STATE_DIR` を付けると、そのあとの記録はその下に書き、共有の git dir の台帳は読まない（写さない）。書けなければ標準エラーに1行出すだけで、元のサブコマンドの出力と終了コードは変わらない |
 | 作業ツリーの根の `.tw/local/task-open-claims/T-xxx` | `claim` から `done`・`release`・`ship` までの控え（中身は空）。`tw commit-guard`・`tw handback-guard`・`tw ask-guard`・`tw ref-guard` が読む。コミットしない。作業ツリーごと |
 | 共有の git dir の `hooks/reference-transaction`（`git rev-parse --git-path hooks` の下。`core.hooksPath` があれば置かない） | `tw ref-guard` を呼ぶ薄い殻（2行目が印 `# tw ref-guard`）。`claim` が置き、`done`・`ship` では消さない。控えの無い作業ツリーでは何もしない。印の無い利用者の hook があれば置かない。消してよい（次の `claim` が置き直す）。全作業ツリーで1つ |
-| 作業ツリーの根の `.tw/local/` | `tw verify`・`tw pause`・`tw step` を打った時点の中身の鍵、`ship` の検証の借り、検証のログ、書き換える道具を使ったサブエージェントの印（`task-agent-writers/<agent_id>`。着手の控えが無くなると消える）。コミットしない。作業ツリーごと。初めて書くときに `tw` が作り、中身 `*` の `.tw/local/.gitignore` を置く |
+| 作業ツリーの根の `.tw/local/` | `tw verify`・`tw pause`・`tw step` を打った時点の中身の鍵、`ship` の検証の借り、検証のログ、書き換える道具を使ったサブエージェントの印（`task-agent-writers/<agent_id>`。着手の控えが無くなると消える）、`agent` の出来事を台帳へ残した印（`task-agent-tasks/<agent_id>`。同じく消える。出来事は `commit-guard` が、着手の控えがちょうど1件の作業ツリーでのサブエージェントの最初の Bash に1回だけ `flow/` へ足す〔タスク・`agent`＝agent_id・`session`＝session_id〕。入力に `agent_id`・`session_id` が入る根拠は Agent SDK の `BaseHookInput` の型定義で、実機の hook 入力のダンプではない）。コミットしない。作業ツリーごと。初めて書くときに `tw` が作り、中身 `*` の `.tw/local/.gitignore` を置く |
 
 **プロジェクトごとに変わる値は `.tw/config.toml` に置く**（コミットする。`AGENTS.md`・`CLAUDE.md` には
 書かない）。`tw` は `layout.read_config` の1つの口で読み、`tw config` が解けた値を出す（スキルはこれを読む）。
