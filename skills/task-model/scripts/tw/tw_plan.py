@@ -110,7 +110,10 @@ def registered_plan_drift(toplevel: str, base_sha: str | None, tip: str | None, 
     diff = tw_base.run_git(repo, ["diff", "-U0", base_sha, tip, "--", *paths])
     if diff.returncode != 0:
         return changed, "unreadable"
-    lines = [x[1:] for x in diff.stdout.splitlines() if x[:1] in ("+", "-") and not x.startswith(("+++", "---"))]
+    shown = diff.stdout.splitlines()
+    lines = [x[1:] for x in shown if x[:1] in ("+", "-") and not x.startswith(("+++", "---"))]
+    if not lines or any(x.startswith("Binary files ") for x in shown):
+        return changed, "unreadable"
     touched = [w for w in words if any(w in line for line in lines)]
     return (changed, f"touched:{','.join(touched)}") if touched else ([], "")
 

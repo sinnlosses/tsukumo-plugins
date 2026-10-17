@@ -354,6 +354,8 @@ def test_registered_plan() -> None:
         write(os.path.join(main_path, "other.txt"), "o\n")
         for name in "cdefg":
             write(os.path.join(main_path, "docs", f"{name}.txt"), f"{name}\n")
+        with open(os.path.join(main_path, "docs", "h.bin"), "wb") as f:
+            f.write(b"\x00\x01")
         git(main_path, "add", "-A")
         git(main_path, "commit", "-q", "-m", "src を足す")
         work = os.path.join(tmp, "work")
@@ -400,6 +402,7 @@ def test_registered_plan() -> None:
         bare_id = new_id(register("識別子が無い", cover_body("docs/f.txt", "識別子は書かない")))
         loose_id = new_id(register("覆いが崩れる", cover_body("docs/g.txt", "`loose_marker` を使う")))
         set_acceptance_directly(main_path, loose_id, "1. 通る\n2. 動く")
+        binary_id = new_id(register("バイナリが変わる", cover_body("docs/h.bin", "`binary_marker` を使う")))
         head = git(main_path, "rev-parse", "main").stdout.strip()
         work_head = git(work, "rev-parse", "main").stdout.strip()
         plan_base = lambda tid: metadata(main_path, tid).get(beads.PLAN_BASE_KEY)  # noqa: E731
@@ -420,6 +423,8 @@ def test_registered_plan() -> None:
         os.remove(os.path.join(main_path, "docs", "e.txt"))
         write(os.path.join(main_path, "docs", "f.txt"), "f2\n")
         write(os.path.join(main_path, "docs", "g.txt"), "g2\n")
+        with open(os.path.join(main_path, "docs", "h.bin"), "wb") as f:
+            f.write(b"\x00\x02")
         git(main_path, "add", "-A")
         git(main_path, "commit", "-q", "-m", "主ブランチが進む")
         tip = git(main_path, "rev-parse", "main").stdout.strip()
@@ -486,6 +491,7 @@ def test_registered_plan() -> None:
             (gone_id, "docs/e.txt", "path-missing", "名指したパスが木から消えていれば PLAN_STALE と path-missing"),
             (bare_id, "docs/f.txt", "no-identifier", "段の本文に識別子が無ければ PLAN_STALE と no-identifier"),
             (loose_id, "docs/g.txt", "uncovered", "覆いが崩れていれば PLAN_STALE と uncovered"),
+            (binary_id, "docs/h.bin", "unreadable", "差分に行が出ないバイナリの変更は古いほうに倒して PLAN_STALE と unreadable"),
         ]:
             run_task(wt1, "claim", tid)
             r = run_task(wt1, "plan-check", tid)

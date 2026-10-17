@@ -602,7 +602,7 @@ def plan_identifiers(body: str) -> tuple[str, ...]:
     """`## やること` のバッククォートで囲んだ識別子（出現順・重複なし）。
 
     `### 名指すファイル`・`### 作業先` の節は読まない。4 字（`PLAN_IDENTIFIER_MIN`）に満たない語・`/` や空白を含む語（パス・コマンド）・
-    名指すパスと同じ語は識別子に数えない。`tw plan-check` が、名指したファイルの差分に触れたかを見るのに使う。
+    名指すパスと同じ語は識別子に数えない。
     """
     lines = dict(_frame_sections(body)[1]).get(PLAN_HEADING, "").split("\n")
     paths, _ = plan_files(body)
