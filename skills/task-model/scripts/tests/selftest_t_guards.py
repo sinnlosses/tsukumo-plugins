@@ -490,8 +490,19 @@ def test_agent_scoped_guard() -> None:
               r.returncode == 0 and r.stdout != "", r.stdout + r.stderr)
 
         all_hooks = _plugin_hook_commands()
-        hooks = [h for h in all_hooks if " ask-guard" not in h]
+        hooks = [h for h in all_hooks if " ask-guard" not in h and " lap-hook" not in h]
         ask_hooks = [h for h in all_hooks if " ask-guard" in h]
+        with open(HOOKS_JSON, encoding="utf-8") as f:
+            by_event = json.load(f)["hooks"]
+        lap_hooks = {
+            (event, g.get("matcher")): [h["command"] for h in g["hooks"]]
+            for event, groups in by_event.items() for g in groups if any(" lap-hook" in h["command"] for h in g["hooks"])
+        }
+        check("hooks/hooks.json は SubagentStart と Skill の PreToolUse で --agent-scoped なしの lap-hook を1つずつ呼ぶ",
+              sorted(lap_hooks) == [("PreToolUse", "Skill"), ("SubagentStart", None)]
+              and all(len(cs) == 1 and cs[0].startswith('"${CLAUDE_PLUGIN_ROOT}/bin/tw" lap-hook ')
+                      and "--agent-scoped" not in cs[0] for cs in lap_hooks.values()),
+              str(lap_hooks))
         check("hooks/hooks.json は --agent-scoped 付きで ${CLAUDE_PLUGIN_ROOT}/bin/tw を呼ぶ hook を4つ持つ",
               len(hooks) == 4 and all(
                   h.startswith('"${CLAUDE_PLUGIN_ROOT}/bin/tw" ') and " --agent-scoped " in h for h in hooks),
@@ -522,6 +533,13 @@ def test_agent_scoped_guard() -> None:
                 r = subprocess.run(["sh", "-c", hook], input=json.dumps(payload), capture_output=True, text=True, env=env)
                 check(f"hooks.json の {hook} は agent_id={agent_id} で{'拒む' if refused else '通す'}",
                       r.returncode == 0 and (r.stdout != "") == refused, r.stdout + r.stderr)
+        start_hook = lap_hooks.get(("SubagentStart", None), [""])[0]
+        payload = {"hook_event_name": "SubagentStart", "cwd": wt1, "agent_id": "a-new", "agent_type": "tsukumo-workflow:no-delegate"}
+        r = subprocess.run(["sh", "-c", start_hook], input=json.dumps(payload), capture_output=True, text=True, env=env)
+        delegate_laps = [e for e in flow_rows(wt1) if e["event"] == "lap" and e.get("stage") == "delegate"]
+        check("hooks.json の SubagentStart の lap-hook は控え1件の作業ツリーに delegate の start を書き、stdout は空",
+              r.returncode == 0 and r.stdout == "" and [(e["task"], e.get("edge")) for e in delegate_laps] == [("T-100", "start")],
+              repr(delegate_laps) + r.stdout + r.stderr)
         for code, expected_exit in ((1, 1), (78, 0), (127, 0)):
             fake_root = tempfile.mkdtemp(dir=tmp)
             os.makedirs(os.path.join(fake_root, "bin"))
@@ -529,7 +547,7 @@ def test_agent_scoped_guard() -> None:
             write(fake_tw, f"#!/bin/sh\necho boom >&2\nexit {code}\n")
             os.chmod(fake_tw, 0o755)
             for hook in all_hooks:
-                guard = "ask-guard" if " ask-guard" in hook else "commit-guard" if "commit-guard" in hook else "handback-guard"
+                guard = next((g for g in ("ask-guard", "lap-hook", "commit-guard") if f" {g}" in hook), "handback-guard")
                 r = subprocess.run(["sh", "-c", hook], input="{}", capture_output=True, text=True,
                                    env={**env, "CLAUDE_PLUGIN_ROOT": fake_root})
                 if code == 1:
