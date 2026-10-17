@@ -11,6 +11,6 @@
    | `dropped` にすべき理由の報告 | 手順7へ（`--dropped`。理由を結果に書く） |
    | 先頭が `止めた:`（渡した段 `n` で止めた） | 理由を読み、メインで決められることなら決めて同じ委譲先へ `SendMessage` で段 `n` の続きを渡す。判断が `difficulty` を超えるなら`${CLAUDE_SKILL_DIR}/parts/implementer/delegate.md` の手順5(c)の「途中で `difficulty` を上げるときは」で段 `n` から渡し直し、人の判断が要るなら `tw release T-xxx` → `tw edit T-xxx --status hold` → `## 注意` に論点、の順で外し、`/loop` の続行は `${CLAUDE_SKILL_DIR}/completion-report.md` の「`/loop` の続行判断」に従う（`loopable: N` には直さない） |
    | 本文が済んだとも止めたとも読めない | 同じ委譲先へ `SendMessage` で、いま済んでいる段と、済んだか止めたかを先頭に書き直して返すよう尋ねる（作業ツリーには触らない。段の控えは `unresponsive.md` 項2で見られる） |
-   | `PLAN_NOT_FIRST`（`missing`・`after-work`・`unrecorded`・`steps`）か `PLAN_STALE` | `## やること` を作業より先に書かなかった。理由の語を一言メモしておく（手順6aの材料「受け入れでの直し」）。差分が完了条件を満たすなら活かして手順6へ進み、`## やること` はメインが差分から書き起こして `tw edit T-xxx --section 'やること' --after-work` で渡す。満たさなければ差分を退けて（自分の作業ツリー内の `git restore`）「書き直しから委譲する」で頼み直す |
+   | `PLAN_NOT_FIRST`（`missing`・`after-work`・`unrecorded`・`steps`）か `PLAN_STALE` | `## やること` を作業より先に書かなかった。差分が完了条件を満たすなら活かして手順6へ進み、`## やること` はメインが差分から書き起こして `tw edit T-xxx --section 'やること' --after-work` で渡す。満たさなければ差分を退けて（自分の作業ツリー内の `git restore`）「書き直しから委譲する」で頼み直す |
    | 作業先の本体の作業ツリーに、委譲先の枝と同じ blob の未コミットの変更がある（`${CLAUDE_SKILL_DIR}/other-repo.md` の「最初に本体の汚れを見る」） | 委譲先が本体を書き換えた。`SendMessage` で伝えて差し戻し、本体の変更が枝にもあることを確かめてから、そのファイルだけ `git restore` させる。委譲の前の控えにあった・枝と無関係なファイルは別の作業なので消さず、待つか人に預ける |
    | `NOT_OWNER` | 自分の作業ツリーの印が無い（人が `tw release --force` した、など）。ID を添えて終了する |

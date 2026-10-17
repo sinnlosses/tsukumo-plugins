@@ -11,13 +11,13 @@ user-invocable: false
 
 ## 1件だけ振り返る（流れから呼ばれたとき）
 
-受け取る値: タスクID と、呼んだ側が渡す受け入れ役の材料 `- 材料: friction=… reverify=… fixes=… human=… review=…` の5つの値
-（値の意味は呼んだ側の受け入れ役の契約）。
+受け取る値: タスクID と、呼んだ側が渡す受け入れ役の材料 `- 材料: friction=… human=…` の2つの値
+（値の意味は呼んだ側の受け入れ役の契約。検証の打ち直し・受け入れでの直し・レビューの指摘は判定の口が台帳から数える）。
 
 1. 判定の口を打つ:
 
    ```bash
-   python3 <Base directory>/scripts/material.py . <タスクID> --gate --friction … --reverify … --fixes … --human … --review …
+   python3 <Base directory>/scripts/material.py . <タスクID> --gate --friction … --human …
    ```
 
 2. 出力が `QUIET` の1行なら、`detail.md` を読まずに `- 振り返り: 兆候なし` を返して終わる。

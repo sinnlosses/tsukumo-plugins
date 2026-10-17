@@ -158,8 +158,19 @@ def _stat(path: str) -> tuple[float, int] | None:
     return st.st_mtime, st.st_size
 
 
+def test_worker_count() -> None:
+    from selftest_support import worker_count
+
+    check("TW_SELFTEST_WORKERS が無ければコア数の 30% 切り上げ", worker_count(100, {}, 10) == 3 and worker_count(100, {}, 4) == 2)
+    check("本数はテストの数を超えない", worker_count(2, {}, 10) == 2)
+    check("TW_SELFTEST_WORKERS の正の整数が本数になる", worker_count(100, {"TW_SELFTEST_WORKERS": "7"}, 10) == 7)
+    check("TW_SELFTEST_WORKERS が 0 なら既定", worker_count(100, {"TW_SELFTEST_WORKERS": "0"}, 10) == 3)
+    check("TW_SELFTEST_WORKERS が数字でなければ既定", worker_count(100, {"TW_SELFTEST_WORKERS": "many"}, 10) == 3)
+
+
 def main() -> None:
     test_init()
+    test_worker_count()
     print()
     if failures:
         print(f"FAILED {len(failures)}件: " + ", ".join(failures))
