@@ -63,6 +63,7 @@ CONFIG_KEYS = (
     "verify",
     "verify_before_ship",
     "format",
+    "step_check",
     "branch",
     "base_branch",
     "store",
@@ -98,6 +99,7 @@ class Config:
     verify: str | None = None
     verify_before_ship: str | None = None
     format: str | None = None
+    step_check: str | None = None
     branch: str = DEFAULT_BRANCH
     base_branch: str | None = None
     store: str = STORE_BEADS
@@ -252,7 +254,7 @@ def _config_from_values(source: str, entries: list[tuple[int, str, str]]) -> Con
     for lineno, key, value in entries:
         if value == "":
             raise ConfigError(f"{source}:{lineno}: {key} の値が空")
-        if key in ("verify", "verify_before_ship", "format") and value == NO_COMMAND:
+        if key in ("verify", "verify_before_ship", "format", "step_check") and value == NO_COMMAND:
             values[key] = None
         else:
             values[key] = value
@@ -274,6 +276,7 @@ def build_config(source: str | None, values: dict[str, str | None]) -> Config:
         verify=values.get("verify"),
         verify_before_ship=values.get("verify_before_ship"),
         format=values.get("format"),
+        step_check=values.get("step_check"),
         branch=values["branch"] if values.get("branch") is not None else defaults.branch,
         base_branch=values.get("base_branch"),
         store=values.get("store") or defaults.store,

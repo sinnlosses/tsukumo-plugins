@@ -823,6 +823,31 @@ def test_handback_guard_step() -> None:
               and "PLAN_NOT_FIRST\tT-101\tafter-work" in _block_reason(run_handback_guard(tmp, wt2)), r.stdout + r.stderr)
 
 
+@weight(7)
+def test_step_check() -> None:
+    say("task.py step: 設定の step_check を段の控えの前に打ち、落ちたら控えを残さない")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _ = make_repo(tmp, verify="`true`", extra='step_check = "test ! -e step-fail.flag"\n')
+        commit_task(main_path, taskfile.Task("T-100", "段ごと", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-", stdin="### 1. 書く\n\n### 2. 試す\n")
+        write(os.path.join(wt1, "work.txt"), "x\n")
+
+        r = run_task(wt1, "step", "T-100", "1")
+        check("step_check が通る段は STEPPED", r.returncode == 0 and r.stdout.startswith("STEPPED\tT-100\t1/2\t"),
+              r.stdout + r.stderr)
+        write(os.path.join(wt1, "step-fail.flag"), "")
+        write(os.path.join(wt1, "work.txt"), "y\n")
+        r = run_task(wt1, "step", "T-100", "1")
+        check("step_check が落ちる段は STEP_CHECK_FAILED（終了コード4）", r.returncode == 4
+              and r.stdout.startswith(f"STEP_CHECK_FAILED\tT-100\t1/2\t{os.path.realpath(wt1)}"), r.stdout + r.stderr)
+        check("落ちた段は控えを残さず、返却は block", "NOT_VERIFIED" in _block_reason(run_handback_guard(tmp, wt1)))
+
+        r = run_task(wt1, "config")
+        check("tw config が step_check を config として出す",
+              "step_check\ttest ! -e step-fail.flag\tconfig" in r.stdout, r.stdout + r.stderr)
+
+
 @weight(15)
 def test_handback_guard_skipped_steps() -> None:
     say("task.py handback-guard: 段が2つ以上の計画で tw step の控えが無いまま verify を通した返却は拒む")
@@ -1474,6 +1499,7 @@ TESTS = (
     test_state_dir,
     test_handback_guard_parallel_steps,
     test_handback_guard_step,
+    test_step_check,
     test_handback_guard_structure,
     test_handback_guard_skipped_steps,
     test_commit_guard,

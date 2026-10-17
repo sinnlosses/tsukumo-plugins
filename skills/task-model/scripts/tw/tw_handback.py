@@ -6,11 +6,13 @@ import contextlib
 import io
 import os
 import re
+import subprocess
 import sys
 from typing import Callable
 
 import beads
 import gitinfo
+import layout
 import ledger
 import stamps
 import ship
@@ -57,9 +59,35 @@ def cmd_step(toplevel: str, task_id: str, step: str) -> None:
     if n == len(specs):
         print(f"LAST_STEP\t{shown}\t{n}/{len(specs)}\t最後の段は tw verify を通してから返す")
         raise SystemExit(4)
+    failed = _failed_step_check(task_trees(toplevel, shown))
+    if failed is not None:
+        tree, output = failed
+        print(f"STEP_CHECK_FAILED\t{shown}\t{n}/{len(specs)}\t{tree}")
+        print(output)
+        raise SystemExit(4)
     key = _write_step_stamps(toplevel, shown, specs, n, "step")
     tw_base.record(toplevel, "step", shown, step=n, steps=len(specs))
     print(f"STEPPED\t{shown}\t{n}/{len(specs)}\t{key.tree}")
+
+
+STEP_CHECK_TAIL_LINES = 20
+
+
+def _failed_step_check(trees: list[str]) -> tuple[str, str] | None:
+    """各作業ツリーの設定の `step_check` を、その木を cwd にして打ち、最初に落ちた `(木, 出力の末尾)`。
+    `step_check` が無い木と、設定が読めない木は飛ばす（読めない設定は `tw verify` が `INVALID` にする）。"""
+    for tree in trees:
+        try:
+            command = layout.read_config(tree).step_check
+        except layout.ConfigError:
+            continue
+        if command is None:
+            continue
+        r = subprocess.run(["sh", "-c", command], cwd=tree, capture_output=True, text=True)
+        if r.returncode != 0:
+            lines = (r.stdout + r.stderr).splitlines()
+            return tree, "\n".join(lines[-STEP_CHECK_TAIL_LINES:])
+    return None
 
 
 def _owned_step(toplevel: str, task_id: str, step: str) -> tuple[str, tuple[taskfile.PlanStep, ...], int]:

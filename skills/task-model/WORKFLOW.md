@@ -73,6 +73,7 @@ verify = "pnpm check"        # 受け入れ判定に使う。打つものが無�
 | `verify` | 検証コマンド（`sh -c` で打つ）。`"なし"` なら打たない。必須 |
 | `verify_before_ship` | 送る前の検証コマンド（下） |
 | `format` | 整形コマンド。`tw verify` が検証の前に打つ（`tw-reference.md` の `verify`） |
+| `step_check` | 段ごとに安く打つ検査コマンド（無い・`なし` なら打たない）。`tw step` が段の控えを書く前に、タスクの各作業ツリーでその木の設定のものを打ち、落ちたら控えを書かず `STEP_CHECK_FAILED`。最後の段は `tw step` を打たないので、全段の検査は `verify` に任せる（`tw-reference.md` の `step`） |
 | `branch` | `既定`・`作業ブランチを切る`・`切らない`（下の表） |
 | `base_branch` | 主ブランチの名前（下の順1） |
 | `store` | `beads` だけ（ほかの値は `INVALID`。[legacy.md](legacy.md)） |

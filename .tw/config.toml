@@ -1,2 +1,3 @@
 verify = "./check.sh"
+step_check = "python3 scripts/check_repo.py"
 review_code_globs = ["skills/**", "agents/**"]

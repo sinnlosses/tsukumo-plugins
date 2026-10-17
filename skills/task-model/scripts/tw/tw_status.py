@@ -69,7 +69,7 @@ def cmd_status(toplevel: str, show_all: bool, check: bool) -> None:
     _print_retrospect_due(toplevel)
 
 
-CONFIG_COMMAND_KEYS = ("verify", "verify_before_ship", "format", "hook_tally")
+CONFIG_COMMAND_KEYS = ("verify", "verify_before_ship", "format", "step_check", "hook_tally")
 
 
 def config_rows(toplevel: str, config: layout.Config) -> list[tuple[str, str | list[str], str]]:

@@ -36,7 +36,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | `config-doctor` | リポジトリが今の読み取りに合っているかを読むだけで点検するとき（`--fix` は無い） | `base_branch`・`config`・`python`・`git`・`bd`・`dolt`・`gh`・`tw`・`store`・`beads`・`tracker` の行（2語目が `OK`・`MISSING`・`INVALID`、前提の行は `OPTIONAL` も） |
 | `commit-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ deny の JSON 1行。通すときは何も出さない |
 | `pause [T-xxx [<n>]]` | 判断が要って止める・目視待ち・計画を作業の後に書いた返却の直前に打つ（委譲先。並列の段の担当は ID と段の番号を付ける） | `PAUSED`・`NOT_OWNER` |
-| `step T-xxx <n>` | 最後でない段を済ませて返す直前に打つ（委譲先。着手した作業ツリーで打つ。別のリポジトリのタスクでは、出力の鍵は着手側のもの。作業先の作業ツリーの控えは作業先の中身の鍵で別に書かれる） | `STEPPED`・`LAST_STEP`（終了コード4。最後の段は `tw verify` を通して返す）・`NOT_OWNER` |
+| `step T-xxx <n>` | 最後でない段を済ませて返す直前に打つ（委譲先。着手した作業ツリーで打つ。別のリポジトリのタスクでは、出力の鍵は着手側のもの。作業先の作業ツリーの控えは作業先の中身の鍵で別に書かれる）。設定に `step_check` があれば、控えを書く前にタスクの各作業ツリー（着手した木と、作業先の別のリポジトリの木）でその木の設定の `step_check` を打ち、落ちたら控えを書かない | `STEPPED`・`LAST_STEP`（終了コード4。最後の段は `tw verify` を通して返す）・`STEP_CHECK_FAILED`（終了コード4。続けて出力の末尾20行。直してから打ち直す）・`NOT_OWNER` |
 | `lap T-xxx <段> [start\|end]` | オーケストレーターの段の頭と終わりを記録するとき（メイン。段は `direct`・`delegate`・`accept`・`review`・`retro`・`land`・`sync`） | `LAPPED`・`NOT_CLAIMED` |
 | `relay T-xxx <鍵> [--body-file <path\|->]` | 段の結果を後の段へ申し送りとして書くとき（`--body-file` 付き。着手の印の持ち主だけ）と、前の段の申し送りを鍵で引くとき（欄と鍵は WORKFLOW.md「段の申し送り」） | `RELAYED`・`RELAY`（次の行から本文）・`NONE`・`NOT_OWNER`・`NOT_READY` |
 | `handback-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ JSON 1行（`SubagentStop` は `block`、`PreToolUse` は deny）。通すときは何も出さない |
@@ -49,7 +49,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | 1 | （traceback） | 環境の故障 | エラー出力を報告して止まる。**手で代用しない** |
 | 2 | （stderr） | 渡した引数・本文の誤り | 直して打ち直す |
 | 3 | `INVALID` | データの不備（読めない課題〔label の語彙の外など〕、設定が読めない、主ブランチが決まらない、`--check` の重複、トラッカーの付け替え先が既にある） | 理由をそのまま報告して止まる。**直しに行かない** |
-| 4 | `TAKEN`・`NOT_READY`・`DIRTY`・`MAIN_DIRTY`・`UNSHIPPED`・`LOCKED`・`NOT_OWNER`・`WORK_BEFORE_PLAN`・`FRAME_CHANGED`・`LAST_STEP`・`NOT_LANDED`・`NOT_REMOVED` | いまの状態では進めない | 各スキルの表のとおり（別の1件を選ぶか止まる） |
+| 4 | `TAKEN`・`NOT_READY`・`DIRTY`・`MAIN_DIRTY`・`UNSHIPPED`・`LOCKED`・`NOT_OWNER`・`WORK_BEFORE_PLAN`・`FRAME_CHANGED`・`LAST_STEP`・`STEP_CHECK_FAILED`・`NOT_LANDED`・`NOT_REMOVED` | いまの状態では進めない | 各スキルの表のとおり（別の1件を選ぶか止まる） |
 | 5 | `BUSY`（`sync` だけ） | 別の `tw sync` が台帳の錠を持っている（待たずに返った。何も書き換えていない）。持ち主のプロセスが無い古い錠なら、行にその旨が添えてある | 少し置いて打ち直す。古い錠の注記があれば、行を添えて人に預ける（錠のファイルは人が確かめて消す） |
 | 6 | `MISSING`・`MISSING\t<.beads のパス>` | タスク運用を始めていない（`.tw/config.toml` が無い）／設定はあるのに `.beads` が無い | 用意の入口（WORKFLOW.md の用語）を案内して止まる |
 | 7 | `CONFLICT` | `ship` の rebase が衝突した（`--abort` 済み）か、`verify` の主ブランチの取り込みが衝突した（何も書き換えていない） | 衝突したファイルを添えて人に預ける。`verify` の衝突を解いたあとは `tw verify` を打ち直す |
