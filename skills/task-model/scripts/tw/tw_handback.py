@@ -229,8 +229,10 @@ def _structure_section_problem(body: str) -> str | None:
     return f"{STRUCTURE_HEADING} の節の{bad}行目が形に合わない"
 
 
-def handback_refusal(where: str, body: str | None = None) -> str | None:
-    """`where` の作業ツリーから委譲先が返すのを拒む理由。通すなら `None`。
+def handback_refusal(where: str, body: str | None = None) -> tuple[str, str] | None:
+    """`where` の作業ツリーから委譲先が返すのを拒む `(規則のキー, 理由)`。通すなら `None`。
+
+    規則のキーは `PLAN_OR_VERIFY_MISSING`（計画か検証が欠けた）と `STRUCTURE_SECTION`（構造の節が合わない）。
 
     `body`（返却の本文。読める経路でだけ渡る）があり、計画・検証が揃った最後の段の返却（`tw step` の印も
     `tw pause` の控えも使わず `verify-check` が `VERIFIED_SAME`）で、本文に `## 構造の変更` の節が無いか、中身が形（各行が `+|-|~ A -> B` か、全体が `なし: <理由>` の1行）に合わなければ拒む。
@@ -254,14 +256,14 @@ def handback_refusal(where: str, body: str | None = None) -> str | None:
     if not gaps:
         problem = _structure_section_problem(body) if body is not None and last_stage else None
         if problem is not None:
-            return (
+            return "STRUCTURE_SECTION", (
                 f"{problem}（着手の印 {','.join(claims)}）。"
                 f"{STRUCTURE_HEADING} に、各行が tsukumo の graph の記法（例: + A -> B: 語）の行か、"
                 f"全体が なし: <理由> の1行の節を書いてから返す"
             )
         return None
     shown = ",".join(claims)
-    return (
+    return "PLAN_OR_VERIFY_MISSING", (
         f"着手の印（{shown}）がある作業ツリー（{toplevel}）のタスクに作業があるのに、計画か検証が欠けたまま返そうとした"
         f"（{' / '.join(gaps)}）。## やること が無ければ tw edit <ID> --section 'やること' --body-file - で書き、"
         f"tw verify を通してから返す（作業先が別のリポジトリなら、コミットのあとに作業先の作業ツリーで打つ）。"

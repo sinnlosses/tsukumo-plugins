@@ -35,6 +35,7 @@ def run(stdin: IO[str], stdout: IO[str]) -> None:
     reason = decide(payload)
     if reason is None:
         return
+    agent_scope.record_denial(payload, "tw-ask-guard", "LOOPABLE_ASK")
     out = {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",

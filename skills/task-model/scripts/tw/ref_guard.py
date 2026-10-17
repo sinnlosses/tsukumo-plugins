@@ -131,6 +131,7 @@ def run(state: str, stdin: IO[str], stderr: IO[str]) -> int:
         return 0
     if reason is None:
         return 0
+    ledger.record_denial(os.getcwd(), "tw-ref-guard", "MOVE_REF", "main")
     stderr.write(reason + "\n")
     return 1
 
