@@ -157,8 +157,8 @@ def test_finish_prints_open_span() -> None:
         r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT)
         open_lines = [l for l in r.stdout.splitlines() if l.startswith("OPEN_SPAN")]
         check(
-            "<段> start だけ打って end を打ち漏らすと、finish が閉じる retro のほかはどの段も OPEN_SPAN に出る",
-            r.returncode == 0 and open_lines == [f"OPEN_SPAN\tT-100\t{s}" for s in stages if s != "retro"],
+            "<段> start だけ打って end を打ち漏らすと、tw が閉じる delegate（accept の start）・retro（finish）のほかはどの段も OPEN_SPAN に出る",
+            r.returncode == 0 and open_lines == [f"OPEN_SPAN\tT-100\t{s}" for s in stages if s not in ("delegate", "retro")],
             r.stdout + r.stderr,
         )
 
