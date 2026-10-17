@@ -848,6 +848,33 @@ def test_step_check() -> None:
               "step_check\ttest ! -e step-fail.flag\tconfig" in r.stdout, r.stdout + r.stderr)
 
 
+@weight(7)
+def test_step_check_other_repo() -> None:
+    say("task.py step: 作業先が別のリポジトリなら、作業先の作業ツリーの設定の step_check を打つ（着手側に無くてもよい）")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _ = make_repo(os.path.join(tmp, "own"), verify="`true`")
+        work_repo, _, _ = make_repo(
+            os.path.join(tmp, "work"), verify="`true`", extra='step_check = "test ! -e step-fail.flag"\n'
+        )
+        commit_task(main_path, taskfile.Task("T-100", "作業先で直す", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        plan = f"### 1. 書く\n\n### 2. 試す\n\n### 作業先\n- `{work_repo}`\n"
+        run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-", stdin=plan)
+        work_tree = os.path.join(tmp, "work-t-100")
+        git(work_repo, "worktree", "add", "-q", "-b", "t-100", work_tree, "main")
+
+        write(os.path.join(work_tree, "work.txt"), "x\n")
+        r = run_task(wt1, "step", "T-100", "1")
+        check("作業先の step_check が通れば STEPPED", r.returncode == 0 and r.stdout.startswith("STEPPED\tT-100\t1/2\t"),
+              r.stdout + r.stderr)
+        write(os.path.join(work_tree, "step-fail.flag"), "")
+        r = run_task(wt1, "step", "T-100", "1")
+        check("作業先の step_check が落ちれば、着手側に設定が無くても STEP_CHECK_FAILED で作業先の木を言う",
+              r.returncode == 4
+              and r.stdout.startswith(f"STEP_CHECK_FAILED\tT-100\t1/2\t{os.path.realpath(work_tree)}"),
+              r.stdout + r.stderr)
+
+
 @weight(15)
 def test_handback_guard_skipped_steps() -> None:
     say("task.py handback-guard: 段が2つ以上の計画で tw step の控えが無いまま verify を通した返却は拒む")
@@ -1500,6 +1527,7 @@ TESTS = (
     test_handback_guard_parallel_steps,
     test_handback_guard_step,
     test_step_check,
+    test_step_check_other_repo,
     test_handback_guard_structure,
     test_handback_guard_skipped_steps,
     test_commit_guard,
