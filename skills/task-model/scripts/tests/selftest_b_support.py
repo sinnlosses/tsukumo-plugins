@@ -16,7 +16,7 @@ import beads  # noqa: E402
 import ledger  # noqa: E402
 from selftest_body import task_body  # noqa: E402
 from selftest_fixtures import make_repo as make_fixture_repo, run_task  # noqa: E402
-from selftest_support import git, local, write  # noqa: E402
+from selftest_support import RESULT_FULL, git, local, write  # noqa: E402
 
 # 利用者の値のままだと、一時リポジトリの台帳がその置き場に積もる。
 os.environ.pop(ledger.STATE_DIR_ENV, None)
@@ -80,7 +80,7 @@ def work_and_done(wt: str, task_id: str, *, dropped: bool = False) -> None:
     git(wt, "add", "-A")
     git(wt, "commit", "-q", "-m", f"{task_id}: 作業")
     extra = ("--dropped",) if dropped else ()
-    r = run_task(wt, "done", task_id, *extra, "--result-file", "-", stdin="- 検証: なし\n- 振り返り: 兆候なし\n")
+    r = run_task(wt, "done", task_id, *extra, "--result-file", "-", stdin="- 理由: 見送る\n" if dropped else RESULT_FULL)
     if r.returncode != 0:
         raise RuntimeError(f"task done 失敗: {r.stdout}{r.stderr}")
 

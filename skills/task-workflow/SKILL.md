@@ -98,7 +98,7 @@ lap は並びのスキルではなくこのスキルが段の前後で打つ。
    `${CLAUDE_SKILL_DIR}/parts/acceptor/verify-merge.md` を読んで従う（背景の `tw verify` の完了を待ち、出力の最後の行で分ける表）。
 
 7. **完了にしてコミットして送る**（並びの段 ship-step の本文）: `tw finish` が `tw done`・コミット・`tw ship` を順に打つ。
-   `${CLAUDE_SKILL_DIR}/parts/ship/ship.md` の手順7を読んで従う（`tw finish` の打ち方・`## 結果` に写す規約の2行・`COMMITS_SINCE_CLAIM`・`OPEN_SPAN`）。
+   `${CLAUDE_SKILL_DIR}/parts/ship/ship.md` の手順7を読んで従う（`tw finish` の打ち方・`## 結果` の必須行・`COMMITS_SINCE_CLAIM`・`OPEN_SPAN`）。
 
 8. **送ったあとを読む**: 手順7の `tw finish` の出力の最後の行（`tw ship` の判定）で分ける。
    `${CLAUDE_SKILL_DIR}/parts/ship/ship.md` の手順8の表に従う（`SHIPPED`・`NOTHING` は完了、それ以外は `parts/ship/ship-stopped.md`）。push はしない。

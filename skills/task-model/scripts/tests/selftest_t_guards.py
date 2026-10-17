@@ -9,7 +9,7 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-from selftest_support import check, git, git_env, refuse_direct_run, say, weight, write  # noqa: E402
+from selftest_support import RESULT_FULL, RESULT_REQUIRED, check, git, git_env, refuse_direct_run, say, weight, write  # noqa: E402
 import beads  # noqa: E402
 import gitinfo  # noqa: E402
 import ledger  # noqa: E402
@@ -76,7 +76,7 @@ def test_commit_guard() -> None:
         check("hook を通らないメインのコミットは印があっても通る",
               git(wt1, "log", "-1", "--format=%s").stdout.strip() == "メインの手直し")
 
-        result_path = write(os.path.join(tmp, "result.md"), "結果\n")
+        result_path = write(os.path.join(tmp, "result.md"), RESULT_FULL)
         run_task(wt1, "done", "T-100", "--result-file", result_path)
         check("done で控えが消える", ledger.open_claims(cwd=wt1) == [])
         check("done のあとの git commit は通る", run_guard(tmp, wt1, "git commit -m x") is None)
@@ -243,7 +243,7 @@ def test_commit_guard_shell_edit() -> None:
             check(f"--agent-scoped の書き換えの拒否は agent_id={agent_id} で{'拒む' if refused else '通す'}",
                   r.returncode == 0 and (r.stdout != "") == refused, r.stdout + r.stderr)
 
-        result_path = write(os.path.join(tmp, "result.md"), "結果\n")
+        result_path = write(os.path.join(tmp, "result.md"), RESULT_FULL)
         run_task(wt1, "done", "T-100", "--result-file", result_path)
         check("done のあとの書き換えは通る", run_guard(tmp, wt1, "echo x > f.txt") is None)
 
@@ -318,7 +318,7 @@ def test_commit_guard_verify() -> None:
             check(f"--agent-scoped の検証コマンドの拒否は agent_id={agent_id} で{'拒む' if refused else '通す'}",
                   r.returncode == 0 and (r.stdout != "") == refused, r.stdout + r.stderr)
 
-        result_path = write(os.path.join(tmp, "result.md"), "結果\n")
+        result_path = write(os.path.join(tmp, "result.md"), RESULT_FULL)
         run_task(wt1, "done", "T-100", "--result-file", result_path)
         check("done のあとの検証コマンドは通る", run_guard(tmp, wt1, "./check.sh") is None)
 
@@ -690,13 +690,13 @@ def test_lap() -> None:
         r = run_task(wt1, "lap", "T-100", "bogus")
         check("知らない段は終了コード2で記録しない", r.returncode == 2
               and len([e for e in flow_rows(wt1) if e["event"] == "lap"]) == 5, r.stdout + r.stderr)
-        run_task(wt1, "done", "T-100", "--result-file", "-", stdin="- 検証: x\n- 振り返り: 近道（省いた）\n")
+        run_task(wt1, "done", "T-100", "--result-file", "-", stdin=RESULT_REQUIRED + "- 振り返り: 近道（省いた）\n")
         done = [e for e in flow_rows(wt1) if e["event"] == "done"]
         check("振り返りの行が近道なら done の reflection は skipped",
               len(done) == 1 and done[0]["reflection"] == "skipped", repr(done))
         run_task(wt2, "claim", "T-101")
         run_task(wt2, "done", "T-101", "--result-file", "-",
-                 stdin="- 検証: x\n- 振り返り: 近道の基準が広い（ドラフト1件）\n")
+                 stdin=RESULT_REQUIRED + "- 振り返り: 近道の基準が広い（ドラフト1件）\n")
         done = [e for e in flow_rows(wt1) if e["event"] == "done" and e["task"] == "T-101"]
         check("通常の道の振り返りの行が「近道」を含んでも reflection は some",
               len(done) == 1 and done[0]["reflection"] == "some", repr(done))
@@ -709,9 +709,9 @@ def test_lap() -> None:
 def test_done_reflection_flag() -> None:
     say("task.py done --reflection: 渡した値が台帳に残り、`## 結果` の行は見ず、不正な値は終了コード2で何も書かない")
     cases = (
-        ("none", "- 検証: x\n- 振り返り: 近道（省いた）\n"),
-        ("some", "- 検証: x\n- 振り返り: 兆候なし\n"),
-        ("skipped", "- 検証: x\n"),
+        ("none", RESULT_REQUIRED + "- 振り返り: 近道（省いた）\n"),
+        ("some", RESULT_REQUIRED + "- 振り返り: 兆候なし\n"),
+        ("skipped", RESULT_REQUIRED + "- 振り返り: 兆候なし\n"),
     )
     for value, result in cases:
         with tempfile.TemporaryDirectory() as tmp:
@@ -729,7 +729,7 @@ def test_done_reflection_flag() -> None:
         r = run_task(wt1, "done", "T-100", "--reflection", "bogus", "--result-file", "-", stdin="- 検証: x\n")
         check("不正な値は終了コード2で done を記録しない",
               r.returncode == 2 and not [e for e in flow_rows(wt1) if e["event"] == "done"], r.stdout + r.stderr)
-        r = run_task(wt1, "done", "T-100", "--result-file", "-", stdin="- 検証: x\n- 振り返り: 兆候なし\n")
+        r = run_task(wt1, "done", "T-100", "--result-file", "-", stdin=RESULT_FULL)
         done = [e for e in flow_rows(wt1) if e["event"] == "done"]
         check("不正な値で止めたあとも着手の印は残り、フラグなしは従来どおり行から none",
               r.returncode == 0 and len(done) == 1 and done[0]["reflection"] == "none", r.stdout + r.stderr)
@@ -1197,7 +1197,7 @@ def test_readonly_git_stops_writers() -> None:
         write(os.path.join(wt1, "work.txt"), "x\n")
         git(wt1, "add", "work.txt")
         git(wt1, "commit", "-q", "-m", "作業")
-        result_path = write(os.path.join(tmp, "result.md"), "- 検証コマンド: 1 pass\n")
+        result_path = write(os.path.join(tmp, "result.md"), RESULT_FULL)
 
         def unchanged() -> tuple[str, str, dict[str, bytes]]:
             refs = git(wt1, "rev-parse", "HEAD", "main").stdout
@@ -1312,7 +1312,7 @@ def test_ref_guard_blocks_commits() -> None:
         _raw_git(wt2, "reset", "-q", "--hard", "main")
 
         r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "T-100: 完了", "--add", "work.txt",
-                     stdin="- 検証: x\n- 振り返り: 兆候なし\n")
+                     stdin=RESULT_FULL)
         kinds = [l.split("\t", 1)[0] for l in r.stdout.splitlines()]
         check("tw finish は DONE・COMMITTED・SHIPPED まで進む",
               r.returncode == 0 and [k for k in kinds if k in ("DONE", "COMMITTED", "SHIPPED")] == ["DONE", "COMMITTED", "SHIPPED"],
@@ -1323,7 +1323,7 @@ def test_ref_guard_blocks_commits() -> None:
         _raw_git(wt2, "add", "after.txt")
         before = _raw_git(wt2, "commit", "-q", "-m", "done の前")
         check("done の前は素の git commit を拒む", before.returncode != 0 and "T-101" in before.stderr, before.stderr)
-        run_task(wt2, "done", "T-101", "--result-file", "-", stdin="- 検証: x\n- 振り返り: 兆候なし\n")
+        run_task(wt2, "done", "T-101", "--result-file", "-", stdin=RESULT_FULL)
         after = _raw_git(wt2, "commit", "-q", "-m", "done のあと")
         check("tw done のあとの素の git commit は通る", after.returncode == 0, after.stderr)
 

@@ -13,7 +13,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from selftest_support import copy_beads, git, local, write  # noqa: E402
+from selftest_support import RESULT_FULL, copy_beads, git, local, write  # noqa: E402
 import beads  # noqa: E402
 import gitinfo  # noqa: E402
 import ledger  # noqa: E402
@@ -294,7 +294,7 @@ def _claim_work_and_done(wt: str, task_id: str, note: str = "") -> None:
     """`claim` 済みのタスクに1件コミットぶんの作業をして `done` にする（コミットはしない）。"""
     write(os.path.join(wt, f"work{note}.txt"), "x")
     git(wt, "add", "-A")
-    result_path = write(os.path.join(wt, f"result{note}.md"), "検証OK\n")
+    result_path = write(os.path.join(wt, f"result{note}.md"), RESULT_FULL)
     r = run_task(wt, "done", task_id, "--result-file", result_path)
     if r.returncode != 0:
         raise RuntimeError(f"task done が失敗: {r.stdout}{r.stderr}")

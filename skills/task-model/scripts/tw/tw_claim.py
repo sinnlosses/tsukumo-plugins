@@ -9,6 +9,7 @@ import beads
 import layout
 import gitinfo
 import ledger
+import metrics
 import ref_guard
 import taskfile
 import tracker
@@ -19,6 +20,9 @@ import tw_plan
 REFLECTION_VALUES = ("none", "some", "skipped")
 REFLECTION_SKIPPED_LINE ="- 振り返り: 近道（省いた）"
 REFLECTION_OFF_LINE = "- 振り返り: 設定で外した"
+REQUIRED_RESULT_LINES = ("- 検証コマンド:", "- 規約:", "- 規約の指摘:", "- 振り返り:")
+VISUAL_RESULT_LINE = "- 目視:"
+VERIFY_FILLED_LINE = "- 検証コマンド: 通過（直近の tw verify が VERIFIED）"
 
 
 def cmd_claim(toplevel: str, task_id: str) -> None:
@@ -145,6 +149,8 @@ def cmd_done(
         print(f"NOT_OWNER\t{shown}")
         tw_base.print_lines(pulled)
         raise SystemExit(4)
+    if not dropped:
+        result = _checked_result(toplevel, shown, issue, result)
     kind = "dropped" if dropped else "done"
     beads.run_ok(toplevel, ["comment", bd_id, "--stdin"], actor, f"{beads.RESULT_HEADING}\n\n{result}\n")
     other = beads.SHIP_LABELS["done" if dropped else "dropped"]
@@ -161,6 +167,32 @@ def cmd_done(
     head = metadata.get(beads.CLAIM_HEAD_KEY) if isinstance(metadata, dict) else None
     _print_commits_since_claim(toplevel, shown, head)
     tw_base.print_lines(pulled + trk.after([bd_id]))
+
+
+def _checked_result(toplevel: str, shown: str, issue: beads.Issue, result: str) -> str:
+    """必須行の欠けを `SystemExit(2)` で拒む。`- 検証コマンド:` だけは、台帳の直近の `verify` が通っていれば補った結果を返す。"""
+    heads = [line.strip() for line in result.splitlines()]
+
+    def has(prefix: str) -> bool:
+        return any(h.startswith(prefix) for h in heads)
+
+    needed = list(REQUIRED_RESULT_LINES)
+    if "目視" in str(issue.raw.get("acceptance_criteria") or ""):
+        needed.append(VISUAL_RESULT_LINE)
+    missing = [p for p in needed if not has(p)]
+    if REQUIRED_RESULT_LINES[0] in missing and _last_verify_passed(toplevel, shown):
+        missing.remove(REQUIRED_RESULT_LINES[0])
+        result = f"{VERIFY_FILLED_LINE}\n{result}"
+    if missing:
+        print(f"usage: --result-file に必須の行が無い: {','.join(missing)}", file=sys.stderr)
+        raise SystemExit(2)
+    return result
+
+
+def _last_verify_passed(toplevel: str, shown: str) -> bool:
+    events, _ = metrics.read_events(ledger.ledger_root(cwd=toplevel))
+    verifies = [e for e in events if e.kind == "verify" and e.task == shown]
+    return bool(verifies) and verifies[-1].fields.get("result") in ("VERIFIED", "VERIFIED_UNSTAMPED")
 
 
 def _close_draft(toplevel: str, shown: str, issue: beads.Issue, result: str) -> None:

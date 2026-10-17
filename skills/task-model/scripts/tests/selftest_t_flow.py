@@ -9,7 +9,7 @@ import tempfile
 import types
 from datetime import datetime, timedelta, timezone
 
-from selftest_support import check, copy_beads, git, refuse_direct_run, say, weight, write  # noqa: E402
+from selftest_support import RESULT_FULL, check, copy_beads, git, refuse_direct_run, say, weight, write  # noqa: E402
 import beads  # noqa: E402
 import ledger  # noqa: E402
 import metrics  # noqa: E402
@@ -43,7 +43,7 @@ def test_flow_records_and_metrics() -> None:
         r = run_task(wt1, "verify")
         check("通れば VERIFIED", r.returncode == 0 and r.stdout.startswith("VERIFIED\t"), r.stdout + r.stderr)
         git(wt1, "add", "-A")
-        result_path = write(os.path.join(tmp, "result.md"), "- 検証: x\n- 振り返り: 兆候なし\n")
+        result_path = write(os.path.join(tmp, "result.md"), RESULT_FULL)
         run_task(wt1, "done", "T-100", "--result-file", result_path)
         git(wt1, "add", "-A")
         git(wt1, "commit", "-q", "-m", "T-100: 完了")
@@ -138,7 +138,7 @@ def test_flow_records_and_metrics() -> None:
             and len(r.stderr.strip().splitlines()) == 1,
             r.stdout + r.stderr,
         )
-        result_path = write(os.path.join(tmp, "result.md"), "x\n")
+        result_path = write(os.path.join(tmp, "result.md"), RESULT_FULL)
         r = run_task(wt1, "done", "T-100", "--result-file", result_path)
         check("done も変わらない", r.returncode == 0 and r.stdout.startswith("DONE\tT-100\t"), r.stdout + r.stderr)
 
@@ -325,7 +325,7 @@ def test_relay() -> None:
         r = run_task(wt1, "relay", "T-100", "実装")
         check("release → claim のあとも残る", r.stdout.startswith("RELAY\tT-100\t実装\n- 規約: 新しい"), r.stdout + r.stderr)
 
-        run_task(wt1, "done", "T-100", "--result-file", "-", stdin="- 検証: x\n- 振り返り: 兆候なし\n")
+        run_task(wt1, "done", "T-100", "--result-file", "-", stdin=RESULT_FULL)
         shown = run_task(wt1, "show", "T-100").stdout
         result = shown.split("## 結果\n", 1)[-1]
         check("done のあとの ## 結果 は done の本文のままで申し送りが混ざらない",
@@ -398,7 +398,7 @@ def test_config_file_agents_md_and_conflict() -> None:
         commit_task(main_path, taskfile.Task("T-100", "config.toml", "todo", "sonnet", "Y", (), BODY))
         r = run_task(wt1, "claim", "T-100")
         check("config.toml だけで claim できる", r.returncode == 0 and r.stdout.startswith("CLAIMED"), r.stdout + r.stderr)
-        result_path = write(os.path.join(tmp, "result.md"), "- 検証: x\n")
+        result_path = write(os.path.join(tmp, "result.md"), RESULT_FULL)
         r = run_task(wt1, "done", "T-100", "--result-file", result_path)
         check("done できる", r.returncode == 0, r.stdout + r.stderr)
         write(os.path.join(wt1, "work.txt"), "x\n")

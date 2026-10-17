@@ -11,7 +11,7 @@
 
    並びで進めるとき（`SKILL.md` の手順4b）は、implement-step がこの手順で `## やること` の段を進め、後の段は並びのとおりに呼ぶ。
 
-   委譲しないので手順7（`${CLAUDE_SKILL_DIR}/parts/ship/ship.md`）の `## 結果` の規約の行は `- 規約: 委譲なし` と書く（`- 規約の指摘:` は受け入れ役の指摘を数える）。
+   委譲しないので手順7（`${CLAUDE_SKILL_DIR}/parts/ship/ship.md`）の `## 結果` の規約の行は `- 規約: 委譲なし` と書く（`- 規約の指摘:` は受け入れ役の指摘を数える。必須行は ship.md 手順7）。
    帯の並びは `## やること` の段のあとに並びの後の段（既定なら「受け入れ」「振り返り」「送り出し」）で、`delegatedRange` は付かない
    （`SKILL.md`「進み具合の帯（`work_plan`）」。`tw plan-phases T-xxx` が出す）。
    `tw lap T-xxx delegate` は打たない（`accept`・`review`・`retro` は手順6・6aのとおり打つ）。

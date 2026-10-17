@@ -7,7 +7,7 @@ import subprocess
 import sys
 import tempfile
 
-from selftest_support import check, git, refuse_direct_run, say, write  # noqa: E402
+from selftest_support import RESULT_FULL, RESULT_REQUIRED, check, git, refuse_direct_run, say, write  # noqa: E402
 import beads  # noqa: E402
 import gitinfo  # noqa: E402
 import taskfile  # noqa: E402
@@ -510,7 +510,7 @@ def test_done_single_worktree() -> None:
         r = run_task(wt1, "done", "T-100", "--result-file", empty_result)
         check("結果が空なら終了コード2", r.returncode == 2 and r.stdout == "", r.stdout + r.stderr)
 
-        result_path = write(os.path.join(wt1, "result.md"), "bun run check: 5 pass\n")
+        result_path = write(os.path.join(wt1, "result.md"), "bun run check: 5 pass\n" + RESULT_FULL)
         r = run_task(wt1, "done", "T-100", "--result-file", result_path)
         check(
             "DONEで返り、ship で閉じると言う",
@@ -530,6 +530,68 @@ def test_done_single_worktree() -> None:
               beads.SHIP_LABELS["dropped"] in labels and beads.SHIP_LABELS["done"] not in labels, repr(labels))
 
 
+def test_done_required_lines() -> None:
+    say("task.py done: ## 結果 の必須行の欠けは終了コード2で何も書かず、--dropped・揃った結果は通る")
+
+    def claimed(tmp: str, body: str = BODY, verify: str | None = None) -> str:
+        main_path, wt1, _wt2 = make_repo(tmp, verify=verify)
+        commit_task(main_path, taskfile.Task("T-100", "必須行", "todo", "sonnet", "Y", (), body))
+        run_task(wt1, "claim", "T-100")
+        return wt1
+
+    def labels(wt: str) -> list[str]:
+        return issue_json(wt, "T-100").get("labels") or []
+
+    def refused(r: subprocess.CompletedProcess, wt: str, line: str) -> bool:
+        return (r.returncode == 2 and r.stdout == "" and line in r.stderr
+                and beads.SHIP_LABELS["done"] not in labels(wt) and "## 結果" not in shown(wt, "T-100"))
+
+    full = RESULT_FULL.splitlines(keepends=True)
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1 = claimed(tmp)
+        for line in full:
+            prefix = line.split(":")[0] + ":"
+            r = run_task(wt1, "done", "T-100", "--result-file", "-", stdin="".join(l for l in full if l != line))
+            check(f"{prefix} が欠ければ拒み、欠けた行の名前を出して何も書かない", refused(r, wt1, prefix), r.stdout + r.stderr)
+        r = run_task(wt1, "done", "T-100", "--result-file", "-", stdin=RESULT_FULL)
+        check("全部揃えば、拒まれたあとの打ち直しで通る",
+              r.returncode == 0 and beads.SHIP_LABELS["done"] in labels(wt1), r.stdout + r.stderr)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1 = claimed(tmp, verify="`true`")
+        without_verify = "".join(l for l in full if not l.startswith("- 検証コマンド:"))
+        r = run_task(wt1, "done", "T-100", "--result-file", "-", stdin=without_verify)
+        check("台帳に verify が無ければ - 検証コマンド: を補わず拒む", refused(r, wt1, "- 検証コマンド:"), r.stdout + r.stderr)
+        r = run_task(wt1, "verify")
+        check("verify が通る", r.returncode == 0 and r.stdout.startswith("VERIFIED"), r.stdout + r.stderr)
+        r = run_task(wt1, "done", "T-100", "--result-file", "-", stdin=without_verify)
+        check("台帳の直近の verify が通っていれば - 検証コマンド: を補って通る",
+              r.returncode == 0 and "- 検証コマンド: 通過（直近の tw verify が VERIFIED）" in shown(wt1, "T-100"),
+              r.stdout + r.stderr)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1 = claimed(tmp, task_body(acceptance="- 画面を目視で確かめる"))
+        r = run_task(wt1, "done", "T-100", "--result-file", "-", stdin=RESULT_FULL)
+        check("完了条件に目視があれば - 目視: が欠けると拒む", refused(r, wt1, "- 目視:"), r.stdout + r.stderr)
+        r = run_task(wt1, "done", "T-100", "--result-file", "-", stdin=RESULT_FULL + "- 目視: a.png を見比べて可\n")
+        check("- 目視: があれば通る", r.returncode == 0, r.stdout + r.stderr)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1 = claimed(tmp)
+        run_task(wt1, "lap", "T-100", "direct")
+        r = run_task(wt1, "done", "T-100", "--result-file", "-", stdin="- 検証コマンド: 1 pass\n- 振り返り: 近道（省いた）\n")
+        check("近道でも - 規約: が欠ければ拒む", refused(r, wt1, "- 規約:"), r.stdout + r.stderr)
+        r = run_task(wt1, "done", "T-100", "--reflection", "skipped", "--result-file", "-",
+                     stdin=RESULT_REQUIRED + "- 振り返り: 近道（省いた）\n")
+        check("近道でも揃えば通る", r.returncode == 0, r.stdout + r.stderr)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1 = claimed(tmp)
+        r = run_task(wt1, "done", "T-100", "--dropped", "--result-file", "-", stdin="- 却下: 別のタスクで足りる\n")
+        check("--dropped は必須行が無くても通る（ドラフトの却下は test_draft_dropped）",
+              r.returncode == 0 and beads.SHIP_LABELS["dropped"] in labels(wt1), r.stdout + r.stderr)
+
+
 def test_done_commits_since_claim() -> None:
     say("task.py done: claim 後のコミットを COMMITS_SINCE_CLAIM で知らせる（控えの無い印は出さない）")
     with tempfile.TemporaryDirectory() as tmp:
@@ -542,7 +604,7 @@ def test_done_commits_since_claim() -> None:
         git(wt1, "add", "-A")
         git(wt1, "commit", "-q", "-m", "illicit")
         sha = git(wt1, "rev-parse", "--short", "HEAD").stdout.strip()
-        result_path = write(os.path.join(wt1, "result.md"), "bun run check: 1 pass\n")
+        result_path = write(os.path.join(wt1, "result.md"), "bun run check: 1 pass\n" + RESULT_FULL)
         r = run_task(wt1, "done", "T-100", "--result-file", result_path)
         lines = r.stdout.splitlines()
         check(
@@ -558,7 +620,7 @@ def test_done_commits_since_claim() -> None:
         write(os.path.join(wt2, "illicit2.txt"), "x\n")
         git(wt2, "add", "-A")
         git(wt2, "commit", "-q", "-m", "illicit2")
-        result_path2 = write(os.path.join(wt2, "result2.md"), "bun run check: 1 pass\n")
+        result_path2 = write(os.path.join(wt2, "result2.md"), "bun run check: 1 pass\n" + RESULT_FULL)
         r2 = run_task(wt2, "done", "T-101", "--result-file", result_path2)
         check(
             "控え（task_claim_head）の無い印はコミットがあっても落ちず、知らせない",
@@ -677,6 +739,7 @@ TESTS = (
     test_part_direct_run_refused,
     test_done_commits_since_claim,
     test_done_single_worktree,
+    test_done_required_lines,
     test_claim_and_release_single_worktree,
     test_new_and_status_single_worktree,
     test_kind_label,

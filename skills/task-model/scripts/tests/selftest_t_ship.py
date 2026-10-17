@@ -4,7 +4,7 @@ import os
 import shutil
 import tempfile
 
-from selftest_support import check, git, refuse_direct_run, say, weight, write  # noqa: E402
+from selftest_support import RESULT_FULL, check, git, refuse_direct_run, say, weight, write  # noqa: E402
 import beads  # noqa: E402
 import gitinfo  # noqa: E402
 import ledger  # noqa: E402
@@ -164,7 +164,7 @@ def test_ship_nothing_records_ship_event() -> None:
         main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
         commit_task(main_path, taskfile.Task("T-100", "別のリポジトリが作業先", "todo", "sonnet", "Y", (), BODY))
         run_task(wt1, "claim", "T-100")
-        result_path = write(os.path.join(tmp, "result.md"), "検証OK\n")
+        result_path = write(os.path.join(tmp, "result.md"), RESULT_FULL)
         run_task(wt1, "done", "T-100", "--result-file", result_path)
         r = run_task(wt1, "ship")
         check("NOTHING で返る", r.returncode == 0 and r.stdout.startswith("NOTHING\t"), r.stdout + r.stderr)
@@ -184,7 +184,7 @@ def test_ship_records_sync_span_before_ship() -> None:
         main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
         commit_task(main_path, taskfile.Task("T-100", "別のリポジトリが作業先", "todo", "sonnet", "Y", (), BODY))
         run_task(wt1, "claim", "T-100")
-        run_task(wt1, "done", "T-100", "--result-file", write(os.path.join(tmp, "result.md"), "検証OK\n"))
+        run_task(wt1, "done", "T-100", "--result-file", write(os.path.join(tmp, "result.md"), RESULT_FULL))
         r = run_task(wt1, "ship")
         check("NOTHING で返る", r.stdout.startswith("NOTHING\t"), r.stdout + r.stderr)
         check("NOTHING: start → end → ship の順", spans(wt1) == expected("NOTHING"), repr(spans(wt1)))
@@ -196,7 +196,7 @@ def test_ship_records_sync_span_before_ship() -> None:
         write(os.path.join(wt1, "work.txt"), "x")
         git(wt1, "add", "work.txt")
         git(wt1, "commit", "-q", "-m", "work")
-        run_task(wt1, "done", "T-100", "--result-file", write(os.path.join(tmp, "result.md"), "検証OK\n"))
+        run_task(wt1, "done", "T-100", "--result-file", write(os.path.join(tmp, "result.md"), RESULT_FULL))
         r = run_task(wt1, "ship")
         check("SHIPPED で返る", r.stdout.startswith("SHIPPED\t"), r.stdout + r.stderr)
         check("SHIPPED: start → end → ship の順", spans(wt1) == expected("SHIPPED"), repr(spans(wt1)))
@@ -216,7 +216,7 @@ def test_ship_conflict_aborts_rebase() -> None:
 
         write(os.path.join(wt1, "shared.txt"), "wt1側の変更\n")
         git(wt1, "add", "-A")
-        result_path = write(os.path.join(wt1, "result.md"), "検証OK\n")
+        result_path = write(os.path.join(wt1, "result.md"), RESULT_FULL)
         run_task(wt1, "done", "T-100", "--result-file", result_path)
         git(wt1, "add", "-A")
         git(wt1, "commit", "-q", "-m", "T-100: 完了")
@@ -548,7 +548,7 @@ def test_ship_records_shipped_range() -> None:
               and _shipped_range(wt1, "T-101") == f"{main_tip}..{after}", r.stdout + _shipped_range(wt1, "T-101"))
 
         run_task(wt1, "claim", "T-102")
-        result_path = write(os.path.join(tmp, "result.md"), "検証OK\n")
+        result_path = write(os.path.join(tmp, "result.md"), RESULT_FULL)
         run_task(wt1, "done", "T-102", "--result-file", result_path)
         r = run_task(wt1, "ship")
         check("NOTHING は範囲を書かない", r.stdout.startswith("NOTHING\t") and _shipped_range(wt1, "T-102") == "",

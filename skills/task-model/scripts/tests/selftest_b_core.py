@@ -27,7 +27,7 @@ from selftest_b_support import (  # noqa: E402
 )
 from selftest_body import task_body  # noqa: E402
 from selftest_fixtures import disarm_ref_guard, run_guard, run_handback_guard, run_task, start_task  # noqa: E402
-from selftest_support import check, git, local, refuse_direct_run, say, write  # noqa: E402
+from selftest_support import RESULT_FULL, check, git, local, refuse_direct_run, say, write  # noqa: E402
 
 MATERIAL_PY = os.path.join(HERE, "..", "..", "..", "retrospect", "scripts", "material.py")
 
@@ -291,7 +291,7 @@ def test_commit_guard() -> None:
         git(wt1, "commit", "-q", "-m", "メインの手直し")
         check("hook を通らないメインのコミットは印があっても通る",
               git(wt1, "log", "-1", "--format=%s").stdout.strip() == "メインの手直し")
-        r = run_task(wt1, "done", a, "--result-file", "-", stdin="- 検証: なし\n- 振り返り: 兆候なし\n")
+        r = run_task(wt1, "done", a, "--result-file", "-", stdin=RESULT_FULL)
         check("done で控えが消え、そのあとの git commit は通る",
               r.returncode == 0 and ledger.open_claims(cwd=wt1) == [] and run_guard(tmp, wt1, "git commit -m x") is None, r.stdout)
 

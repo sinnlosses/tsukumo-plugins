@@ -8,7 +8,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-from selftest_support import check, git, refuse_direct_run, say, weight, write  # noqa: E402
+from selftest_support import RESULT_FULL, check, git, refuse_direct_run, say, weight, write  # noqa: E402
 import stamps  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
@@ -55,7 +55,7 @@ def test_verify_refuses_unplanned_work() -> None:
 
         r = run_task(wt2, "claim", "T-111")
         write(os.path.join(wt2, "work.txt"), "x\n")
-        result_path = write(os.path.join(tmp, "result.md"), "検証OK\n")
+        result_path = write(os.path.join(tmp, "result.md"), RESULT_FULL)
         run_task(wt2, "done", "T-111", "--result-file", result_path)
         r = run_task(wt2, "verify")
         check("done の後は空でも打つ", r.returncode == 0 and r.stdout.startswith("VERIFIED\t"), r.stdout + r.stderr)
@@ -329,7 +329,7 @@ def _verify_count(tmp: str) -> int:
 
 
 def _commit_and_ship(wt: str, tmp: str, *paths: str) -> subprocess.CompletedProcess:
-    result_path = write(os.path.join(tmp, "result.md"), "検証OK\n")
+    result_path = write(os.path.join(tmp, "result.md"), RESULT_FULL)
     r = run_task(wt, "done", "T-120", "--result-file", result_path)
     check("done は COMMITS_SINCE_CLAIM に main のコミットを数えない",
           r.stdout.strip() == "DONE\tT-120\tbeads:t-120\tship で閉じる", r.stdout + r.stderr)

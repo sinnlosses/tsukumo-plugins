@@ -3,12 +3,12 @@ from __future__ import annotations
 import os
 import tempfile
 
-from selftest_support import check, git, refuse_direct_run, say, write  # noqa: E402
+from selftest_support import RESULT_FULL, check, git, refuse_direct_run, say, write  # noqa: E402
 import beads  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_fixtures import BODY, commit_task, flow_rows, make_repo, run_task  # noqa: E402
 
-RESULT = "- 検証: x\n- 振り返り: 兆候なし\n"
+RESULT = RESULT_FULL
 
 
 def _claimed(tmp: str, verify: str | None = None) -> tuple[str, str]:
@@ -45,6 +45,22 @@ def test_finish_bundles_done_commit_ship() -> None:
             and ("SHIPPED\t" in r.stdout or "NOTHING" in r.stdout),
             r.stdout + r.stderr,
         )
+
+
+def test_finish_refuses_missing_result_lines() -> None:
+    say("task.py finish: ## 結果 の必須行が欠ければ終了コード2で、done もコミットも ship も打たない")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1 = _claimed(tmp)
+        write(os.path.join(wt1, "work.txt"), "x")
+        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "T-100: 完了", "--add", "work.txt",
+                     stdin="- 検証コマンド: 1 pass\n")
+        check("欠けた行の名前を出して終了コード2",
+              r.returncode == 2 and "- 規約:" in r.stderr, r.stdout + r.stderr)
+        check("DONE・COMMITTED・SHIPPED のどれも出ない",
+              not any(k in r.stdout for k in ("DONE", "COMMITTED", "SHIPPED")), r.stdout)
+        check("主ブランチにコミットが無く、done の記録も無い",
+              "T-100: 完了" not in git(main_path, "log", "--oneline", "-3", "main").stdout
+              and not [e for e in flow_rows(wt1) if e["event"] == "done"])
 
 
 def test_finish_reflection_flag() -> None:
@@ -165,6 +181,7 @@ TESTS = (
     test_finish_bundles_done_commit_ship,
     test_finish_reflection_flag,
     test_finish_stops_on_stop_lines,
+    test_finish_refuses_missing_result_lines,
 )
 
 

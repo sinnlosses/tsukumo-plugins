@@ -153,6 +153,10 @@ def check(label: str, cond: bool, detail: str = "") -> None:
         failures.append(label)
 
 
+RESULT_REQUIRED = "- 検証コマンド: 1 pass\n- 規約: なし\n- 規約の指摘: なし\n"
+RESULT_FULL = RESULT_REQUIRED + "- 振り返り: 兆候なし\n"
+
+
 def write(path: str, content: str) -> str:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:

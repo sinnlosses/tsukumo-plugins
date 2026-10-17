@@ -4,7 +4,7 @@ import os
 import subprocess
 import tempfile
 
-from selftest_support import check, git, refuse_direct_run, say, weight, write  # noqa: E402
+from selftest_support import RESULT_FULL, check, git, refuse_direct_run, say, weight, write  # noqa: E402
 import beads  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
@@ -558,7 +558,7 @@ def test_root_ignored() -> None:
 
         r = run_task(wt1, "claim", "T-100")
         check("claim が通る", r.returncode == 0, r.stdout + r.stderr)
-        r = run_task(wt1, "done", "T-100", "--result-file", "-", stdin="- 振り返り: 兆候なし\n")
+        r = run_task(wt1, "done", "T-100", "--result-file", "-", stdin=RESULT_FULL)
         check("done が通る", r.returncode == 0 and r.stdout.startswith("DONE\tT-100\t"), r.stdout + r.stderr)
 
         for odd in ("../x", "/x", ".", ".git", ".tw/local"):
