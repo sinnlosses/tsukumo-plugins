@@ -31,7 +31,7 @@ PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`
 | `metrics [--days N] [--stages]` | 流れの数と段ごとの所要時間を読むだけで見るとき（振り返り） | `PERIOD`、続けて `shipped`・`lead_median_seconds`・`verify_per_task` など。`--stages` は `STAGE`・`OPEN`。`SKIPPED`・`EMPTY` |
 | `config` | 解けた設定を読むだけで見るとき | `CONFIG`、続けて `<キー>\t<値>\t<config\|default>`（`steps` の値は詰めた JSON の配列）。設定が無ければ `MISSING`（終了コード6） |
 | `config --json` | 解けた設定を JSON で読むとき（`config` と同じキー・値・出どころ。呼び手が表の文字列を割らずに読む口） | 1行の JSON（TSV の例外）`{"config": "<パス>", "keys": [{"key", "value", "source"}, …]}`。`steps`・`review_code_globs` の `value` は配列。`MISSING`（終了コード6）・`INVALID`（終了コード3）は JSON にせず `config` と同じ行。`--schema`・`set` とは一緒に打てない（終了コード2）。欄の中身は `task.py config --help` |
-| `config --schema` | 設定の欄の形（並び `steps` の既定と候補）を読むだけで見るとき（設定画面が欄を描く口。設定にはよらない） | 1行の JSON（TSV の例外）`{"schema": 2, "keys": [...]}`。`--version` は知らない引数として終了コード2。欄の中身は `task.py config --help` |
+| `config --schema` | 設定の欄の形（並び `steps` の既定と候補）を読むだけで見るとき（設定画面が欄を描く口。設定にはよらない） | 1行の JSON（TSV の例外）`{"schema": 2, "keys": [...]}`。`--version` は知らない引数として終了コード2。`values[]` は `{value, label, title, description}` で、`title` は日本語の段の名前（SKILL.md の `metadata` の `workflow-step-title`。無ければ `label` と同じ）。欄の中身は `task.py config --help` |
 | `config set <キー> <値>` | `steps` を検査してから `.tw/config.toml` に書くとき（ほかの行・並び・コメントは変えない。値は1行の JSON の文字列の配列） | `SET\t<キー>\t<値>`。知らないキー（廃止した `flow`・`parts.<枠>` を含む）・空や重複や候補にも今の値にも無い名前の並びは終了コード2（ファイルは変えない）。`MISSING`（終了コード6）・`INVALID`（終了コード3） |
 | `config-doctor` | リポジトリが今の読み取りに合っているかを読むだけで点検するとき（`--fix` は無い） | `base_branch`・`config`・`python`・`git`・`bd`・`dolt`・`gh`・`tw`・`store`・`beads`・`tracker` の行（2語目が `OK`・`MISSING`・`INVALID`、前提の行は `OPTIONAL` も） |
 | `commit-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ deny の JSON 1行。通すときは何も出さない |

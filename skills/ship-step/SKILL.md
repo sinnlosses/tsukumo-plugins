@@ -5,6 +5,7 @@ user-invocable: false
 metadata:
   workflow-step: "true"
   workflow-step-order: "4"
+  workflow-step-title: "送り出し"
 ---
 
 # 送り出しの段

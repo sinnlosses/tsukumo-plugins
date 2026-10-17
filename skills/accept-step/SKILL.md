@@ -5,6 +5,7 @@ user-invocable: false
 metadata:
   workflow-step: "true"
   workflow-step-order: "2"
+  workflow-step-title: "受け入れ"
 ---
 
 # 受け入れの段

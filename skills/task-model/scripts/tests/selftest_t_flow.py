@@ -744,12 +744,15 @@ def test_config_schema() -> None:
         check("どの欄も label と description を持つ", all(k["label"] and k["description"] for k in keys), repr(keys))
 
 
-def _skill(root: str, name: str, mark: str | None, description: str = "説明", order: str | None = None) -> str:
+def _skill(root: str, name: str, mark: str | None, description: str = "説明", order: str | None = None,
+           title: str | None = None) -> str:
     """`root/<name>/SKILL.md` を書く。`mark` は `metadata` に置く `workflow-step` の値（None なら metadata を置かない）。
-    `order` は `workflow-step-order` の値（None なら置かない）。"""
+    `order` は `workflow-step-order`、`title` は `workflow-step-title` の値（None なら置かない）。"""
     meta = f'metadata:\n  workflow-step: "{mark}"\n' if mark is not None else ""
     if mark is not None and order is not None:
         meta += f'  workflow-step-order: "{order}"\n'
+    if mark is not None and title is not None:
+        meta += f'  workflow-step-title: "{title}"\n'
     return write(
         os.path.join(root, name, "SKILL.md"),
         f"---\nname: {name}\ndescription: >\n  {description}\n  続き\n{meta}---\n本文\n",
@@ -780,6 +783,11 @@ def test_default_steps_order() -> None:
 
     plugin = layout.own_plugin_root()
     if plugin is not None:
+        real_values = layout.config_schema(None, None, plugin)["keys"][0]["values"]
+        titles = {v["label"]: v["title"] for v in real_values}
+        check("同梱の4つの title は 実装・受け入れ・振り返り・送り出し",
+              [titles.get(n) for n in ("implement-step", "accept-step", "retrospect-step", "ship-step")]
+              == ["実装", "受け入れ", "振り返り", "送り出し"], repr(titles))
         got = layout.config_schema(None, None, plugin)["keys"][0]["default"]
         check("同梱の既定の並びは 実装・受け入れ・振り返り・送り出し の段の順",
               got == [f"{plugin[1]}:{n}" for n in ("implement-step", "accept-step", "retrospect-step", "ship-step")], repr(got))
@@ -798,7 +806,7 @@ def test_step_candidates() -> None:
         _skill(os.path.join(project, ".claude", "skills"), "proj-false", "false")
         _skill(os.path.join(home, ".claude", "skills"), "home-step", "true")
         plugin_skills = os.path.join(plugin_root, "skills")
-        _skill(plugin_skills, "plug-a", "true", "プラグインの説明")
+        _skill(plugin_skills, "plug-a", "true", "プラグインの説明", title="日本語名")
         _skill(plugin_skills, "plug-b", "true")
         _skill(plugin_skills, "plug-plain", None)
         os.symlink(os.path.join(plugin_skills, "plug-b"), os.path.join(home, ".claude", "skills", "plug-b"))
@@ -811,6 +819,13 @@ def test_step_candidates() -> None:
         plug_a = next(c for c in got if c.value == "my-plugin:plug-a")
         check("label は frontmatter の name、description は複数行を1行に畳んだもの",
               plug_a.label == "plug-a" and plug_a.description == "プラグインの説明 続き", repr(plug_a))
+        plug_b = next(c for c in got if c.value == "plug-b")
+        check("title は workflow-step-title の値、無ければ label と同じ",
+              plug_a.title == "日本語名" and plug_b.title == plug_b.label == "plug-b", repr((plug_a, plug_b)))
+        values = {v["value"]: v for v in layout.config_schema(None, home, (plugin_root, "my-plugin"))["keys"][0]["values"]}
+        check("config_schema の values が title を常に持つ（schema は 2 のまま）",
+              values["my-plugin:plug-a"]["title"] == "日本語名" and values["plug-b"]["title"] == "plug-b"
+              and all(v["title"] for v in values.values()), repr(values))
         check("plugin の実体のスキルは own（リンク経由も）、ほかは違う",
               {c.value: c.own for c in got} == {"proj-step": False, "home-step": False, "plug-b": True, "my-plugin:plug-a": True},
               repr(got))

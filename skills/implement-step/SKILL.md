@@ -5,6 +5,7 @@ user-invocable: false
 metadata:
   workflow-step: "true"
   workflow-step-order: "1"
+  workflow-step-title: "実装"
 ---
 
 # 実装の段
