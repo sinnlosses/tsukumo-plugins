@@ -1609,7 +1609,106 @@ def test_commit_guard_covers_inactive_ref_guard() -> None:
         check("殻を戻せば commit-guard はまた hook に任せる", run_guard(tmp, wt1, "git commit -m x") is None)
 
 
+def _denial_rows(main_path: str) -> list[dict]:
+    d = os.path.join(main_path, ".git", ledger.DENIALS_DIR_NAME)
+    rows: list[dict] = []
+    for name in sorted(os.listdir(d)) if os.path.isdir(d) else ():
+        with open(os.path.join(d, name), encoding="utf-8") as f:
+            rows += [json.loads(line) for line in f if line.strip()]
+    return rows
+
+
+def test_guard_denial_record() -> None:
+    say("task.py: 4つの関門の拒否が共有の git dir の hook-denials に1行ずつ残り、書き込めなくても出力と終了コードは変わらない")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, verify="`true`")
+        commit_task(main_path, taskfile.Task("T-100", "記録", "todo", "sonnet", "Y", (), BODY))
+        disarm_ref_guard(main_path)
+        run_task(wt1, "claim", "T-100")
+        check("拒否の前は記録が無い", _denial_rows(main_path) == [])
+
+        def last() -> dict:
+            rows = _denial_rows(main_path)
+            return rows[-1] if rows else {}
+
+        def recorded(label: str, hook: str, rule: str, actor: str, before: int) -> None:
+            rows = _denial_rows(main_path)
+            row = last()
+            check(f"{label}: 1行足り、hook・rule・actor が合う",
+                  len(rows) == before + 1 and (row.get("hook"), row.get("rule"), row.get("actor")) == (hook, rule, actor)
+                  and set(row) == {"at", "hook", "rule", "actor"},
+                  str(rows))
+
+        n = len(_denial_rows(main_path))
+        check("git commit を拒む", run_guard(tmp, wt1, "git commit -m 秘密の文面") is not None)
+        recorded("commit-guard の git commit", "tw-commit-guard", "GIT_COMMIT", "main", n)
+        check("コマンドの文面を残さない", "秘密" not in json.dumps(_denial_rows(main_path), ensure_ascii=False))
+        n += 1
+        check("ref-guard を外す書き方を拒む", run_guard(tmp, wt1, "TW_REF_GUARD_ALLOW=1 git commit -m x") is not None)
+        recorded("commit-guard の外す書き方", "tw-commit-guard", "DISARM_REF_GUARD", "main", n)
+        n += 1
+        check("シェルでの書き換えを拒む", run_guard(tmp, wt1, f"echo x > {os.path.join(wt1, 'a.txt')}") is not None)
+        recorded("commit-guard のシェルでの書き換え", "tw-commit-guard", "SHELL_WRITE", "main", n)
+        n += 1
+        check("検証コマンドの直打ちを拒む", run_guard(tmp, wt1, "true") is not None)
+        recorded("commit-guard の検証コマンドの直打ち", "tw-commit-guard", "DIRECT_VERIFY", "main", n)
+        n += 1
+        check("拒まない入力は記録しない", run_guard(tmp, wt1, "ls") is None and len(_denial_rows(main_path)) == n)
+
+        r = run_task(tmp, "commit-guard", "--agent-scoped",
+                     stdin=json.dumps({"tool_name": "Bash", "tool_input": {"command": "git commit -m x"}, "cwd": wt1,
+                                       "agent_id": "a-1", "session_id": "s-1"}))
+        check("サブエージェントは actor が subagent", r.returncode == 0 and r.stdout != "" and last().get("actor") == "subagent",
+              r.stdout + r.stderr)
+        n += 1
+
+        run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-", stdin="### 1. 書く\n")
+        write(os.path.join(wt1, "work.txt"), "x\n")
+        out = run_handback_guard(tmp, wt1)
+        check("検証の無い返却を拒む", out is not None and out["reason"].startswith("着手の印（"), str(out))
+        recorded("handback-guard の検証欠け", "tw-handback-guard", "PLAN_OR_VERIFY_MISSING", "main", n)
+        n += 1
+        r = run_task(wt1, "verify")
+        handback = ("PreToolUse", "SubagentHandback")
+        out = run_handback_guard(tmp, wt1, *handback, body="段 1/1 | 済\n")
+        reason = (out or {}).get("hookSpecificOutput", {}).get("permissionDecisionReason", "")
+        check("構造の節が無い返却を拒み、理由は着手の印（で始まらない",
+              r.returncode == 0 and "構造の変更" in reason and not reason.startswith("着手の印（"), r.stdout + reason)
+        recorded("handback-guard の構造の節", "tw-handback-guard", "STRUCTURE_SECTION", "main", n)
+        n += 1
+
+        check("loopable: Y の AskUserQuestion を拒む", run_ask_guard(tmp, wt1) is not None)
+        recorded("ask-guard", "tw-ask-guard", "LOOPABLE_ASK", "main", n)
+        n += 1
+        run_ask_guard(tmp, wt1, extra={"agent_id": "a-1"})
+        check("ask-guard のサブエージェントは subagent", last().get("actor") == "subagent")
+        n += 1
+
+        before = (run_guard(tmp, wt1, "git commit -m x"), run_ask_guard(tmp, wt1), run_handback_guard(tmp, wt1, *handback, body="段 1/1\n"))
+        n += 3
+        with readonly_git(main_path):
+            after = (run_guard(tmp, wt1, "git commit -m x"), run_ask_guard(tmp, wt1), run_handback_guard(tmp, wt1, *handback, body="段 1/1\n"))
+            r = run_task(tmp, "commit-guard", stdin=json.dumps(
+                {"tool_name": "Bash", "tool_input": {"command": "git commit -m x"}, "cwd": wt1}))
+            check("書き込めなくても関門の出力と終了コードは同じで、行は増えない",
+                  after == before and r.returncode == 0 and r.stdout != "" and len(_denial_rows(main_path)) == n,
+                  str(after) + r.stderr)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
+        commit_task(main_path, taskfile.Task("T-100", "記録", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        write(os.path.join(wt1, "work.txt"), "x\n")
+        _raw_git(wt1, "add", "work.txt")
+        done = _raw_git(wt1, "commit", "-q", "-m", "x")
+        rows = _denial_rows(main_path)
+        check("ref-guard の拒否が1行残り、git の終了コードは拒否のまま",
+              done.returncode != 0 and len(rows) == 1
+              and (rows[0]["hook"], rows[0]["rule"], rows[0]["actor"]) == ("tw-ref-guard", "MOVE_REF", "main"), str(rows))
+
+
 TESTS = (
+    test_guard_denial_record,
     test_ref_guard_blocks_commits,
     test_ref_guard_install_states,
     test_commit_guard_with_ref_guard,
