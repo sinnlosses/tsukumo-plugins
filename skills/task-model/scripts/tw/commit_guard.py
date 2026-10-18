@@ -28,6 +28,22 @@ import ref_guard
 
 COMMIT_SUBCOMMANDS = ("commit", "merge", "pull", "cherry-pick", "revert", "am", "rebase")
 READ_ONLY_FLAGS = ("--plan", "--help", "-h")
+BD_WRITES = frozenset(
+    "assign close comment create create-form delete edit gate heartbeat label link note priority promote q reclaim "
+    "reopen set-state tag todo unclaim update duplicate supersede import init sync batch compact flatten gc prune "
+    "purge rename-prefix restore recompute-blocked migrate remember forget".split()
+)
+BD_SUBWRITES = {
+    "dep": frozenset({"add", "remove", "relate", "unrelate"}),
+    "kv": frozenset({"set", "clear"}),
+    "config": frozenset({"set", "unset"}),
+    "dolt": frozenset({"push", "pull", "commit"}),
+    "github": frozenset({"sync", "push", "pull"}),
+    "jira": frozenset({"sync", "push", "pull"}),
+    "linear": frozenset({"sync", "push", "pull"}),
+    "ado": frozenset({"sync", "push", "pull"}),
+}
+_BD_VALUE_FLAGS = ("--actor", "--db", "--database", "-C", "--directory", "--dolt-auto-commit", "--mem-profile")
 
 _OPERATOR_CHARS = ";&|()\n<>"
 _SHELL_KEYWORDS = ("do", "then", "else", "elif", "if", "while", "until", "!", "{")
@@ -71,10 +87,13 @@ def run(stdin: IO[str], stdout: IO[str], agent_scoped: bool = False) -> None:
         payload = json.loads(stdin.read())
     except ValueError:
         return
-    if not isinstance(payload, dict) or not agent_scope.applies(payload, agent_scoped):
+    if not isinstance(payload, dict):
         return
-    _note_agent(payload)
-    verdict = decide(payload)
+    if agent_scope.applies(payload, agent_scoped):
+        _note_agent(payload)
+        verdict = decide(payload)
+    else:
+        verdict = decide_main(payload)
     if verdict is None:
         return
     rule, reason = verdict
@@ -100,6 +119,63 @@ def _note_agent(payload: dict) -> None:
         ledger.record_agent_task(agent_id, session_id, cwd=cwd)
     except (gitinfo.GitCommandError, OSError):
         return
+
+
+def decide_main(payload: dict) -> tuple[str, str] | None:
+    """主のセッション（`agent_id` なし）の判定。書き込みの `bd` だけを見る。`bd` の語が無いコマンドは解析せず、落ちても通す。"""
+    tool_input = payload.get("tool_input")
+    command = tool_input.get("command") if isinstance(tool_input, dict) else None
+    start = payload.get("cwd")
+    if payload.get("tool_name") != "Bash" or not isinstance(command, str) or not isinstance(start, str):
+        return None
+    if "bd" not in command:
+        return None
+    try:
+        return _bd_verdict(command, start)
+    except Exception:  # noqa: BLE001 主の Bash 全部に掛かるので、判定の不具合で作業を止めない
+        return None
+
+
+def _bd_verdict(command: str, start: str) -> tuple[str, str] | None:
+    for where, how in _bd_writes(command, start):
+        claims = _open_claims_at(where)
+        if claims:
+            return "BD_WRITE", (
+                f"着手の印（{','.join(claims)}）が立っていて tw done の前の作業ツリー（{where}）では "
+                f"{how} を直に打たない。Beads への書き込みは `tw` が打つ（`bd show`・`bd list` など読む形は打てる）"
+            )
+    return None
+
+
+def _bd_writes(command: str, start: str) -> list[tuple[str, str]]:
+    """`(作業先, 打った形)` の並び。書き込みの `bd` だけで、`--readonly` 付きと読む形は含めない。"""
+    found: list[tuple[str, str]] = []
+    for simple in _simple_commands(command, start):
+        if simple.where is None:
+            continue
+        args, _targets = _split_redirects(simple.words)
+        while args and (args[0] in ("env", "command") or _is_assignment(args[0])):
+            args = args[1:]
+        if not args or os.path.basename(args[0]) != "bd" or "--readonly" in args:
+            continue
+        rest = args[1:]
+        words: list[str] = []
+        i = 0
+        while i < len(rest):
+            if rest[i] in _BD_VALUE_FLAGS:
+                i += 2
+            elif rest[i].startswith("-"):
+                i += 1
+            else:
+                words.append(rest[i])
+                i += 1
+        if not words:
+            continue
+        sub = words[0]
+        second = words[1] if len(words) > 1 else ""
+        if sub in BD_WRITES or second in BD_SUBWRITES.get(sub, ()):
+            found.append((simple.where, f"bd {sub}" + (f" {second}" if sub in BD_SUBWRITES else "")))
+    return found
 
 
 def decide(payload: dict) -> tuple[str, str] | None:
@@ -136,6 +212,9 @@ def decide(payload: dict) -> tuple[str, str] | None:
                 f"着手の印（{','.join(claims)}）が立っていて tw done の前の作業ツリー（{where}）では "
                 f"{how} を打たない。{next_step}"
             )
+    bd_verdict = _bd_verdict(command, start) if "bd" in command else None
+    if bd_verdict is not None:
+        return bd_verdict
     work_claims = _WorkTreeClaims(start)
     for path, how in _shell_writes(command, start):
         where, claims = _claims_for_write(path, work_claims)

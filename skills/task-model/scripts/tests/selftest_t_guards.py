@@ -1826,7 +1826,104 @@ def test_commit_guard_git_operations() -> None:
             check(f"done のあとは通る: {command}", run_guard(tmp, wt1, command) is None)
 
 
+@weight(9)
+def test_commit_guard_bd_writes() -> None:
+    say("task.py commit-guard: 印が立った作業ツリーで書き込みの bd を拒み（メインにも）、読む形と tw 経由は通す")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(tmp)
+        commit_task(main_path, taskfile.Task("T-100", "拒む", "todo", "sonnet", "Y", (), BODY))
+        disarm_ref_guard(main_path)
+        run_task(wt1, "claim", "T-100")
+
+        def verdict(command: str, where: str, *flags: str, agent_id: str | None = None) -> bool:
+            payload = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": where}
+            if agent_id:
+                payload["agent_id"] = agent_id
+            r = run_task(tmp, "commit-guard", *flags, stdin=json.dumps(payload))
+            check(f"終了コード0: {command}", r.returncode == 0, r.stdout + r.stderr)
+            return r.stdout != ""
+
+        refused = (
+            "bd update GH-1 --claim",
+            "bd close x",
+            "bd reclaim",
+            "bd create x",
+            "bd unclaim x",
+            "bd reopen x",
+            "bd delete x",
+            "bd label add x y",
+            "bd --actor a update x",
+            "bd --json -q close x",
+            "bd -C /x close y",
+            "bd dep add a b",
+            "bd dep remove a b",
+            "bd kv set k v",
+            "bd kv clear k",
+            "bd config set k v",
+            "bd github sync",
+            "bd jira push",
+            "/usr/local/bin/bd create x",
+            "env BEADS_ACTOR=a bd update x",
+            "BEADS_ACTOR=a bd close x",
+            "bd show GH-1 && bd close GH-1",
+            f"cd {wt1} && bd close x",
+        )
+        passed = (
+            "bd show GH-1",
+            "bd show GH-1 --json",
+            "bd list --json",
+            "bd ready",
+            "bd kv get k",
+            "bd kv list",
+            "bd dep list x",
+            "bd dep tree x",
+            "bd dep cycles",
+            "bd config get k",
+            "bd --readonly update x",
+            "bd search update",
+            "bd where",
+            "bd doctor",
+            "echo bd update",
+            'grep "bd close" README.md',
+            "git log --grep='bd update'",
+            "bdx update",
+            "bd",
+            "tw edit GH-950 --section x --body-file -",
+            "tw claim GH-1",
+            "tw done GH-1",
+            "tw ship",
+            "bd 'close",
+            f"cd {wt2} && bd close x",
+        )
+        for flags, agent_id in (((), None), (("--agent-scoped",), None), (("--agent-scoped",), "a-implementer")):
+            label = f"{' '.join(flags) or '指定なし'}・agent_id={agent_id}"
+            for command in refused:
+                check(f"拒む（{label}）: {command}", verdict(command, wt1, *flags, agent_id=agent_id))
+            for command in passed:
+                check(f"通す（{label}）: {command}", not verdict(command, wt1, *flags, agent_id=agent_id))
+            check(f"控えの無い木では通す（{label}）", not verdict("bd close x", wt2, *flags, agent_id=agent_id))
+
+        reason = run_guard(tmp, wt1, "bd close x")
+        check("理由にタスクIDと tw を案内する", reason is not None and "T-100" in reason and "tw" in reason, str(reason))
+
+        calls = []
+        original = commit_guard._open_claims_at
+        commit_guard._open_claims_at = lambda where: calls.append(where) or []
+        try:
+            payload = {"tool_name": "Bash", "tool_input": {"command": "ls -la && git status"}, "cwd": wt1}
+            check("bd の語が無い主の Bash は控えを読みに行かない",
+                  commit_guard.decide_main(payload) is None and calls == [], str(calls))
+            check("Bash 以外は判定しない", commit_guard.decide_main(dict(payload, tool_name="Edit")) is None)
+        finally:
+            commit_guard._open_claims_at = original
+
+        result_path = write(os.path.join(tmp, "result.md"), RESULT_FULL)
+        run_task(wt1, "done", "T-100", "--result-file", result_path)
+        check("done のあとの bd close は通る", run_guard(tmp, wt1, "bd close x") is None)
+
+
 TESTS = (
+    test_commit_guard_bd_writes,
     test_commit_guard_git_operations,
     test_guard_denial_record,
     test_ref_guard_blocks_commits,
