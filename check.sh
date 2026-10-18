@@ -7,7 +7,7 @@
 # （main との merge-base からの差分と、未コミット・未追跡のファイル）。
 # 構文とリポジトリの整合は、いつも流す。check.sh 自身が変わったときは全段を流す。
 # `--full` のとき、main の上にいるとき、detached HEAD のとき、差分が取れないときも全段を流す。
-# `--plan` は段を流さず、流す段（== 見出し ==）と飛ばす段だけを出す。
+# `--plan` は段を流さず、流す段（== 見出し ==）と飛ばす段だけを出す。`--full` と並べても段を流さない。
 # 自己テストは一時ディレクトリを RAM ディスクに置く（作れなければ今の場所）。
 #
 # 1. 構文: install.sh・uninstall.sh・scripts/links.sh（いつも）
@@ -31,12 +31,14 @@ elif command -v nice >/dev/null 2>&1; then
 fi
 
 mode=scoped
-case "${1:-}" in
-  --full) mode=full ;;
-  --plan) mode=plan ;;
-  "") ;;
-  *) echo "使い方: ./check.sh [--full | --plan]" >&2; exit 2 ;;
-esac
+for arg in "$@"; do
+  case "$arg" in
+    --full) [ "$mode" = plan ] || mode=full ;;
+    --plan) mode=plan ;;
+    "") ;;
+    *) echo "使い方: ./check.sh [--full | --plan]" >&2; exit 2 ;;
+  esac
+done
 
 scoped=no
 changed=
