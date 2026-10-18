@@ -584,6 +584,23 @@ def test_taskfile_intervention() -> None:
     check("section_heading は 介入 を ## 介入 に揃える",
           taskfile.section_heading("介入") == taskfile.section_heading("## 介入") == taskfile.INTERVENTION_HEADING)
 
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "WORKFLOW.md"), encoding="utf-8") as f:
+        lines = f.read().split("\n")
+
+    def first_column(header: str) -> tuple[str, ...]:
+        start = next((i for i, line in enumerate(lines) if line.startswith(f"| {header} |")), len(lines))
+        rows: list[str] = []
+        for line in lines[start + 2:]:
+            if not line.startswith("| `"):
+                break
+            rows.append(line.split("`")[1])
+        return tuple(rows)
+
+    check("WORKFLOW.md の出し先の梯子の表が INTERVENTION_TARGETS と同じ順",
+          first_column("出し先の種類") == taskfile.INTERVENTION_TARGETS, repr(first_column("出し先の種類")))
+    check("WORKFLOW.md の harness の面の表が HARNESS_SURFACES と同じ",
+          first_column("harness の面") == taskfile.HARNESS_SURFACES, repr(first_column("harness の面")))
+
 
 def test_done_single_worktree() -> None:
     say("task.py done（単独の作業ツリー）")

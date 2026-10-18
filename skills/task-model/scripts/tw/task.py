@@ -161,7 +161,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     ),
     "show": (
         "タスク1件を front matter と本文の形で出す（読むだけ）。",
-        r"""タスク1件を front matter と本文の形で出す（読むだけ。WORKFLOW.md の「タスクの本文」）。枠の7節を空でもこの順に出す
+        r"""タスク1件を front matter と本文の形で出す（読むだけ。WORKFLOW.md の「タスクの本文」）。枠の7節を空でもこの順に出す（`## 介入` があればその後ろ）
 
 出力: 本文。無ければ `NOT_READY`""",
     ),

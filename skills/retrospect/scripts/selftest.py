@@ -795,6 +795,9 @@ def test_viewpoint_vocabulary() -> None:
           repr(column(section("色と1行の書式"), r"^\| `(.+?)` \|")))
     weekly = tuple(v for v in column(section("週ごとに振り返る"), r"^\s*\| (\S+) \|") if v not in ("観点", "---"))
     check("横断の3観点が週ごとに振り返るの表の1列目と同じ", weekly == taskfile.WEEKLY_VIEWPOINTS, repr(weekly))
+    ladder = next((line for text in sections.values() for line in text.split("\n") if line.startswith("**出し先の梯子**:")), "")
+    check("出し先の梯子が taskfile の出し先の種類の語彙と同じ順",
+          tuple(re.findall(r"`([^`]+)`", ladder)) == taskfile.INTERVENTION_TARGETS, repr(ladder))
 
 
 def main() -> None:
