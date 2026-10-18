@@ -108,6 +108,9 @@ def test_flow_records_and_metrics() -> None:
             and table["lead_max_seconds"][0] != "-"
             and table["verify_per_task"] == ["2.0", "-"]
             and table["verify_failed"] == ["1", "0"]
+            and table["verify_real"] == ["0", "0"]
+            and table["verify_flaky"] == ["1", "0"]
+            and table["verify_infra"] == ["0", "0"]
             and table["ship_verify_failed"] == ["1", "0"]
             and table["reclaim"] == ["1", "0"]
             and table["reflection_none_ratio"] == ["100% (1/1)", "-"],
@@ -1004,6 +1007,59 @@ def test_config_steps() -> None:
         check("[parts] の中の steps は INVALID", r.returncode == 3, r.stdout + r.stderr)
 
 
+def test_verify_failure_cause() -> None:
+    say("tw verify: 落ちた回は終了コード 2 なら cause=infra、ほかは real。metrics が内訳を数える")
+    with tempfile.TemporaryDirectory() as tmp:
+        code_file = os.path.join(tmp, "code")
+        verify_script = write(os.path.join(tmp, "verify.sh"), f'exit "$(cat "{code_file}")"\n')
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない", verify=f"`sh {verify_script}`")
+        commit_task(main_path, taskfile.Task("T-100", "基盤", "todo", "sonnet", "Y", (), PLANNED_BODY))
+        run_task(wt1, "claim", "T-100")
+        for code, content in (("1", "a"), ("2", "b")):
+            write(code_file, code)
+            write(os.path.join(wt1, "work.txt"), content)
+            r = run_task(wt1, "verify")
+            check(f"終了コード {code} で VERIFY_NOT_PASSED", r.returncode == 10, r.stdout + r.stderr)
+        failed = [e for e in flow_rows(wt1) if e["event"] == "verify"]
+        check(
+            "終了コード 1 は real、2 は infra で、どちらも鍵を持つ",
+            [e["cause"] for e in failed] == ["real", "infra"] and all(e["key"] for e in failed),
+            repr(failed),
+        )
+        r = run_task(wt1, "metrics")
+        table = {l.split("\t")[0]: l.split("\t")[1] for l in r.stdout.splitlines()}
+        check(
+            "metrics が real 1・infra 1・flaky 0 を出し、和が verify_failed と合う",
+            table["verify_failed"] == "2" and table["verify_real"] == "1"
+            and table["verify_infra"] == "1" and table["verify_flaky"] == "0",
+            r.stdout,
+        )
+
+
+def test_verify_cause_derivation() -> None:
+    say("metrics.verify_cause: 同じ鍵で次の着手までに通れば flaky、cause=infra はそのまま、ほかと旧い行は real")
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    row = lambda sec, kind, **f: metrics.Event(t0 + timedelta(seconds=sec), kind, "T-100", {"event": kind, **f})
+    fail = lambda sec, **f: row(sec, "verify", result="VERIFY_NOT_PASSED", **f)
+    ok = lambda sec, key: row(sec, "verify", result="VERIFIED", key=key)
+    cases = (
+        ("落ち→同じ鍵で成功は flaky", [fail(1, cause="real", key="k"), ok(2, "k")], "flaky"),
+        ("VERIFIED_UNSTAMPED も通った回", [fail(1, cause="real", key="k"), row(2, "verify", result="VERIFIED_UNSTAMPED", key="k")], "flaky"),
+        ("落ち→鍵の違う成功は real", [fail(1, cause="real", key="k"), ok(2, "other")], "real"),
+        ("落ち→同じ鍵でまた落ちるだけは real", [fail(1, cause="real", key="k"), fail(2, cause="real", key="k")], "real"),
+        ("間に claim が入れば real", [fail(1, cause="real", key="k"), row(2, "claim"), ok(3, "k")], "real"),
+        ("cause の無い旧い落ちは real", [fail(1), ok(2, "k")], "real"),
+        ("鍵の無い落ちは real", [fail(1, cause="real"), ok(2, "")], "real"),
+        ("cause=infra は後に同じ鍵で成功があっても infra", [fail(1, cause="infra", key="k"), ok(2, "k")], "infra"),
+    )
+    for label, events, want in cases:
+        got = metrics.verify_cause(events, events[0])
+        check(label, got == want, f"{got} != {want}")
+    other = metrics.Event(t0 + timedelta(seconds=2), "verify", "T-200", {"event": "verify", "result": "VERIFIED", "key": "k"})
+    mixed = [fail(1, cause="real", key="k"), other]
+    check("別のタスクの成功は数えない", metrics.verify_cause(mixed, mixed[0]) == "real")
+
+
 def test_open_stages() -> None:
     say("metrics.open_stages: start だけの段を返し、対の揃った段と前の claim の run は数えない")
     t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -1110,6 +1166,8 @@ def test_all_tests_registered() -> None:
 
 
 TESTS = (
+    test_verify_failure_cause,
+    test_verify_cause_derivation,
     test_open_stages,
     test_task_stage_spans,
     test_stage_spans_skip_overlapping_start,
