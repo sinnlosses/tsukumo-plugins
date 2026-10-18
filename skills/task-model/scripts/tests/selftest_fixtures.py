@@ -325,9 +325,9 @@ FILE_PROTOCOL_ENV = {
 }
 
 
-def make_submodule_repo(tmp: str) -> tuple[str, str, str, str]:
+def make_submodule_repo(tmp: str, verify: str | None = None) -> tuple[str, str, str, str]:
     """`(本体, 作業ツリー1, 作業ツリー2, サブモジュールの取り寄せ元)`。本体・両作業ツリーにサブモジュール `vendor/sub` が入っている。"""
-    main_path, wt1, wt2 = make_repo(tmp)
+    main_path, wt1, wt2 = make_repo(tmp, verify=verify)
     origin = os.path.join(tmp, "sub-origin")
     os.makedirs(origin)
     git(origin, "init", "-q", "-b", "main")

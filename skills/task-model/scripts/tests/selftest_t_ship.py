@@ -520,11 +520,15 @@ def _counting_verify(tmp: str, exit_code: int = 0) -> tuple[str, str]:
     return f"`sh {script}`", count
 
 
+def _lines_of(path: str) -> list[str]:
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as f:
+        return f.read().splitlines()
+
+
 def _verify_runs(count: str) -> int:
-    if not os.path.exists(count):
-        return 0
-    with open(count, encoding="utf-8") as f:
-        return len(f.read().splitlines())
+    return len(_lines_of(count))
 
 
 def _branches(main_path: str) -> list[str]:
@@ -658,6 +662,52 @@ def test_land_fold_verify_fails() -> None:
             and os.path.isdir(wt1)
             and "wt1-branch" in _branches(main_path)
             and _verify_runs(count) == 1,
+        )
+
+
+def test_land_fold_syncs_submodules_before_verify() -> None:
+    say("task.py land --fold: 主ブランチがサブモジュールを進めていれば、揃えてから検証し、揃えられなければ止まる")
+    with tempfile.TemporaryDirectory() as tmp:
+        seen = os.path.join(tmp, "verify-seen")
+        script = write(os.path.join(tmp, "verify.sh"), f'cat vendor/sub/v.txt >> "{seen}"\n')
+        main_path, wt1, wt2, origin = make_submodule_repo(tmp, verify=f"`sh {script}`")
+
+        def seen_lines() -> list[str]:
+            return _lines_of(seen)
+
+        _commit(wt1, "a.txt", "a\n", "枝の作業")
+        advance_submodule(origin, main_path, "v2")
+        r = run_task(wt1, "land", "wt1-branch", "--fold", env=FILE_PROTOCOL_ENV)
+        lines = r.stdout.splitlines()
+        check(
+            "FOLDED のあと取り込んだサブモジュールの中身で検証し、LANDED・REMOVED・DELETED（NOT_REMOVED なし）",
+            r.returncode == 0
+            and lines[0].startswith("FOLDED\twt1-branch\t")
+            and seen_lines() == ["v2"]
+            and lines[-2:] == [f"REMOVED\t{os.path.realpath(wt1)}", "DELETED\twt1-branch"]
+            and not any(line.startswith("NOT_REMOVED") for line in lines),
+            r.stdout + r.stderr + repr(seen_lines()),
+        )
+
+        _commit(wt2, "b.txt", "b\n", "枝の作業")
+        advance_submodule(origin, main_path, "v3")
+        shutil.move(origin, origin + "-gone")
+        main_head = git(main_path, "rev-parse", "main").stdout.strip()
+        r = run_task(wt2, "land", "wt2-branch", "--fold", env=FILE_PROTOCOL_ENV)
+        lines = r.stdout.splitlines()
+        check(
+            "揃えられなければ SUBMODULE_NOT_SYNCED と NOT_LANDED（終了コード4）で、検証を打たない",
+            r.returncode == 4
+            and any(line.startswith("SUBMODULE_NOT_SYNCED\t") for line in lines)
+            and lines[-1].startswith("NOT_LANDED\twt2-branch\t")
+            and seen_lines() == ["v2"],
+            r.stdout + r.stderr,
+        )
+        check(
+            "主ブランチは変わらず、作業ツリーと枝は残る",
+            git(main_path, "rev-parse", "main").stdout.strip() == main_head
+            and os.path.isdir(wt2)
+            and "wt2-branch" in _branches(main_path),
         )
 
 
@@ -1099,6 +1149,7 @@ TESTS = (
     test_land_fold_advanced,
     test_land_fold_conflict,
     test_land_fold_verify_fails,
+    test_land_fold_syncs_submodules_before_verify,
     test_land_fold_without_verify_command,
     test_ship_without_gitmodules_prints_no_submodule_line,
     test_base_branch_resolution,

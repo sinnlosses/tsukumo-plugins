@@ -253,6 +253,7 @@ def cmd_land(toplevel: str, branch: str, with_fold: bool = False) -> None:
 def _fold_and_verify(base: str, branch: str, branch_trees: list[str]) -> None:
     """枝の作業ツリーへ主ブランチを取り込み（`FOLDED`）、検証を多くて1回通す。止めるときは `NOT_LANDED` で終わる。
 
+    取り込んだら、検証の前にサブモジュールを取り込んだ記録の版へ揃える（検証する中身を合流する中身に合わせる）。
     取り込みが要らず、控えが今の中身と同じなら検証を打たずに `VERIFIED_SAME\\t<木>\\tverify=skipped` を出す。
     """
     if len(branch_trees) != 1:
@@ -269,6 +270,14 @@ def _fold_and_verify(base: str, branch: str, branch_trees: list[str]) -> None:
         )
     if folded.kind == "FOLDED":
         print(f"FOLDED\t{branch}\t{folded.old_base}..{folded.new_base}")
+        unsynced = _sync_submodules(tree)
+        if unsynced:
+            tw_base.print_lines(unsynced)
+            _refuse_land(
+                branch,
+                f"取り込んだサブモジュールを揃えられない（取り込んだマージコミットは枝に残る）。"
+                f"{tree} で git submodule update --init を通してから tw land {branch} --fold を打ち直す",
+            )
     else:
         now = stamps.content_key(verify_command, cwd=tree)
         if stamps.read_verify_stamp(cwd=tree) == now:
