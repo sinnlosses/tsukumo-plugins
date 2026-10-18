@@ -634,10 +634,10 @@ def test_done_single_worktree() -> None:
         check("結果節が入る", "## 結果" in text and "bun run check: 5 pass" in text, text)
 
         r = run_task(wt1, "done", "T-100", "--dropped", "--result-file", result_path)
-        check("--droppedもDONEで返る", r.returncode == 0, r.stdout + r.stderr)
+        check("done 済みへの --dropped は ALREADY_DONE で終了コード4", r.returncode == 4 and r.stdout.startswith("ALREADY_DONE\tT-100\tdone"), r.stdout + r.stderr)
         labels = issue_json(wt1, "T-100").get("labels") or []
-        check("--dropped で送ったら dropped で閉じる印に替わる",
-              beads.SHIP_LABELS["dropped"] in labels and beads.SHIP_LABELS["done"] not in labels, repr(labels))
+        check("印は done のまま替わらない",
+              beads.SHIP_LABELS["done"] in labels and beads.SHIP_LABELS["dropped"] not in labels, repr(labels))
 
 
 def test_done_required_lines() -> None:
