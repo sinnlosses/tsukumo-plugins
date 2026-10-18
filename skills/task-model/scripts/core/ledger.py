@@ -79,10 +79,12 @@ def record_event(
 
 DENIALS_DIR_NAME = "hook-denials"
 DENIAL_RECORD_ENV = "TSUKUMO_HOOK_DENIAL_RECORD"
+# 拒まれた委譲先の `agent_id`（トランスクリプト `agent-<agent_id>.jsonl` の名前と同じ）。委譲先の行にだけ置く。
+DENIAL_AGENT_KEY = "agent"
 
 
-def record_denial(cwd: str | None, hook: str, rule: str, actor: str) -> None:
-    """関門の拒否を1行足す（`at`・`hook`・`rule`・`actor`）。コマンド・パス・会話は入れない。
+def record_denial(cwd: str | None, hook: str, rule: str, actor: str, agent: str | None = None) -> None:
+    """関門の拒否を1行足す（`at`・`hook`・`rule`・`actor`、`agent` を渡せば `agent`）。コマンド・パス・会話は入れない。
 
     失敗しても例外を外へ出さず、何も出さない（関門の出力と終了コードを変えない）。
     """
@@ -92,7 +94,10 @@ def record_denial(cwd: str | None, hook: str, rule: str, actor: str) -> None:
         at = now_iso()
         d = os.path.join(gitinfo.git_common_dir(cwd), DENIALS_DIR_NAME)
         os.makedirs(d, exist_ok=True)
-        line = json.dumps({"at": at, "hook": hook, "rule": rule, "actor": actor}, ensure_ascii=False) + "\n"
+        row = {"at": at, "hook": hook, "rule": rule, "actor": actor}
+        if agent:
+            row[DENIAL_AGENT_KEY] = agent
+        line = json.dumps(row, ensure_ascii=False) + "\n"
         with open(os.path.join(d, f"{at[:7]}.jsonl"), "a", encoding="utf-8") as f:
             f.write(line)
     except (OSError, gitinfo.GitCommandError):

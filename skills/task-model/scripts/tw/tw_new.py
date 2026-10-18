@@ -7,7 +7,7 @@ import json
 import re
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import beads
 import layout
@@ -67,7 +67,7 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
     if args.candidate is not None:
         signal, place = args.candidate[0].strip(), beads.candidate_place(args.candidate[1])
         candidate = (taskfile.draft_viewpoint(body) or "", signal, place)
-        recurred = _recurred_candidate(toplevel, candidate)
+        recurred = beads.recurred_candidate(beads.list_issues(toplevel), candidate, datetime.now(timezone.utc))
         if recurred is not None:
             _promote(toplevel, trk, recurred, actor, parts.description, candidate)
             return
@@ -147,17 +147,6 @@ def _candidate_refusal(draft: bool, body: str, candidate: list[str]) -> str | No
     if not signal or not place or any(c in s for s in (signal, place) for c in "\t\n"):
         return "--candidate の SIGNAL の種類と場所は、タブ・改行を含まない空でない値"
     return None
-
-
-def _recurred_candidate(toplevel: str, key: tuple[str, str, str]) -> beads.Issue | None:
-    """同じ `(観点, SIGNAL の種類, 場所)` で `CANDIDATE_WINDOW_DAYS` 日以内に積んだ候補のうち最も古いもの。"""
-    since = datetime.now(timezone.utc) - timedelta(days=beads.CANDIDATE_WINDOW_DAYS)
-    found = []
-    for issue in beads.list_issues(toplevel):
-        created = beads.parse_time(issue.raw.get("created_at"))
-        if beads.is_candidate(issue) and beads.candidate_key(issue) == key and created is not None and created >= since:
-            found.append((created, issue))
-    return min(found, key=lambda x: x[0])[1] if found else None
 
 
 def _promote(

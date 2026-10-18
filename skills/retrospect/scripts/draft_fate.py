@@ -86,29 +86,18 @@ def tally(issues: list[beads.Issue], now: datetime) -> list[Row]:
     ]
 
 
-def _candidates(
-    issues: list[beads.Issue], now: datetime, keep: Callable[[tuple[str, str, str], bool], bool]
-) -> list[CandidateRow]:
-    """候補のうち `keep(兆候, 期間の中か)` が真のものを、積んだ順に。"""
-    since = now - timedelta(days=beads.CANDIDATE_WINDOW_DAYS)
-    found = []
-    for issue in issues:
-        key = beads.candidate_key(issue) if beads.is_candidate(issue) else None
-        created = beads.parse_time(issue.raw.get("created_at"))
-        if key is None or created is None or not keep(key, created >= since):
-            continue
-        found.append((created, beads.to_task_id(issue.bd_id), key))
-    return [(tid, key, (now - created).days) for created, tid, key in sorted(found)]
+def _rows(found: list[beads.Candidate], now: datetime) -> list[CandidateRow]:
+    return [(beads.to_task_id(c.issue.bd_id), c.key, (now - c.created).days) for c in found]
 
 
 def recurring_candidates(issues: list[beads.Issue], signals: set[str], now: datetime) -> list[CandidateRow]:
     """期間の中の候補のうち、SIGNAL の種類が `signals` にあるもの（`tw new --candidate` で上がりうる）。"""
-    return _candidates(issues, now, lambda key, inside: inside and key[1] in signals)
+    return _rows([c for c in beads.candidates(issues, now) if c.recent and c.key[1] in signals], now)
 
 
 def expired_candidates(issues: list[beads.Issue], now: datetime) -> list[CandidateRow]:
     """期間より前に積んで、再発せずに候補のまま残ったもの（週ごとの振り返りが閉じる）。"""
-    return _candidates(issues, now, lambda _key, inside: not inside)
+    return _rows([c for c in beads.candidates(issues, now) if not c.recent], now)
 
 
 def _read_issues(root: str) -> list[beads.Issue] | None:

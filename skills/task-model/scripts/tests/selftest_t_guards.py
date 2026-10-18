@@ -1814,8 +1814,9 @@ def test_guard_denial_record() -> None:
         r = run_task(tmp, "commit-guard", "--agent-scoped",
                      stdin=json.dumps({"tool_name": "Bash", "tool_input": {"command": "git commit -m x"}, "cwd": wt1,
                                        "agent_id": "a-1", "session_id": "s-1"}))
-        check("サブエージェントは actor が subagent", r.returncode == 0 and r.stdout != "" and last().get("actor") == "subagent",
-              r.stdout + r.stderr)
+        check("サブエージェントは actor が subagent で、agent に agent_id を残す",
+              r.returncode == 0 and r.stdout != "" and last().get("actor") == "subagent" and last().get("agent") == "a-1",
+              r.stdout + r.stderr + str(last()))
         n += 1
 
         run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-", stdin="### 1. 書く\n")
@@ -1840,7 +1841,8 @@ def test_guard_denial_record() -> None:
         recorded("ask-guard", "tw-ask-guard", "LOOPABLE_ASK", "main", n)
         n += 1
         run_ask_guard(tmp, wt1, extra={"agent_id": "a-1"})
-        check("ask-guard のサブエージェントは subagent", last().get("actor") == "subagent")
+        check("ask-guard のサブエージェントは subagent で agent を残す",
+              last().get("actor") == "subagent" and last().get("agent") == "a-1", str(last()))
         n += 1
 
         before = (run_guard(tmp, wt1, "git commit -m x"), run_ask_guard(tmp, wt1), run_handback_guard(tmp, wt1, *handback, body="段 1/1\n"))

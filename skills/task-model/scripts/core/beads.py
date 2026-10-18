@@ -38,7 +38,7 @@ import re
 import subprocess
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import gitcmd
 import layout
@@ -475,6 +475,33 @@ def candidate_key(issue: Issue) -> tuple[str, str, str] | None:
     if not viewpoint or not signal or not place:
         return None
     return viewpoint, signal, place
+
+
+@dataclass(frozen=True)
+class Candidate:
+    """候補1件。`recent` は積んでから `CANDIDATE_WINDOW_DAYS` 日以内か（同じ兆候の2件目で上がりうる期間）。"""
+
+    issue: Issue
+    key: tuple[str, str, str]
+    created: datetime
+    recent: bool
+
+
+def candidates(issues: list[Issue], now: datetime) -> list[Candidate]:
+    """候補（兆候と積んだ時刻が読めるもの）を積んだ順に。"""
+    since = now - timedelta(days=CANDIDATE_WINDOW_DAYS)
+    found = []
+    for issue in issues:
+        key = candidate_key(issue) if is_candidate(issue) else None
+        created = parse_time(issue.raw.get("created_at"))
+        if key is not None and created is not None:
+            found.append(Candidate(issue, key, created, created >= since))
+    return sorted(found, key=lambda c: c.created)
+
+
+def recurred_candidate(issues: list[Issue], key: tuple[str, str, str], now: datetime) -> Issue | None:
+    """`key` と同じ兆候で期間の中の候補のうち、最も古いもの。"""
+    return next((c.issue for c in candidates(issues, now) if c.recent and c.key == key), None)
 
 
 def label_values(labels: tuple[str, ...], prefix: str) -> list[str]:

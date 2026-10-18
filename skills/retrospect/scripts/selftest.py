@@ -380,7 +380,7 @@ def test_gate() -> None:
 
 
 def test_hook_denials() -> None:
-    print("material.py の手数で、委譲先の時間に hook が拒んだ回数をエラーから引く")
+    print("material.py の手数で、そのトランスクリプトの委譲先（agent_id が一致）を hook が拒んだ回数だけをエラーから引く")
     quiet = ["--friction", "none", "--human", "0"]
     with tempfile.TemporaryDirectory() as d:
         root = os.path.join(d, "repo")
@@ -388,36 +388,52 @@ def test_hook_denials() -> None:
         git(root, "init", "-q", "-b", "main")
         env = {**os.environ, "CLAUDE_CONFIG_DIR": os.path.join(d, "cfg")}
 
-        def material(*args: str) -> subprocess.CompletedProcess:
-            return subprocess.run([sys.executable, os.path.join(HERE, "material.py"), root, "GH-5", *args],
+        def material(task_id: str, *args: str) -> subprocess.CompletedProcess:
+            return subprocess.run([sys.executable, os.path.join(HERE, "material.py"), root, task_id, *args],
                                   capture_output=True, text=True, env=env)
 
-        rows = [{"type": "user", "timestamp": "2026-10-01T00:00:00Z", "message": {"content": "GH-5 の作り物"}}]
-        for i in range(1, 4):
-            at = f"2026-10-01T00:00:{i:02d}Z"
-            rows += [
-                {"type": "assistant", "timestamp": at, "message": {"content": [{"type": "tool_use", "id": f"e{i}", "name": "Bash", "input": {}}]}},
-                {"type": "user", "timestamp": at, "message": {"content": [{"type": "tool_result", "tool_use_id": f"e{i}", "is_error": True}]}},
-            ]
         slug = "".join(c if c.isalnum() else "-" for c in os.path.abspath(root))
-        write(os.path.join(d, "cfg", "projects", slug, "s1", "subagents", "a.jsonl"),
-              "".join(json.dumps(x, ensure_ascii=False) + "\n" for x in rows))
 
-        r = material("--gate", *quiet)
+        def transcript_with_errors(task_id: str, session: str, name: str) -> None:
+            rows = [{"type": "user", "timestamp": "2026-10-01T00:00:00Z", "message": {"content": f"{task_id} の作り物"}}]
+            for i in range(1, 4):
+                at = f"2026-10-01T00:00:{i:02d}Z"
+                rows += [
+                    {"type": "assistant", "timestamp": at, "message": {"content": [{"type": "tool_use", "id": f"e{i}", "name": "Bash", "input": {}}]}},
+                    {"type": "user", "timestamp": at, "message": {"content": [{"type": "tool_result", "tool_use_id": f"e{i}", "is_error": True}]}},
+                ]
+            write(os.path.join(d, "cfg", "projects", slug, session, "subagents", name),
+                  "".join(json.dumps(x, ensure_ascii=False) + "\n" for x in rows))
+
+        transcript_with_errors("GH-5", "s1", "agent-a1.jsonl")
+        transcript_with_errors("GH-6", "s2", "b1.jsonl")
+
+        r = material("GH-5", "--gate", *quiet)
         check("拒否の記録が無ければエラー3件で SIGNAL", "SIGNAL\tツールのエラー\t3件" in r.stdout.splitlines(), r.stdout + r.stderr)
 
-        def denial(at: str, actor: str) -> str:
-            return json.dumps({"at": at, "hook": "tw-commit-guard", "rule": "SHELL_WRITE", "actor": actor}) + "\n"
+        def denial(actor: str, agent: str | None = None) -> str:
+            row = {"at": "2026-10-01T00:00:02+00:00", "hook": "tw-commit-guard", "rule": "SHELL_WRITE", "actor": actor}
+            return json.dumps({**row, "agent": agent} if agent else row) + "\n"
 
-        write(os.path.join(root, ".git", "hook-denials", "2026-10.jsonl"),
-              denial("2026-10-01T00:00:02+00:00", "subagent")
-              + denial("2026-10-01T00:00:02+00:00", "main")
-              + denial("2026-10-01T00:05:00+00:00", "subagent")
+        denials = os.path.join(root, ".git", "hook-denials", "2026-10.jsonl")
+        write(denials,
+              denial("subagent", "a2")  # 同じ時間に拒まれた別の委譲先
+              + denial("subagent")  # agent の無い古い記録
+              + denial("main")
+              + denial("subagent", "b1")  # 名前が agent-<id>.jsonl でないトランスクリプトの委譲先
               + "壊れた行\n")
-        r = material("--gate", *quiet)
-        check("時間の中の委譲先の拒否1件を引くと2件で QUIET（main・時間の外・壊れた行は引かない）",
-              r.stdout == "QUIET\n", r.stdout + r.stderr)
-        r = material("--signals")
+        r = material("GH-5", "--gate", *quiet)
+        check("同じ時間の別の委譲先・agent の無い古い記録・main・壊れた行は引かず、エラー3件の SIGNAL が残る",
+              "SIGNAL\tツールのエラー\t3件" in r.stdout.splitlines(), r.stdout + r.stderr)
+        r = material("GH-6", "--gate", *quiet)
+        check("名前が agent-<id>.jsonl でないトランスクリプトは引かない",
+              "SIGNAL\tツールのエラー\t3件" in r.stdout.splitlines(), r.stdout + r.stderr)
+
+        with open(denials, "a", encoding="utf-8") as f:
+            f.write(denial("subagent", "a1"))
+        r = material("GH-5", "--gate", *quiet)
+        check("agent_id が一致する拒否1件を引くと2件で QUIET", r.stdout == "QUIET\n", r.stdout + r.stderr)
+        r = material("GH-5", "--signals")
         check("手数の行に引いた後のエラーと除いた拒否の数",
               "ツール呼び出し\t3件\tエラー\t2件\thook の拒否（エラーから除いた）\t1件" in r.stdout.splitlines(), r.stdout + r.stderr)
 

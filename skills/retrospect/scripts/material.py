@@ -35,9 +35,9 @@
 - **コミット**: 件名とファイルごとの増減（`--diff` を付けたときだけ中身も）。`tw ship` が課題の
   metadata `task_shipped` に書いた送った範囲があればそのコミット、無ければ件名にタスクIDを含むコミット
 - **手数**: サブエージェントのトランスクリプトから取った**数だけ**（どのタスクのものかは台帳の `agent` の出来事で決め、無い記録だけ先頭のタスクIDで探す）。
-  エラーの数からは、そのトランスクリプトの最初と最後の時刻のあいだに hook が委譲先を拒んだ回数
-  （共有の git dir の `hook-denials/` の `actor` が `subagent` の行）を引く。拒否は正しく効いた関門で、摩擦に数えない。
-  記録に作業ツリー・タスクの欄が無いので、同じ時間に別の委譲先が拒まれた回も引く
+  エラーの数からは、hook がそのトランスクリプトの委譲先を拒んだ回数（共有の git dir の `hook-denials/` の行のうち、
+  `agent` がトランスクリプトの名前 `agent-<agent_id>.jsonl` の `agent_id` と一致するもの）を引く。拒否は正しく効いた関門で、
+  摩擦に数えない。`agent` の無い古い記録・`main` の行・名前がこの形でないトランスクリプトは引かない
 - **段の所要時間**: `flow/` から取った、そのタスクの段ごとの秒と割合・終わりの無い段・段のあいだの空き（`metrics.py`）
 - **ドラフトの行方**: 観点ごとに積んだドラフトの採用・却下・未決の数と絞り中（`draft_fate.py`）
 
@@ -55,6 +55,7 @@ import json
 import os
 import re
 import sys
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -313,26 +314,39 @@ def print_commits(root: str, task_id: str, want_diff: bool, diff_bytes: int) -> 
 
 
 def read_all_signals(root: str, task_id: str) -> list[tuple[str, dict | None]]:
-    """トランスクリプトごとの数。`errors` は、委譲先の時間の中で hook が拒んだ回数（`denied`）を引いた値。"""
+    """トランスクリプトごとの数。`errors` は、そのトランスクリプトの委譲先を hook が拒んだ回数（`denied`）を引いた値。"""
     denials = read_denials(root)
     read = []
     for p in transcript.find_transcripts(root, task_id):
         stats = transcript.read_signals(p, root)
         if stats is not None:
-            denied = denials_between(denials, stats.get("started"), stats.get("ended"))
+            agent = transcript_agent(p)
+            denied = denials[agent] if agent is not None else 0
             stats = {**stats, "errors": max(0, stats["errors"] - denied), "denied": denied}
         read.append((p, stats))
     return read
 
 
-def read_denials(root: str) -> list[datetime]:
-    """共有の git dir の hook の拒否の記録のうち、委譲先（`actor` が `subagent`）の時刻。読めなければ空。"""
+def transcript_agent(path: str) -> str | None:
+    """トランスクリプト `agent-<agent_id>.jsonl` の `agent_id`。名前がこの形でなければ `None`。"""
+    name = os.path.basename(path)
+    if not (name.startswith("agent-") and name.endswith(".jsonl")):
+        return None
+    return name[len("agent-") : -len(".jsonl")] or None
+
+
+def read_denials(root: str) -> Counter[str]:
+    """共有の git dir の hook の拒否の記録を、拒まれた委譲先の `agent_id` ごとに数える。
+
+    数えるのは `actor` が `subagent` で `agent` のある行だけ（`agent` の無い古い記録と `main` の行は、どのトランスクリプトのものか決まらない）。
+    読めなければ空。
+    """
+    found: Counter[str] = Counter()
     try:
         d = os.path.join(gitinfo.git_common_dir(root), ledger.DENIALS_DIR_NAME)
         names = sorted(n for n in os.listdir(d) if n.endswith(".jsonl"))
     except (gitinfo.GitCommandError, OSError):
-        return []
-    found = []
+        return found
     for name in names:
         try:
             with open(os.path.join(d, name), encoding="utf-8", errors="replace") as f:
@@ -344,18 +358,12 @@ def read_denials(root: str) -> list[datetime]:
                 row = json.loads(line)
             except ValueError:
                 continue
-            at = beads.parse_time(row.get("at")) if isinstance(row, dict) and row.get("actor") == "subagent" else None
-            if at is not None:
-                found.append(at)
+            if not isinstance(row, dict) or row.get("actor") != "subagent":
+                continue
+            agent = row.get(ledger.DENIAL_AGENT_KEY)
+            if isinstance(agent, str) and agent:
+                found[agent] += 1
     return found
-
-
-def denials_between(denials: list[datetime], started: str | None, ended: str | None) -> int:
-    """`started`〜`ended`（トランスクリプトの最初と最後の時刻）に入る拒否の数。時刻が読めなければ0。"""
-    lower, upper = beads.parse_time(started), beads.parse_time(ended)
-    if lower is None or upper is None:
-        return 0
-    return sum(1 for at in denials if lower <= at <= upper)
 
 
 def print_signals(root: str, task_id: str, read: list[tuple[str, dict | None]] | None = None) -> None:
