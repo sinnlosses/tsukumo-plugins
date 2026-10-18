@@ -169,6 +169,31 @@ def test_brief_implementer_visual() -> None:
         check("語が無くても --visual なら付く", r.returncode == 0 and _head(r).endswith(",目視"), r.stdout + r.stderr)
 
 
+def test_brief_implementer_every_combination() -> None:
+    say("task.py brief implementer: 書き直し・目視・別のリポジトリ・並列の段の16組すべてで、置換語が埋まる")
+    parallel_plan = task_body([
+        ("書く", "- 触るファイル: `src/a.py`"),
+        ("文書", "- 前の段: なし\n- 触るファイル: `docs/`"),
+        ("合わせる", "x"),
+    ]).split("## やること\n", 1)[1].split("\n## ", 1)[0]
+    for other_repo in (False, True):
+        with tempfile.TemporaryDirectory() as tmp:
+            main_path, wt1, _ = make_repo(tmp, branch="切らない")
+            _claim_with_plan(wt1, main_path, None)
+            tail = f"\n### 作業先\n- `{_work_repo(os.path.join(tmp, 'brief-work-repo'))}`\n" if other_repo else ""
+            for parallel in (False, True):
+                plan = parallel_plan if parallel else "### 1. 書く\nx\n"
+                run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-", stdin=plan + tail)
+                for rewrite in (False, True):
+                    for visual in (False, True):
+                        args = ["--rewrite"] * rewrite + ["--visual"] * visual + (["--step", "2"] if parallel and not rewrite else [])
+                        r = _brief(wt1, *args)
+                        combo = f"書き直し={rewrite} 目視={visual} 別のリポジトリ={other_repo} 並列={parallel}"
+                        check(f"{combo}: 終了コード0で INVALID も {{{{ も残らない",
+                              r.returncode == 0 and "INVALID" not in r.stdout and "{{" not in r.stdout,
+                              r.stdout + r.stderr)
+
+
 def _acceptor(wt: str, *extra: str, stdin: str | None = None) -> subprocess.CompletedProcess:
     return run_task(wt, "brief", "acceptor", "T-100", *extra, stdin=stdin)
 
@@ -304,6 +329,7 @@ TESTS = (
     test_brief_implementer_other_repo,
     test_brief_implementer_parallel,
     test_brief_implementer_visual,
+    test_brief_implementer_every_combination,
     test_brief_acceptor_review,
     test_brief_acceptor_other_repo,
     test_brief_acceptor_visual,
