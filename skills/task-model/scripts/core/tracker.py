@@ -320,7 +320,13 @@ class Session:
             ):
                 lines.append(f"TRACKER\tCONFLICT\t{beads.to_task_id(local.bd_id)}")
         pull_actor = f"{self._actor}{PULL_ACTOR_SUFFIX}"
-        pulled_at = _now()
+        seen: dict[int, set[str] | None] = {}
+        for n, was in old.items():
+            try:
+                seen[n] = beads.event_ids(self.toplevel, was.bd_id)
+            except beads.BeadsError as e:
+                lines.append(f"TRACKER\tFAILED\tgithub\t{beads.to_task_id(was.bd_id)} の着手の印を戻せない: {e}")
+                seen[n] = None
         self._bd_ok(["--actor", pull_actor, "github", "pull", *(str(n) for n in sorted(remote))], "bd github pull")
         new = self._by_numbers(sorted(remote))
         twins = [
@@ -336,8 +342,9 @@ class Session:
             issue, was = new.get(n), old.get(n)
             if issue is None:
                 continue
+            known = seen.get(n, set())
             try:
-                overwritten = beads.overwritten_by(self.toplevel, issue.bd_id, pull_actor, pulled_at)
+                overwritten = None if known is None else beads.overwritten_by(self.toplevel, issue.bd_id, pull_actor, known)
             except beads.BeadsError as e:
                 lines.append(f"TRACKER\tFAILED\tgithub\t{beads.to_task_id(issue.bd_id)} の着手の印を戻せない: {e}")
                 overwritten = None

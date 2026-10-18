@@ -324,21 +324,35 @@ def history(toplevel: str, bd_id: str) -> list[dict]:
     return list(reversed(snaps))
 
 
-def overwritten_by(toplevel: str, bd_id: str, actor: str, since: datetime) -> Issue | None:
-    """`actor` が `since` 以後（秒の単位）に書いた最後の更新の、書く直前の版。無ければ（作った課題も）`None`。
+def _events(toplevel: str, bd_id: str) -> list[dict]:
+    data = run_json(toplevel, ["history", bd_id, "--events"])
+    return [e for e in data if isinstance(e, dict)] if isinstance(data, list) else []
 
+
+def event_ids(toplevel: str, bd_id: str) -> set[str]:
+    """課題の監査の出来事の id。`overwritten_by` に渡して、それより後の書き込みだけを見させる。"""
+    ids = set()
+    for event in _events(toplevel, bd_id):
+        if not event.get("id"):
+            raise BeadsError(f"bd history {bd_id} --events の出来事に id が無い")
+        ids.add(str(event["id"]))
+    return ids
+
+
+def overwritten_by(toplevel: str, bd_id: str, actor: str, seen: set[str]) -> Issue | None:
+    """`actor` が書いた最後の更新のうち `seen` に無いものの、書く直前の版。無ければ（作った課題も）`None`。
+
+    時刻では見分けない（出来事の時刻は秒の単位なので、同じ actor の前の取り込みが同じ秒にあると取り違える）。
     `bd history` の版には metadata が載らないので、監査の出来事（`--events`。新しい順で、`old_value` に
     書く前の課題が metadata ごと入る）から読む。出来事の種類は書いた中身で変わる（status も変えれば
-    `status_changed`）ので見ない。時刻か `old_value` が読めなければ `BeadsError`。
+    `status_changed`）ので見ない。id か `old_value` が読めなければ `BeadsError`。
     """
-    data = run_json(toplevel, ["history", bd_id, "--events"])
-    for event in data if isinstance(data, list) else []:
-        if not isinstance(event, dict) or event.get("actor") != actor:
+    for event in _events(toplevel, bd_id):
+        if event.get("actor") != actor:
             continue
-        at = parse_time(event.get("created_at"))
-        if at is None:
-            raise BeadsError(f"bd history {bd_id} --events の時刻が読めない: {event.get('created_at')!r}")
-        if at < since or not event.get("old_value"):
+        if not event.get("id"):
+            raise BeadsError(f"bd history {bd_id} --events の出来事に id が無い")
+        if str(event["id"]) in seen or not event.get("old_value"):
             return None
         try:
             before = json.loads(str(event["old_value"]))
