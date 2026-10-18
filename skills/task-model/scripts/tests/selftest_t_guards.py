@@ -998,7 +998,7 @@ def test_step_main_touched() -> None:
         main_path, wt1, _ = make_repo(os.path.join(tmp, "own"), verify="`true`")
         commit_task(main_path, taskfile.Task("T-100", "段ごと", "todo", "sonnet", "Y", (), BODY))
         run_task(wt1, "claim", "T-100")
-        plan = "### 1. 書く\n\n### 2. 試す\n\n### 3. 直す\n\n### 名指すファイル\n- `shared.txt`\n"
+        plan = f"### 1. 書く\n\n### 2. 試す\n\n### 3. 直す\n\n{taskfile.PLAN_FILES_HEADING}\n- `shared.txt`\n"
         run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-", stdin=plan)
 
         def step(n: int) -> tuple[subprocess.CompletedProcess, list[str]]:
@@ -1040,7 +1040,10 @@ def test_step_main_touched() -> None:
         work_repo, _, _ = make_repo(os.path.join(tmp, "work"), verify="`true`")
         commit_task(main_path, taskfile.Task("T-100", "作業先で直す", "todo", "sonnet", "Y", (), BODY))
         run_task(wt1, "claim", "T-100")
-        plan = f"### 1. 書く\n\n### 2. 試す\n\n### 名指すファイル\n- `shared.txt`\n\n### 作業先\n- `{work_repo}`\n"
+        plan = (
+            f"### 1. 書く\n\n### 2. 試す\n\n{taskfile.PLAN_FILES_HEADING}\n- `shared.txt`\n\n"
+            f"{taskfile.PLAN_WORK_REPO_HEADING}\n- `{work_repo}`\n"
+        )
         run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-", stdin=plan)
         work_tree = os.path.join(tmp, "work-t-100")
         git(work_repo, "worktree", "add", "-q", "-b", "t-100", work_tree, "main")
