@@ -234,13 +234,16 @@ def test_metrics_fix_within_7d() -> None:
             row("T-210", 1, "new", fixes="T-200"),
             row("T-211", 8, "new", fixes="T-201"),
             row("T-212", 2, "new", fixes="T-200,T-202"),
+            row("T-213", 3, "new", fixes="T-200"),
+            row("T-214", -1, "new", fixes="T-201"),
         ]
         write(os.path.join(d, "2000-01.jsonl"), "\n".join(lines) + "\n")
         r = run_task(wt1, "metrics", "--days", "30")
         got = {l.split("\t")[0]: l.split("\t")[1:] for l in r.stdout.splitlines()}
         check(
-            "7日以内の直し2本（T-210・T-212）だけを数え、8日後の T-211 は数えない。分母は SHIPPED の3件",
-            got.get("fix_within_7d") == ["67% (2/3)", "-"],
+            "直しのタスクの数を数える: T-200 に付く T-210・T-213 は2本、2本の元を指す T-212 は1本、"
+            "送り出し前の T-214 と8日後の T-211 は数えない。分子3、分母は SHIPPED の3件（元の数え方なら 2/3）",
+            got.get("fix_within_7d") == ["100% (3/3)", "-"],
             r.stdout + r.stderr,
         )
 

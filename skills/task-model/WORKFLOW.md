@@ -410,7 +410,7 @@ frame が実装と合わず人が決め直すまで進められないタスク�
 置き場は Beads の label `kind:<種類>` で、1つのタスクに0か1つ（`tw edit --kind -` で外す）。
 `kind:` の label が語彙の外か2つ以上なら、そのタスクは `INVALID` になる。
 
-送った後の直しは `tw new --fixes <元のID>` で元の送り出しに結ぶ（metadata `fixes`。複数可、本文からの自動検出はしない）。`tw metrics` の `fix_within_7d` が、送り出しから7日以内に結ばれた直しの割合を出す。
+送った後の直しは `tw new --fixes <元のID>` で元の送り出しに結ぶ（metadata `fixes`。複数可、本文からの自動検出はしない）。`tw metrics` の `fix_within_7d` が、期間内の送った件数に対する、送り出しから7日以内に結ばれた直しのタスクの数を出す（100% を超えうる）。
 
 **`tw find [<語>…] [--kind <種類>]` の当て方**: `READY` の行だけを `tw status` の並びで見る。
 
