@@ -851,13 +851,16 @@ _BACKTICKED_PATH = re.compile(r"`([^`\s()]+)`")
 def report_named_paths(body: str) -> tuple[str, ...]:
     """`## やること`・`## 完了条件` のバッククォートで囲んだパスのうち、basename が `report` で始まるもの。
 
+    パスは basename に `.` を含む（拡張子つきのファイル名）トークンだけで、末尾が `/` のディレクトリ・裸の語・識別子・テスト ID
+    （`report`・`reportBody`・`report-chart`）は数えない。`/` だけを条件にすると `report.ts` が外れる。
     委譲先（サブエージェント）はそういう名のファイルを Write できない。順に重複なく返す（`### 名指すファイル` の行も含む）。
     """
     sections = dict(_frame_sections(body)[1])
     found: dict[str, None] = {}
     for heading in (PLAN_HEADING, ACCEPTANCE_HEADING):
         for path in _BACKTICKED_PATH.findall(sections.get(heading, "")):
-            if path.rstrip("/").rsplit("/", 1)[-1].startswith("report"):
+            name = path.rsplit("/", 1)[-1]
+            if name.startswith("report") and "." in name:
                 found[path] = None
     return tuple(found)
 

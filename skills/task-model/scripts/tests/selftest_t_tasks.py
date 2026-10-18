@@ -173,6 +173,12 @@ def test_taskfile_body() -> None:
         ("ディレクトリ名だけが report", "docs/report/notes.md", False),
         ("末尾が report の名", "my-report.md", False),
         ("reports で終わる名", "comprehension-for-reports.md", False),
+        ("./ 付き", "./report.ts", True),
+        ("行番号付き", "docs/report-x.md:12", True),
+        ("裸の語（MCP ツール名）", "report", False),
+        ("識別子", "reportBody", False),
+        ("テスト ID", "report-chart", False),
+        ("ディレクトリ（末尾が /）", "docs/report/", False),
     ):
         got = taskfile.report_named_paths(task_body([("書く", f"`{path}` を書く")], acceptance="x"))
         check(f"report で始まる名の判定: {label}", (got == (path,)) == hit and (hit or got == ()), repr(got))
