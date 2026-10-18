@@ -94,6 +94,21 @@ def test_brief_implementer_rewrite() -> None:
               and "変わったファイル: shared.txt" in r.stdout, r.stdout + r.stderr)
 
 
+def test_brief_implementer_report_name() -> None:
+    say("task.py brief implementer: 計画に report で始まる名のパスがあれば標準エラーに WARN_REPORT_NAME を出し、標準出力は変えない")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _ = make_repo(tmp, branch="切らない")
+        _claim_with_plan(wt1, main_path, "### 1. 書く\n`docs/report-x.md` を置く\n")
+        r = _brief(wt1)
+        check("出す: 行は1つで、BRIEF の行と依頼文は変わらない",
+              r.returncode == 0 and r.stderr.count("WARN_REPORT_NAME\tdocs/report-x.md\t") == 1
+              and _head(r) == "BRIEF\tT-100\timplementer\t常に,計画どおり" and "{{" not in r.stdout, r.stdout + r.stderr)
+        run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-", stdin="### 1. 書く\n`docs/notes.md` を置く\n")
+        r = _brief(wt1)
+        check("出さない: report で始まらない名だけ", r.returncode == 0 and "WARN_REPORT_NAME" not in r.stderr,
+              r.stdout + r.stderr)
+
+
 def test_brief_implementer_other_repo() -> None:
     say("task.py brief implementer: 作業先が別のリポジトリなら、枝と作業ツリーの道を埋める")
     with tempfile.TemporaryDirectory() as tmp:
@@ -326,6 +341,7 @@ def test_brief_refusals() -> None:
 TESTS = (
     test_brief_implementer_planned,
     test_brief_implementer_rewrite,
+    test_brief_implementer_report_name,
     test_brief_implementer_other_repo,
     test_brief_implementer_parallel,
     test_brief_implementer_visual,

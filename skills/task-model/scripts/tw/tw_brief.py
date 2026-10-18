@@ -78,6 +78,7 @@ def cmd_brief_implementer(toplevel: str, task_id: str, step: int | None, rewrite
         values.update(work_repo=work.root, branch=work.branch, worktree=work.worktree, base=work.base)
     if visual:
         chosen.append("目視")
+    tw_plan.warn_report_names(plan_body)
     _print_brief(shown, ROLE_IMPLEMENTER, sections, chosen, values)
 
 

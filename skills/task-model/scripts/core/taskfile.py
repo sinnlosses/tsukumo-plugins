@@ -845,6 +845,23 @@ def plan_changed(old_body: str, new_body: str) -> bool:
     return section_changed(old_body, new_body, PLAN_HEADING)
 
 
+_BACKTICKED_PATH = re.compile(r"`([^`\s()]+)`")
+
+
+def report_named_paths(body: str) -> tuple[str, ...]:
+    """`## やること`・`## 完了条件` のバッククォートで囲んだパスのうち、basename が `report` で始まるもの。
+
+    委譲先（サブエージェント）はそういう名のファイルを Write できない。順に重複なく返す（`### 名指すファイル` の行も含む）。
+    """
+    sections = dict(_frame_sections(body)[1])
+    found: dict[str, None] = {}
+    for heading in (PLAN_HEADING, ACCEPTANCE_HEADING):
+        for path in _BACKTICKED_PATH.findall(sections.get(heading, "")):
+            if path.rstrip("/").rsplit("/", 1)[-1].startswith("report"):
+                found[path] = None
+    return tuple(found)
+
+
 def changed_frame_sections(old_body: str, new_body: str) -> list[str]:
     """`## 目的・背景`・`## 完了条件` のうち、中身が `old_body` と違う節の見出し。
 

@@ -1042,7 +1042,46 @@ def test_plan_coverage() -> None:
         check("欄の無い旧い計画に PLAN_UNCOVERED は出ない", "PLAN_UNCOVERED" not in r.stdout and r.returncode == 0, r.stdout + r.stderr)
 
 
+def test_report_name_warning() -> None:
+    say("task.py new・adopt・edit: 計画のパスに basename が report で始まるものがあれば標準エラーに WARN_REPORT_NAME を出し、書き込みと終了コードは変えない")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
+        # 名指すファイルは主ブランチの木に在るものに限るので、まだ無い名前は完了条件のバッククォートで渡す。
+        named = task_body([("書く", "x")], ["shared.txt"], acceptance="`docs/report-x.md` と `report.ts` を置く")
+        plain = task_body([("書く", "x")], ["shared.txt"], acceptance="`docs/notes.md` を置く")
+        new = ("new", "--summary", "警告", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", "-")
+        r = run_task(main_path, *new, stdin=named)
+        check("new: report で始まる名があれば WARN_REPORT_NAME を1行出し、CREATED で終わる",
+              r.returncode == 0 and r.stdout.startswith("CREATED\t")
+              and r.stderr.count("WARN_REPORT_NAME\tdocs/report-x.md,report.ts\t") == 1, r.stdout + r.stderr)
+        r = run_task(main_path, *new, stdin=plain)
+        check("new: report で始まらない名だけなら出さない", r.returncode == 0 and "WARN_REPORT_NAME" not in r.stderr,
+              r.stdout + r.stderr)
+        subprocess.run(["bd", "create", "--id", "t-warn", "--title", "取り込み", "--silent"], cwd=main_path,
+                       capture_output=True, text=True)
+        adopt = ("adopt", "T-WARN", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", "-")
+        r = run_task(main_path, *adopt, stdin=named)
+        check("adopt: 出す", r.returncode == 0 and r.stdout.startswith("ADOPTED\t") and "WARN_REPORT_NAME\t" in r.stderr,
+              r.stdout + r.stderr)
+
+        commit_task(main_path, taskfile.Task("T-100", "依頼文", "todo", "sonnet", "Y", (), task_body(acceptance="x")))
+        run_task(wt1, "claim", "T-100")
+        r = run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-",
+                     stdin=task_body([("書く", "`src/report.py` を書く")])
+                     .split("## やること\n", 1)[1].split("\n## ", 1)[0])
+        check("edit: ## やること を変えて report で始まる名が入れば出す",
+              r.returncode == 0 and r.stdout.startswith("EDITED\t") and "WARN_REPORT_NAME\tsrc/report.py\t" in r.stderr,
+              r.stdout + r.stderr)
+        r = run_task(wt1, "edit", "T-100", "--section", "完了条件", "--change-frame", "--body-file", "-", stdin="`docs/report-y.md` を置く\n")
+        check("edit: ## 完了条件 を変えたときも出す", r.returncode == 0 and "WARN_REPORT_NAME\t" in r.stderr
+              and "docs/report-y.md" in r.stderr, r.stdout + r.stderr)
+        r = run_task(wt1, "edit", "T-100", "--summary", "題だけ直す")
+        check("edit: 計画も完了条件も変えなければ、本文に report の名が残っていても出さない",
+              r.returncode == 0 and "WARN_REPORT_NAME" not in r.stderr, r.stdout + r.stderr)
+
+
 TESTS = (
+    test_report_name_warning,
     test_plan_coverage,
     test_opus_question_and_viewpoint,
     test_draft_to_todo,

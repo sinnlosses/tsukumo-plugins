@@ -167,6 +167,20 @@ def test_taskfile_body() -> None:
         "本文に結果の見出しがあると拒まれる",
         taskfile.validate_new_body(PLANNED_BODY + "\n## 結果\n結果の内容\n", hold=False, difficulty="sonnet") is not None,
     )
+    for label, path, hit in (
+        ("report- で始まる md", "docs/research/report-schema.md", True),
+        ("report.ts", "report.ts", True),
+        ("ディレクトリ名だけが report", "docs/report/notes.md", False),
+        ("末尾が report の名", "my-report.md", False),
+        ("reports で終わる名", "comprehension-for-reports.md", False),
+    ):
+        got = taskfile.report_named_paths(task_body([("書く", f"`{path}` を書く")], acceptance="x"))
+        check(f"report で始まる名の判定: {label}", (got == (path,)) == hit and (hit or got == ()), repr(got))
+    both = task_body([("書く", "`a/report.ts` と `a/report.ts`")], ["src/a.py"], acceptance="`docs/report-x.md` を置く")
+    check("やること・完了条件の両方から順に重複なく拾う", taskfile.report_named_paths(both) == ("a/report.ts", "docs/report-x.md"),
+          repr(taskfile.report_named_paths(both)))
+    check("バッククォートの外の文・目的・背景のパスは拾わない",
+          taskfile.report_named_paths(task_body([("書く", "report.ts を書く")], purpose="`report.md`")) == ())
 
 
 def test_new_and_status_single_worktree() -> None:

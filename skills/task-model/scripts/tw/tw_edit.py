@@ -128,6 +128,10 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
         if r.returncode != 0:
             raise beads.BeadsError(f"bd {' '.join(edge[:2])} が失敗: {(r.stderr or r.stdout).strip()}")
     print(f"EDITED\t{shown}")
+    if body_files and any(
+        taskfile.section_changed(current, body, heading) for heading in (taskfile.PLAN_HEADING, taskfile.ACCEPTANCE_HEADING)
+    ):
+        tw_plan.warn_report_names(body)
     if state == tw_plan.PLAN_AFTER_WORK:
         print(f"PLAN_AFTER_WORK\t{shown}\t作業の後に書いた")
     _print_direct_off(shown, direct_off)
