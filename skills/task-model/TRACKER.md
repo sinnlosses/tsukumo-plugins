@@ -111,9 +111,9 @@ Project・Status 欄・選択肢の ID は `bd kv` の `task-workflow.project` �
   `deferred`。`acceptance_criteria`・`notes`・comment（`## 結果`・`## 申し送り:`）は Beads だけに置き、GitHub には出さない
 - **錠の持ち主**: 取り込みは assignee を GitHub の担当者で上書きし（作業ツリーの名前は GitHub の
   利用者でないので空になる）、metadata を消し、label `status::in_progress` が GitHub に無ければ
-  `open` に戻す。`tw` は取り込みを actor `<作業ツリーの名前>:github-pull` で打ち、その更新の書く直前の版
-  （`bd history --events` の `old_value`。取り込みの最中に別の作業ツリーが着手しても、その着手が入る。
-  その更新は、取り込みの前に控えた出来事の id に無いもので見分け、同じ actor の前の取り込みと取り違えない）
+  `open` に戻す。`tw` は取り込みを1回ごとに一意の actor `<作業ツリーの名前>:github-pull:<pid>-<time_ns>`
+  で打ち（前の取り込みの更新と取り違えない）、その更新の書く直前の版
+  （`bd history --events` の `old_value`。取り込みの最中に別の作業ツリーが着手しても、その着手が入る）
   から、消えた assignee と metadata の印（`task_*`・`difficulty`・`loopable`。閉じた課題は後の2つだけ）を `bd update` で戻す。`open` に戻った着手は、
   着手の送りが GitHub に届く前の版で上書きされたときだけ `in_progress` に戻し、送ったあとで label が
   外れた・GitHub で担当者が付いたものは手放しとして戻さない。届いたかは課題ごとの送りの印

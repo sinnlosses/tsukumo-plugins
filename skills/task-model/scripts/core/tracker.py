@@ -64,7 +64,8 @@ SHOW_LIMIT = 3
 OP_TIMEOUT_ENV = "TASK_WORKFLOW_TRACKER_TIMEOUT"
 
 SEEN_KEY = "task-workflow.github-seen"  # GitHub の一覧で見た最後の更新時刻
-# `bd github pull` の actor は `<作業ツリーの名前>` にこれを足したもの（取り込みが書いた更新を監査の出来事で見分ける）。
+# `bd github pull` の actor は `<作業ツリーの名前>` にこれと `:<pid>-<time_ns>` を足したもの（その取り込みが書いた
+# 更新だけを監査の出来事で見分ける）。
 PULL_ACTOR_SUFFIX = ":github-pull"
 
 # 取り込む範囲を、前回見た更新時刻よりこれだけさかのぼる（立てた直後の Issue は一覧にすぐ出ない）。
@@ -319,14 +320,7 @@ class Session:
                 and _after(remote[n].get("updated_at"), since + SYNC_SLACK)
             ):
                 lines.append(f"TRACKER\tCONFLICT\t{beads.to_task_id(local.bd_id)}")
-        pull_actor = f"{self._actor}{PULL_ACTOR_SUFFIX}"
-        seen: dict[int, set[str] | None] = {}
-        for n, was in old.items():
-            try:
-                seen[n] = beads.event_ids(self.toplevel, was.bd_id)
-            except beads.BeadsError as e:
-                lines.append(f"TRACKER\tFAILED\tgithub\t{beads.to_task_id(was.bd_id)} の着手の印を戻せない: {e}")
-                seen[n] = None
+        pull_actor = f"{self._actor}{PULL_ACTOR_SUFFIX}:{os.getpid()}-{time.time_ns()}"
         self._bd_ok(["--actor", pull_actor, "github", "pull", *(str(n) for n in sorted(remote))], "bd github pull")
         new = self._by_numbers(sorted(remote))
         twins = [
@@ -342,9 +336,8 @@ class Session:
             issue, was = new.get(n), old.get(n)
             if issue is None:
                 continue
-            known = seen.get(n, set())
             try:
-                overwritten = None if known is None else beads.overwritten_by(self.toplevel, issue.bd_id, pull_actor, known)
+                overwritten = beads.overwritten_by(self.toplevel, issue.bd_id, pull_actor)
             except beads.BeadsError as e:
                 lines.append(f"TRACKER\tFAILED\tgithub\t{beads.to_task_id(issue.bd_id)} の着手の印を戻せない: {e}")
                 overwritten = None
