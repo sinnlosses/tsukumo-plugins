@@ -50,7 +50,7 @@
 | `.tw/config.toml` | 設定（下）。コミットする |
 | `.tw/.gitignore` | 中身 `local/`。`.tw/local/` だけを git の外に置く。`init.py` が書き（無いときと、旧い形のとき）、`tw` は書かない。コミットする |
 | `docs/history/retrospect.md` | 横断の振り返りの記録（1回ごとに先頭へ `## YYYY-MM-DD（開始日〜終了日）` の見出しを足す。書くのは週ごとの振り返り）。`tw status` が見出しの日付から `retrospect_due` を決める |
-| 台帳 `$(git rev-parse --path-format=absolute --git-common-dir)/task-workflow/`（環境変数 `TW_STATE_DIR` があれば `$TW_STATE_DIR/<本体の作業ツリーの名前>-<共有の git dir の realpath の sha1 の先頭12桁>/`） | 着手から送り出しまでの出来事（`flow/<YYYY-MM>.jsonl`。1行1出来事。`tw metrics` が読む。会話・コマンド・パスは入れない。消えない）。コミットしない。全作業ツリーで1つ。`TW_STATE_DIR` を付けると、そのあとの記録はその下に書き、共有の git dir の台帳は読まない（写さない）。書けなければ標準エラーに1行出すだけで、元のサブコマンドの出力と終了コードは変わらない |
+| 台帳 `$(git rev-parse --path-format=absolute --git-common-dir)/task-workflow/`（環境変数 `TW_STATE_DIR` があれば `$TW_STATE_DIR/<本体の作業ツリーの名前>-<共有の git dir の realpath の sha1 の先頭12桁>/`） | 着手から送り出しまでの出来事（`flow/<YYYY-MM>.jsonl`。1行1出来事。`tw new --fixes` も `new` の出来事を足す。`tw metrics` が読む。会話・コマンド・パスは入れない。消えない）。コミットしない。全作業ツリーで1つ。`TW_STATE_DIR` を付けると、そのあとの記録はその下に書き、共有の git dir の台帳は読まない（写さない）。書けなければ標準エラーに1行出すだけで、元のサブコマンドの出力と終了コードは変わらない |
 | 作業ツリーの根の `.tw/local/task-open-claims/T-xxx` | `claim` から `done`・`release`・`ship` までの控え（中身は空）。`tw commit-guard`・`tw handback-guard`・`tw ask-guard`・`tw ref-guard` が読む。コミットしない。作業ツリーごと |
 | 共有の git dir の `hooks/reference-transaction`（`git rev-parse --git-path hooks` の下。`core.hooksPath` があれば置かない） | `tw ref-guard` を呼ぶ薄い殻（2行目が印 `# tw ref-guard`）。`claim` が置き、`done`・`ship` では消さない。控えの無い作業ツリーでは何もしない。印の無い利用者の hook があれば置かない。消してよい（次の `claim` が置き直す）。全作業ツリーで1つ |
 | 作業ツリーの根の `.tw/local/` | `tw verify`・`tw pause`・`tw step` を打った時点の中身の鍵、`ship` の検証の借り、検証のログ、書き換える道具を使ったサブエージェントの印（`task-agent-writers/<agent_id>`。着手の控えが無くなると消える）、`agent` の出来事を台帳へ残した印（`task-agent-tasks/<agent_id>`。同じく消える。出来事は `commit-guard` が、着手の控えがちょうど1件の作業ツリーでのサブエージェントの最初の Bash に1回だけ `flow/` へ足す〔タスク・`agent`＝agent_id・`session`＝session_id〕。入力に `agent_id`・`session_id` が入る根拠は Agent SDK の `BaseHookInput` の型定義で、実機の hook 入力のダンプではない）。コミットしない。作業ツリーごと。初めて書くときに `tw` が作り、中身 `*` の `.tw/local/.gitignore` を置く |
@@ -409,6 +409,8 @@ frame が実装と合わず人が決め直すまで進められないタスク�
 
 置き場は Beads の label `kind:<種類>` で、1つのタスクに0か1つ（`tw edit --kind -` で外す）。
 `kind:` の label が語彙の外か2つ以上なら、そのタスクは `INVALID` になる。
+
+送った後の直しは `tw new --fixes <元のID>` で元の送り出しに結ぶ（metadata `fixes`。複数可、本文からの自動検出はしない）。`tw metrics` の `fix_within_7d` が、送り出しから7日以内に結ばれた直しの割合を出す。
 
 **`tw find [<語>…] [--kind <種類>]` の当て方**: `READY` の行だけを `tw status` の並びで見る。
 
