@@ -155,8 +155,7 @@ def _bd_writes(command: str, start: str) -> list[tuple[str, str]]:
         if simple.where is None:
             continue
         args, _targets = _split_redirects(simple.words)
-        while args and (args[0] in ("env", "command") or _is_assignment(args[0])):
-            args = args[1:]
+        args = _without_prefix(args)
         if not args or os.path.basename(args[0]) != "bd" or "--readonly" in args:
             continue
         rest = args[1:]
@@ -261,8 +260,7 @@ def _tw_calls(command: str, start: str) -> list[str]:
         if simple.where is None:
             continue
         args, _targets = _split_redirects(simple.words)
-        while args and (args[0] in ("env", "command") or _is_assignment(args[0])):
-            args = args[1:]
+        args = _without_prefix(args)
         if args and os.path.basename(args[0]) == "tw":
             found.append(simple.where)
     return found
@@ -277,8 +275,7 @@ def _verify_commands(command: str, start: str) -> list[tuple[str, str]]:
         if where is None or not os.path.isdir(where):
             continue
         args, _targets = _split_redirects(simple.words)
-        while args and (args[0] in ("env", "command") or _is_assignment(args[0])):
-            args = args[1:]
+        args = _without_prefix(args)
         if not args:
             continue
         if where not in configs:
@@ -331,8 +328,7 @@ def _shell_writes(command: str, start: str) -> list[tuple[str, str]]:
             path = _resolve(simple.where, target)
             if path is not None:
                 found.append((path, f"リダイレクト（> {target}）"))
-        while args and (args[0] in ("env", "command") or _is_assignment(args[0])):
-            args = args[1:]
+        args = _without_prefix(args)
         if not args:
             continue
         name = os.path.basename(args[0])
@@ -677,6 +673,13 @@ def _git_subcommand(simple: list[str], where: str | None) -> tuple[str, str, tup
     if i >= len(simple) or where is None:
         return None
     return where, simple[i], tuple(simple[i + 1 :])
+
+
+def _without_prefix(args: list[str]) -> list[str]:
+    """先頭の `env`・`command`・`VAR=値` の前置きを除いた語。"""
+    while args and (args[0] in ("env", "command") or _is_assignment(args[0])):
+        args = args[1:]
+    return args
 
 
 def _is_assignment(word: str) -> bool:
