@@ -260,9 +260,13 @@ front matter（`id`・`summary`・`status`・`difficulty`・`loopable`・近道�
   食い違いが分かったら押し切らず、`## 目的・背景`・`## 決まっていること` を変える理由を報告に書いて止める（`--change-frame` は付けない）。
 - git の submodule を進める（gitlink を新しい版へ更新する）タスクは、計画を書く前に、進める先の版が origin にあるかを確かめ、
   「前提の裏取り」の行にする。手元の主ブランチの内容だけを見ると、origin に無い版を指す計画になる。
-  確かめるのは `git -C <submodule> ls-remote origin` で origin の先端を読むことと、
-  `git -C <submodule> merge-base --is-ancestor <進める先の版> origin/<既定の枝>` が成り立つこと。
-  成り立たない（手元の主ブランチが origin より先行している）ときは、その版を指すと他の作業ツリーの
+  確かめる手は、先に `git -C <submodule> fetch origin` で追跡参照とオブジェクトを新しくし
+  （`ls-remote` は先端を表示するだけで `origin/<既定の枝>` を更新しないので、fetch せずに調べると、
+  別の場所から push 済みの版を「origin に無い」と誤る）、
+  `git -C <submodule> ls-remote origin` で origin の先端を読み、
+  `git -C <submodule> merge-base --is-ancestor <進める先の版> origin/<既定の枝>` が終了コード0で成り立つこと。
+  成り立たないのは、終了コード1（祖先でない: 手元の主ブランチが origin より先行している・origin の別の枝の版）か、
+  128（fetch のあとも手元にオブジェクトが無い: origin に無い）のとき。どちらも、その版を指すと他の作業ツリーの
   `git submodule update --init` が落ちる。push は人の承認を要する操作なので、承認の範囲を本文に書けるなら `loopable` は `Y` のまま、
   書けないなら `## 注意` の `### 人がやること` に分けるか `loopable` を `N` にする（`loopable` の表の「承認の範囲外の外部への反映」）。
 
