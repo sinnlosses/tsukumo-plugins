@@ -2,7 +2,7 @@
 
 各部品の出力の行はそのまま並べ、止まる行（`tw done` の `NOT_OWNER`・`ALREADY_DONE` と `COMMITS_SINCE_CLAIM`、
 `tw ship` の `SHIPPED`・`NOTHING` 以外）が出たら以降を打たない。コミットは対象のファイルを個別に `git add` した1つだけで、
-差分が無ければ打たない。対象は `--add` で渡したファイル。渡さなければ作業ツリーの変更のうち通常のファイルで、`.tw/local` と symlink は除く。
+差分が無ければ打たない。対象は `--add` で渡したファイル。渡さなければ作業ツリーの変更のうち通常のファイルで、`.tw/local`・symlink・サブモジュールは除く。
 件名の `T-xxx:` は tw が付ける。
 """
 
@@ -91,15 +91,43 @@ def _is_local(path: str) -> bool:
     return path == LOCAL_DIR or path.startswith(LOCAL_DIR + "/")
 
 
+def _submodule_paths(toplevel: str) -> set[str]:
+    """索引か `HEAD` がサブモジュール（モード 160000）として持つパス。"""
+    paths: set[str] = set()
+    for args in (["ls-files", "-s", "-z"], ["ls-tree", "-r", "-z", "HEAD"]):
+        out = tw_base.run_git(toplevel, args)
+        for entry in out.stdout.split("\0"):
+            meta, _, path = entry.partition("\t")
+            if meta.startswith("160000 ") and path:
+                paths.add(path)
+    return paths
+
+
+def _skipped_kind(toplevel: str, path: str, submodules: set[str]) -> str | None:
+    """`--add` 省略時に対象から外す種類（`symlink`／`submodule`）。通常のファイルなら `None`。
+
+    サブモジュールは、指す先のずれ・中の変更・削除（索引か `HEAD` に載るパス）と、
+    追加前の入れ子のリポジトリ（`git status` が末尾 `/` のディレクトリで出す）。
+    """
+    if path.rstrip("/") in submodules or path.endswith("/"):
+        return "submodule"
+    if os.path.islink(os.path.join(toplevel, path)):
+        return "symlink"
+    return None
+
+
 def _commit(toplevel: str, message: str, files: list[str]) -> None:
     targets = files
     if not files:
         targets = []
+        submodules = _submodule_paths(toplevel)
         for path in gitinfo.dirty_paths(cwd=toplevel):
             if _is_local(path):
                 continue
-            if os.path.islink(os.path.join(toplevel, path)):
-                print(f"SKIPPED_LINK\t{path}")
+            kind = _skipped_kind(toplevel, path, submodules)
+            if kind is not None:
+                print(f"SKIPPED\t{path}\t{kind}")
+                tw_base.run_git(toplevel, ["reset", "-q", "--", path.rstrip("/")])
                 continue
             targets.append(path)
     for path in targets:

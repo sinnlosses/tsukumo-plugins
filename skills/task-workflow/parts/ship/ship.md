@@ -39,14 +39,15 @@
    `dropped` にするときは `--dropped` を付け、理由を結果に書く。`DONE` は
    stage せず（`## 結果` は Beads の comment に入る）、コミットは作業のファイルだけ
    （振り返りのドラフトは Beads の課題なので入れない）。`--add` を省くと、作業ツリーの変更のうち通常のファイル
-   （`.tw/local` と symlink は除く）が**個別に** `git add` され（`git add -A` は使わない）、**1コミット**になる。
+   （`.tw/local`・symlink・サブモジュールは除く）が**個別に** `git add` され（`git add -A` は使わない）、**1コミット**になる。
    一覧が意図と違うときだけ `--add` をファイルごとに繰り返して明示する（空白・コンマで1つにまとめない）。
    件名の `T-xxx:` は tw が一度だけ付けるので、`--message` は `<何をしたか>` だけを渡す（旧形式の `T-xxx: <何をしたか>` を渡しても二重にならない）。
    末尾の署名は正典「コミットメッセージ」に従って `--message` に入れる。差分が無ければ
    `NO_COMMIT` を出してコミットせず、そのまま ship へ進む（`tw ship` が `NOTHING` を返して閉じる）。
-   コミットのあとに作業ツリーへ残った変更は `UNADDED\t<パス>` の行で出る（`--add` で渡さなかったもの）。省略時に除いた symlink は
-   `SKIPPED_LINK\t<パス>` で出て、作業ツリーに残るので続く `tw ship` が `DIRTY` で止まる（symlink は自動ではコミットしない。
-   `.gitignore` に入れるか消すかを人が決める）。
+   コミットのあとに作業ツリーへ残った変更は `UNADDED\t<パス>` の行で出る（`--add` で渡さなかったもの）。省略時に除いた symlink とサブモジュール
+   （指す先のずれ・中の変更・追加・削除。索引に載った分は戻す）は `SKIPPED\t<パス>\t<symlink|submodule>` で出て、
+   作業ツリーに残るので続く `tw ship` が `DIRTY` で止まる（自動ではコミットしない。サブモジュールは新しくして送り直すか、
+   意図してコミットするなら `--add` で明示する。symlink は `.gitignore` に入れるか消すかを人が決める）。
    知見は `## 結果`・`## 注意`・正典の docs・新しいタスクへ置く。
    `tw finish` は `tw done`・コミット・`tw ship` の行をそのまま並べ、止まる行（`NOT_OWNER`・`CONFLICT` など）が出たら
    以降を打たず、`${CLAUDE_SKILL_DIR}/parts/ship/ship-stopped.md` の表で読む。`DONE` の次に `COMMITS_SINCE_CLAIM` が続いたら、`tw finish` はそこで（`tw done` は済んだまま）
