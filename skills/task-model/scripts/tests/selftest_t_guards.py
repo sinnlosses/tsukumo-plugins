@@ -984,6 +984,78 @@ def test_step_check_other_repo() -> None:
               r.stdout + r.stderr)
 
 
+def _commit_files(repo: str, **files: str) -> None:
+    for name, text in files.items():
+        write(os.path.join(repo, name), text)
+        git(repo, "add", name)
+    git(repo, "commit", "-q", "-m", "主ブランチが進む")
+
+
+@weight(10)
+def test_step_main_touched() -> None:
+    say("task.py step: 着手のあとに主ブランチが名指すファイルか作業ツリーの変えたファイルを変えたら、STEPPED の前に MAIN_TOUCHED で知らせる")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _ = make_repo(os.path.join(tmp, "own"), verify="`true`")
+        commit_task(main_path, taskfile.Task("T-100", "段ごと", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        plan = "### 1. 書く\n\n### 2. 試す\n\n### 3. 直す\n\n### 名指すファイル\n- `shared.txt`\n"
+        run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-", stdin=plan)
+
+        def step(n: int) -> tuple[subprocess.CompletedProcess, list[str]]:
+            r = run_task(wt1, "step", "T-100", str(n))
+            return r, [line.split("\t")[0] + "\t" + line.split("\t")[-1] for line in r.stdout.splitlines()
+                       if line.startswith("MAIN_TOUCHED")]
+
+        _commit_files(main_path, **{"other.txt": "o\n"})
+        r, touched = step(1)
+        check("名指さず作業ツリーも触らないファイルだけが変わったなら MAIN_TOUCHED は出ない",
+              r.returncode == 0 and touched == [] and r.stdout.startswith("STEPPED\tT-100\t1/3\t"), r.stdout + r.stderr)
+
+        write(os.path.join(wt1, "mine.txt"), "m\n")
+        _commit_files(main_path, **{"mine.txt": "M\n"})
+        r, touched = step(1)
+        check("作業ツリーが変えたファイルを主ブランチも変えたら MAIN_TOUCHED が1行、STEPPED の前に出て終了コード0",
+              r.returncode == 0 and touched == ["MAIN_TOUCHED\tmine.txt"]
+              and r.stdout.splitlines()[0].startswith("MAIN_TOUCHED\tT-100\tmine.txt")
+              and r.stdout.splitlines()[-1].startswith("STEPPED\tT-100\t1/3\t"), r.stdout + r.stderr)
+
+        _commit_files(main_path, **{"shared.txt": "line1\nline2\n"})
+        r, touched = step(2)
+        check("名指すファイルも変わったら1ファイル1行で辞書順に並ぶ",
+              r.returncode == 0 and touched == ["MAIN_TOUCHED\tmine.txt", "MAIN_TOUCHED\tshared.txt"]
+              and r.stdout.splitlines()[-1].startswith("STEPPED\tT-100\t2/3\t"), r.stdout + r.stderr)
+
+        os.remove(os.path.join(wt1, "mine.txt"))
+        git(wt1, "merge", "-q", "--ff-only", "main")
+        r, touched = step(2)
+        check("主ブランチを取り込んだあとは出ない", r.returncode == 0 and touched == [], r.stdout + r.stderr)
+
+        _commit_files(main_path, **{"shared.txt": "line1\nline2\nline3\n"})
+        r, touched = step(3)
+        check("最後の段（LAST_STEP）には出ない", r.returncode == 4 and touched == []
+              and r.stdout.startswith("LAST_STEP"), r.stdout + r.stderr)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _ = make_repo(os.path.join(tmp, "own"), verify="`true`")
+        work_repo, _, _ = make_repo(os.path.join(tmp, "work"), verify="`true`")
+        commit_task(main_path, taskfile.Task("T-100", "作業先で直す", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        plan = f"### 1. 書く\n\n### 2. 試す\n\n### 名指すファイル\n- `shared.txt`\n\n### 作業先\n- `{work_repo}`\n"
+        run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-", stdin=plan)
+        work_tree = os.path.join(tmp, "work-t-100")
+        git(work_repo, "worktree", "add", "-q", "-b", "t-100", work_tree, "main")
+
+        _commit_files(main_path, **{"shared.txt": "own side\n"})
+        r = run_task(wt1, "step", "T-100", "1")
+        check("着手側の主ブランチが名指すファイルを変えても、作業先の主ブランチが変えていなければ出ない",
+              r.returncode == 0 and "MAIN_TOUCHED" not in r.stdout, r.stdout + r.stderr)
+        _commit_files(work_repo, **{"shared.txt": "work side\n"})
+        r = run_task(wt1, "step", "T-100", "1")
+        check("作業先の主ブランチが名指すファイルを変えたら、作業先で測って出る",
+              r.returncode == 0 and r.stdout.splitlines()[0] == "MAIN_TOUCHED\tT-100\tshared.txt"
+              and r.stdout.splitlines()[-1].startswith("STEPPED\tT-100\t1/2\t"), r.stdout + r.stderr)
+
+
 @weight(15)
 def test_handback_guard_skipped_steps() -> None:
     say("task.py handback-guard: 段が2つ以上の計画で tw step の控えが無いまま verify を通した返却は拒む")
@@ -2011,6 +2083,7 @@ TESTS = (
     test_handback_guard_step,
     test_step_check,
     test_step_check_other_repo,
+    test_step_main_touched,
     test_handback_guard_structure,
     test_handback_guard_skipped_steps,
     test_commit_guard,
