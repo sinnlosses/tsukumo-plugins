@@ -3,7 +3,8 @@
 コミットを作る git のサブコマンドと、シェルでのファイルの書き換え（`sed -i`・`perl -i`・`>`・`>>`・`tee`・
 python の書き込み）と、設定の `verify`・`verify_before_ship` と同じコマンドの直打ち
 （段を流さない読むだけの旗 `--plan`・`--help`・`-h` を含む打ち方は通す）と、`ref-guard` を外す書き方
-（`TW_REF_GUARD_ALLOW=`・`export TW_REF_GUARD_ALLOW`・`core.hooksPath` を書き換える形。読むだけのコマンドは通す）。判定しきれない書き方は通す。
+（`TW_REF_GUARD_ALLOW=`・`export TW_REF_GUARD_ALLOW`・`core.hooksPath` を書き換える形。読むだけのコマンドは通す）と、委譲先の `git stash`・`git add -A`・`git push`・`git worktree remove`・`git branch -d`、
+書き込みの `bd`（主のセッションも）、受け入れ役の `tw` と検証コマンド。判定しきれない書き方は通す。
 コミットは、作業先で `ref-guard` が効いていれば（`ref_guard.inactive_reason` が `None`）拒まず git の hook に任せる。
 書き換えと直打ちは、入力の `cwd` の控えのタスクの `### 作業先` の作業ツリー（`tw_handback.task_trees`）にも控えがあるとみなして拒む。
 コミットはそこでは拒まない。

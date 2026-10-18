@@ -36,7 +36,7 @@
    **合流**: 検証が済んだら、着手した作業ツリーで `tw lap T-xxx land start` を打ち、作業先の作業ツリーで
    `cd <パス> && tw land <枝>` を打ち、出力を読んだ直後に着手した作業ツリーで `tw lap T-xxx land end` を打つ（`tw land` は台帳が別なので lap を書かない）。
    `tw land` は作業先の本体で `<枝>` を ff-only で主ブランチへ合流し、入ったことを確かめてから作業ツリーと枝を消す。
-   `git merge`・`git worktree remove`・`git branch -d` を素で打たない。
+   `git merge`・`git worktree remove`・`git branch -d` を素で打たない（委譲先が打つと hook `tw commit-guard` が拒む。`tw land` は Python から打つので通る）。
 
    | `tw land` の先頭語 | すること |
    | --- | --- |
