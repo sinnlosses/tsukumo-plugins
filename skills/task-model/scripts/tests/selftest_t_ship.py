@@ -513,6 +513,174 @@ def test_fold_committed() -> None:
         )
 
 
+def _counting_verify(tmp: str, exit_code: int = 0) -> tuple[str, str]:
+    """`(make_repo に渡す verify, 打たれた回数を数えるファイル)`。"""
+    count = os.path.join(tmp, "verify-count")
+    script = write(os.path.join(tmp, "verify.sh"), f'echo run >> "{count}"\nexit {exit_code}\n')
+    return f"`sh {script}`", count
+
+
+def _verify_runs(count: str) -> int:
+    if not os.path.exists(count):
+        return 0
+    with open(count, encoding="utf-8") as f:
+        return len(f.read().splitlines())
+
+
+def _branches(main_path: str) -> list[str]:
+    return git(main_path, "branch", "--format=%(refname:short)").stdout.split()
+
+
+def test_land_fold_verifies_at_most_once() -> None:
+    say("task.py land --fold: 取り込みが要らず控えが今の中身と同じなら検証を省き、控えが無い・鍵が違えば1回打つ")
+    with tempfile.TemporaryDirectory() as tmp:
+        verify, count = _counting_verify(tmp)
+        main_path, wt1, wt2 = make_repo(tmp, verify=verify)
+
+        head = _commit(wt1, "a.txt", "a\n", "枝の作業")
+        run_task(wt1, "verify")
+        r = run_task(wt1, "land", "wt1-branch", "--fold")
+        lines = r.stdout.splitlines()
+        check(
+            "控えが同じなら VERIFIED_SAME …verify=skipped を出して検証を打たず、LANDED・REMOVED・DELETED",
+            r.returncode == 0
+            and lines[0].startswith("VERIFIED_SAME\t")
+            and lines[0].endswith("\tverify=skipped")
+            and lines[1] == f"LANDED\twt1-branch\tmain\t{head}"
+            and lines[2:] == [f"REMOVED\t{os.path.realpath(wt1)}", "DELETED\twt1-branch"],
+            r.stdout + r.stderr,
+        )
+        check("検証は控えを取った1回だけ", _verify_runs(count) == 1, str(_verify_runs(count)))
+
+        git(wt2, "merge", "-q", "--ff-only", "main")
+        head = _commit(wt2, "b.txt", "b\n", "枝の作業")
+        r = run_task(wt2, "land", "wt2-branch", "--fold")
+        check(
+            "控えが無ければ取り込みの行なしで検証を1回打ってから LANDED",
+            r.returncode == 0
+            and not any(line.startswith(("FOLDED", "VERIFIED_SAME")) for line in r.stdout.splitlines())
+            and any(line.startswith("VERIFIED\t") for line in r.stdout.splitlines())
+            and f"LANDED\twt2-branch\tmain\t{head}" in r.stdout.splitlines()
+            and _verify_runs(count) == 2,
+            r.stdout + r.stderr,
+        )
+
+        wt3 = os.path.join(tmp, "wt3")
+        git(main_path, "worktree", "add", "-q", "-b", "wt3-branch", wt3, "main")
+        _commit(wt3, "c.txt", "c\n", "枝の作業")
+        run_task(wt3, "verify")
+        head = _commit(wt3, "c.txt", "c2\n", "控えのあとの作業")
+        r = run_task(wt3, "land", "wt3-branch", "--fold")
+        check(
+            "控えの鍵が今と違えば検証を1回打ってから LANDED",
+            r.returncode == 0
+            and any(line.startswith("VERIFIED\t") for line in r.stdout.splitlines())
+            and f"LANDED\twt3-branch\tmain\t{head}" in r.stdout.splitlines()
+            and _verify_runs(count) == 4,
+            r.stdout + r.stderr,
+        )
+
+
+def test_land_fold_advanced() -> None:
+    say("task.py land --fold: 主ブランチが進んでいれば取り込み → 検証1回 → 合流")
+    with tempfile.TemporaryDirectory() as tmp:
+        verify, count = _counting_verify(tmp)
+        main_path, wt1, _wt2 = make_repo(tmp, verify=verify)
+        head = _commit(wt1, "a.txt", "a\n", "枝の作業")
+        run_task(wt1, "verify")
+        base_head = _commit(main_path, "b.txt", "b\n", "主ブランチを進める")
+        r = run_task(wt1, "land", "wt1-branch", "--fold")
+        lines = r.stdout.splitlines()
+        landed = git(main_path, "rev-parse", "main").stdout.strip()
+        check(
+            "FOLDED・検証・LANDED の順に出る",
+            r.returncode == 0
+            and lines[0].startswith(f"FOLDED\twt1-branch\t{head}..")
+            and any(line.startswith("VERIFIED\t") for line in lines)
+            and f"LANDED\twt1-branch\tmain\t{landed}" in lines
+            and lines[-2:] == [f"REMOVED\t{os.path.realpath(wt1)}", "DELETED\twt1-branch"],
+            r.stdout + r.stderr,
+        )
+        check("控えがあっても取り込んだら検証を1回打つ", _verify_runs(count) == 2, str(_verify_runs(count)))
+        parents = git(main_path, "rev-list", "--parents", "-n", "1", "main").stdout.split()[1:]
+        check("主ブランチの先端は枝と主ブランチを親に持つマージコミット", parents == [head, base_head], repr(parents))
+
+
+def test_land_fold_conflict() -> None:
+    say("task.py land --fold: 取り込みが衝突すれば何も書き換えず検証も打たずに止まる")
+    with tempfile.TemporaryDirectory() as tmp:
+        verify, count = _counting_verify(tmp)
+        main_path, wt1, _wt2 = make_repo(tmp, verify=verify)
+        head = _commit(wt1, "shared.txt", "line1\nbranch\n", "枝が同じ行を変える")
+        main_head = _commit(main_path, "shared.txt", "line1\nmain\n", "主ブランチが同じ行を変える")
+        r = run_task(wt1, "land", "wt1-branch", "--fold")
+        lines = r.stdout.splitlines()
+        check(
+            "CONFLICT のあと NOT_LANDED（終了コード4）と続きの打ち方",
+            r.returncode == 4
+            and lines[0] == "CONFLICT\tshared.txt"
+            and lines[1].startswith("NOT_LANDED\twt1-branch\t")
+            and "tw land wt1-branch --fold" in lines[1],
+            r.stdout + r.stderr,
+        )
+        check(
+            "主ブランチ・枝・作業ツリーを変えず、検証も打たない",
+            git(main_path, "rev-parse", "main").stdout.strip() == main_head
+            and git(wt1, "rev-parse", "HEAD").stdout.strip() == head
+            and git(wt1, "status", "--porcelain").stdout == ""
+            and os.path.isdir(wt1)
+            and "wt1-branch" in _branches(main_path)
+            and _verify_runs(count) == 0,
+        )
+
+
+def test_land_fold_verify_fails() -> None:
+    say("task.py land --fold: 検証が落ちれば合流も片付けもせず止まる")
+    with tempfile.TemporaryDirectory() as tmp:
+        verify, count = _counting_verify(tmp, exit_code=1)
+        main_path, wt1, _wt2 = make_repo(tmp, verify=verify)
+        _commit(wt1, "a.txt", "a\n", "枝の作業")
+        main_head = _commit(main_path, "b.txt", "b\n", "主ブランチを進める")
+        r = run_task(wt1, "land", "wt1-branch", "--fold")
+        lines = r.stdout.splitlines()
+        check(
+            "FOLDED・VERIFY_NOT_PASSED のあと NOT_LANDED（終了コード4）",
+            r.returncode == 4
+            and lines[0].startswith("FOLDED\twt1-branch\t")
+            and any(line.startswith("VERIFY_NOT_PASSED\t") for line in lines)
+            and lines[-1].startswith("NOT_LANDED\twt1-branch\t")
+            and "tw land wt1-branch --fold" in lines[-1],
+            r.stdout + r.stderr,
+        )
+        check(
+            "主ブランチは変わらず、作業ツリーと枝は残り、検証は1回",
+            git(main_path, "rev-parse", "main").stdout.strip() == main_head
+            and os.path.isdir(wt1)
+            and "wt1-branch" in _branches(main_path)
+            and _verify_runs(count) == 1,
+        )
+
+
+def test_land_fold_without_verify_command() -> None:
+    say("task.py land --fold: 検証コマンドが無ければ何も変えずに止まる")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp)
+        head = _commit(wt1, "a.txt", "a\n", "枝の作業")
+        main_head = _commit(main_path, "b.txt", "b\n", "主ブランチを進める")
+        r = run_task(wt1, "land", "wt1-branch", "--fold")
+        check(
+            "NOT_LANDED（終了コード4）",
+            r.returncode == 4 and r.stdout.startswith("NOT_LANDED\twt1-branch\t"),
+            r.stdout + r.stderr,
+        )
+        check(
+            "主ブランチも枝も作業ツリーも変えない",
+            git(main_path, "rev-parse", "main").stdout.strip() == main_head
+            and git(wt1, "rev-parse", "HEAD").stdout.strip() == head
+            and os.path.isdir(wt1),
+        )
+
+
 def test_ship_without_gitmodules_prints_no_submodule_line() -> None:
     say("task.py ship / land: .gitmodules が無いリポジトリでは出力が変わらない")
     with tempfile.TemporaryDirectory() as tmp:
@@ -927,6 +1095,11 @@ TESTS = (
     test_ship_and_land_report_unsynced_submodule,
     test_land_removes_worktree_with_submodule_only_when_clean,
     test_fold_committed,
+    test_land_fold_verifies_at_most_once,
+    test_land_fold_advanced,
+    test_land_fold_conflict,
+    test_land_fold_verify_fails,
+    test_land_fold_without_verify_command,
     test_ship_without_gitmodules_prints_no_submodule_line,
     test_base_branch_resolution,
 )

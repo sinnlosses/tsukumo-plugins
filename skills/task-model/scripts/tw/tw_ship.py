@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Literal, NoReturn
 
 import beads
+import fold
 import layout
 import gitinfo
 import ledger
@@ -16,6 +17,7 @@ import stamps
 import ship
 import tracker
 import tw_base
+import tw_verify
 
 
 def cmd_ship(toplevel: str) -> None:
@@ -201,11 +203,12 @@ def _record_shipped(
         tw_base.record(toplevel, "ship", task_id, issues[task_id], result=result)
 
 
-def cmd_land(toplevel: str, branch: str) -> None:
+def cmd_land(toplevel: str, branch: str, with_fold: bool = False) -> None:
     """`branch` を主ブランチへ ff-only で合流し、主ブランチに入ったことを確かめてから、その枝の作業ツリーと枝を消す。
 
     合流は主ブランチを出している作業ツリーで打つ。合流できない・入っていない・どちらかの作業ツリーが汚れているか無いときは
     何も消さずに `NOT_LANDED`。合流のあとに消せなかったものは `NOT_REMOVED` の行で残りを知らせる。
+    `with_fold` なら、合流の前に枝の作業ツリーで主ブランチを取り込み、検証を多くて1回通す（`_fold_and_verify`）。
     """
     base = gitinfo.base_branch(toplevel)
     known = tw_base.run_git(toplevel, ["rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"]).returncode == 0
@@ -219,6 +222,8 @@ def cmd_land(toplevel: str, branch: str) -> None:
     if blocker is not None:
         _refuse_land(branch, _LAND_REASON[blocker.kind].format(base=base, detail=blocker.detail))
     assert base_tree is not None
+    if with_fold:
+        _fold_and_verify(base, branch, branch_trees)
     merged = tw_base.run_git(base_tree, ["merge", "--ff-only", "--quiet", branch])
     if merged.returncode != 0:
         _refuse_land(branch, f"{base} へ ff-only で合流できない: {_first_line(merged.stderr)}")
@@ -243,6 +248,38 @@ def cmd_land(toplevel: str, branch: str) -> None:
         print(f"NOT_REMOVED\t{name}\t{reason}")
     if leftovers:
         raise SystemExit(4)
+
+
+def _fold_and_verify(base: str, branch: str, branch_trees: list[str]) -> None:
+    """枝の作業ツリーへ主ブランチを取り込み（`FOLDED`）、検証を多くて1回通す。止めるときは `NOT_LANDED` で終わる。
+
+    取り込みが要らず、控えが今の中身と同じなら検証を打たずに `VERIFIED_SAME\\t<木>\\tverify=skipped` を出す。
+    """
+    if len(branch_trees) != 1:
+        _refuse_land(branch, "--fold は枝の作業ツリーが1つのときだけ打てる")
+    tree = branch_trees[0]
+    verify_command = ship.read_stamp_command(tree)
+    if verify_command is None:
+        _refuse_land(branch, "検証コマンドが無い。検証を打ってから --fold なしで打つ")
+    folded = fold.fold_committed(tree, base)
+    if folded.kind == "CONFLICT":
+        print("CONFLICT\t" + (",".join(folded.conflict_files) or "?"))
+        _refuse_land(
+            branch, f"取り込みが衝突した。{tree} で git merge {base} を打って解き、コミットしてから tw land {branch} --fold を打ち直す"
+        )
+    if folded.kind == "FOLDED":
+        print(f"FOLDED\t{branch}\t{folded.old_base}..{folded.new_base}")
+    else:
+        now = stamps.content_key(verify_command, cwd=tree)
+        if stamps.read_verify_stamp(cwd=tree) == now:
+            print(f"VERIFIED_SAME\t{now.tree}\tverify=skipped")
+            return
+    try:
+        tw_verify.cmd_verify(tree)
+    except SystemExit as e:
+        if e.code not in (None, 0):
+            kept = "（取り込んだマージコミットは枝に残る）" if folded.kind == "FOLDED" else ""
+            _refuse_land(branch, f"検証が通らない{kept}。{tree} で直してコミットし、tw land {branch} --fold を打ち直す")
 
 
 def _remove_worktree(base_tree: str, path: str) -> str | None:
