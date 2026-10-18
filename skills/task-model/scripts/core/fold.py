@@ -54,15 +54,13 @@ def fold_committed(toplevel: str, base: str) -> FoldOutcome:
         return FoldOutcome(kind="UP_TO_DATE")
     old_head = _checked(toplevel, ["rev-parse", "HEAD"])
     new_base = _checked(toplevel, ["rev-parse", base])
-    merged = _git(toplevel, ["merge-tree", "--write-tree", "--name-only", "--no-messages", old_head, new_base])
-    lines = [line for line in merged.stdout.splitlines() if line]
-    if merged.returncode == 1:
-        return FoldOutcome(kind="CONFLICT", conflict_files=tuple(dict.fromkeys(lines[1:])))
-    if merged.returncode != 0 or not lines:
-        raise gitinfo.GitCommandError(f"git merge-tree が失敗（{merged.returncode}）: {merged.stderr.strip()}")
+    outcome = _merge_commits(toplevel, old_head, new_base)
+    if outcome.kind == "CONFLICT":
+        return outcome
     branch = _checked(toplevel, ["rev-parse", "--abbrev-ref", "HEAD"])
     commit = _checked(
-        toplevel, ["commit-tree", lines[0], "-p", old_head, "-p", new_base, "-m", f"Merge {base} into {branch}"]
+        toplevel,
+        ["commit-tree", outcome.merged_tree, "-p", old_head, "-p", new_base, "-m", f"Merge {base} into {branch}"],
     )
     _checked(toplevel, ["merge", "--ff-only", "--quiet", commit])
     return FoldOutcome(kind="FOLDED", old_base=old_head, new_base=commit)
@@ -81,7 +79,11 @@ def _merge_tree(toplevel: str, new_base: str, object_env: dict[str, str] | None 
     """`object_env` があれば object を `.git` でなくそこへ書く。"""
     tree = stamps.worktree_tree(toplevel, object_env=object_env)
     work = _checked(toplevel, ["commit-tree", tree, "-p", "HEAD", "-m", "tw verify"], object_env)
-    merged = _git(toplevel, ["merge-tree", "--write-tree", "--name-only", "--no-messages", work, new_base], object_env)
+    return _merge_commits(toplevel, work, new_base, object_env)
+
+
+def _merge_commits(toplevel: str, ours: str, theirs: str, object_env: dict[str, str] | None = None) -> FoldOutcome:
+    merged = _git(toplevel, ["merge-tree", "--write-tree", "--name-only", "--no-messages", ours, theirs], object_env)
     lines = [line for line in merged.stdout.splitlines() if line]
     if merged.returncode == 1:
         return FoldOutcome(kind="CONFLICT", conflict_files=tuple(dict.fromkeys(lines[1:])))
