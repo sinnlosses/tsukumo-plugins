@@ -264,10 +264,16 @@ front matter（`id`・`summary`・`status`・`difficulty`・`loopable`・近道�
   （`ls-remote` は先端を表示するだけで `origin/<既定の枝>` を更新しないので、fetch せずに調べると、
   別の場所から push 済みの版を「origin に無い」と誤る）、
   `git -C <submodule> ls-remote origin` で origin の先端を読み、
-  `git -C <submodule> merge-base --is-ancestor <進める先の版> origin/<既定の枝>` が終了コード0で成り立つこと。
-  成り立たないのは、終了コード1（祖先でない: 手元の主ブランチが origin より先行している・origin の別の枝の版）か、
-  128（fetch のあとも手元にオブジェクトが無い: origin に無い）のとき。どちらも、その版を指すと他の作業ツリーの
-  `git submodule update --init` が落ちる。push は人の承認を要する操作なので、承認の範囲を本文に書けるなら `loopable` は `Y` のまま、
+  `git -C <submodule> merge-base --is-ancestor <進める先の版> origin/<既定の枝>` の終了コードを読む。
+  一時のコピーで各場合を打って読んだ結果は次のとおり（`submodule update --init` は、その版を指した親を clone し直して打った）。
+  - 0（既定の枝の祖先）: origin にある。`update --init` は通る。
+  - 1 で、`git -C <submodule> branch -r --contains <版>` が `origin/<別の枝>` を出す: origin の既定の枝には入っていない別の枝の版。
+    origin にはあるので `update --init` は通り、push も人の承認も要らない。既定の枝に入っていないことだけを裏取りの行に書く。
+  - 1 で、`branch -r --contains` が何も出さない（手元の主ブランチが origin より先行している）: origin に無い。別の clone では
+    オブジェクトが無く `update --init` が終了コード128で落ちる。
+  - 128（`merge-base`）または 129（`branch -r --contains`）: fetch のあとも手元にオブジェクトが無い。origin に無い。`update --init` が落ちる。
+  なお fetch の前は、別の場所から push 済みの版も 128 になるので、必ず fetch のあとに読む。
+  origin に無いときだけ push が要り、push は人の承認を要する操作なので、承認の範囲を本文に書けるなら `loopable` は `Y` のまま、
   書けないなら `## 注意` の `### 人がやること` に分けるか `loopable` を `N` にする（`loopable` の表の「承認の範囲外の外部への反映」）。
 
 **登録時に書く `## やること`**（`tw new`・`tw adopt`）は、段のほかに小見出し
