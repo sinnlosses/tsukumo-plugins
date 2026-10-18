@@ -124,6 +124,36 @@ def plan_tip(toplevel: str, body: str) -> str | None:
     return _base_tip(repo) if repo is not None else None
 
 
+def main_touched(tree: str, body: str) -> list[str]:
+    """着手のあとに主ブランチが変えたファイルのうち、計画の名指すファイルか `tree` が変えたファイルに当たるもの（辞書順）。
+
+    主ブランチ側は `merge-base HEAD <主ブランチ>` から主ブランチの先端まで、`tree` 側は同じ分かれ目からの
+    作業ツリーの差分（コミット済み・未コミット・未追跡）。`tree` が計画の作業先のリポジトリの木でないか、
+    git が引けなければ空（知らせなので落とさない）。
+    """
+    repo = _plan_repo(tree, body)
+    try:
+        if repo is None or gitinfo.git_common_dir(repo) != gitinfo.git_common_dir(tree):
+            return []
+    except gitinfo.GitCommandError:
+        return []
+    base = gitinfo.base_branch(tree)
+    mb = tw_base.run_git(tree, ["merge-base", "HEAD", base])
+    if mb.returncode != 0:
+        return []
+    fork = mb.stdout.strip()
+    theirs = tw_base.run_git(tree, ["diff", "--name-only", fork, base])
+    mine = tw_base.run_git(tree, ["diff", "--name-only", fork])
+    fresh = tw_base.run_git(tree, ["ls-files", "--others", "--exclude-standard"])
+    if theirs.returncode != 0 or mine.returncode != 0 or fresh.returncode != 0:
+        return []
+    named = [p.rstrip("/") for p in taskfile.plan_files(body)[0]]
+    ours = set(mine.stdout.splitlines()) | set(fresh.stdout.splitlines())
+    return sorted(
+        f for f in set(theirs.stdout.splitlines()) if f and (f in ours or any(f == p or f.startswith(p + "/") for p in named))
+    )
+
+
 def _base_tip(toplevel: str) -> str | None:
     r = tw_base.run_git(toplevel, ["rev-parse", gitinfo.base_branch(toplevel)])
     return r.stdout.strip() if r.returncode == 0 else None
