@@ -44,6 +44,30 @@ def fold_base(toplevel: str, base: str) -> FoldOutcome:
     return FoldOutcome(kind="FOLDED", old_base=old_base, new_base=new_base)
 
 
+def fold_committed(toplevel: str, base: str) -> FoldOutcome:
+    """自分のコミットがある枝へ、主ブランチをマージコミットで取り込む。
+
+    作業ツリーが汚れていないことは呼ぶ側が確かめる。主ブランチが `HEAD` の祖先なら `UP_TO_DATE`。
+    衝突は `git merge-tree` で先に確かめ、衝突したときは参照・index・作業ツリーのどれも書き換えない。
+    """
+    if _is_ancestor(toplevel, base, "HEAD"):
+        return FoldOutcome(kind="UP_TO_DATE")
+    old_head = _checked(toplevel, ["rev-parse", "HEAD"])
+    new_base = _checked(toplevel, ["rev-parse", base])
+    merged = _git(toplevel, ["merge-tree", "--write-tree", "--name-only", "--no-messages", old_head, new_base])
+    lines = [line for line in merged.stdout.splitlines() if line]
+    if merged.returncode == 1:
+        return FoldOutcome(kind="CONFLICT", conflict_files=tuple(dict.fromkeys(lines[1:])))
+    if merged.returncode != 0 or not lines:
+        raise gitinfo.GitCommandError(f"git merge-tree が失敗（{merged.returncode}）: {merged.stderr.strip()}")
+    branch = _checked(toplevel, ["rev-parse", "--abbrev-ref", "HEAD"])
+    commit = _checked(
+        toplevel, ["commit-tree", lines[0], "-p", old_head, "-p", new_base, "-m", f"Merge {base} into {branch}"]
+    )
+    _checked(toplevel, ["merge", "--ff-only", "--quiet", commit])
+    return FoldOutcome(kind="FOLDED", old_base=old_head, new_base=commit)
+
+
 def folds_cleanly(toplevel: str, base: str) -> bool:
     """`can_fold` が真で、未コミットの中身ごと主ブランチと合わせても衝突しない。何も書き換えない。"""
     if not can_fold(toplevel, base):

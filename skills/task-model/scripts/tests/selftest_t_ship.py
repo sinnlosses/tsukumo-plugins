@@ -6,6 +6,7 @@ import tempfile
 
 from selftest_support import RESULT_FULL, check, git, refuse_direct_run, say, weight, write  # noqa: E402
 import beads  # noqa: E402
+import fold  # noqa: E402
 import gitinfo  # noqa: E402
 import ledger  # noqa: E402
 import stamps  # noqa: E402
@@ -468,6 +469,50 @@ def test_land_removes_worktree_with_submodule_only_when_clean() -> None:
         check("作業ツリーが残り、枝も残る", os.path.isdir(wt1) and "wt1-branch" in branches())
 
 
+def _commit(path: str, name: str, text: str, message: str) -> str:
+    write(os.path.join(path, name), text)
+    git(path, "add", name)
+    git(path, "commit", "-q", "-m", message)
+    return git(path, "rev-parse", "HEAD").stdout.strip()
+
+
+def test_fold_committed() -> None:
+    say("fold.fold_committed: コミットのある枝へ主ブランチをマージコミットで取り込み、衝突なら何も書き換えない")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(tmp)
+        head = _commit(wt1, "a.txt", "a\n", "枝の作業")
+        r = fold.fold_committed(wt1, "main")
+        check("主ブランチが進んでいなければ UP_TO_DATE", r.kind == "UP_TO_DATE", repr(r))
+        check("UP_TO_DATE では HEAD が変わらない", git(wt1, "rev-parse", "HEAD").stdout.strip() == head)
+
+        base_head = _commit(main_path, "b.txt", "b\n", "主ブランチを進める")
+        r = fold.fold_committed(wt1, "main")
+        new_head = git(wt1, "rev-parse", "HEAD").stdout.strip()
+        parents = git(wt1, "rev-list", "--parents", "-n", "1", "HEAD").stdout.split()[1:]
+        check(
+            "進んでいれば FOLDED（元の HEAD と主ブランチを親に持つマージコミット）",
+            r.kind == "FOLDED" and r.old_base == head and r.new_base == new_head and parents == [head, base_head],
+            repr(r) + repr(parents),
+        )
+        check(
+            "取り込んだあと作業ツリーは汚れず、主ブランチのファイルがある",
+            git(wt1, "status", "--porcelain").stdout == "" and os.path.isfile(os.path.join(wt1, "b.txt")),
+        )
+
+        git(wt2, "merge", "-q", "--ff-only", "main")
+        wt2_head = _commit(wt2, "shared.txt", "line1\nbranch\n", "枝が同じ行を変える")
+        main_head = _commit(main_path, "shared.txt", "line1\nmain\n", "主ブランチが同じ行を変える")
+        r = fold.fold_committed(wt2, "main")
+        check("衝突すれば CONFLICT と衝突したファイル", r.kind == "CONFLICT" and r.conflict_files == ("shared.txt",), repr(r))
+        check(
+            "CONFLICT では枝・主ブランチ・作業ツリー・index を変えない",
+            git(wt2, "rev-parse", "HEAD").stdout.strip() == wt2_head
+            and git(main_path, "rev-parse", "main").stdout.strip() == main_head
+            and git(wt2, "status", "--porcelain").stdout == ""
+            and open(os.path.join(wt2, "shared.txt"), encoding="utf-8").read() == "line1\nbranch\n",
+        )
+
+
 def test_ship_without_gitmodules_prints_no_submodule_line() -> None:
     say("task.py ship / land: .gitmodules が無いリポジトリでは出力が変わらない")
     with tempfile.TemporaryDirectory() as tmp:
@@ -881,6 +926,7 @@ TESTS = (
     test_ship_and_land_sync_submodules,
     test_ship_and_land_report_unsynced_submodule,
     test_land_removes_worktree_with_submodule_only_when_clean,
+    test_fold_committed,
     test_ship_without_gitmodules_prints_no_submodule_line,
     test_base_branch_resolution,
 )
