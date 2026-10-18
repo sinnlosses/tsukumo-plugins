@@ -19,6 +19,7 @@ import metrics  # noqa: E402
 import ref_guard  # noqa: E402
 import stamps  # noqa: E402
 import taskfile  # noqa: E402
+import tw_plan  # noqa: E402
 from selftest_fixtures import BODY, TASK_PY, commit_task, disarm_ref_guard, flow_rows, hook_env, make_repo, metadata, readonly_git, run_guard, run_handback_guard, run_task, snapshot  # noqa: E402
 
 
@@ -1059,6 +1060,72 @@ def test_step_main_touched() -> None:
               and r.stdout.splitlines()[-1].startswith("STEPPED\tT-100\t1/2\t"), r.stdout + r.stderr)
 
 
+@weight(10)
+def test_main_touched_paths_and_changes() -> None:
+    say("tw_plan.main_touched: パスの文字（日本語・空白・引用符・改行）と変更の種類（名前の変更・コピー・削除・種類の変更）によらず、同じ状況には同じ結果")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _ = make_repo(tmp, verify="`true`")
+        special = ["日本 語.txt", "sp ace.txt", 'q"uote.txt']
+        for name in ["ren_a.txt", "c_src.txt", "d.txt", "t.txt", "w_a.txt", "unrelated.txt", *special]:
+            write(os.path.join(main_path, name), f"{name}\n")
+            git(main_path, "add", name)
+        git(main_path, "commit", "-q", "-m", "初期のファイル")
+        git(wt1, "merge", "-q", "--ff-only", "main")
+
+        write(os.path.join(wt1, "日本.txt"), "mine\n")
+        write(os.path.join(wt1, "n\nl.txt"), "mine\n")
+        git(wt1, "mv", "w_a.txt", "w_b.txt")
+
+        git(main_path, "mv", "ren_a.txt", "ren_b.txt")
+        shutil.copy(os.path.join(main_path, "c_src.txt"), os.path.join(main_path, "c_dst.txt"))
+        git(main_path, "add", "c_dst.txt")
+        git(main_path, "rm", "-q", "d.txt")
+        os.remove(os.path.join(main_path, "t.txt"))
+        os.symlink("unrelated.txt", os.path.join(main_path, "t.txt"))
+        git(main_path, "add", "t.txt")
+        for name in [*special, "w_a.txt", "unrelated.txt"]:
+            write(os.path.join(main_path, name), "main\n")
+            git(main_path, "add", name)
+        for name in ("日本.txt", "n\nl.txt"):
+            write(os.path.join(main_path, name), "main\n")
+            git(main_path, "add", name)
+        git(main_path, "commit", "-q", "-m", "主ブランチが進む")
+
+        named = ["ren_a.txt", "c_src.txt", "c_dst.txt", "d.txt", "t.txt", *special]
+        body = (
+            f"{taskfile.PLAN_HEADING}\n### 1. 書く\n\n{taskfile.PLAN_FILES_HEADING}\n"
+            + "".join(f"- `{p}`\n" for p in named)
+        )
+        got = tw_plan.main_touched(wt1, body)
+        expected = sorted(["ren_a.txt", "c_dst.txt", "d.txt", "t.txt", *special, "w_a.txt", "日本.txt", "n\nl.txt"])
+        check("名前の変更は名指した側、作業ツリーの名前の変更は元の側が出る。コピー・削除・種類の変更・特殊な文字のパスも生の文字列で出る",
+              got == expected, f"出た: {got!r}\n期待: {expected!r}")
+        check("名指しも作業ツリーの変更も無いファイルと、コピー元・名前の変更の先は出ない",
+              not {"unrelated.txt", "c_src.txt", "ren_b.txt", "w_b.txt"} & set(got), repr(got))
+
+
+@weight(5)
+def test_commit_guard_allows_merge_base_in_claimed_tree() -> None:
+    say("task.py commit-guard: ref-guard が効く着手した作業ツリーでは、git merge main（早送り）を commit-guard も ref-guard も拒まず、git commit は ref-guard が拒む")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _ = make_repo(tmp, verify="`true`")
+        commit_task(main_path, taskfile.Task("T-100", "段ごと", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        write(os.path.join(main_path, "o.txt"), "o\n")
+        git(main_path, "add", "o.txt")
+        git(main_path, "commit", "-q", "-m", "主ブランチが進む")
+        check("commit-guard は git merge main を拒まない", run_guard(tmp, wt1, "git merge main") is None)
+        write(os.path.join(wt1, "w.txt"), "w\n")
+        git(wt1, "add", "w.txt")
+        r = subprocess.run(["git", "commit", "-q", "-m", "x"], cwd=wt1, capture_output=True, text=True, env=git_env(False))
+        check("対照: 実際の git commit は ref-guard が拒む", r.returncode != 0, r.stdout + r.stderr)
+        git(wt1, "reset", "-q", "w.txt")
+        os.remove(os.path.join(wt1, "w.txt"))
+        r = subprocess.run(["git", "merge", "main"], cwd=wt1, capture_output=True, text=True, env=git_env(False))
+        check("実際の git merge main は早送りで通り、主ブランチの変更が入る",
+              r.returncode == 0 and os.path.exists(os.path.join(wt1, "o.txt")), r.stdout + r.stderr)
+
+
 @weight(15)
 def test_handback_guard_skipped_steps() -> None:
     say("task.py handback-guard: 段が2つ以上の計画で tw step の控えが無いまま verify を通した返却は拒む")
@@ -2087,6 +2154,8 @@ TESTS = (
     test_step_check,
     test_step_check_other_repo,
     test_step_main_touched,
+    test_main_touched_paths_and_changes,
+    test_commit_guard_allows_merge_base_in_claimed_tree,
     test_handback_guard_structure,
     test_handback_guard_skipped_steps,
     test_commit_guard,

@@ -128,7 +128,7 @@ def main_touched(tree: str, body: str) -> list[str]:
     """着手のあとに主ブランチが変えたファイルのうち、計画の名指すファイルか `tree` が変えたファイルに当たるもの（辞書順）。
 
     主ブランチ側は `merge-base HEAD <主ブランチ>` から主ブランチの先端まで、`tree` 側は同じ分かれ目からの
-    作業ツリーの差分（コミット済み・未コミット・未追跡）。`tree` が計画の作業先のリポジトリの木でないか、
+    作業ツリーの差分（コミット済み・未コミット・未追跡）。名前の変更は元と先を別のファイルとして数える。`tree` が計画の作業先のリポジトリの木でないか、
     git が引けなければ空（知らせなので落とさない）。
     """
     repo = _plan_repo(tree, body)
@@ -142,15 +142,15 @@ def main_touched(tree: str, body: str) -> list[str]:
     if mb.returncode != 0:
         return []
     fork = mb.stdout.strip()
-    theirs = tw_base.run_git(tree, ["diff", "--name-only", fork, base])
-    mine = tw_base.run_git(tree, ["diff", "--name-only", fork])
-    fresh = tw_base.run_git(tree, ["ls-files", "--others", "--exclude-standard"])
+    theirs = tw_base.run_git(tree, ["diff", "--name-only", "--no-renames", "-z", fork, base])
+    mine = tw_base.run_git(tree, ["diff", "--name-only", "--no-renames", "-z", fork])
+    fresh = tw_base.run_git(tree, ["ls-files", "--others", "--exclude-standard", "-z"])
     if theirs.returncode != 0 or mine.returncode != 0 or fresh.returncode != 0:
         return []
     named = [p.rstrip("/") for p in taskfile.plan_files(body)[0]]
-    ours = set(mine.stdout.splitlines()) | set(fresh.stdout.splitlines())
+    ours = set(mine.stdout.split("\0")) | set(fresh.stdout.split("\0"))
     return sorted(
-        f for f in set(theirs.stdout.splitlines()) if f and (f in ours or any(f == p or f.startswith(p + "/") for p in named))
+        f for f in set(theirs.stdout.split("\0")) if f and (f in ours or any(f == p or f.startswith(p + "/") for p in named))
     )
 
 
