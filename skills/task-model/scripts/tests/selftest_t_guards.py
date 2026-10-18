@@ -1971,15 +1971,17 @@ def test_commit_guard_bd_writes() -> None:
         check("理由にタスクIDと tw を案内する", reason is not None and "T-100" in reason and "tw" in reason, str(reason))
 
         calls = []
-        original = commit_guard._open_claims_at
-        commit_guard._open_claims_at = lambda where: calls.append(where) or []
+        original = commit_guard._bd_verdict
+        commit_guard._bd_verdict = lambda command, start: calls.append(command) or None
         try:
             payload = {"tool_name": "Bash", "tool_input": {"command": "ls -la && git status"}, "cwd": wt1}
-            check("bd の語が無い主の Bash は控えを読みに行かない",
+            check("bd の語が無い主の Bash は bd の判定（解析）に入らない",
                   commit_guard.decide_main(payload) is None and calls == [], str(calls))
+            commit_guard.decide_main(dict(payload, tool_input={"command": "bd show x"}))
+            check("bd の語がある主の Bash は bd の判定に入る", calls == ["bd show x"], str(calls))
             check("Bash 以外は判定しない", commit_guard.decide_main(dict(payload, tool_name="Edit")) is None)
         finally:
-            commit_guard._open_claims_at = original
+            commit_guard._bd_verdict = original
 
         result_path = write(os.path.join(tmp, "result.md"), RESULT_FULL)
         run_task(wt1, "done", "T-100", "--result-file", result_path)

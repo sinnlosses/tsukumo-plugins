@@ -239,7 +239,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
 
 追加の規則（どれも実効の作業先に控えがあるときだけ）: 委譲先は `git stash`（`list`・`show` を除く）・`git add -A`/`--all`/`.`（`--` の後ろの `-A` はファイル名、`-n` は通す）・`git push`（`-n` を除く）・`git worktree remove|prune`・`git branch -d|-D|--delete` も拒む。書き込みの `bd`（`update`・`close`・`create`・`reclaim`・`dep add|remove`・`kv set|clear` など。`show`・`list`・`ready`・`kv get`・`--readonly` 付きは通す）は、主のセッションにも拒む（コマンドに `bd` の語があるときだけ解析する）。受け入れ役（旗 `--acceptor`、または入力の `agent_type` の最後の `:` より後ろが `acceptor`）は、`tw` を打つ単純コマンドと検証コマンドの直打ちを拒む（`agents/acceptor.md` は `check_repo.py` の規則で frontmatter に hooks を持てないので、旗は手で付けて呼ぶときの口で、plugin では `agent_type` で見分ける）
 
-出力: 拒むときだけ PreToolUse の deny の JSON 1行（理由は「コミットせず…報告で返す」か「…`Edit`・`Write` で書く」か「検証コマンド…を直に打たない。`tw verify` で打つ」）。通すときは何も出さない
+出力: 拒むときだけ PreToolUse の deny の JSON 1行。理由は「着手の印（タスクID）が立っていて tw done の前の作業ツリー（パス）では」で始まり、規則ごとに次の一手を続ける: コミット・`ref-guard` を外す書き方は「コミットせず…報告で返す」、書き換えは「…`Edit`・`Write` で書く」、検証コマンドは委譲先なら「…`tw verify` で打つ」・受け入れ役なら「検証はメインが持つ」、`git stash`・`git add -A`・`git push`・`git worktree remove`・`git branch -d` は打った形と次の一手（`git show HEAD:<path>`・個別の `git add`・`tw land` など）、書き込みの `bd` は「`tw` が打つ」、受け入れ役の `tw` は「受け入れ役は tw を打たない」。通すときは何も出さない
 
 拒否の判定とは別に、入力に `agent_id`・`session_id` があり `cwd` の作業ツリーの着手の控えがちょうど1件なら、台帳の `flow/` へ `agent` の出来事（`agent`・`session`）を最初の1回だけ足す（印は `.tw/local/task-agent-tasks/<agent_id>`。振り返りが transcript をタスクに紐付ける）
 
