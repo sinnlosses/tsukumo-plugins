@@ -56,6 +56,7 @@ import os
 import re
 import sys
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -72,6 +73,7 @@ import layout  # noqa: E402
 import gitinfo  # noqa: E402
 import ledger  # noqa: E402
 import metrics  # noqa: E402
+import taskfile  # noqa: E402
 import transcript  # noqa: E402
 
 DEFAULT_DIFF_BYTES = 40000
@@ -410,12 +412,15 @@ def read_ledger(root: str) -> list[metrics.Event] | str:
     return events
 
 
-def count_from_ledger(events: list[metrics.Event] | str, task_id: str) -> dict[str, str] | None:
+def count_from_ledger(
+    events: list[metrics.Event] | str, task_id: str, fix_times: Sequence[datetime] = ()
+) -> dict[str, str] | None:
     """台帳から `--reverify`・`--fixes`・`--review` を数える。読めない・そのタスクの `claim` が無ければ `None`。
 
     差し戻しは、受け入れ役が指摘を返す → 委譲先が直して `verify` を打つ → 次の `lap review start`、の順で現れる。
     `lap delegate start` は差し戻しのたびには打たれないので見ず、続く `lap review start` の組に
-    `verify` が挟まるかで数える。
+    `verify` か `fix_times`（作業先のコミットの時刻）が挟まるかで数える。
+    作業先の `verify` はこの台帳に残らないので、別のリポジトリのタスクの直しは `fix_times` だけに現れる。
     """
     if isinstance(events, str):
         return None
@@ -426,14 +431,59 @@ def count_from_ledger(events: list[metrics.Event] | str, task_id: str) -> dict[s
     run = own[claims[-1] :]
     reviews = [i for i, e in enumerate(run) if e.kind == "lap" and e.fields.get("stage") == "review" and e.fields.get("edge") == "start"]
     failed = sum(1 for e in run if e.kind == "verify" and e.fields.get("result") in metrics.VERIFY_FAILED_RESULTS)
-    fixes = sum(1 for a, b in zip(reviews, reviews[1:]) if any(e.kind == "verify" for e in run[a:b]))
+    fixes = sum(
+        1
+        for a, b in zip(reviews, reviews[1:])
+        if any(e.kind == "verify" for e in run[a:b]) or any(run[a].at <= t < run[b].at for t in fix_times)
+    )
     review = "skip" if not reviews else "found" if fixes else "clean"
     return {"--reverify": str(failed), "--fixes": str(fixes), "--review": review}
 
 
-def decide_gate(events: list[metrics.Event] | str, task_id: str, gate: dict[str, str]) -> dict[str, str]:
+def work_repo_fix_times(root: str, task_id: str) -> tuple[list[datetime], str | None]:
+    """`### 作業先` のリポジトリで、件名にタスクIDを含むコミット（マージを除く）のコミッタ時刻。
+
+    作業先の主ブランチと、残っていればタスクIDの小文字の枝を読む。作業先が無ければ `([], None)`、
+    読めなければ `([], 理由)`。
+    """
+    if not beads.is_initialized(root):
+        return [], None
+    try:
+        issue = beads.show(root, beads.to_bd_id(task_id))
+    except beads.BeadsError as e:
+        return [], str(e)
+    if issue is None:
+        return [], None
+    raw = issue.raw
+    body = beads.compose_body(
+        str(raw.get("description") or ""), str(raw.get("acceptance_criteria") or ""), str(raw.get("notes") or ""), None
+    )
+    repo, err = taskfile.plan_work_repo(body)
+    if repo is None:
+        return [], err
+    try:
+        refs = [gitinfo.base_branch(repo)]
+    except (gitinfo.NoBaseBranch, gitinfo.GitCommandError, OSError) as e:
+        return [], f"作業先 {repo} の主ブランチが決まらない: {e}"
+    branch = task_id.lower()
+    if git_out(repo, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}")[0] is not None:
+        refs.append(branch)
+    out, log_err = git_out(repo, "log", "--no-merges", "--format=%ct%x09%s", *refs, "--")
+    if out is None:
+        return [], f"作業先 {repo} の git log が読めない: {log_err}"
+    times = []
+    for line in out.splitlines():
+        at, _, subject = line.partition("\t")
+        if at.isdigit() and re.search(rf"\b{re.escape(task_id)}\b", subject):
+            times.append(datetime.fromtimestamp(int(at), timezone.utc))
+    return times, None
+
+
+def decide_gate(
+    events: list[metrics.Event] | str, task_id: str, gate: dict[str, str], fix_times: Sequence[datetime] = ()
+) -> dict[str, str]:
     """台帳の値を優先して 5 つの答えを決める。食い違いと数えられなかったものは標準エラーに出す。"""
-    counted = count_from_ledger(events, task_id)
+    counted = count_from_ledger(events, task_id, fix_times)
     decided = dict(gate)
     for opt in ("--reverify", "--fixes", "--review"):
         given = gate.get(opt)
@@ -579,7 +629,10 @@ def print_gate(root: str, task_id: str, gate: dict[str, str]) -> None:
     read = read_all_signals(root, task_id)
     events = read_ledger(root)
     stages = read_stages(events, task_id)
-    hits = gate_signals(root, decide_gate(events, task_id, gate), read, stages)
+    fix_times, unread = work_repo_fix_times(root, task_id)
+    if unread is not None:
+        print(f"UNREAD\t作業先のコミット\t{unread}", file=sys.stderr)
+    hits = gate_signals(root, decide_gate(events, task_id, gate, fix_times), read, stages)
     if not hits:
         print("QUIET")
         return

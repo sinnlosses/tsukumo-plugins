@@ -516,6 +516,106 @@ def test_gate_ledger() -> None:
         check("claim が無ければ引数に戻る", "SIGNAL\t検証の打ち直し\t1回" in r.stdout.splitlines() and "MISMATCH" not in r.stderr, r.stdout + r.stderr)
 
 
+def test_gate_work_repo() -> None:
+    print("material.py --gate が別のリポジトリのタスクの差し戻しを作業先のコミットから数える")
+    if shutil.which("bd") is None:
+        check("bd が PATH にある（material.py は作業先を Beads の課題から読む）", False)
+        return
+    base = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(hours=1)
+
+    def at(seconds: int) -> str:
+        return (base + timedelta(seconds=seconds)).isoformat(timespec="seconds")
+
+    def lap(seconds: int, task: str, stage: str, edge: str = "start") -> str:
+        return flow_row(at(seconds), "lap", task, stage=stage, edge=edge)
+
+    def review(start: int, task: str) -> str:
+        return lap(start, task, "review") + lap(start + 1, task, "review", "end")
+
+    with tempfile.TemporaryDirectory() as d:
+        home = os.path.join(d, "home")
+        write(os.path.join(home, ".config", "bd", "config.yaml"), "metrics:\n    disabled: true\n    notice_shown: true\nno-git-ops: true\n")
+        env = {
+            **os.environ,
+            "HOME": home,
+            "XDG_CONFIG_HOME": os.path.join(home, ".config"),
+            "XDG_DATA_HOME": os.path.join(home, ".local", "share"),
+            "CLAUDE_CONFIG_DIR": os.path.join(d, "cfg"),
+        }
+        env.pop("BEADS_ACTOR", None)
+        env.pop("GITHUB_TOKEN", None)
+        root = os.path.join(d, "repo")
+        work = os.path.join(d, "work")
+        os.makedirs(root)
+        os.makedirs(work)
+        git(root, "init", "-q", "-b", "main")
+        git(root, "config", "beads.role", "maintainer")
+        git(work, "init", "-q", "-b", "main")
+        git(work, "config", "user.email", "t@example.com")
+        git(work, "config", "user.name", "t")
+
+        def bd(*args: str, stdin: str | None = None) -> None:
+            subprocess.run(["bd", *args], cwd=root, env=env, input=stdin, check=True, capture_output=True, text=True)
+
+        def commit(seconds: int, subject: str) -> None:
+            write(os.path.join(work, "f.txt"), subject)
+            git(work, "add", "f.txt")
+            stamp = at(seconds)
+            subprocess.run(["git", "commit", "-q", "-m", subject], cwd=work, check=True, capture_output=True,
+                           env={**os.environ, "GIT_COMMITTER_DATE": stamp, "GIT_AUTHOR_DATE": stamp})
+
+        bd("init", "--stealth", "-p", "t", "--non-interactive", "--skip-hooks", "--quiet")
+        for n, repo in ((31, work), (32, work), (33, os.path.join(d, "missing")), (34, work)):
+            bd("create", "--id", f"t-0{n}", "--title", f"課題{n}", "--body-file", "-", "--silent",
+               "--metadata", '{"difficulty": "sonnet", "loopable": "Y"}', stdin="## 目的・背景\n\nx\n")
+            bd("update", f"t-0{n}", "--notes", f"### 1. 直す\n- 満たす完了条件: なし\n### 作業先\n- `{repo}`")
+
+        commit(1, "初期")
+        commit(2, "T-031: 実装")
+        commit(15, "T-031: 受け入れの差し戻しを直す")
+        commit(102, "T-032: 実装")
+        commit(112, "T-099: 別のタスクの変更")
+        git(work, "checkout", "-q", "-b", "t-034")
+        commit(315, "T-034: 主ブランチに入る前の直し")
+        git(work, "checkout", "-q", "main")
+
+        ledger = (
+            # verify の無い台帳で、差し戻し1回の直しが作業先のコミットにだけ現れる
+            flow_row(at(0), "claim", "T-031") + lap(5, "T-031", "accept") + review(10, "T-031") + review(20, "T-031")
+            # 差し戻しでない連続: 窓にあるのは最初のレビューより前の実装と、別のタスクIDのコミットだけ
+            + flow_row(at(100), "claim", "T-032") + review(110, "T-032") + review(113, "T-032")
+            # 作業先が読めない: verify だけで数える
+            + flow_row(at(200), "claim", "T-033") + review(210, "T-033")
+            + flow_row(at(212), "verify", "T-033", result="VERIFIED", seconds=1) + review(220, "T-033")
+            # 合流していない枝のコミットも数える
+            + flow_row(at(300), "claim", "T-034") + review(310, "T-034") + review(320, "T-034")
+        )
+        write(os.path.join(root, ".git", "task-workflow", "flow", "2026-10.jsonl"), ledger)
+
+        def gate(task_id: str) -> subprocess.CompletedProcess:
+            return subprocess.run(
+                [sys.executable, os.path.join(HERE, "material.py"), root, task_id, "--gate", "--friction", "none", "--human", "0"],
+                capture_output=True, text=True, env=env,
+            )
+
+        r = gate("T-031")
+        check("verify が無くても、続く review start の組の間の作業先のコミットを差し戻し1回と数え、指摘ありになる",
+              "SIGNAL\t受け入れでの直し\t1回" in r.stdout.splitlines()
+              and "SIGNAL\t受け入れでの直し\tレビューの指摘あり" in r.stdout.splitlines(),
+              r.stdout + r.stderr)
+        r = gate("T-032")
+        check("窓に verify も自分のIDのコミットも無い連続は数えない（最初のレビューより前の実装・別のIDのコミットは数えない）",
+              "受け入れでの直し" not in r.stdout and r.returncode == 0, r.stdout + r.stderr)
+        r = gate("T-033")
+        check("作業先が読めなければ UNREAD を標準エラーへ出し、verify だけで数える",
+              "SIGNAL\t受け入れでの直し\t1回" in r.stdout.splitlines()
+              and any(l.startswith("UNREAD\t作業先のコミット\t") for l in r.stderr.splitlines()),
+              r.stdout + r.stderr)
+        r = gate("T-034")
+        check("主ブランチに入る前のタスクIDの枝のコミットも数える",
+              "SIGNAL\t受け入れでの直し\t1回" in r.stdout.splitlines(), r.stdout + r.stderr)
+
+
 def test_stage_signals() -> None:
     print("material.py の段の所要時間（SIGNAL と節）")
     quiet = {"--friction": "none", "--reverify": "0", "--fixes": "0", "--human": "0", "--review": "skip"}
@@ -904,6 +1004,7 @@ def main() -> None:
     test_gate()
     test_hook_denials()
     test_gate_ledger()
+    test_gate_work_repo()
     test_stage_signals()
     test_task_material()
     test_material_commits()
