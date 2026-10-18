@@ -15,6 +15,8 @@
   終わりの無い段は `OPEN\t<段>\t<件数>`
 - **規則の棚卸し**: 設定の `hook_tally` のコマンドをリポジトリの根で `sh -c` で打った標準出力を
   そのまま。無い・落ちた・60秒で終わらないときは `-\t<理由>`
+- **再発しなかった候補**: 積んでから `beads.CANDIDATE_WINDOW_DAYS` 日を過ぎても候補のまま（同じ兆候の2件目が来ず上がらなかった）のドラフト
+  `EXPIRED\t<ID>\t<観点>\t<SIGNAL の種類>\t<場所>\t<積んでからの日数>d`（閉じる対象。期間は上の期間によらない）
 - **ドラフトの行方**: `WINDOW`・`FATE\t<観点>\t<積んだ>\t<採用>\t<却下>\t<未決>\t<絞り中|->`・
   `TOTAL\t<積んだ>\t<採用>\t<却下>\t<未決>\t<絞り中の観点|なし>`（期間は上の期間によらず `draft_fate.WINDOW_DAYS`）
 
@@ -72,6 +74,9 @@ def main() -> None:
     section("規則の棚卸し")
     print_hook_tally(root)
 
+    draft_fate.print_candidates(
+        root, draft_fate.EXPIRED_SECTION_TITLE, "EXPIRED", lambda issues: draft_fate.expired_candidates(issues, now)
+    )
     draft_fate.print_section(root, now)
 
 

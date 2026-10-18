@@ -116,9 +116,9 @@ def test_weekly() -> None:
         check("記録が無ければ期間は7日で last=-", lines_of("期間", out) == [f"PERIOD\t7d\t{(today - timedelta(days=7)).isoformat()}\t{today.isoformat()}\tlast=-"], out)
         headings = [l for l in out.splitlines() if l.startswith("===== ")]
         check(
-            "節は期間・流れの数・段の所要時間・規則の棚卸し・ドラフトの行方の5つだけ",
+            "節は期間・流れの数・段の所要時間・規則の棚卸し・再発しなかった候補・ドラフトの行方の6つだけ",
             headings == ["===== 期間 =====", "===== 流れの数 =====", "===== 段の所要時間 =====", "===== 規則の棚卸し =====",
-                         "===== ドラフトの行方（直近28日） ====="],
+                         "===== 再発しなかった候補（28日より前） =====", "===== ドラフトの行方（直近28日） ====="],
             "\n".join(headings),
         )
         fate = lines_of("ドラフトの行方（直近28日）", out)
@@ -377,6 +377,49 @@ def test_gate() -> None:
         check("5つのうち1つでも欠ければ終了コード2", r.returncode == 2 and r.stdout == "", r.stdout + r.stderr)
         r = gate("GH-1", {**quiet, "--review": "maybe"})
         check("値が違えば終了コード2", r.returncode == 2, r.stdout + r.stderr)
+
+
+def test_hook_denials() -> None:
+    print("material.py の手数で、委譲先の時間に hook が拒んだ回数をエラーから引く")
+    quiet = ["--friction", "none", "--human", "0"]
+    with tempfile.TemporaryDirectory() as d:
+        root = os.path.join(d, "repo")
+        os.makedirs(root)
+        git(root, "init", "-q", "-b", "main")
+        env = {**os.environ, "CLAUDE_CONFIG_DIR": os.path.join(d, "cfg")}
+
+        def material(*args: str) -> subprocess.CompletedProcess:
+            return subprocess.run([sys.executable, os.path.join(HERE, "material.py"), root, "GH-5", *args],
+                                  capture_output=True, text=True, env=env)
+
+        rows = [{"type": "user", "timestamp": "2026-10-01T00:00:00Z", "message": {"content": "GH-5 の作り物"}}]
+        for i in range(1, 4):
+            at = f"2026-10-01T00:00:{i:02d}Z"
+            rows += [
+                {"type": "assistant", "timestamp": at, "message": {"content": [{"type": "tool_use", "id": f"e{i}", "name": "Bash", "input": {}}]}},
+                {"type": "user", "timestamp": at, "message": {"content": [{"type": "tool_result", "tool_use_id": f"e{i}", "is_error": True}]}},
+            ]
+        slug = "".join(c if c.isalnum() else "-" for c in os.path.abspath(root))
+        write(os.path.join(d, "cfg", "projects", slug, "s1", "subagents", "a.jsonl"),
+              "".join(json.dumps(x, ensure_ascii=False) + "\n" for x in rows))
+
+        r = material("--gate", *quiet)
+        check("拒否の記録が無ければエラー3件で SIGNAL", "SIGNAL\tツールのエラー\t3件" in r.stdout.splitlines(), r.stdout + r.stderr)
+
+        def denial(at: str, actor: str) -> str:
+            return json.dumps({"at": at, "hook": "tw-commit-guard", "rule": "SHELL_WRITE", "actor": actor}) + "\n"
+
+        write(os.path.join(root, ".git", "hook-denials", "2026-10.jsonl"),
+              denial("2026-10-01T00:00:02+00:00", "subagent")
+              + denial("2026-10-01T00:00:02+00:00", "main")
+              + denial("2026-10-01T00:05:00+00:00", "subagent")
+              + "壊れた行\n")
+        r = material("--gate", *quiet)
+        check("時間の中の委譲先の拒否1件を引くと2件で QUIET（main・時間の外・壊れた行は引かない）",
+              r.stdout == "QUIET\n", r.stdout + r.stderr)
+        r = material("--signals")
+        check("手数の行に引いた後のエラーと除いた拒否の数",
+              "ツール呼び出し\t3件\tエラー\t2件\thook の拒否（エラーから除いた）\t1件" in r.stdout.splitlines(), r.stdout + r.stderr)
 
 
 def test_gate_ledger() -> None:
@@ -694,13 +737,17 @@ def test_draft_fate() -> None:
 
     now = datetime(2026, 10, 12, tzinfo=timezone.utc)
 
-    def issue(status: str, metadata: dict, days: float = 1, labels: tuple[str, ...] = (), description: str = "") -> beads.Issue:
+    def issue(status: str, metadata: dict, days: float = 1, labels: tuple[str, ...] = (), description: str = "",
+              bd_id: str = "t-001") -> beads.Issue:
         created = (now - timedelta(days=days)).isoformat(timespec="seconds").replace("+00:00", "Z")
-        return beads.Issue("t-001", "題", status, labels, (), None, None, None,
+        return beads.Issue(bd_id, "題", status, labels, (), None, None, None,
                            {"metadata": metadata, "created_at": created, "description": description})
 
     pointed = "## 目的・背景\n\n- 観点: 黄 道案内\n"
+    candidate_meta = {"draft": "Y", "candidate_signal": "friction log", "candidate_place": "docs/a.md"}
     rows = draft_fate.tally([
+        issue("deferred", candidate_meta, labels=("candidate",), description=pointed),
+        issue("closed", candidate_meta, days=29, labels=("candidate", "cancelled"), description=pointed),
         issue("closed", {"from_draft": "道案内"}),
         issue("closed", {"from_draft": "道案内"}),
         issue("closed", {"draft": "Y"}, labels=("cancelled",), description=pointed),
@@ -713,7 +760,7 @@ def test_draft_fate() -> None:
         issue("in_progress", {"from_draft": "機械の検査"}),
     ], now)
     check(
-        "観点ごとに 積んだ・採用・却下・未決 を数え、期間の外とドラフトでない課題は数えない",
+        "観点ごとに 積んだ・採用・却下・未決 を数え、期間の外・ドラフトでない課題・候補（label candidate）は数えない",
         [(r.viewpoint, r.stacked, r.adopted, r.dropped, r.pending) for r in rows]
         == [("不明", 1, 0, 0, 1), ("機械の検査", 1, 0, 0, 1), ("道案内", 6, 2, 2, 2)],
         repr(rows),
@@ -721,6 +768,38 @@ def test_draft_fate() -> None:
     for adopted, dropped, expected in ((2, 3, True), (3, 3, False), (0, 2, False)):
         got = draft_fate.Row("道案内", adopted + dropped, adopted, dropped, 0).throttled
         check(f"採用{adopted}・却下{dropped} の絞り中は {expected}", got == expected)
+
+    red = "## 目的・背景\n\n- 観点: 赤 道案内\n"
+    pool = [
+        issue("deferred", candidate_meta, days=27, labels=("candidate",), description=pointed, bd_id="t-011"),
+        issue("deferred", candidate_meta, days=29, labels=("candidate",), description=pointed, bd_id="t-012"),
+        issue("deferred", {**candidate_meta, "candidate_signal": "ツールのエラー"}, days=3, labels=("candidate",),
+              description=pointed, bd_id="t-013"),
+        issue("deferred", candidate_meta, days=40, description=pointed, bd_id="t-014"),
+        issue("deferred", {"draft": "Y"}, days=40, description=red, bd_id="t-015"),
+        issue("closed", candidate_meta, days=40, labels=("candidate", "cancelled"), description=pointed, bd_id="t-016"),
+    ]
+    key = ("道案内", "friction log", "docs/a.md")
+    check(
+        "昇格の材料: 28日以内で SIGNAL の種類が同じ候補だけを RECUR に、積んだ順で",
+        draft_fate.recurring_candidates(pool, {"friction log"}, now) == [("T-011", key, 27)],
+        repr(draft_fate.recurring_candidates(pool, {"friction log"}, now)),
+    )
+    check(
+        "失効: 28日を過ぎても候補のままのものだけ（上がった候補・赤・閉じた候補は出ない）",
+        draft_fate.expired_candidates(pool, now) == [("T-012", key, 29)],
+        repr(draft_fate.expired_candidates(pool, now)),
+    )
+    check(
+        "同じ候補も、日付を進めると昇格の材料から失効へ移る",
+        draft_fate.recurring_candidates(pool, {"friction log"}, now + timedelta(days=2)) == []
+        and [r[0] for r in draft_fate.expired_candidates(pool, now + timedelta(days=2))] == ["T-012", "T-011"],
+    )
+    check(
+        "赤のドラフトと上がった候補は従来どおり行方に数える",
+        [(r.viewpoint, r.stacked, r.pending) for r in draft_fate.tally(pool, now + timedelta(days=-20))] == [("道案内", 2, 2)],
+        repr(draft_fate.tally(pool, now + timedelta(days=-20))),
+    )
 
     if shutil.which("bd") is None:
         check("bd が PATH にある（ドラフトの行方は Beads から読む）", False)
@@ -807,6 +886,7 @@ def main() -> None:
     test_slow_calls()
     test_transcript_binding()
     test_gate()
+    test_hook_denials()
     test_gate_ledger()
     test_stage_signals()
     test_task_material()

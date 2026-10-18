@@ -250,6 +250,8 @@ def read_signals(path: str, root: str) -> dict | None:
         return None
     return {
         "elapsed": f"{first[:19]} → {last[:19]}" if first else "不明",
+        "started": first or None,
+        "ended": last or None,
         "tool_calls": calls,
         "errors": errors,
         "tools": tools.most_common(8),
