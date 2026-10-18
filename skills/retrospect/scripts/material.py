@@ -17,14 +17,16 @@
 - `--friction`（必須）: 委譲先の friction log が全部「なし」（`none`）／行がある（`some`）／書いていない返却がある（`missing`）
 - `--human`（必須）: 人の差し戻しの回数
 - `--reverify`: 検証を打ち直した回数。台帳の `verify` の `result` が `FORMAT_FAILED`・`VERIFY_NOT_PASSED` の件数
-- `--fixes`: 受け入れの差し戻しの回数。台帳の `lap review start` の続く組のうち、間に `verify` が挟まる組の数
-  （差し戻しのたびに必ず打たれるのは `lap review start` で、`lap delegate start` は打たれないことがあるので見ない）
+- `--fixes`: 受け入れの差し戻しの回数。台帳の `lap review start` の続く組のうち、間に `verify` か作業先のコミットが挟まる組の数
+  （差し戻しのたびに必ず打たれるのは `lap review start` で、`lap delegate start` は打たれないことがあるので見ない）。
+  作業先のコミットは、課題の `### 作業先` のリポジトリの主ブランチと、残っていればタスクIDの小文字の枝で、
+  件名にタスクIDを含むコミット（マージを除く）のコミッタ時刻。読めなければ標準エラーに `UNREAD\t作業先のコミット\t<理由>` を出し、`verify` だけで数える
 - `--review`: 台帳の `lap review start` が無ければ `skip`、`--fixes` が 1 以上なら `found`、無ければ `clean`
 
 台帳の3つは、そのタスクの最後の `claim` 以降だけを数える。台帳が読めない・`claim` が無いときだけ引数の値を使い、
 引数も無ければ `0`・`0`・`skip` として標準エラーに `UNCOUNTED` を出す。台帳から数えられたときに引数が違えば、
 台帳の値を使い標準エラーに `MISMATCH` を出す。縮み: 作業先が別のリポジトリのタスクは `verify` が台帳に残らず
-`--reverify` が 0 になる。受け入れ役が捨てた指摘は直されないので `found` にならない。
+`--reverify` が 0 になる。本文に `### 作業先` の無い旧いタスクは、差し戻しも数えられない。受け入れ役が捨てた指摘は直されないので `found` にならない。
 最後のレビューで出た指摘の直し（再レビューしない）は、続く組が無いので数えない。レビューを飛ばした回は差し戻しが起きない。
 
 - **タスク**: Beads の課題（`tw show` と同じ形。front matter と本文、`## 結果`）。
@@ -420,7 +422,6 @@ def count_from_ledger(
     差し戻しは、受け入れ役が指摘を返す → 委譲先が直して `verify` を打つ → 次の `lap review start`、の順で現れる。
     `lap delegate start` は差し戻しのたびには打たれないので見ず、続く `lap review start` の組に
     `verify` か `fix_times`（作業先のコミットの時刻）が挟まるかで数える。
-    作業先の `verify` はこの台帳に残らないので、別のリポジトリのタスクの直しは `fix_times` だけに現れる。
     """
     if isinstance(events, str):
         return None

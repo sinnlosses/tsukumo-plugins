@@ -32,7 +32,7 @@
 - `human`: 依頼に添えられた人の差し戻しの数をそのまま返す
 
 検証の打ち直し（`reverify`）・差し戻し（`fixes`）・レビューの指摘（`review`）は返さない。`material.py --gate` が台帳から数える
-（`reverify` は `verify` の失敗の件数、`fixes` は続く `lap review start` の組のうち間に `verify` が挟まる組の数、`review` はレビューが無ければ `skip`・`fixes` があれば `found`・無ければ `clean`）。
+（`reverify` は `verify` の失敗の件数、`fixes` は続く `lap review start` の組のうち間に `verify` か作業先のタスクのコミットが挟まる組の数、`review` はレビューが無ければ `skip`・`fixes` があれば `found`・無ければ `clean`）。
 受け入れる縮み: 作業先が別のリポジトリのタスクは `reverify` が 0 になる（`friction=some` が補う）。捨てた指摘と、最後のレビューで出た指摘の直し（再レビューしない）は数えない。
 
 同梱の受け入れ役が書く `- 捨てた指摘: <数>` は読む側が無く、この表に入らない。
