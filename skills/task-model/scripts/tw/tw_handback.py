@@ -68,6 +68,8 @@ def cmd_step(toplevel: str, task_id: str, step: str) -> None:
         raise SystemExit(4)
     key = _write_step_stamps(toplevel, shown, specs, n, "step")
     tw_base.record(toplevel, "step", shown, step=n, steps=len(specs))
+    for touched in tw_plan.main_touched(task_trees(toplevel, shown)[-1], _claimed_plan_body(toplevel, shown)):
+        print(f"MAIN_TOUCHED\t{shown}\t{touched}")
     print(f"STEPPED\t{shown}\t{n}/{len(specs)}\t{key.tree}")
 
 

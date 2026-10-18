@@ -163,6 +163,10 @@ def validate_edited_body(
         error = viewpoint_refusal(new_body)
     if error is None and section_changed(old_body, new_body, INTERVENTION_HEADING):
         error = intervention_refusal(new_body, required=False)
+    dropped = dropped_plan_headings(old_body, new_body) if error is None else ()
+    if dropped:
+        effects = " ".join(_DROPPED_EFFECT[heading] for heading in dropped)
+        return f"{PLAN_HEADING} から {'・'.join(dropped)} が落ちている。書き直しでも残す。{effects}"
     if error is not None or not has_plan(new_body):
         return error
     if plan_changed(old_body, new_body):
@@ -170,6 +174,29 @@ def validate_edited_body(
     if error is None and (plan_changed(old_body, new_body) or section_changed(old_body, new_body, ACCEPTANCE_HEADING)):
         error = coverage_refusal(new_body)
     return error
+
+
+_DROPPED_EFFECT = {
+    PLAN_WORK_REPO_HEADING: (
+        f"{PLAN_WORK_REPO_HEADING}: 別のリポジトリのタスクの作業先。落とすと `tw accept` が作業先を引けず `NO_RANGE` になる。"
+    ),
+    PLAN_FILES_HEADING: (
+        f"{PLAN_FILES_HEADING}: 落とすと `tw claim` の `plan-check` が名指したファイルの変わりを判定できず `unreadable`（古い計画）になり、"
+        "`tw step` の `MAIN_TOUCHED` も名指したファイルを見なくなる。"
+    ),
+}
+
+
+def dropped_plan_headings(old_body: str, new_body: str) -> tuple[str, ...]:
+    """`## やること` を書き直して、`old_body` にあった `### 作業先`・`### 名指すファイル` が `new_body` に無いもの。"""
+    if not plan_changed(old_body, new_body):
+        return ()
+
+    def headings(body: str) -> set[str]:
+        return {line.rstrip() for line in dict(_frame_sections(body)[1]).get(PLAN_HEADING, "").split("\n")}
+
+    old, new = headings(old_body), headings(new_body)
+    return tuple(h for h in (PLAN_WORK_REPO_HEADING, PLAN_FILES_HEADING) if h in old and h not in new)
 
 
 def opus_refusal(difficulty: str, body: str) -> str | None:

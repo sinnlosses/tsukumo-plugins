@@ -19,6 +19,7 @@ import metrics  # noqa: E402
 import ref_guard  # noqa: E402
 import stamps  # noqa: E402
 import taskfile  # noqa: E402
+import tw_plan  # noqa: E402
 from selftest_fixtures import BODY, TASK_PY, commit_task, disarm_ref_guard, flow_rows, hook_env, make_repo, metadata, readonly_git, run_guard, run_handback_guard, run_task, snapshot  # noqa: E402
 
 
@@ -982,6 +983,147 @@ def test_step_check_other_repo() -> None:
               r.returncode == 4
               and r.stdout.startswith(f"STEP_CHECK_FAILED\tT-100\t1/2\t{os.path.realpath(work_tree)}"),
               r.stdout + r.stderr)
+
+
+def _commit_files(repo: str, **files: str) -> None:
+    for name, text in files.items():
+        write(os.path.join(repo, name), text)
+        git(repo, "add", name)
+    git(repo, "commit", "-q", "-m", "主ブランチが進む")
+
+
+@weight(10)
+def test_step_main_touched() -> None:
+    say("task.py step: 着手のあとに主ブランチが名指すファイルか作業ツリーの変えたファイルを変えたら、STEPPED の前に MAIN_TOUCHED で知らせる")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _ = make_repo(os.path.join(tmp, "own"), verify="`true`")
+        commit_task(main_path, taskfile.Task("T-100", "段ごと", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        plan = f"### 1. 書く\n\n### 2. 試す\n\n### 3. 直す\n\n{taskfile.PLAN_FILES_HEADING}\n- `shared.txt`\n"
+        run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-", stdin=plan)
+
+        def step(n: int) -> tuple[subprocess.CompletedProcess, list[str]]:
+            r = run_task(wt1, "step", "T-100", str(n))
+            return r, [line.split("\t")[0] + "\t" + line.split("\t")[-1] for line in r.stdout.splitlines()
+                       if line.startswith("MAIN_TOUCHED")]
+
+        _commit_files(main_path, **{"other.txt": "o\n"})
+        r, touched = step(1)
+        check("名指さず作業ツリーも触らないファイルだけが変わったなら MAIN_TOUCHED は出ない",
+              r.returncode == 0 and touched == [] and r.stdout.startswith("STEPPED\tT-100\t1/3\t"), r.stdout + r.stderr)
+
+        write(os.path.join(wt1, "mine.txt"), "m\n")
+        _commit_files(main_path, **{"mine.txt": "M\n"})
+        r, touched = step(1)
+        check("作業ツリーが変えたファイルを主ブランチも変えたら MAIN_TOUCHED が1行、STEPPED の前に出て終了コード0",
+              r.returncode == 0 and touched == ["MAIN_TOUCHED\tmine.txt"]
+              and r.stdout.splitlines()[0].startswith("MAIN_TOUCHED\tT-100\tmine.txt")
+              and r.stdout.splitlines()[-1].startswith("STEPPED\tT-100\t1/3\t"), r.stdout + r.stderr)
+
+        _commit_files(main_path, **{"shared.txt": "line1\nline2\n"})
+        r, touched = step(2)
+        check("名指すファイルも変わったら1ファイル1行で辞書順に並ぶ",
+              r.returncode == 0 and touched == ["MAIN_TOUCHED\tmine.txt", "MAIN_TOUCHED\tshared.txt"]
+              and r.stdout.splitlines()[-1].startswith("STEPPED\tT-100\t2/3\t"), r.stdout + r.stderr)
+
+        os.remove(os.path.join(wt1, "mine.txt"))
+        git(wt1, "merge", "-q", "--ff-only", "main")
+        r, touched = step(2)
+        check("主ブランチを取り込んだあとは出ない", r.returncode == 0 and touched == [], r.stdout + r.stderr)
+
+        _commit_files(main_path, **{"shared.txt": "line1\nline2\nline3\n"})
+        r, touched = step(3)
+        check("最後の段（LAST_STEP）には出ない", r.returncode == 4 and touched == []
+              and r.stdout.startswith("LAST_STEP"), r.stdout + r.stderr)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _ = make_repo(os.path.join(tmp, "own"), verify="`true`")
+        work_repo, _, _ = make_repo(os.path.join(tmp, "work"), verify="`true`")
+        commit_task(main_path, taskfile.Task("T-100", "作業先で直す", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        plan = (
+            f"### 1. 書く\n\n### 2. 試す\n\n{taskfile.PLAN_FILES_HEADING}\n- `shared.txt`\n\n"
+            f"{taskfile.PLAN_WORK_REPO_HEADING}\n- `{work_repo}`\n"
+        )
+        run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-", stdin=plan)
+        work_tree = os.path.join(tmp, "work-t-100")
+        git(work_repo, "worktree", "add", "-q", "-b", "t-100", work_tree, "main")
+
+        _commit_files(main_path, **{"shared.txt": "own side\n"})
+        r = run_task(wt1, "step", "T-100", "1")
+        check("着手側の主ブランチが名指すファイルを変えても、作業先の主ブランチが変えていなければ出ない",
+              r.returncode == 0 and "MAIN_TOUCHED" not in r.stdout, r.stdout + r.stderr)
+        _commit_files(work_repo, **{"shared.txt": "work side\n"})
+        r = run_task(wt1, "step", "T-100", "1")
+        check("作業先の主ブランチが名指すファイルを変えたら、作業先で測って出る",
+              r.returncode == 0 and r.stdout.splitlines()[0] == "MAIN_TOUCHED\tT-100\tshared.txt"
+              and r.stdout.splitlines()[-1].startswith("STEPPED\tT-100\t1/2\t"), r.stdout + r.stderr)
+
+
+@weight(10)
+def test_main_touched_paths_and_changes() -> None:
+    say("tw_plan.main_touched: パスの文字（日本語・空白・引用符・改行）と変更の種類（名前の変更・コピー・削除・種類の変更）によらず、同じ状況には同じ結果")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _ = make_repo(tmp, verify="`true`")
+        special = ["日本 語.txt", "sp ace.txt", 'q"uote.txt']
+        for name in ["ren_a.txt", "c_src.txt", "d.txt", "t.txt", "w_a.txt", "unrelated.txt", *special]:
+            write(os.path.join(main_path, name), f"{name}\n")
+            git(main_path, "add", name)
+        git(main_path, "commit", "-q", "-m", "初期のファイル")
+        git(wt1, "merge", "-q", "--ff-only", "main")
+
+        write(os.path.join(wt1, "日本.txt"), "mine\n")
+        write(os.path.join(wt1, "n\nl.txt"), "mine\n")
+        git(wt1, "mv", "w_a.txt", "w_b.txt")
+
+        git(main_path, "mv", "ren_a.txt", "ren_b.txt")
+        shutil.copy(os.path.join(main_path, "c_src.txt"), os.path.join(main_path, "c_dst.txt"))
+        git(main_path, "add", "c_dst.txt")
+        git(main_path, "rm", "-q", "d.txt")
+        os.remove(os.path.join(main_path, "t.txt"))
+        os.symlink("unrelated.txt", os.path.join(main_path, "t.txt"))
+        git(main_path, "add", "t.txt")
+        for name in [*special, "w_a.txt", "unrelated.txt"]:
+            write(os.path.join(main_path, name), "main\n")
+            git(main_path, "add", name)
+        for name in ("日本.txt", "n\nl.txt"):
+            write(os.path.join(main_path, name), "main\n")
+            git(main_path, "add", name)
+        git(main_path, "commit", "-q", "-m", "主ブランチが進む")
+
+        named = ["ren_a.txt", "c_src.txt", "c_dst.txt", "d.txt", "t.txt", *special]
+        body = (
+            f"{taskfile.PLAN_HEADING}\n### 1. 書く\n\n{taskfile.PLAN_FILES_HEADING}\n"
+            + "".join(f"- `{p}`\n" for p in named)
+        )
+        got = tw_plan.main_touched(wt1, body)
+        expected = sorted(["ren_a.txt", "c_dst.txt", "d.txt", "t.txt", *special, "w_a.txt", "日本.txt", "n\nl.txt"])
+        check("名前の変更は名指した側、作業ツリーの名前の変更は元の側が出る。コピー・削除・種類の変更・特殊な文字のパスも生の文字列で出る",
+              got == expected, f"出た: {got!r}\n期待: {expected!r}")
+        check("名指しも作業ツリーの変更も無いファイルと、コピー元・名前の変更の先は出ない",
+              not {"unrelated.txt", "c_src.txt", "ren_b.txt", "w_b.txt"} & set(got), repr(got))
+
+
+@weight(5)
+def test_commit_guard_allows_merge_base_in_claimed_tree() -> None:
+    say("task.py commit-guard: ref-guard が効く着手した作業ツリーでは、git merge main（早送り）を commit-guard も ref-guard も拒まず、git commit は ref-guard が拒む")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _ = make_repo(tmp, verify="`true`")
+        commit_task(main_path, taskfile.Task("T-100", "段ごと", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        write(os.path.join(main_path, "o.txt"), "o\n")
+        git(main_path, "add", "o.txt")
+        git(main_path, "commit", "-q", "-m", "主ブランチが進む")
+        check("commit-guard は git merge main を拒まない", run_guard(tmp, wt1, "git merge main") is None)
+        write(os.path.join(wt1, "w.txt"), "w\n")
+        git(wt1, "add", "w.txt")
+        r = subprocess.run(["git", "commit", "-q", "-m", "x"], cwd=wt1, capture_output=True, text=True, env=git_env(False))
+        check("対照: 実際の git commit は ref-guard が拒む", r.returncode != 0, r.stdout + r.stderr)
+        git(wt1, "reset", "-q", "w.txt")
+        os.remove(os.path.join(wt1, "w.txt"))
+        r = subprocess.run(["git", "merge", "main"], cwd=wt1, capture_output=True, text=True, env=git_env(False))
+        check("実際の git merge main は早送りで通り、主ブランチの変更が入る",
+              r.returncode == 0 and os.path.exists(os.path.join(wt1, "o.txt")), r.stdout + r.stderr)
 
 
 @weight(15)
@@ -2011,6 +2153,9 @@ TESTS = (
     test_handback_guard_step,
     test_step_check,
     test_step_check_other_repo,
+    test_step_main_touched,
+    test_main_touched_paths_and_changes,
+    test_commit_guard_allows_merge_base_in_claimed_tree,
     test_handback_guard_structure,
     test_handback_guard_skipped_steps,
     test_commit_guard,
