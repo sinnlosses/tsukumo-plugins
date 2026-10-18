@@ -314,10 +314,11 @@ def _section_body(section: str, current: str, given: str) -> str:
     """`current` の `section` の節だけを `given` にした本文。"""
     heading = taskfile.section_heading(section)
     if heading is None:
-        print(f"usage: --section {section!r} は枠の見出しでない: " + "、".join(taskfile.SECTION_HEADINGS), file=sys.stderr)
+        headings = (*taskfile.SECTION_HEADINGS, taskfile.INTERVENTION_HEADING)
+        print(f"usage: --section {section!r} は枠の見出しでない: " + "、".join(headings), file=sys.stderr)
         raise SystemExit(2)
     error = taskfile.check_section_content(given)
-    replaced = taskfile.replace_section(current, heading, given) if error is None else None
+    replaced = taskfile.put_section(current, heading, given) if error is None else None
     if error is not None or replaced is None:
         print(f"usage: {error or f'いまの本文に {heading} が無い'}", file=sys.stderr)
         raise SystemExit(2)

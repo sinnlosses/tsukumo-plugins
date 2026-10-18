@@ -797,6 +797,90 @@ def test_opus_question_and_viewpoint() -> None:
               and "\nstatus: todo\n" in shown(main_path, draft), r.stdout + r.stderr)
 
 
+@weight(3)
+def test_intervention_commands() -> None:
+    say("task.py new・adopt・edit: 観点つきドラフトと harness の面を名指す計画は ## 介入 が無いと拒み、既存の課題の編集は拒まない")
+    target = "- 出し先の種類: hook"
+    harness = task_body([("書く", "x")], [".tw/config.toml"])
+    shaped = lambda text: task_body([("書く", "x")], [".tw/config.toml"], intervention=text)  # noqa: E731
+    pointed = "## 目的・背景\n\n- 出どころ: 振り返り: T-001\n- 観点: 黄 道案内\n"
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, _wt1, _wt2 = make_repo(tmp, branch="切らない")
+
+        def new(body: str, *extra: str) -> subprocess.CompletedProcess:
+            return run_task(main_path, "new", "--summary", "介入", "--difficulty", "sonnet", "--loopable", "Y", *extra,
+                            "--body-file", "-", stdin=body)
+
+        def created(r: subprocess.CompletedProcess) -> str:
+            return r.stdout.split("\t")[1] if r.stdout.startswith("CREATED\t") else ""
+
+        before = issue_count(main_path)
+        for label, body in (
+            ("節の無い", harness),
+            ("出し先の種類が語彙の外の", shaped(INTERVENTION.replace(target, "- 出し先の種類: 文書"))),
+            ("常設の文章で削るものの無い", shaped(INTERVENTION.replace(target, "- 出し先の種類: 常設の文章"))),
+        ):
+            r = new(body)
+            check(f"harness の面を名指す{label} new は終了コード2で作らない",
+                  r.returncode == 2 and issue_count(main_path) == before and "介入" in r.stderr, r.stdout + r.stderr)
+        r = new(shaped(INTERVENTION.replace(target, "- 出し先の種類: 常設の文章") + "\n- 削るもの: 旧い節"))
+        check("常設の文章で削るものがあれば new は通る", created(r) != "", r.stdout + r.stderr)
+
+        before = issue_count(main_path)
+        r = new(pointed, "--draft")
+        check("観点つきで節の無い new --draft は終了コード2で積まない",
+              r.returncode == 2 and issue_count(main_path) == before, r.stdout + r.stderr)
+        r = new(f"{pointed}\n## 介入\n\n{INTERVENTION}\n", "--draft")
+        check("観点つきで節のある new --draft は積める", created(r) != "", r.stdout + r.stderr)
+
+        draft = created(new("## 目的・背景\n\n作業中に見つけた改善\n", "--draft"))
+        check("観点の無いドラフトは節が無くても積める", draft != "")
+        plan = harness.split(f"{taskfile.PLAN_HEADING}\n", 1)[1].split(f"\n{taskfile.ACCEPTANCE_HEADING}\n", 1)[0]
+        r = run_task(main_path, "edit", draft, "--section", "やること", "--body-file", "-", stdin=plan)
+        r2 = run_task(main_path, "edit", draft, "--section", "完了条件", "--body-file", "-", stdin="- 通る\n")
+        check("ドラフトに harness の面を名指す計画と完了条件を書ける", r.returncode == 0 and r2.returncode == 0,
+              r.stdout + r.stderr + r2.stdout + r2.stderr)
+        r = run_task(main_path, "edit", draft, "--status", "todo")
+        check("節の無いまま --status todo は NOT_READY DRAFT（終了コード4）で draft のまま",
+              r.returncode == 4 and r.stdout.startswith(f"NOT_READY\t{draft}\tDRAFT\t") and "介入" in r.stdout
+              and "\nstatus: draft\n" in shown(main_path, draft), r.stdout + r.stderr)
+        r = run_task(main_path, "edit", draft, "--section", "介入", "--body-file", "-", stdin=INTERVENTION)
+        written = shown(main_path, draft)
+        check("--section '介入' で無い節を足し、show は ## 参考情報 の後ろに出す",
+              r.returncode == 0 and r.stdout.startswith(f"EDITED\t{draft}")
+              and written.index("## 参考情報") < written.index(taskfile.INTERVENTION_HEADING), r.stdout + r.stderr + written)
+        r = run_task(main_path, "edit", draft, "--status", "todo")
+        check("節を足したドラフトは todo に進む", r.returncode == 0 and "\nstatus: todo\n" in shown(main_path, draft),
+              r.stdout + r.stderr)
+        r = run_task(main_path, "edit", draft, "--section", "注意", "--body-file", "-", stdin="- 追記\n")
+        check("節を持つ課題の別の節の edit は通る", r.returncode == 0 and r.stdout.startswith(f"EDITED\t{draft}"),
+              r.stdout + r.stderr)
+        r = run_task(main_path, "edit", draft, "--section", "介入", "--body-file", "-",
+                     stdin=INTERVENTION.replace(target, "- 出し先の種類: 文書"))
+        check("節を語彙の外に変える edit は終了コード2", r.returncode == 2 and "語彙の外" in r.stderr
+              and target in shown(main_path, draft),
+              r.stdout + r.stderr)
+
+        commit_task(main_path, taskfile.Task("T-300", "既存", "todo", "sonnet", "Y", (), harness))
+        r = run_task(main_path, "edit", "T-300", "--section", "注意", "--body-file", "-", stdin="- 追記\n")
+        r2 = run_task(main_path, "edit", "T-300", "--summary", "既存の直し")
+        check("面を名指し節の無い既存の課題の --section 注意・--summary は通る",
+              r.returncode == 0 and r2.returncode == 0, r.stdout + r.stderr + r2.stdout + r2.stderr)
+        r = run_task(main_path, "edit", "T-300", "--status", "hold")
+        r2 = run_task(main_path, "edit", "T-300", "--status", "todo")
+        check("ドラフトでない既存の課題の hold・todo の切り替えは節が無くても通る",
+              r.returncode == 0 and r2.returncode == 0 and "\nstatus: todo\n" in shown(main_path, "T-300"),
+              r.stdout + r.stderr + r2.stdout + r2.stderr)
+
+        subprocess.run(["bd", "create", "--id", "t-raw", "--title", "取り込み", "--silent"], cwd=main_path,
+                       capture_output=True, text=True)
+        r = run_task(main_path, "adopt", "T-RAW", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", "-", stdin=harness)
+        check("面を名指し節の無い adopt は終了コード2", r.returncode == 2 and "介入" in r.stderr, r.stdout + r.stderr)
+        r = run_task(main_path, "adopt", "T-RAW", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", "-",
+                     stdin=shaped(INTERVENTION))
+        check("節があれば adopt は通る", r.returncode == 0 and r.stdout.startswith("ADOPTED\t"), r.stdout + r.stderr)
+
+
 @weight(4)
 def test_plan_coverage() -> None:
     say("task.py new・adopt・edit・plan-check: 段の `- 満たす完了条件:` が `## 完了条件` を覆わない計画を終了コード2で拒み、plan-check が PLAN_UNCOVERED で知らせる")
@@ -892,6 +976,7 @@ TESTS = (
     test_plan_coverage,
     test_opus_question_and_viewpoint,
     test_draft_to_todo,
+    test_intervention_commands,
     test_registered_plan,
     test_edit_and_plan_check,
     test_submodule_drift_is_not_work,

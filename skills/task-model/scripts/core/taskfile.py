@@ -861,6 +861,17 @@ def replace_section(body: str, heading: str, content: str) -> str | None:
     return "\n".join(lines[: start + 1] + middle + lines[end:])
 
 
+def put_section(body: str, heading: str, content: str) -> str | None:
+    """`replace_section` に加え、`## 介入` が無ければ本文の後ろ（`## 結果` があればその前）に足す。ほかの節が無ければ `None`。"""
+    replaced = replace_section(body, heading, content)
+    if replaced is not None or heading != INTERVENTION_HEADING:
+        return replaced
+    lines = body.rstrip("\n").split("\n")
+    end = next((i for i, l in enumerate(lines) if l.rstrip() == RESULT_HEADING), len(lines))
+    block = [heading, "", *content.strip("\n").split("\n"), ""]
+    return "\n".join([*lines[:end], "", *block, *lines[end:]]).rstrip("\n") + "\n"
+
+
 def id_number(task_id: str) -> int:
     """`T-521` → `521`。呼ぶ側で `layout.ID_PATTERN` に通した値だけを渡す。"""
     return int(task_id[len("T-") :])
