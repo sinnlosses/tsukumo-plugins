@@ -7,7 +7,7 @@ import tempfile
 from selftest_support import RESULT_FULL, check, git, refuse_direct_run, say, weight, write  # noqa: E402
 import beads  # noqa: E402
 import taskfile  # noqa: E402
-from selftest_body import task_body  # noqa: E402
+from selftest_body import INTERVENTION, task_body  # noqa: E402
 from selftest_fixtures import BODY, PLANNED_BODY, _claim_work_and_done, commit_task, issue_count, make_repo, make_submodule_repo, drift_submodule, metadata, run_task, set_acceptance_directly, set_plan_directly, shown, shown_body  # noqa: E402
 
 
@@ -683,7 +683,8 @@ def test_draft_to_todo() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
         r = run_task(main_path, "new", "--summary", "ドラフト", "--difficulty", "sonnet", "--loopable", "Y", "--draft",
-                     "--body-file", "-", stdin="## 目的・背景\n\n- 出どころ: 振り返り: T-001\n- 観点: 黄 道案内\n")
+                     "--body-file", "-",
+                     stdin=f"## 目的・背景\n\n- 出どころ: 振り返り: T-001\n- 観点: 黄 道案内\n\n## 介入\n\n{INTERVENTION}\n")
         draft = r.stdout.split("\t")[1] if r.stdout.startswith("CREATED\t") else ""
         check("ドラフトを積む", draft != "", r.stdout + r.stderr)
 
@@ -778,13 +779,13 @@ def test_opus_question_and_viewpoint() -> None:
               r.returncode == 0 and r.stdout.startswith(f"EDITED\t{old}"), r.stdout + r.stderr)
 
         before = issue_count(main_path)
-        r = new("sonnet", "## 目的・背景\n\n- 観点: 緑 道案内\n", "--draft")
+        r = new("sonnet", f"## 目的・背景\n\n- 観点: 緑 道案内\n\n## 介入\n\n{INTERVENTION}\n", "--draft")
         check("語彙外の観点のドラフトは終了コード2で積まない", r.returncode == 2 and issue_count(main_path) == before,
               r.stdout + r.stderr)
-        r = new("sonnet", "## 目的・背景\n\n- 観点: 規則の棚卸し\n", "--draft")
+        r = new("sonnet", f"## 目的・背景\n\n- 観点: 規則の棚卸し\n\n## 介入\n\n{INTERVENTION}\n", "--draft")
         check("色の無い横断の観点のドラフトは積める", created(r) != "", r.stdout + r.stderr)
 
-        pointed = task_body([("書く", "x")], ["shared.txt"], purpose="x\n- 観点: 黄 道案内")
+        pointed = task_body([("書く", "x")], ["shared.txt"], purpose="x\n- 観点: 黄 道案内", intervention=INTERVENTION)
         draft = created(new("sonnet", pointed, "--draft"))
         r = run_task(main_path, "edit", draft, "--difficulty", "opus", "--status", "todo")
         check("論点が無いドラフトを opus で todo に進めると NOT_READY DRAFT で変わらない",

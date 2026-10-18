@@ -12,7 +12,7 @@ import beads  # noqa: E402
 import gitinfo  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
-from selftest_body import task_body  # noqa: E402
+from selftest_body import INTERVENTION, task_body  # noqa: E402
 from selftest_fixtures import BODY, PLANNED_BODY, body_file, commit_task, flow_rows, issue_count, issue_json, make_repo, metadata, run_task, shown, start_task, unset_metadata  # noqa: E402
 
 
@@ -509,11 +509,80 @@ def test_taskfile_opus_and_viewpoint() -> None:
         check(f"viewpoint_refusal: {line!r} は{'通す' if ok else '拒む'}", (got is None) == ok, repr(got))
     check("validate_draft_body は語彙外の観点を拒む",
           taskfile.validate_draft_body("## 目的・背景\n\n- 観点: 緑 道案内\n") is not None
-          and taskfile.validate_draft_body("## 目的・背景\n\n- 観点: 黄 道案内\n") is None)
+          and taskfile.validate_draft_body(f"## 目的・背景\n\n- 観点: 黄 道案内\n\n## 介入\n\n{INTERVENTION}\n") is None)
     odd = purposed("- 観点: なにか")
     check("語彙外の観点を持つ既存本文の ## 注意 だけを変える編集は通り、## 目的・背景 を変えると拒む",
           edit(odd, odd.replace("## 注意\n", "## 注意\n- y\n"), old_difficulty="sonnet", difficulty="sonnet") is None
           and edit(odd, odd.replace("- 根拠: x", "- 根拠: y"), old_difficulty="sonnet", difficulty="sonnet") is not None)
+
+
+def test_taskfile_intervention() -> None:
+    say("taskfile の ## 介入（観点つきの本文と harness の面を名指す計画で必須、形は語彙で見る）")
+    new = functools.partial(taskfile.validate_new_body, hold=False, difficulty="sonnet")
+    named = lambda path, text="": task_body([("書く", "x")], [path], intervention=text)  # noqa: E731
+    pointed = "## 目的・背景\n\n- 出どころ: 振り返り: T-001\n- 観点: 黄 道案内\n"
+
+    check("観点つきのドラフトに ## 介入 が無ければ拒む", taskfile.validate_draft_body(pointed) is not None)
+    check("観点つきのドラフトに5行の ## 介入 があれば通す",
+          taskfile.validate_draft_body(f"{pointed}\n## 介入\n\n{INTERVENTION}\n") is None)
+    check("観点つきの本文は --hold で計画が無くても ## 介入 を求める",
+          taskfile.validate_new_body(task_body(purpose="- 観点: 黄 道案内"), hold=True, difficulty="sonnet") is not None
+          and taskfile.validate_new_body(task_body(purpose="- 観点: 黄 道案内", intervention=INTERVENTION), hold=True,
+                                         difficulty="sonnet") is None)
+    for path in ("skills/x.md", "CLAUDE.md", ".tw/config.toml", "scripts/hook/a.sh", ".claude/rules/a.md", "docs/workflow.md",
+                 "skills/", "scripts/hook"):
+        check(f"{path} を名指す計画は ## 介入 が無ければ拒み、あれば通す",
+              new(named(path)) is not None and new(named(path, INTERVENTION)) is None, repr(new(named(path))))
+    for path in ("docs/", "shared.txt", "skillsx/a.md", "src/CLAUDE.md", "scripts/"):
+        check(f"{path} は面に当たらず ## 介入 が無くても通す", new(named(path)) is None, repr(new(named(path))))
+
+    def shaped(text: str) -> str | None:
+        return new(named("skills/x.md", text))
+
+    target = "- 出し先の種類: hook"
+    for label, text, ok in (
+        ("語彙の外の出し先の種類", INTERVENTION.replace(target, "- 出し先の種類: 文書"), False),
+        ("出し先の種類が2語", INTERVENTION.replace(target, "- 出し先の種類: hook 検査"), False),
+        ("常設の文章で削るもの無し", INTERVENTION.replace(target, "- 出し先の種類: 常設の文章"), False),
+        ("常設の文章で削るもの有り", INTERVENTION.replace(target, "- 出し先の種類: 常設の文章") + "\n- 削るもの: 旧い節", True),
+        ("常設の文章で削るものが空", INTERVENTION.replace(target, "- 出し先の種類: 常設の文章") + "\n- 削るもの:", False),
+        ("基準線の行が欠ける", INTERVENTION.replace("- 基準線: 直近28日で12回\n", ""), False),
+        ("やめる条件が空", INTERVENTION.replace("- やめる条件: 打ち直しが減らなければ外す", "- やめる条件:"), False),
+        ("狙う兆候が2行", INTERVENTION + "\n- 狙う兆候: 人の差し戻し", False),
+        ("梯子の6語のどれでも", INTERVENTION.replace(target, "- 出し先の種類: サブエージェント"), True),
+        ("節が「なし」", "なし", False),
+    ):
+        got = shaped(text)
+        check(f"## 介入: {label}は{'通す' if ok else '拒む'}", (got is None) == ok, repr(got))
+    for word in taskfile.INTERVENTION_TARGETS:
+        check(f"出し先の種類 {word} は語彙の中", shaped(INTERVENTION.replace(target, f"- 出し先の種類: {word}")
+                                                  + "\n- 削るもの: x") is None)
+    check("面も観点も無い本文でも ## 介入 があれば形を見る",
+          new(named("shared.txt", INTERVENTION.replace(target, "- 出し先の種類: 文書"))) is not None
+          and new(named("shared.txt", INTERVENTION)) is None)
+    body, bare = named("skills/x.md", INTERVENTION), named("skills/x.md")
+    check("## 介入 が ## 参考情報 より前なら拒む",
+          taskfile.validate_body(bare.replace("## 参考情報\n", f"## 介入\n{INTERVENTION}\n## 参考情報\n")) is not None)
+    check("## 介入 が2つなら拒む", taskfile.validate_body(f"{body}\n## 介入\n{INTERVENTION}\n") is not None)
+
+    edit = functools.partial(taskfile.validate_edited_body, draft=False, old_difficulty="sonnet", difficulty="sonnet")
+    check("面を名指し節の無い既存本文の ## 注意 だけを変える編集は通る",
+          edit(bare, bare.replace("## 注意\n", "## 注意\n- y\n")) is None)
+    check("節のある本文の ## 注意 だけを変える編集は通る", edit(body, body.replace("## 注意\n", "## 注意\n- y\n")) is None)
+    check("## 介入 を語彙の外に変える編集は拒む", edit(body, body.replace(target, "- 出し先の種類: 文書")) is not None)
+    check("ドラフトの ## 介入 を語彙の外に変える編集も拒む",
+          taskfile.validate_edited_body(f"{pointed}\n## 介入\n\n{INTERVENTION}\n",
+                                        f"{pointed}\n## 介入\n\n{INTERVENTION.replace(target, '- 出し先の種類: 文書')}\n",
+                                        draft=True, old_difficulty="sonnet", difficulty="sonnet") is not None)
+
+    check("intervention は5行と削るものを {名前: 値} で読む",
+          taskfile.intervention(named("x", INTERVENTION + "\n- 削るもの: 旧い節")) == {
+              "狙う兆候": "検証の打ち直し", "基準線": "直近28日で12回", "出し先の種類": "hook",
+              "判定の期日": "送り出しから14日", "やめる条件": "打ち直しが減らなければ外す", "削るもの": "旧い節"},
+          repr(taskfile.intervention(named("x", INTERVENTION))))
+    check("節が無ければ intervention は None", taskfile.intervention(bare) is None)
+    check("section_heading は 介入 を ## 介入 に揃える",
+          taskfile.section_heading("介入") == taskfile.section_heading("## 介入") == taskfile.INTERVENTION_HEADING)
 
 
 def test_done_single_worktree() -> None:
@@ -791,6 +860,7 @@ TESTS = (
     test_taskfile_body,
     test_taskfile_draft_viewpoint,
     test_taskfile_opus_and_viewpoint,
+    test_taskfile_intervention,
 )
 
 

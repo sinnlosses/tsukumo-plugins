@@ -20,10 +20,11 @@ def task_body(
     acceptance: str = "x",
     caution: str = "",
     question: str = "なし",
+    intervention: str = "",
 ) -> str:
     """7つの見出しを正典の順に並べた本文。`steps` は（段の見出し, 本文）の並びで、`### 1.` から番号を振る。
 
-    `steps`・`files` が空なら空の `## やること`（`--hold` 用）になる。
+    `steps`・`files` が空なら空の `## やること`（`--hold` 用）になる。`intervention` に中身があれば後ろに `## 介入` を足す。
     """
     plan = [f"### {n}. {title}\n" + (f"{text}\n" if text else "") for n, (title, text) in enumerate(steps, 1)]
     if work_repo is not None:
@@ -38,4 +39,14 @@ def task_body(
         taskfile.ACCEPTANCE_HEADING: f"{acceptance}\n",
         taskfile.CAUTION_HEADING: f"{caution}\n" if caution else "",
     }
-    return "\n".join(f"{heading}\n{contents.get(heading, '')}" for heading in taskfile.SECTION_HEADINGS)
+    body = "\n".join(f"{heading}\n{contents.get(heading, '')}" for heading in taskfile.SECTION_HEADINGS)
+    return body + (f"\n{taskfile.INTERVENTION_HEADING}\n{intervention}\n" if intervention else "")
+
+
+INTERVENTION = (
+    "- 狙う兆候: 検証の打ち直し\n"
+    "- 基準線: 直近28日で12回\n"
+    "- 出し先の種類: hook\n"
+    "- 判定の期日: 送り出しから14日\n"
+    "- やめる条件: 打ち直しが減らなければ外す"
+)

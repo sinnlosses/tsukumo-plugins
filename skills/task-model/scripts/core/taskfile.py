@@ -62,6 +62,27 @@ VIEWPOINTS = (
 )
 WEEKLY_VIEWPOINTS = ("流れの数", "段の所要時間", "規則の棚卸し")
 
+# 枠の7節の後ろ（`## 結果` の前）に置く任意の節。正典は WORKFLOW.md「タスクの本文」で、表と食い違えば自己テストが落とす。
+INTERVENTION_HEADING = "## 介入"
+INTERVENTION_SIGNAL = "狙う兆候"
+INTERVENTION_BASELINE = "基準線"
+INTERVENTION_TARGET = "出し先の種類"
+INTERVENTION_DUE = "判定の期日"
+INTERVENTION_STOP = "やめる条件"
+INTERVENTION_CUT = "削るもの"
+INTERVENTION_FIELDS = (
+    INTERVENTION_SIGNAL,
+    INTERVENTION_BASELINE,
+    INTERVENTION_TARGET,
+    INTERVENTION_DUE,
+    INTERVENTION_STOP,
+)
+# 出し先の梯子。上から先に選ぶ。
+INTERVENTION_TARGETS = ("hook", "検査", "スクリプト", "スキル", "サブエージェント", "常設の文章")
+INTERVENTION_PROSE = "常設の文章"
+# `/` で終わるものはその下、ほかは同じパス。名指すファイルの相対パス（作業先があればその根から）と比べる。
+HARNESS_SURFACES = ("CLAUDE.md", ".claude/rules/", "docs/workflow.md", "skills/", ".tw/config.toml", "scripts/hook/")
+
 
 @dataclass(frozen=True)
 class Task:
@@ -104,24 +125,34 @@ def validate_new_body(body: str, hold: bool, difficulty: str) -> str | None:
     if error is not None:
         return error
     if not has_plan(body):
-        return None if hold else f"{PLAN_HEADING} に計画を書く（空にできるのは --hold だけ）"
-    return plan_steps(body)[1] or plan_files(body)[1] or plan_work_repo(body)[1] or coverage_refusal(body)
+        if not hold:
+            return f"{PLAN_HEADING} に計画を書く（空にできるのは --hold だけ）"
+        return intervention_refusal(body, required=_viewpoint_match(body) is not None)
+    error = plan_steps(body)[1] or plan_files(body)[1] or plan_work_repo(body)[1] or coverage_refusal(body)
+    if error is not None:
+        return error
+    required = _viewpoint_match(body) is not None or bool(harness_paths(plan_files(body)[0]))
+    return intervention_refusal(body, required=required)
 
 
 def validate_draft_body(body: str) -> str | None:
     """`tw new --draft` の本文検査。見出しは枠の節を枠の順に欠けてよく、中身が要るのは `## 目的・背景` だけ。
-    `## やること` に中身があれば `validate_new_body` と同じ計画の検査をかける。問題が無ければ `None`。"""
+    `## やること` に中身があれば `validate_new_body` と同じ計画の検査をかける。`- 観点:` の行があれば `## 介入` を求める。
+    問題が無ければ `None`。"""
     error = validate_body(body, draft=True) or viewpoint_refusal(body)
-    if error is not None or not has_plan(body):
+    if error is None and has_plan(body):
+        error = plan_steps(body)[1] or plan_files(body)[1] or plan_work_repo(body)[1] or coverage_refusal(body)
+    if error is not None:
         return error
-    return plan_steps(body)[1] or plan_files(body)[1] or plan_work_repo(body)[1] or coverage_refusal(body)
+    return intervention_refusal(body, required=_viewpoint_match(body) is not None)
 
 
 def validate_edited_body(
     old_body: str, new_body: str, *, draft: bool, old_difficulty: str, difficulty: str
 ) -> str | None:
     """`task edit` の本文検査。枠の検査（`draft` はドラフトの緩い枠）に加え、変えた節だけを見る:
-    `## やること` を変えて中身があれば段の形、`## やること` か `## 完了条件` を変えて中身があれば完了条件の覆い、opus に上げたか論点を変えたなら論点、`## 目的・背景` を変えたなら `- 観点:` の語彙。"""
+    `## やること` を変えて中身があれば段の形、`## やること` か `## 完了条件` を変えて中身があれば完了条件の覆い、opus に上げたか論点を変えたなら論点、`## 目的・背景` を変えたなら `- 観点:` の語彙、
+    `## 介入` を変えたならその形（必須かどうかは見ない）。"""
     error = validate_body(new_body, draft)
     if error is not None:
         return error
@@ -130,6 +161,8 @@ def validate_edited_body(
             error = opus_refusal(difficulty, new_body)
     if error is None and section_changed(old_body, new_body, PURPOSE_HEADING):
         error = viewpoint_refusal(new_body)
+    if error is None and section_changed(old_body, new_body, INTERVENTION_HEADING):
+        error = intervention_refusal(new_body, required=False)
     if error is not None or not has_plan(new_body):
         return error
     if plan_changed(old_body, new_body):
@@ -159,6 +192,55 @@ def viewpoint_refusal(body: str) -> str | None:
         + "・".join(VIEWPOINTS + WEEKLY_VIEWPOINTS)
         + "）"
     )
+
+
+def intervention(body: str) -> dict[str, str] | None:
+    """`## 介入` の `- <名前>: <値>` の行を `{名前: 値}` で。同じ名前が2つあれば後の値。節が無い・空・「なし」なら `None`。"""
+    content = dict(_frame_sections(body)[1]).get(INTERVENTION_HEADING, "")
+    if is_blank(content):
+        return None
+    return {m.group(1): m.group(2) for m in _INTERVENTION_LINE.finditer(content)}
+
+
+def harness_paths(paths: tuple[str, ...]) -> tuple[str, ...]:
+    """`paths` のうち harness の面（`HARNESS_SURFACES`）に当たるもの。面のディレクトリの親は当たらない。"""
+
+    def hit(path: str, surface: str) -> bool:
+        if surface.endswith("/"):
+            return path.rstrip("/") == surface.rstrip("/") or path.startswith(surface)
+        return path == surface
+
+    return tuple(p for p in paths if any(hit(p, s) for s in HARNESS_SURFACES))
+
+
+def intervention_refusal(body: str, *, required: bool) -> str | None:
+    """`## 介入` の形の誤り。`required` なら節が無いのも誤り。節が無く `required` でもなければ `None`。"""
+    if intervention(body) is None:
+        if not required:
+            return None
+        return (
+            f"`- 観点:` の行を持つ本文か、harness の面（{'・'.join(HARNESS_SURFACES)}）を名指す計画には "
+            f"{INTERVENTION_HEADING} を {'・'.join(f'`- {f}:`' for f in INTERVENTION_FIELDS)} の行で書く"
+        )
+    content = dict(_frame_sections(body)[1]).get(INTERVENTION_HEADING, "")
+    found = [(m.group(1), m.group(2)) for m in _INTERVENTION_LINE.finditer(content)]
+    names = [n for n, _ in found]
+    twice = [f for f in (*INTERVENTION_FIELDS, INTERVENTION_CUT) if names.count(f) > 1]
+    if twice:
+        return f"{INTERVENTION_HEADING} の `- {twice[0]}:` は1行まで"
+    fields = dict(found)
+    missing = [f for f in INTERVENTION_FIELDS if not fields.get(f)]
+    if missing:
+        return f"{INTERVENTION_HEADING} に {'・'.join(f'`- {f}:`' for f in missing)} の行が無いか空"
+    target = fields[INTERVENTION_TARGET]
+    if target not in INTERVENTION_TARGETS:
+        return f"{INTERVENTION_HEADING} の `- {INTERVENTION_TARGET}:` {target!r} が語彙の外（{'・'.join(INTERVENTION_TARGETS)} のどれか1つ）"
+    if target == INTERVENTION_PROSE and not fields.get(INTERVENTION_CUT):
+        return f"{INTERVENTION_HEADING} の `- {INTERVENTION_TARGET}:` が {INTERVENTION_PROSE} なら `- {INTERVENTION_CUT}:` の行を書く"
+    return None
+
+
+_INTERVENTION_LINE = re.compile(r"^- ([^:：\n]+?):[ \t]*(.*?)[ \t]*$", re.MULTILINE)
 
 
 def section_changed(old_body: str, new_body: str, heading: str) -> bool:
@@ -643,7 +725,7 @@ _PLAN_FILE_LINE = re.compile(r"^- `([^`]+)`.*$")
 
 
 def validate_body(body: str, draft: bool = False) -> str | None:
-    """本文が枠（`SECTION_HEADINGS` をこの順に1つずつ）に沿っているか。`## 結果` は枠の外で拒む。
+    """本文が枠（`SECTION_HEADINGS` をこの順に1つずつ、後ろに任意の `## 介入`）に沿っているか。`## 結果` は枠の外で拒む。
 
     見出しは行頭の `## ` だけを数える（本文の説明文で節名に言及するのは許す）。
     `draft` なら節は枠の順のまま欠けてよく、中身が要るのは `## 目的・背景` だけ。
@@ -656,6 +738,8 @@ def validate_body(body: str, draft: bool = False) -> str | None:
     headings = tuple(h for h, _ in sections)
     if RESULT_HEADING in headings:
         return f"{RESULT_HEADING} は tw done が書く（本文に入れない）"
+    if headings[-1:] == (INTERVENTION_HEADING,):
+        headings = headings[:-1]
     expected = tuple(h for h in SECTION_HEADINGS if h in headings) if draft else SECTION_HEADINGS
     if headings != expected:
         return "本文の見出しが枠と違う（この順に1つずつ置く）: " + "、".join(SECTION_HEADINGS)
@@ -748,7 +832,7 @@ def section_heading(name: str) -> str | None:
     """`やること`・`## やること` を枠の見出しの行にそろえる。枠に無い名前は `None`。"""
     heading = name.strip()
     heading = heading if heading.startswith("## ") else f"## {heading}"
-    if heading in SECTION_HEADINGS:
+    if heading in (*SECTION_HEADINGS, INTERVENTION_HEADING):
         return heading
     for candidate in SECTION_HEADINGS:
         if "（" in candidate:
