@@ -177,18 +177,28 @@ def _after_send(toplevel: str, released: list[str], result: str) -> list[str]:
 
     `sync` の start・end のあとに `ship` を記録する（`tw metrics --stages` は `ship` までの出来事で区間を切る）。
     """
+    issues = {task_id: _shown(toplevel, task_id) for task_id in released}
     for task_id in released:
-        tw_base.record(toplevel, "lap", task_id, stage="sync", edge="start")
+        tw_base.record(toplevel, "lap", task_id, issues[task_id], stage="sync", edge="start")
     lines = tracker.session(toplevel).sync_all(pull=False) + beads.backup(toplevel)
     for task_id in released:
-        tw_base.record(toplevel, "lap", task_id, stage="sync", edge="end")
-    _record_shipped(toplevel, released, result)
+        tw_base.record(toplevel, "lap", task_id, issues[task_id], stage="sync", edge="end")
+    _record_shipped(toplevel, released, issues, result)
     return lines
 
 
-def _record_shipped(toplevel: str, released: list[str], result: str = "SHIPPED") -> None:
+def _shown(toplevel: str, task_id: str) -> beads.Issue | None:
+    try:
+        return beads.show(toplevel, beads.to_bd_id(task_id))
+    except Exception:
+        return None
+
+
+def _record_shipped(
+    toplevel: str, released: list[str], issues: dict[str, beads.Issue | None], result: str = "SHIPPED"
+) -> None:
     for task_id in released:
-        tw_base.record(toplevel, "ship", task_id, result=result)
+        tw_base.record(toplevel, "ship", task_id, issues[task_id], result=result)
 
 
 def cmd_land(toplevel: str, branch: str) -> None:

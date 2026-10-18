@@ -249,9 +249,11 @@ class Session:
                 pushed_count = str(len(changed_ids))
                 if changed_ids:
                     self._say(f"GitHub へ送る: {len(changed_ids)} 件")
+                    has_ref = all(_ref_number(i.external_ref) is not None for i in before if i.bd_id in stale)
                     self._bd_ok(
                         ["github", "sync", "--push-only", "--issues", ",".join(changed_ids)],
                         "bd github sync --push-only",
+                        keeps_issues=has_ref,
                     )
                 self._mark_synced(changed_ids)
                 renamed, renamed_lines = self._rename([i.bd_id for i in before if beads.is_provisional(i.bd_id)])

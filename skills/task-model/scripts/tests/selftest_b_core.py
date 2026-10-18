@@ -516,7 +516,47 @@ def test_new_bd_calls() -> None:
                   r.stdout + r.stderr + "\n".join(calls))
 
 
+def test_ship_bd_calls() -> None:
+    say("ship: 送る課題がどれも番号つきなら送りのあとに全件読みと show を打たず、番号の無い課題を含めば読み直す")
+    with github() as (fake, tmp, main_path, wt1):
+        a = new(main_path, "送る課題")
+        r = run_task(wt1, "claim", a)
+        check("claim", r.returncode == 0 and r.stdout.startswith("CLAIMED"), r.stdout + r.stderr)
+        work_and_done(wt1, a)
+        counted = os.path.join(tmp, "bd-count.txt")
+        local.env = {**local.env, "BD_COUNT_FILE": counted}
+
+        def counted_ship() -> tuple[subprocess.CompletedProcess, list[str], list[str]]:
+            open(counted, "w").close()
+            r = run_task(wt1, "ship")
+            calls = open(counted).read().splitlines()
+            sent = next((n for n, c in enumerate(calls) if c.startswith("github sync --push-only")), None)
+            return r, calls, [] if sent is None else calls[sent + 1:]
+
+        r, calls, after = counted_ship()
+        lists = [c for c in calls if c.startswith("list ")]
+        shows = [c for c in calls if c.startswith(f"show {beads.to_bd_id(a)} ")]
+        say(f"  番号つきの ship: bd {len(calls)} 回（うち list {len(lists)} 回・show {len(shows)} 回）")
+        check("番号つきだけの ship は成功し、送りの行がある", r.returncode == 0 and "SHIPPED" in r.stdout
+              and "TRACKER\tOK\tgithub" in r.stdout and len(calls) != len(after), r.stdout + r.stderr + "\n".join(calls))
+        check("番号つきだけの ship の list は2回以下、送った課題の show は1回以下",
+              len(lists) <= 2 and len(shows) <= 1, "\n".join(calls))
+        check("番号つきだけの ship は github sync --push-only のあとに list・show を打たない",
+              not any(c.startswith(("list ", "show ")) for c in after), "\n".join(after))
+
+        bd(main_path, "create", "--id", f"{beads.PROVISIONAL_PREFIX}wt1-1700000000", "--title", "仮の課題",
+           "--description", "まだ送っていない", "--silent")
+        r, calls, after = counted_ship()
+        renamed = beads.show(main_path, "gh-2")
+        check("番号の無い課題を含む ship は読み直し、Issue が1つ立って仮の ID が gh-2 へ付け替わり、Status が揃う",
+              r.returncode == 0 and "NOTHING" in r.stdout and len(fake.issues) == 2 and renamed is not None
+              and not any(beads.is_provisional(i.bd_id) for i in beads.list_issues(main_path))
+              and fake.status_of(2) is not None and any(c.startswith(("list ", "show ")) for c in after),
+              r.stdout + r.stderr + "\n".join(calls))
+
+
 TESTS = (
+    test_ship_bd_calls,
     test_tracker_command_bd_calls,
     test_new_bd_calls,
     test_issue_list_reuse_boundary,
