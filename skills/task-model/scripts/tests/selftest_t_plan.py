@@ -235,6 +235,60 @@ def test_edit_section() -> None:
 
 
 @weight(4)
+def test_edit_keeps_plan_sections() -> None:
+    say("task.py edit: ## やること の書き直しで ### 作業先・### 名指すファイル が落ちるのは終了コード2で拒む")
+    other = "/tmp/other-repo"
+    step = "### 1. 書く\n\nx\n"
+    repo = f"{taskfile.PLAN_WORK_REPO_HEADING}\n- `{other}`\n"
+    files = f"{taskfile.PLAN_FILES_HEADING}\n- `a.txt`\n"
+    repo_name, files_name = taskfile.PLAN_WORK_REPO_HEADING, taskfile.PLAN_FILES_HEADING
+    refused = (
+        ("作業先だけ落ちる", step + files, [repo_name]),
+        ("名指すファイルだけ落ちる", step + repo, [files_name]),
+        ("両方落ちる", step, [repo_name, files_name]),
+        ("作業先の見出しに空白が無い", step + f"###作業先\n- `{other}`\n" + files, [repo_name]),
+        ("作業先の見出しが全角スペース", step + f"###　作業先\n- `{other}`\n" + files, [repo_name]),
+        ("作業先の見出しに : が付く", step + f"### 作業先:\n- `{other}`\n" + files, [repo_name]),
+        ("名指すファイルの見出しが割れる", step + repo + "### 名指す ファイル\n- `a.txt`\n", [files_name]),
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp)
+        commit_task(main_path, taskfile.Task("T-120", "別リポジトリ", "todo", "sonnet", "Y", (), task_body([("書く", "x")], ["a.txt"], other)))
+        commit_task(main_path, taskfile.Task("T-121", "同じリポジトリ", "todo", "sonnet", "Y", (), task_body([("書く", "x")], ["a.txt"])))
+        run_task(wt1, "claim", "T-120")
+        run_task(wt1, "claim", "T-121")
+        before = shown(wt1, "T-120")
+        before_body = shown_body(wt1, "T-120")
+        for label, plan, names in refused:
+            want = "・".join(names) + " が落ちている"
+            r = run_task(wt1, "edit", "T-120", "--section", "やること", "--body-file", "-", stdin=plan)
+            check(f"{label} --section やること は終了コード2で、落ちた見出しを理由に出し、書き込まない",
+                  r.returncode == 2 and r.stderr.startswith("usage:") and want in r.stderr and shown(wt1, "T-120") == before,
+                  r.stdout + r.stderr)
+            whole = taskfile.replace_section(before_body, taskfile.PLAN_HEADING, plan)
+            r = run_task(wt1, "edit", "T-120", "--body-file", "-", stdin=whole)
+            check(f"{label} 本文ごとの --body-file も終了コード2で、落ちた見出しを理由に出し、書き込まない",
+                  r.returncode == 2 and r.stderr.startswith("usage:") and want in r.stderr and shown(wt1, "T-120") == before,
+                  r.stdout + r.stderr)
+
+        r = run_task(wt1, "edit", "T-120", "--section", "やること", "--body-file", "-", stdin="### 1. 書く\n\ny\n\n" + repo + files)
+        check("節を残して段の中身だけ変える書き直しは通る", r.returncode == 0 and r.stdout.startswith("EDITED\tT-120"), r.stdout + r.stderr)
+        r = run_task(wt1, "edit", "T-120", "--section", "やること", "--body-file", "-", stdin=files + repo + step)
+        check("節を段の前へ動かす書き直しは、見出しが残っていれば通る", r.returncode == 0 and r.stdout.startswith("EDITED\tT-120"), r.stdout + r.stderr)
+        moved = f"{taskfile.PLAN_WORK_REPO_HEADING}\n- `/tmp/moved-repo`\n"
+        r = run_task(wt1, "edit", "T-120", "--section", "やること", "--body-file", "-", stdin=step + moved + files)
+        check("作業先のパスを書き換える書き直しは落ちではないので通る", r.returncode == 0 and "/tmp/moved-repo" in shown(wt1, "T-120"),
+              r.stdout + r.stderr)
+
+        r = run_task(wt1, "edit", "T-121", "--section", "やること", "--body-file", "-", stdin="### 1. 書く\n\nz\n\n" + files)
+        check("書き直し前に ### 作業先 が無い本文は、無いまま書き直しても通る", r.returncode == 0 and r.stdout.startswith("EDITED\tT-121"),
+              r.stdout + r.stderr)
+        r = run_task(wt1, "edit", "T-121", "--section", "注意", "--body-file", "-", stdin="- 申し送り\n")
+        r2 = run_task(wt1, "edit", "T-121", "--summary", "別の要約")
+        check("## やること を変えない tw edit は通る", r.returncode == 0 and r2.returncode == 0, r.stdout + r.stderr + r2.stdout + r2.stderr)
+
+
+@weight(4)
 def test_edit_sections_in_one_call() -> None:
     say("task.py edit: --section と --body-file の組を繰り返して、複数の節を1回で書く")
     with tempfile.TemporaryDirectory() as tmp:
@@ -982,6 +1036,7 @@ TESTS = (
     test_submodule_drift_is_not_work,
     test_edit_deps,
     test_edit_section,
+    test_edit_keeps_plan_sections,
     test_edit_sections_in_one_call,
     test_root_ignored,
     test_direct_mark,
