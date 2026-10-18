@@ -110,6 +110,29 @@ def test_phases_delegate_flow() -> None:
               and r.stdout.strip() == f"NOT_OWNER\t{parallel}", r.stdout + r.stderr)
 
 
+def test_phases_after_work_plan() -> None:
+    say("task.py plan-phases: 作業のあとに書いた計画（PLAN_NOT_FIRST after-work）も段の名前を出す")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
+        commit_task(main_path, taskfile.Task("T-101", "作業後", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-101")
+        write(os.path.join(wt1, "work.txt"), "x\n")
+        got, r = _phases(wt1, "T-101")
+        check("計画が無いまま作業へ進んだ（missing）は仮の 実装 のまま",
+              got is not None and got["phases"] == ["計画", "実装", *TAIL]
+              and got["delegatedRange"] == {"first": 1}, r.stdout + r.stderr)
+        run_task(wt1, "edit", "T-101", "--after-work", "--body-file", "-", stdin=ONE_STEP.replace("1. 書く", "1. 書き直す"))
+        plan = run_task(wt1, "plan-check", "T-101").stdout
+        got, r = _phases(wt1, "T-101")
+        check("作業のあとに書いた計画は ### n. の見出しから段の名前を出す",
+              plan.strip() == "PLAN_NOT_FIRST\tT-101\tafter-work" and got is not None
+              and got["phases"] == ["計画", "書き直す", *TAIL]
+              and got["delegatedRange"] == {"first": 1, "count": 1} and got["current"] == 0, plan + r.stdout + r.stderr)
+        got, r = _phases(wt1, "T-101", "--through", "実装")
+        check("after-work でも --through 実装 で受け入れが今の段になる", got is not None and got["current"] == 2,
+              r.stdout + r.stderr)
+
+
 def _wt2_of(wt1: str) -> str:
     return os.path.join(os.path.dirname(wt1), "wt2")
 
@@ -189,6 +212,7 @@ def test_phases_follow_steps() -> None:
 
 TESTS = (
     test_phases_delegate_flow,
+    test_phases_after_work_plan,
     test_phases_main_and_direct_flows,
     test_phases_follow_steps,
 )

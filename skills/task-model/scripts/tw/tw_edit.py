@@ -166,7 +166,7 @@ def cmd_plan_phases(
     specs, steps_error = taskfile.plan_step_specs(plan_body) if taskfile.has_plan(plan_body) else ((), None)
     if specs and steps_error is None and mark == tw_plan.PLAN_REGISTERED:
         plan_state = taskfile.PLAN_REGISTERED_STATE
-    elif specs and steps_error is None and mark == tw_plan.PLAN_FIRST:
+    elif specs and steps_error is None and mark in (tw_plan.PLAN_FIRST, tw_plan.PLAN_AFTER_WORK):
         plan_state = taskfile.PLAN_WRITTEN_STATE
     else:
         plan_state = taskfile.PLAN_MISSING_STATE
