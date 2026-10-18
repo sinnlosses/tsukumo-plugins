@@ -152,6 +152,9 @@ def test_brief_implementer_visual() -> None:
               r.returncode == 0 and "目視" not in _head(r), r.stdout + r.stderr)
         r = _brief(wt1, "--visual")
         check("語があって --visual なら付く", r.returncode == 0 and _head(r).endswith(",目視"), r.stdout + r.stderr)
+        check("--visual の依頼文は段の番号つきの tw pause と NOT_LAST_STEP を言い、置換語が残らない",
+              "`tw pause T-100 1`" in r.stdout and "NOT_LAST_STEP" in r.stdout and "{{" not in r.stdout,
+              r.stdout + r.stderr)
         commit_task(main_path, taskfile.Task("T-101", "見た目なし", "todo", "sonnet", "Y", (), BODY))
         run_task(wt2, "claim", "T-101")
         run_task(wt2, "edit", "T-101", "--section", "やること", "--body-file", "-", stdin="### 1. 書く\nx\n")
