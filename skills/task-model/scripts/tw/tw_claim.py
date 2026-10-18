@@ -155,6 +155,11 @@ def cmd_done(
         print(f"NOT_OWNER\t{shown}")
         tw_base.print_lines(pulled)
         raise SystemExit(4)
+    marked = beads.ship_mark(issue)
+    if marked is not None:
+        print(f"ALREADY_DONE\t{shown}\t{marked}")
+        tw_base.print_lines(pulled)
+        raise SystemExit(4)
     if not dropped:
         result = _checked_result(toplevel, shown, issue, result)
     kind = "dropped" if dropped else "done"

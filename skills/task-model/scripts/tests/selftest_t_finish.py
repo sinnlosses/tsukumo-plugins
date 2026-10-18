@@ -202,7 +202,29 @@ def test_finish_open_span_for_any_id_spelling() -> None:
             check(f"{spelling}: OPEN_SPAN\\tT-100\\tdelegate が出る", r.returncode == 0 and open_lines == ["OPEN_SPAN\tT-100\tdelegate"], r.stdout + r.stderr)
 
 
+def test_done_twice_is_refused() -> None:
+    say("task.py done: 済んだタスクの2回目は ALREADY_DONE で終了コード4、done は1件のまま。dropped で閉じたあとも同じ")
+    for flags, kind in (((), "done"), (("--dropped",), "dropped")):
+        with tempfile.TemporaryDirectory() as tmp:
+            _main, wt1 = _claimed(tmp)
+            first = run_task(wt1, "done", "T-100", *flags, "--result-file", "-", stdin=RESULT)
+            second = run_task(wt1, "done", "T-100", *flags, "--result-file", "-", stdin=RESULT)
+            check(f"{kind}: 1回目は DONE で終了コード0", first.returncode == 0 and first.stdout.startswith("DONE\t"), first.stdout + first.stderr)
+            check(
+                f"{kind}: 2回目は ALREADY_DONE で終了コード4、DONE は出ない",
+                second.returncode == 4
+                and second.stdout.startswith(f"ALREADY_DONE\tT-100\t{kind}")
+                and "DONE\t" not in second.stdout.replace("ALREADY_DONE", ""),
+                second.stdout + second.stderr,
+            )
+            check(
+                "台帳の done は1件のまま",
+                len([e for e in flow_rows(wt1) if e["event"] == "done"]) == 1,
+            )
+
+
 TESTS = (
+    test_done_twice_is_refused,
     test_finish_open_span_for_any_id_spelling,
     test_finish_prints_open_span,
     test_finish_closes_open_retro,
