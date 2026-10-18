@@ -82,7 +82,7 @@ def _disarms_ref_guard(command: str) -> bool:
     return False
 
 
-def run(stdin: IO[str], stdout: IO[str], agent_scoped: bool = False) -> None:
+def run(stdin: IO[str], stdout: IO[str], agent_scoped: bool = False, acceptor: bool = False) -> None:
     try:
         payload = json.loads(stdin.read())
     except ValueError:
@@ -91,7 +91,7 @@ def run(stdin: IO[str], stdout: IO[str], agent_scoped: bool = False) -> None:
         return
     if agent_scope.applies(payload, agent_scoped):
         _note_agent(payload)
-        verdict = decide(payload)
+        verdict = decide(payload, acceptor)
     else:
         verdict = decide_main(payload)
     if verdict is None:
@@ -178,8 +178,8 @@ def _bd_writes(command: str, start: str) -> list[tuple[str, str]]:
     return found
 
 
-def decide(payload: dict) -> tuple[str, str] | None:
-    """`(規則のキー, 拒む理由)`。通すなら `None`。"""
+def decide(payload: dict, acceptor: bool = False) -> tuple[str, str] | None:
+    """`(規則のキー, 拒む理由)`。通すなら `None`。`acceptor` は受け入れ役（旗 `--acceptor` か `agent_type`）。"""
     if payload.get("tool_name") != "Bash":
         return None
     tool_input = payload.get("tool_input")
@@ -187,6 +187,15 @@ def decide(payload: dict) -> tuple[str, str] | None:
     start = payload.get("cwd")
     if not isinstance(command, str) or not isinstance(start, str):
         return None
+    acceptor = acceptor or _is_acceptor(payload)
+    if acceptor:
+        for where in _tw_calls(command, start):
+            claims = _open_claims_at(where)
+            if claims:
+                return "ACCEPTOR_TW", (
+                    f"着手の印（{','.join(claims)}）が立っていて tw done の前の作業ツリー（{where}）では、"
+                    "受け入れ役は tw を打たない。依頼文が渡した出力を読んで、判定だけを返す"
+                )
     if _disarms_ref_guard(command):
         for where in dict.fromkeys([start, *(s.where for s in _simple_commands(command, start) if s.where)]):
             claims = _open_claims_at(where)
@@ -226,11 +235,36 @@ def decide(payload: dict) -> tuple[str, str] | None:
     for where, configured in _verify_commands(command, start):
         claims = _open_claims_at(where) or work_claims.at(where)
         if claims:
+            next_step = (
+                "検証はメインが持つ。対象を絞った単体テストの実行は打てる"
+                if acceptor
+                else "`tw verify` で打つ（対象を絞った単体テストの実行は打てる）"
+            )
             return "DIRECT_VERIFY", (
                 f"着手の印（{','.join(claims)}）が立っていて tw done の前の作業ツリー（{where}）では "
-                f"検証コマンド（{configured}）を直に打たない。`tw verify` で打つ（対象を絞った単体テストの実行は打てる）"
+                f"検証コマンド（{configured}）を直に打たない。{next_step}"
             )
     return None
+
+
+def _is_acceptor(payload: dict) -> bool:
+    """入力の `agent_type`（plugin では `tsukumo-workflow:acceptor` の形）の最後の `:` より後ろが `acceptor` か。"""
+    agent_type = payload.get("agent_type")
+    return isinstance(agent_type, str) and agent_type.rsplit(":", 1)[-1] == "acceptor"
+
+
+def _tw_calls(command: str, start: str) -> list[str]:
+    """`tw` を打つ単純コマンドの実効の作業先の並び。"""
+    found: list[str] = []
+    for simple in _simple_commands(command, start):
+        if simple.where is None:
+            continue
+        args, _targets = _split_redirects(simple.words)
+        while args and (args[0] in ("env", "command") or _is_assignment(args[0])):
+            args = args[1:]
+        if args and os.path.basename(args[0]) == "tw":
+            found.append(simple.where)
+    return found
 
 
 def _verify_commands(command: str, start: str) -> list[tuple[str, str]]:

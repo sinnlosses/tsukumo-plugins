@@ -28,6 +28,7 @@ hooks:
 着手の印（`tw claim`）が立った作業ツリーでは、`tw commit-guard` が次を拒む。拒まれたら回避しない。
 
 - シェルでの書き換えと検証コマンドの直打ち。拒まれたら `Edit`・`Write` で書き、`tw verify` で打つ
+- `git stash`（`list`・`show` は通る）・`git add -A`/`--all`/`.`・`git push`・`git worktree remove`・`git branch -d`、書き込みの `bd`（`update`・`close` など。`bd show`・`bd list` は通る）。作業ツリーの片付けは `tw land`、Beads の書き込みは `tw` がする
 - `git commit` などコミットを作る git のサブコマンド。`sh -c`・スクリプト越しでも git の hook（`tw ref-guard`）が拒む。拒まれたら、コミットせずに変更を作業ツリーに残したまま報告で返す（hook を外す変数 `TW_REF_GUARD_ALLOW` は付けない）
 
 返却そのものは `tw handback-guard` が拒むことがある。拒まれたら理由に従って直してから返す。拒む形の全体は task-model の `tw-reference.md`「hook の関門」節。

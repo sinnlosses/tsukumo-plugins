@@ -1826,6 +1826,87 @@ def test_commit_guard_git_operations() -> None:
             check(f"done のあとは通る: {command}", run_guard(tmp, wt1, command) is None)
 
 
+ACCEPTOR = os.path.join(HERE, "..", "..", "..", "..", "agents", "acceptor.md")
+
+
+@weight(9)
+def test_commit_guard_acceptor() -> None:
+    say("task.py commit-guard: 受け入れ役（--acceptor か agent_type）は tw と検証コマンドの直打ちを拒み、読む形は通す")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(tmp, verify="`./check.sh`")
+        commit_task(main_path, taskfile.Task("T-100", "拒む", "todo", "sonnet", "Y", (), BODY))
+        disarm_ref_guard(main_path)
+        run_task(wt1, "claim", "T-100")
+
+        def denied(command: str, where: str = wt1, *flags: str, **fields: str) -> str | None:
+            payload = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": where, "agent_id": "a-1", **fields}
+            r = run_task(tmp, "commit-guard", *flags, stdin=json.dumps(payload))
+            check(f"終了コード0: {command}", r.returncode == 0, r.stdout + r.stderr)
+            return json.loads(r.stdout)["hookSpecificOutput"]["permissionDecisionReason"] if r.stdout else None
+
+        refused = (
+            "tw show GH-1",
+            "tw verify",
+            "tw accept T-100",
+            "/usr/local/bin/tw accept T-100",
+            "env X=1 tw status",
+            "X=1 tw status",
+            "command tw status",
+            "git status && tw verify",
+            f"cd {wt1} && tw verify",
+            "./check.sh",
+        )
+        passed = (
+            "git diff main..HEAD",
+            "git log --oneline -3",
+            "cat README.md",
+            "python3 skills/task-model/scripts/tests/selftest_task.py test_x",
+            "echo tw",
+            'grep -n "tw verify" README.md',
+            "twine upload",
+            "ls tw",
+            "tw 'unclosed",
+            f"cd {wt2} && tw show GH-1",
+        )
+        for label, flags, fields in (
+            ("--acceptor", ("--acceptor",), {}),
+            ("--agent-scoped・agent_type=acceptor", ("--agent-scoped",), {"agent_type": "acceptor"}),
+            ("--agent-scoped・agent_type=tsukumo-workflow:acceptor", ("--agent-scoped",), {"agent_type": "tsukumo-workflow:acceptor"}),
+        ):
+            for command in refused:
+                check(f"拒む（{label}）: {command}", denied(command, wt1, *flags, **fields) is not None)
+            for command in passed:
+                check(f"通す（{label}）: {command}", denied(command, wt1, *flags, **fields) is None)
+            check(f"控えの無い木では通す（{label}）", denied("tw verify", wt2, *flags, **fields) is None)
+            reason = denied("tw verify", wt1, *flags, **fields)
+            check(f"tw の理由は受け入れ役向け（{label}）", reason is not None and "受け入れ役" in reason, str(reason))
+            reason = denied("./check.sh", wt1, *flags, **fields)
+            check(f"検証コマンドの理由は tw verify を案内しない（{label}）",
+                  reason is not None and "tw verify" not in reason and "メイン" in reason, str(reason))
+
+        for agent_type in ("no-delegate", "tsukumo-workflow:no-delegate", "general-purpose"):
+            check(f"agent_type={agent_type} の tw verify は通す", denied("tw verify", wt1, "--agent-scoped", agent_type=agent_type) is None)
+        check("旗も agent_type も無い tw verify は通す", denied("tw verify", wt1) is None)
+        reason = denied("./check.sh", wt1, "--agent-scoped", agent_type="no-delegate")
+        check("委譲先の検証コマンドの理由は tw verify を案内する", reason is not None and "tw verify" in reason, str(reason))
+        check("受け入れ役でも git commit は拒む", denied("git commit -m x", wt1, "--acceptor") is not None)
+
+        hook = ""
+        with open(ACCEPTOR, encoding="utf-8") as f:
+            for line in f:
+                if line.strip().startswith("command: tw commit-guard --acceptor"):
+                    hook = line.strip()[len("command: "):]
+        check("acceptor.md の frontmatter に tw commit-guard --acceptor の hook がある", hook != "")
+        payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "tw verify"}, "cwd": wt1, "agent_id": "a-1"})
+        bin_dir = tempfile.mkdtemp(dir=tmp)
+        write(os.path.join(bin_dir, "tw"), f'#!/bin/sh\nexec {sys.executable} {TASK_PY} "$@"\n')
+        os.chmod(os.path.join(bin_dir, "tw"), 0o755)
+        r = subprocess.run(["sh", "-c", hook], input=payload, capture_output=True, text=True, env=hook_env(tmp, f"{bin_dir}:/usr/bin:/bin"))
+        check("frontmatter の hook の行は tw commit-guard --acceptor を呼んで拒む", r.returncode == 0 and '"deny"' in r.stdout, r.stdout + r.stderr)
+        r = subprocess.run(["sh", "-c", hook], input=payload, capture_output=True, text=True, env=hook_env(tmp, "/usr/bin:/bin"))
+        check("tw が PATH に無くても何も出さず0で通す", r.returncode == 0 and r.stdout == "", r.stdout + r.stderr)
+
+
 @weight(9)
 def test_commit_guard_bd_writes() -> None:
     say("task.py commit-guard: 印が立った作業ツリーで書き込みの bd を拒み（メインにも）、読む形と tw 経由は通す")
@@ -1923,6 +2004,7 @@ def test_commit_guard_bd_writes() -> None:
 
 
 TESTS = (
+    test_commit_guard_acceptor,
     test_commit_guard_bd_writes,
     test_commit_guard_git_operations,
     test_guard_denial_record,
