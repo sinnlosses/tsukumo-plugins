@@ -71,6 +71,8 @@ def test_brief_implementer_rewrite() -> None:
         check("計画が無ければ 常に・書き直し", r.returncode == 0 and _head(r) == "BRIEF\tT-100\timplementer\t常に,書き直し",
               r.stdout + r.stderr)
         check("WORKFLOW.md の絶対パスが実在する", _paths_exist(r.stdout.split("\n", 1)[1]), r.stdout)
+        check("書き直しの依頼は、返却に tw plan-phases --through 計画 の PHASES の行を貼らせる",
+              "tw plan-phases" in r.stdout and "--through 計画" in r.stdout and "PHASES" in r.stdout, r.stdout)
         r = _brief(wt1, "--step", "2")
         check("書き直しに --step は終了コード2", r.returncode == 2, r.stdout + r.stderr)
 

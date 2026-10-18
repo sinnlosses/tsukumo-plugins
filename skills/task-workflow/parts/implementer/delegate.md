@@ -17,7 +17,8 @@
    依頼文（手順5cの場合分けを含む）を出す。上の表の「書き直しから委譲する」に当たるのに `PLAN_REGISTERED` のまま
    （`## 完了条件` の覆いが読みで分からない）なら `--rewrite` を付けて書き直しに倒す。
    計画どおりなら段1の依頼、書き直しなら計画だけの回の依頼（`書き直し` の節。段に数えず、
-   返却の先頭は計画の要点を1文で `phase_result` は呼ばない）になり、メインが手順5bで読み、段の数を Beads から読んでから段1を渡す。
+   返却の先頭は計画の要点を1文、2行目は `tw plan-phases T-xxx --through 計画` の出力の `PHASES\t…` の行の写しで、`phase_result` は呼ばない）になり、メインが手順5bで読み、
+   `PHASES` の行を `work_plan` に写してから段1を渡す。
    書き直しの扱いは `${CLAUDE_SKILL_DIR}/parts/implementer/rewrite-plan.md`。
 
    どちらの形でも、途中で `difficulty` を上げるときは、段の返却を受けた切れ目で前の担当を `TaskStop` で
