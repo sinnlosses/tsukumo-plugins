@@ -39,8 +39,9 @@ def cmd_finish(
 ) -> None:
     bd_id = tw_base.bd_task_id(task_id)
     shown = beads.to_task_id(beads.to_bd_id(task_id))
-    if resume and _already_done_by_me(toplevel, bd_id, shown):
-        print(f"RESUMED\t{shown}\t{beads.ship_mark(beads.show(toplevel, bd_id))}")
+    marked = _my_ship_mark(toplevel, bd_id) if resume else None
+    if marked is not None:
+        print(f"RESUMED\t{shown}\t{marked}")
     else:
         if result_path is None:
             print("usage: --result-file が要る（--resume は done 済みのタスクだけで省ける）", file=sys.stderr)
@@ -55,14 +56,12 @@ def cmd_finish(
         print(f"OPEN_SPAN\t{shown}\t{stage}")
 
 
-def _already_done_by_me(toplevel: str, bd_id: str, shown: str) -> bool:
+def _my_ship_mark(toplevel: str, bd_id: str) -> str | None:
+    """自分が着手中で `done`・`dropped` 済みなら、その印（`done`／`dropped`）。"""
     issue = beads.show(toplevel, bd_id)
-    return (
-        issue is not None
-        and issue.status == "in_progress"
-        and issue.assignee == tw_base.actor(toplevel)
-        and beads.ship_mark(issue) is not None
-    )
+    if issue is None or issue.status != "in_progress" or issue.assignee != tw_base.actor(toplevel):
+        return None
+    return beads.ship_mark(issue)
 
 
 def _subject(shown: str, message: str) -> str:

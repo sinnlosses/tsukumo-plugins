@@ -100,10 +100,10 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
 出力: `LANDED\t<枝>\t<主ブランチ>\t<合流後の SHA>` に続けて、サブモジュールを揃えられなかったときだけ `SUBMODULE_NOT_SYNCED\t<本体の作業ツリーのパス>\t<理由の1行>`（警告で、終了コードは変わらない）、そのあとに `REMOVED\t<作業ツリー>`・`DELETED\t<枝>`。合流のあとに消せなかったものは `NOT_REMOVED\t<作業ツリーか枝>\t<git の理由>`（終了コード4。合流は済んでいる）。`NOT_LANDED\t<枝>\t<理由>`（終了コード4）・`GIT_READ_ONLY`""",
     ),
     "finish": (
-        "`done` → `--add` のファイルを個別に `git add` して `--message` で1コミット → `ship` を順に打つ。",
-        r"""`done` → `--add` のファイルを個別に `git add` して `--message` で1コミット → `ship` を順に打つ（`done` の前に、最後の `claim` 以降で段 `retro` が開いていれば `retro` の `end` を `flow/` に書く。出力の行は足さない。`--reflection` は `done` へそのまま渡す。`## 結果` の必須行の欠けは `done` と同じく終了コード2で、コミットも `ship` も打たない）。`--add` が無いか、追加しても差分が無ければコミットせず `NO_COMMIT` を出して `ship` へ進む。`done` が `NOT_OWNER` で止まればコミットも `ship` も打たない。`git` が失敗したら標準エラーに出して終了コード1
+        "`done` → 対象のファイルを個別に `git add` して1コミット（件名の `T-xxx:` は tw が付ける）→ `ship` を順に打つ。",
+        r"""`done` → 対象のファイルを個別に `git add` して1コミット → `ship` を順に打つ（件名の `T-xxx:` は tw が一度だけ付けるので `--message` は本文のみ。旧形式の `T-xxx: …` も二重にならない。対象は `--add` のファイル。`--add` を省くと作業ツリーの変更のうち通常のファイル〔`.tw/local` と symlink は除く〕。`git add -A` は打たない。`done` の前に、最後の `claim` 以降で段 `retro` が開いていれば `retro` の `end` を `flow/` に書く。出力の行は足さない。`--reflection` は `done` へそのまま渡す。`## 結果` の必須行の欠けは `done` と同じく終了コード2で、コミットも `ship` も打たない）。差分が無ければコミットせず `NO_COMMIT` を出して `ship` へ進む。コミットのあとに残った変更は `UNADDED\t<パス>`、省略時に除いた symlink は `SKIPPED_LINK\t<パス>` で知らせる（残れば `ship` が `DIRTY` で止まる）。`--resume` は `done` 済みの自分の着手のタスクで `done` を飛ばし、`RESUMED` を出してコミット→`ship` だけ行う（`--result-file` は省ける。済んでいなければ通常どおり `done` から）。`done` 済みに `--resume` なしで打てば `ALREADY_DONE`（終了コード4）。`done` が `NOT_OWNER` で止まればコミットも `ship` も打たない。`git` が失敗したら標準エラーに出して終了コード1
 
-出力: `done` の行（`DONE`・`COMMITS_SINCE_CLAIM` など）、`COMMITTED\t<sha>`／`NO_COMMIT\t(理由)`、`ship` の行。最後の行が `ship` の判定で、`SHIPPED`・`NOTHING` 以外は `ship` の説明のとおり止まる。`done` の出力に `COMMITS_SINCE_CLAIM` の行があれば、`done` は済んだまま、コミットも `ship` も打たずにその行までを出して終了コード12で止まる（続きは個別の `git add`・`git commit`・`tw ship`。`finish` や `done` を打ち直すと `## 結果` の comment が二重になる）""",
+出力: `done` の行（`DONE`・`COMMITS_SINCE_CLAIM` など）、`COMMITTED\t<sha>`／`NO_COMMIT\t(理由)`、`ship` の行。最後の行が `ship` の判定で、`SHIPPED`・`NOTHING` 以外は `ship` の説明のとおり止まる。`done` の出力に `COMMITS_SINCE_CLAIM` の行があれば、`done` は済んだまま、コミットも `ship` も打たずにその行までを出して終了コード12で止まる（続きは同じ `--message` で `finish --resume`。`--resume` なしで `finish` や `done` を打ち直すと `ALREADY_DONE`）""",
     ),
     "edit": (
         "本文と属性と依存を直す。",

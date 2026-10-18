@@ -3,6 +3,7 @@
    | 出力 | すること |
    | --- | --- |
    | `NOT_OWNER`・`NOT_READY`（手順7の `tw finish`・`tw done` が返す。終了コード4） | 以降を打たず、行を添えて終了する。扱いは `task-model` の tw-reference.md の終了コード表の 4 の行に従う |
+   | `ALREADY_DONE`（手順7の `tw finish`・`tw done` が返す。終了コード4。`done` は済んでいて、何も書き足していない） | コミットと送りが残っているなら `tw finish T-xxx --resume --message '<何をしたか>'` で続ける。`tw ship` まで済んでいるなら放っておく |
    | `INVALID`（手順7の `tw finish`・`tw done` が返す。終了コード3） | 理由をそのまま報告して止まる。直しに行かない（`task-model` の tw-reference.md の終了コード表の 3 の行） |
    | `MAIN_DIRTY`・`DIRTY` | 本体（か自分）が汚れている。パスを添えて終了する（`main` は動いていない） |
    | `CONFLICT` | 衝突したファイルを添えて人に預ける（スキルの一覧に `resolving-merge-conflicts` があれば、それで解ける） |
