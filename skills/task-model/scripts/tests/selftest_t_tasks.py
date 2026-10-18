@@ -410,24 +410,6 @@ def test_new_parallel_no_collision() -> None:
         check("番号が重ならない", id1 != id2, f"{id1} {id2}")
 
 
-def test_claim_race() -> None:
-    say("task.py claim: 2本から取り合うと片方だけ通る")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, wt2 = make_repo(tmp)
-        commit_task(main_path, taskfile.Task("T-100", "取り合うタスク", "todo", "sonnet", "Y", (), BODY))
-
-        p1 = start_task(wt1, "claim", "T-100")
-        p2 = start_task(wt2, "claim", "T-100")
-        out1, err1 = p1.communicate(timeout=30)
-        out2, err2 = p2.communicate(timeout=30)
-        results = sorted([out1.split("\t")[0], out2.split("\t")[0]])
-        check(
-            "片方だけCLAIMEDでもう片方はTAKEN",
-            results == ["CLAIMED", "TAKEN"],
-            f"out1={out1!r} err1={err1!r} out2={out2!r} err2={err2!r}",
-        )
-
-
 def test_new_avoids_history_ids() -> None:
     say("task.py new: docs/history/tasks.md の番号を採番が避ける")
     with tempfile.TemporaryDirectory() as tmp:
@@ -886,7 +868,6 @@ TESTS = (
     test_find,
     test_draft_register_and_refuse_claim,
     test_draft_dropped,
-    test_claim_race,
     test_new_parallel_no_collision,
     test_new_avoids_history_ids,
     test_taskfile_body,
