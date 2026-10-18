@@ -332,7 +332,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_finish = sub.add_parser("finish")
     p_finish.add_argument("task_id")
     p_finish.add_argument("--dropped", action="store_true")
-    p_finish.add_argument("--result-file", required=True)
+    p_finish.add_argument("--result-file", default=None)
+    p_finish.add_argument("--resume", action="store_true")
     p_finish.add_argument("--message", required=True)
     p_finish.add_argument("--reflection", choices=tw_claim.REFLECTION_VALUES, default=None)
     p_finish.add_argument("--add", dest="files", action="append", default=[])
@@ -543,7 +544,7 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
         elif args.command == "ship":
             tw_ship.cmd_ship(toplevel)
         elif args.command == "finish":
-            tw_finish.cmd_finish(toplevel, args.task_id, args.dropped, args.result_file, args.message, args.files, args.reflection)
+            tw_finish.cmd_finish(toplevel, args.task_id, args.dropped, args.result_file, args.message, args.files, args.reflection, args.resume)
         elif args.command == "show":
             tw_status.cmd_show(toplevel, args.task_id)
         elif args.command == "find":

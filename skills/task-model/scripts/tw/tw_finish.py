@@ -1,16 +1,21 @@
 """`tw finish`: `tw done`・コミット・`tw ship` を1回で打つ。
 
-各部品の出力の行はそのまま並べ、止まる行（`tw done` の `NOT_OWNER` と `COMMITS_SINCE_CLAIM`、
-`tw ship` の `SHIPPED`・`NOTHING` 以外）が出たら以降を打たない。コミットは渡されたファイルを個別に `git add` した1つだけで、渡されなかったか差分が無ければ打たない。
+各部品の出力の行はそのまま並べ、止まる行（`tw done` の `NOT_OWNER`・`ALREADY_DONE` と `COMMITS_SINCE_CLAIM`、
+`tw ship` の `SHIPPED`・`NOTHING` 以外）が出たら以降を打たない。コミットは対象のファイルを個別に `git add` した1つだけで、
+差分が無ければ打たない。対象は `--add` で渡したファイル。渡さなければ作業ツリーの変更のうち通常のファイルで、`.tw/local` と symlink は除く。
+件名の `T-xxx:` は tw が付ける。
 """
 
 from __future__ import annotations
 
 import contextlib
 import io
+import os
+import re
 import sys
 
 import beads
+import gitinfo
 import ledger
 import metrics
 import tw_base
@@ -19,26 +24,51 @@ import tw_handback
 import tw_ship
 
 STRAY_COMMITS_EXIT = 12
+LOCAL_DIR = ".tw/local"
 
 
 def cmd_finish(
     toplevel: str,
     task_id: str,
     dropped: bool,
-    result_path: str,
+    result_path: str | None,
     message: str,
     files: list[str],
     reflection: str | None = None,
+    resume: bool = False,
 ) -> None:
-    tw_handback.close_open_lap(toplevel, tw_base.bd_task_id(task_id), "retro")
-    if _done_found_stray_commits(toplevel, task_id, dropped, result_path, reflection):
-        raise SystemExit(STRAY_COMMITS_EXIT)
-    _commit(toplevel, message, files)
-    tw_ship.cmd_ship(toplevel)
+    bd_id = tw_base.bd_task_id(task_id)
     shown = beads.to_task_id(beads.to_bd_id(task_id))
+    if resume and _already_done_by_me(toplevel, bd_id, shown):
+        print(f"RESUMED\t{shown}\t{beads.ship_mark(beads.show(toplevel, bd_id))}")
+    else:
+        if result_path is None:
+            print("usage: --result-file が要る（--resume は done 済みのタスクだけで省ける）", file=sys.stderr)
+            raise SystemExit(2)
+        tw_handback.close_open_lap(toplevel, bd_id, "retro")
+        if _done_found_stray_commits(toplevel, task_id, dropped, result_path, reflection):
+            raise SystemExit(STRAY_COMMITS_EXIT)
+    _commit(toplevel, _subject(shown, message), files)
+    tw_ship.cmd_ship(toplevel)
     events, _ = metrics.read_events(ledger.ledger_root(cwd=toplevel))
     for stage in metrics.open_stages(events, shown):
         print(f"OPEN_SPAN\t{shown}\t{stage}")
+
+
+def _already_done_by_me(toplevel: str, bd_id: str, shown: str) -> bool:
+    issue = beads.show(toplevel, bd_id)
+    return (
+        issue is not None
+        and issue.status == "in_progress"
+        and issue.assignee == tw_base.actor(toplevel)
+        and beads.ship_mark(issue) is not None
+    )
+
+
+def _subject(shown: str, message: str) -> str:
+    """件名の先頭に `<shown>: ` を一度だけ付ける（旧形式の `<shown>: …` はそのまま受ける）。"""
+    body = re.sub(rf"^\s*{re.escape(shown)}\s*[:：]\s*", "", message, count=1, flags=re.IGNORECASE)
+    return f"{shown}: {body}"
 
 
 def _done_found_stray_commits(
@@ -46,8 +76,7 @@ def _done_found_stray_commits(
 ) -> bool:
     """`tw done` の出力をそのまま出し、`COMMITS_SINCE_CLAIM` の行があれば `True`。
 
-    `tw done` は済んでいる。続きは個別の `git add`・`git commit`・`tw ship` で打つ（`tw done` を打ち直すと
-    `## 結果` の comment が二重になる）。
+    `tw done` は済んでいる。続きは `tw finish --resume` で打つ。
     """
     buffer = io.StringIO()
     try:
@@ -59,17 +88,31 @@ def _done_found_stray_commits(
     return any(line.startswith("COMMITS_SINCE_CLAIM\t") for line in buffer.getvalue().splitlines())
 
 
+def _is_local(path: str) -> bool:
+    return path == LOCAL_DIR or path.startswith(LOCAL_DIR + "/")
+
+
 def _commit(toplevel: str, message: str, files: list[str]) -> None:
+    targets = files
     if not files:
-        print("NO_COMMIT\t(ファイルが渡されていない)")
-        return
-    for path in files:
+        targets = []
+        for path in gitinfo.dirty_paths(cwd=toplevel):
+            if _is_local(path):
+                continue
+            if os.path.islink(os.path.join(toplevel, path)):
+                print(f"SKIPPED_LINK\t{path}")
+                continue
+            targets.append(path)
+    for path in targets:
         _git_ok(toplevel, ["add", "--", path])
     if tw_base.run_git(toplevel, ["diff", "--cached", "--quiet"]).returncode == 0:
         print("NO_COMMIT\t(差分が無い)")
-        return
-    _git_ok(toplevel, ["commit", "-q", "-m", message])
-    print(f"COMMITTED\t{tw_base.run_git(toplevel, ['rev-parse', 'HEAD']).stdout.strip()}")
+    else:
+        _git_ok(toplevel, ["commit", "-q", "-m", message])
+        print(f"COMMITTED\t{tw_base.run_git(toplevel, ['rev-parse', 'HEAD']).stdout.strip()}")
+    for path in gitinfo.dirty_paths(cwd=toplevel):
+        if not _is_local(path):
+            print(f"UNADDED\t{path}")
 
 
 def _git_ok(toplevel: str, args: list[str]) -> None:

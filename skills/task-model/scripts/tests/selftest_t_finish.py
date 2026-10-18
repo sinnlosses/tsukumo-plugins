@@ -223,7 +223,94 @@ def test_done_twice_is_refused() -> None:
             )
 
 
+def test_finish_without_add_commits_changes() -> None:
+    say("task.py finish: --add を省くと通常ファイルの変更を個別に1コミットにし、symlink と .tw/local は入れない")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1 = _claimed(tmp)
+        write(os.path.join(wt1, "work.txt"), "x")
+        os.symlink(tmp, os.path.join(wt1, "linked"))
+        write(os.path.join(wt1, ".tw", "local", "note"), "x")
+        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "完了", stdin=RESULT)
+        check("COMMITTED を出す", "COMMITTED\t" in r.stdout, r.stdout + r.stderr)
+        check(
+            "symlink は SKIPPED_LINK と UNADDED で出て、残るので ship は DIRTY で止まる",
+            "SKIPPED_LINK\tlinked" in r.stdout and "UNADDED\tlinked" in r.stdout and r.stdout.rstrip().endswith("DIRTY"),
+            r.stdout,
+        )
+        shown = git(wt1, "show", "--stat", "--format=%s", "HEAD").stdout
+        check(
+            "件名は T-100: 完了 で、work.txt だけが入る",
+            shown.startswith("T-100: 完了") and "work.txt" in shown and "linked" not in shown and ".tw/local" not in shown,
+            shown,
+        )
+
+
+def test_finish_subject_prefix_once() -> None:
+    say("task.py finish: 件名の T-xxx: は一度だけ付く。旧形式の --message 'T-100: …' と --add 明示も従来どおり通る")
+    for message in ("完了", "T-100: 完了"):
+        with tempfile.TemporaryDirectory() as tmp:
+            main_path, wt1 = _claimed(tmp)
+            write(os.path.join(wt1, "work.txt"), "x")
+            r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", message, "--add", "work.txt", stdin=RESULT)
+            subject = git(main_path, "log", "--format=%s", "-1", "main").stdout.strip()
+            check(f"{message!r}: 件名は T-100: 完了", r.returncode == 0 and subject == "T-100: 完了", r.stdout + r.stderr + subject)
+
+
+def test_finish_unadded_warning() -> None:
+    say("task.py finish: --add で渡さなかった変更が残れば UNADDED で知らせる")
+    with tempfile.TemporaryDirectory() as tmp:
+        _main, wt1 = _claimed(tmp)
+        write(os.path.join(wt1, "a.txt"), "x")
+        write(os.path.join(wt1, "b.txt"), "x")
+        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "完了", "--add", "a.txt", stdin=RESULT)
+        check("UNADDED のあとに b.txt が出て a.txt は出ない", "UNADDED\tb.txt" in r.stdout and "UNADDED\ta.txt" not in r.stdout, r.stdout + r.stderr)
+
+
+def test_finish_resume_after_commits_since_claim() -> None:
+    say("task.py finish --resume: COMMITS_SINCE_CLAIM で止まったあと、1回でコミットと ship まで進み done は二重にならない")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1 = _claimed(tmp)
+        write(os.path.join(wt1, "stray.txt"), "x")
+        git(wt1, "add", "stray.txt")
+        git(wt1, "commit", "-q", "-m", "委譲先のコミット")
+        write(os.path.join(wt1, "work.txt"), "x")
+        first = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "完了", stdin=RESULT)
+        check("1回目は終了コード12", first.returncode == 12, first.stdout + first.stderr)
+        r = run_task(wt1, "finish", "T-100", "--resume", "--message", "完了")
+        kinds = [l.split("\t", 1)[0] for l in r.stdout.splitlines()]
+        check(
+            "RESUMED → COMMITTED → SHIPPED の順で終了コード0",
+            r.returncode == 0 and [k for k in kinds if k in ("RESUMED", "COMMITTED", "SHIPPED")] == ["RESUMED", "COMMITTED", "SHIPPED"],
+            r.stdout + r.stderr,
+        )
+        check("DONE は出ず、台帳の done は1件のまま", "DONE" not in kinds and len([e for e in flow_rows(wt1) if e["event"] == "done"]) == 1)
+        check("主ブランチに T-100: 完了 がある", "T-100: 完了" in git(main_path, "log", "--format=%s", "-3", "main").stdout)
+
+
+def test_finish_twice_without_resume_is_refused() -> None:
+    say("task.py finish: done 済みに --resume なしで打てば ALREADY_DONE で終了コード4。未 done の --resume は --result-file が無ければ終了コード2")
+    with tempfile.TemporaryDirectory() as tmp:
+        _main, wt1 = _claimed(tmp)
+        run_task(wt1, "done", "T-100", "--result-file", "-", stdin=RESULT)
+        write(os.path.join(wt1, "work.txt"), "x")
+        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "完了", stdin=RESULT)
+        check(
+            "ALREADY_DONE で終了コード4、COMMITTED も SHIPPED も無い",
+            r.returncode == 4 and "ALREADY_DONE\t" in r.stdout and "COMMITTED" not in r.stdout and "SHIPPED" not in r.stdout,
+            r.stdout + r.stderr,
+        )
+    with tempfile.TemporaryDirectory() as tmp:
+        _main, wt1 = _claimed(tmp)
+        r = run_task(wt1, "finish", "T-100", "--resume", "--message", "完了")
+        check("done 前の --resume は --result-file が無ければ終了コード2", r.returncode == 2, r.stdout + r.stderr)
+
+
 TESTS = (
+    test_finish_without_add_commits_changes,
+    test_finish_subject_prefix_once,
+    test_finish_unadded_warning,
+    test_finish_resume_after_commits_since_claim,
+    test_finish_twice_without_resume_is_refused,
     test_done_twice_is_refused,
     test_finish_open_span_for_any_id_spelling,
     test_finish_prints_open_span,
