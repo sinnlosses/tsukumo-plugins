@@ -65,7 +65,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     ),
     "new": (
         "採番して Beads に課題を作る（コミットしない）。",
-        r"""採番して Beads に課題を作る（コミットしない。採番は TRACKER.md の「タスクの要素と Beads の置き場」）。`--draft` はドラフト（WORKFLOW.md の「ドラフトの課題」）を作る: 本文は「タスクの本文」のドラフトの緩い検査で見て、`deferred` と metadata `draft`=`Y` で作り、`task_plan_base` は控えない。`--hold` と同時・`--direct` と同時は何も作らずに終了コード2。ドラフトの本文に `- 観点:` の行があって観点が語彙（`skills/retrospect/detail.md` の7観点と、横断の振り返りの3観点）の外か、色が赤・黄以外なら何も作らずに終了コード2。以下は `--draft` でないとき。`--difficulty opus` で `## 解くべき論点` が空か「なし」なら何も作らずに終了コード2（`adopt` も同じ）。`--difficulty`・`--loopable` は metadata `difficulty`・`loopable` に書く（label は付けない）。`--direct` は委譲しない近道の印（label `direct:Y`）を付け、「difficulty とモデルの切り替え」の基準の表で `tw` が見る条件を外れれば何も作らずに終了コード2。`--kind` は種類（WORKFLOW.md の「kind（種類）」の語彙）を label `kind:<種類>` で付ける（省くと付けない。`--draft` でも付けられる）。`## やること` の中身が要る（空にできるのは `--hold` だけ。段の形に沿わない・`### 名指すファイル` が無い・形が違う・パスが木に無い・`### 作業先` が絶対パス1行でないか git のリポジトリの根でなければ、何も作らずに終了コード2）。中身があれば、計画のリポジトリ（`### 作業先` があればそこ）の `HEAD` と主ブランチの分かれ目の SHA を metadata `task_plan_base` に控える
+        r"""採番して Beads に課題を作る（コミットしない。採番は TRACKER.md の「タスクの要素と Beads の置き場」）。`--draft` はドラフト（WORKFLOW.md の「ドラフトの課題」）を作る: 本文は「タスクの本文」のドラフトの緩い検査で見て、`deferred` と metadata `draft`=`Y` で作り、`task_plan_base` は控えない。`--hold` と同時・`--direct` と同時は何も作らずに終了コード2。ドラフトの本文に `- 観点:` の行があって観点が語彙（`skills/retrospect/detail.md` の7観点と、横断の振り返りの3観点）の外か、色が赤・黄以外なら何も作らずに終了コード2。以下は `--draft` でないとき。`--difficulty opus` で `## 解くべき論点` が空か「なし」なら何も作らずに終了コード2（`adopt` も同じ）。`--difficulty`・`--loopable` は metadata `difficulty`・`loopable` に書く（label は付けない）。`--direct` は委譲しない近道の印（label `direct:Y`）を付け、「difficulty とモデルの切り替え」の基準の表で `tw` が見る条件を外れれば何も作らずに終了コード2。`--kind` は種類（WORKFLOW.md の「kind（種類）」の語彙）を label `kind:<種類>` で付ける（省くと付けない。`--draft` でも付けられる）。`## やること` の中身が要る（空にできるのは `--hold` だけ。段の形に沿わない・`### 名指すファイル` が無い・形が違う・パスが木に無い・`### 作業先` が絶対パス1行でないか git のリポジトリの根でなければ、何も作らずに終了コード2）。中身があれば、計画のリポジトリ（`### 作業先` があればそこ）の `HEAD` と主ブランチの分かれ目の SHA を metadata `task_plan_base` に控える。`--fixes <ID,…>` は、この課題が直す送り出し済みの元のタスクを metadata `fixes` にカンマ区切りで置き（`--draft` とも組める。形の違うIDと Beads に無いIDは何も作らずに終了コード2）、`CREATED` のとき台帳に `new` の出来事（`fixes` つき）を足す。`tw metrics` の `fix_within_7d` がこれを数える
 
 出力: `CREATED`・`LOCKED`（20回打ち直しても番号が取れない）""",
     ),
@@ -306,6 +306,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_new.add_argument("--difficulty", required=True, choices=taskfile.DIFFICULTY_VALUES)
     p_new.add_argument("--loopable", required=True, choices=taskfile.LOOPABLE_VALUES)
     p_new.add_argument("--deps", default="")
+    p_new.add_argument("--fixes", default="")
     p_new.add_argument("--hold", action="store_true")
     p_new.add_argument("--draft", action="store_true")
     p_new.add_argument("--direct", action="store_true")

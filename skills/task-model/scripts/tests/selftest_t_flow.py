@@ -220,6 +220,31 @@ def test_metrics_stages() -> None:
             say(f"  | {line}")
 
 
+def test_metrics_fix_within_7d() -> None:
+    say("task.py metrics: fix_within_7d は送り出しから7日以内に fixes で結ばれた直しの数を、期間内の SHIPPED で割る")
+    with tempfile.TemporaryDirectory() as tmp:
+        _main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
+        d = ledger.flow_dir(ledger.ledger_root(cwd=wt1))
+        shipped_at = datetime.now(timezone.utc) - timedelta(days=20)
+        row = lambda task, days, ev, **kw: json.dumps(
+            {"t": (shipped_at + timedelta(days=days)).isoformat(timespec="seconds"), "event": ev, "task": task, "difficulty": "sonnet", **kw}
+        )
+        lines = [row(t, 0, "ship", result="SHIPPED") for t in ("T-200", "T-201", "T-202")]
+        lines += [
+            row("T-210", 1, "new", fixes="T-200"),
+            row("T-211", 8, "new", fixes="T-201"),
+            row("T-212", 2, "new", fixes="T-200,T-202"),
+        ]
+        write(os.path.join(d, "2000-01.jsonl"), "\n".join(lines) + "\n")
+        r = run_task(wt1, "metrics", "--days", "30")
+        got = {l.split("\t")[0]: l.split("\t")[1:] for l in r.stdout.splitlines()}
+        check(
+            "7日以内の直し2本（T-210・T-212）だけを数え、8日後の T-211 は数えない。分母は SHIPPED の3件",
+            got.get("fix_within_7d") == ["67% (2/3)", "-"],
+            r.stdout + r.stderr,
+        )
+
+
 def test_metrics_stages_parallel_steps() -> None:
     say("task.py metrics --stages: 並列の段の返却が重なっても、委譲の時間を段ごとの和で数えない")
     base = datetime.now(timezone.utc) - timedelta(hours=2)
@@ -1172,6 +1197,7 @@ TESTS = (
     test_task_stage_spans,
     test_stage_spans_skip_overlapping_start,
     test_flow_records_and_metrics,
+    test_metrics_fix_within_7d,
     test_config_file_agents_md_and_conflict,
     test_retrospect_due,
     test_config_doctor,

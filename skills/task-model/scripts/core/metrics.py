@@ -27,7 +27,9 @@ HIGHER_IS_WORSE = (
     "verify_infra",
     "ship_verify_failed",
     "reclaim",
+    "fix_within_7d",
 )
+FIX_WINDOW = timedelta(days=7)
 LOWER_IS_WORSE = ("shipped", "reflection_none_ratio")
 STAGE_ORDER = ("計画", "直し", "委譲", "検証", "受け入れ", "レビュー", "振り返り", "合流", "送り出し", "反映")
 ROUTES = ("direct", "normal")
@@ -124,6 +126,13 @@ def _column(events: list[Event], start: datetime, end: datetime) -> dict[str, st
         e for e in inside if e.kind == "done" and not e.fields.get("dropped") and e.fields.get("reflection") != "skipped"
     ]
     clean = [e for e in dones if e.fields.get("reflection") == "none"]
+    fixes = {
+        n.task
+        for n in events
+        if n.kind == "new"
+        for s in shipped
+        if s.task in str(n.fields.get("fixes", "")).split(",") and s.at <= n.at <= s.at + FIX_WINDOW
+    }
     causes = [verify_cause(events, e) for e in verifies if e.fields.get("result") in VERIFY_FAILED_RESULTS]
     return {
         "shipped": str(len(shipped)),
@@ -137,6 +146,7 @@ def _column(events: list[Event], start: datetime, end: datetime) -> dict[str, st
         "ship_verify_failed": str(sum(1 for e in inside if e.kind == "ship" and e.fields.get("result") == "VERIFY_FAILED")),
         "reclaim": str(len(reclaims)),
         "reflection_none_ratio": f"{round(100 * len(clean) / len(dones))}% ({len(clean)}/{len(dones)})" if dones else "-",
+        "fix_within_7d": f"{round(100 * len(fixes) / len(shipped))}% ({len(fixes)}/{len(shipped)})" if shipped else "-",
     }
 
 

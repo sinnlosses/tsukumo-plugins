@@ -13,7 +13,7 @@ import gitinfo  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
-from selftest_fixtures import BODY, PLANNED_BODY, body_file, commit_task, issue_count, issue_json, make_repo, run_task, shown, start_task, unset_metadata  # noqa: E402
+from selftest_fixtures import BODY, PLANNED_BODY, body_file, commit_task, flow_rows, issue_count, issue_json, make_repo, metadata, run_task, shown, start_task, unset_metadata  # noqa: E402
 
 
 def test_taskfile_body() -> None:
@@ -205,6 +205,29 @@ def test_new_and_status_single_worktree() -> None:
             wt1, "new", "--summary", "本文が足りない", "--difficulty", "haiku", "--loopable", "N", "--body-file", bad_body
         )
         check("必須節が無い本文は終了コード2", r.returncode == 2 and r.stdout == "", r.stdout + r.stderr)
+
+
+def test_new_fixes() -> None:
+    say("task.py new --fixes（直しが結ぶ元のタスクを metadata fixes に置き、台帳に new の出来事を残す）")
+    with tempfile.TemporaryDirectory() as tmp:
+        _main_path, wt1, _wt2 = make_repo(tmp)
+        new = lambda *extra: run_task(
+            wt1, "new", "--summary", "直し", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", body_file(wt1), *extra
+        )
+        original = new().stdout.split("\t")[1]
+        check("--fixes なしの new は台帳に new を残さない", not [r for r in flow_rows(wt1) if r["event"] == "new"])
+
+        r = new("--fixes", f"{original},{original.lower()}")
+        fix = r.stdout.split("\t")[1]
+        check("元のタスクを指す --fixes は CREATED", r.returncode == 0 and r.stdout.startswith("CREATED\t"), r.stdout + r.stderr)
+        check("metadata fixes に重複を畳んだ元のIDが入る", metadata(wt1, fix).get("fixes") == original, str(metadata(wt1, fix)))
+        rows = [r for r in flow_rows(wt1) if r["event"] == "new"]
+        check("台帳に new の出来事が fixes つきで1行残る", len(rows) == 1 and rows[0]["task"] == fix and rows[0]["fixes"] == original, str(rows))
+
+        before = issue_count(wt1)
+        for bad in ("T-9999", "foo"):
+            r = new("--fixes", bad)
+            check(f"--fixes {bad} は終了コード2で何も作らない", r.returncode == 2 and r.stdout == "" and issue_count(wt1) == before, r.stdout + r.stderr)
 
 
 def test_kind_label() -> None:
@@ -757,6 +780,7 @@ TESTS = (
     test_done_required_lines,
     test_claim_and_release_single_worktree,
     test_new_and_status_single_worktree,
+    test_new_fixes,
     test_kind_label,
     test_find,
     test_draft_register_and_refuse_claim,
