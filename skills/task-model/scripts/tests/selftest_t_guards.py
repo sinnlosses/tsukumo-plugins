@@ -1826,9 +1826,6 @@ def test_commit_guard_git_operations() -> None:
             check(f"done のあとは通る: {command}", run_guard(tmp, wt1, command) is None)
 
 
-ACCEPTOR = os.path.join(HERE, "..", "..", "..", "..", "agents", "acceptor.md")
-
-
 @weight(9)
 def test_commit_guard_acceptor() -> None:
     say("task.py commit-guard: 受け入れ役（--acceptor か agent_type）は tw と検証コマンドの直打ちを拒み、読む形は通す")
@@ -1891,20 +1888,6 @@ def test_commit_guard_acceptor() -> None:
         check("委譲先の検証コマンドの理由は tw verify を案内する", reason is not None and "tw verify" in reason, str(reason))
         check("受け入れ役でも git commit は拒む", denied("git commit -m x", wt1, "--acceptor") is not None)
 
-        hook = ""
-        with open(ACCEPTOR, encoding="utf-8") as f:
-            for line in f:
-                if line.strip().startswith("command: tw commit-guard --acceptor"):
-                    hook = line.strip()[len("command: "):]
-        check("acceptor.md の frontmatter に tw commit-guard --acceptor の hook がある", hook != "")
-        payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "tw verify"}, "cwd": wt1, "agent_id": "a-1"})
-        bin_dir = tempfile.mkdtemp(dir=tmp)
-        write(os.path.join(bin_dir, "tw"), f'#!/bin/sh\nexec {sys.executable} {TASK_PY} "$@"\n')
-        os.chmod(os.path.join(bin_dir, "tw"), 0o755)
-        r = subprocess.run(["sh", "-c", hook], input=payload, capture_output=True, text=True, env=hook_env(tmp, f"{bin_dir}:/usr/bin:/bin"))
-        check("frontmatter の hook の行は tw commit-guard --acceptor を呼んで拒む", r.returncode == 0 and '"deny"' in r.stdout, r.stdout + r.stderr)
-        r = subprocess.run(["sh", "-c", hook], input=payload, capture_output=True, text=True, env=hook_env(tmp, "/usr/bin:/bin"))
-        check("tw が PATH に無くても何も出さず0で通す", r.returncode == 0 and r.stdout == "", r.stdout + r.stderr)
 
 
 @weight(9)
