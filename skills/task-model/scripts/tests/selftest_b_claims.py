@@ -202,6 +202,18 @@ def test_claim_not_restored_when_released_on_github() -> None:
               r.stdout + str(got_a and got_a.raw) + str(got_b and got_b.raw))
 
 
+def test_claim_not_restored_by_plain_sync_after_release_on_github() -> None:
+    say("着手の印の控え: GitHub で status::in_progress を外された着手は、止めない plain な sync でも戻さない")
+    with github() as (fake, tmp, main_path, wt1):
+        a, bd_id, n = _claim_and_push(fake, main_path, wt1, "label を外される")
+        fake.edit(n, labels=[l for l in fake.issues[n]["labels"] if l != "status::in_progress"])
+        r = run_task(main_path, "sync")
+        got = beads.show(main_path, bd_id)
+        check("plain な sync が RESTORED を出さず、課題は open のまま担当者も wt1 に戻らない", "RESTORED" not in r.stdout + r.stderr
+              and got is not None and got.status == "open" and got.assignee != "wt1",
+              r.stdout + r.stderr + str(got and got.raw))
+
+
 def test_claim_not_restored_after_release_done_ship() -> None:
     say("着手の印の控え: release・done・ship で手放した課題は、取り込みが止まっても控えから戻らない")
     with github() as (fake, tmp, main_path, wt1):
@@ -297,6 +309,7 @@ TESTS = (
     test_claim_restored_after_killed_sync,
     test_handback_guard_after_killed_sync,
     test_claim_not_restored_when_released_on_github,
+    test_claim_not_restored_by_plain_sync_after_release_on_github,
     test_pull_sees_other_worktree_kv,
     test_after_sees_other_worktree_kv,
     test_claim_kept_through_concurrent_syncs,

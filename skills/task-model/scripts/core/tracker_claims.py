@@ -70,6 +70,12 @@ def _claim_started(issue: beads.Issue | None) -> str:
     return issue.started_at or ""
 
 
+def _drop_snapshot(toplevel: str, listed: dict, bd_id: str) -> None:
+    """控えを `bd kv` から消し、読み済みの `listed` からも外す（同じ写しを次の回が読むため）。"""
+    beads.clear_claim_snapshot(toplevel, bd_id)
+    listed.pop(f"{beads.CLAIM_SNAPSHOT_KEY_PREFIX}{bd_id}", None)
+
+
 def _restore_from_snapshots(
     toplevel: str, listed: dict, issues: Callable[[list[str]], list[beads.Issue]], bd_ids: list[str] | None, actor: str
 ) -> tuple[list[str], list[str]]:
@@ -91,7 +97,7 @@ def _restore_from_snapshots(
     for bd_id in wanted:
         was, issue = snapshots[bd_id], current.get(bd_id)
         if issue is None:
-            beads.clear_claim_snapshot(toplevel, bd_id)
+            _drop_snapshot(toplevel, listed, bd_id)
             continue
         n = _ref_number(issue.external_ref)
         args = _claim_restore_args(
@@ -100,7 +106,7 @@ def _restore_from_snapshots(
         )
         holds = issue.status == "in_progress" and issue.assignee == was.assignee
         if not holds and "--assignee" not in args:
-            beads.clear_claim_snapshot(toplevel, bd_id)
+            _drop_snapshot(toplevel, listed, bd_id)
             continue
         if not args:
             continue
