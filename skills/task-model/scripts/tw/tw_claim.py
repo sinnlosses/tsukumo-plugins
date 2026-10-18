@@ -183,7 +183,7 @@ def _checked_result(toplevel: str, shown: str, issue: beads.Issue, result: str) 
         return any(h.startswith(prefix) for h in heads)
 
     needed = list(REQUIRED_RESULT_LINES)
-    if "目視" in str(issue.raw.get("acceptance_criteria") or ""):
+    if taskfile.visual_required(str(issue.raw.get("acceptance_criteria") or "")):
         needed.append(VISUAL_RESULT_LINE)
     missing = [p for p in needed if not has(p)]
     if REQUIRED_RESULT_LINES[0] in missing and _last_verify_passed(toplevel, shown):

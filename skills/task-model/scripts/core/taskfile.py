@@ -326,7 +326,8 @@ PLAN_TOUCHED_FIELD = "触るファイル"
 PLAN_COVERS_FIELD = "満たす完了条件"
 _PLAN_STEP_LINE = re.compile(r"^### (\d+)\. (\S.*)$")
 _PLAN_FIELD_LINE = re.compile(rf"^- ({PLAN_AFTER_FIELD}|{PLAN_TOUCHED_FIELD}|{PLAN_COVERS_FIELD}):\s*(.*)$")
-_CRITERION_ITEM = re.compile(r"^(?:\d+\.|[-*])\s")
+_CRITERION_ITEM = re.compile(r"^(?:\d+\.|[-*])\s+")
+VISUAL_CRITERION_MARK = "[目視]"
 
 
 def _parse_covers(n: int, raw: str | None) -> tuple[tuple[int, ...] | None, str | None]:
@@ -340,11 +341,21 @@ def _parse_covers(n: int, raw: str | None) -> tuple[tuple[int, ...] | None, str 
     return tuple(sorted({int(x) for x in items})), None
 
 
+def criteria_items(section: str) -> tuple[str, ...]:
+    """`## 完了条件` の節の中身（見出しなし）の項目の本文。行頭が `1.`・`-`・`*` の項目を取り、項目が1つも無ければ空でない行を取る。"""
+    lines = section.split("\n")
+    items = [_CRITERION_ITEM.sub("", line, count=1).strip() for line in lines if _CRITERION_ITEM.match(line)]
+    return tuple(items) or tuple(line.strip() for line in lines if line.strip())
+
+
 def criteria_count(body: str) -> int:
-    """`## 完了条件` の行の数。行頭が `1.`・`-`・`*` の項目を数え、項目が1つも無ければ空でない行を数える。"""
-    lines = dict(_frame_sections(body)[1]).get(ACCEPTANCE_HEADING, "").split("\n")
-    items = [line for line in lines if _CRITERION_ITEM.match(line)]
-    return len(items) or len([line for line in lines if line.strip()])
+    """`## 完了条件` の行の数（`criteria_items` の数）。"""
+    return len(criteria_items(dict(_frame_sections(body)[1]).get(ACCEPTANCE_HEADING, "")))
+
+
+def visual_required(section: str) -> bool:
+    """`## 完了条件` の節の中身に、頭が印 `[目視]` の項目があるか。"""
+    return any(item.startswith(VISUAL_CRITERION_MARK) for item in criteria_items(section))
 
 
 def plan_coverage(body: str) -> tuple[tuple[int, ...], tuple[int, ...]]:

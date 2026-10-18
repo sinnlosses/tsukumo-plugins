@@ -693,12 +693,27 @@ def test_done_required_lines() -> None:
         r = run_task(wt1, "done", "T-100", "--result-file", "-", stdin=without_verify)
         check("直近の verify が落ちていれば補わず拒む", refused(r, wt1, "- 検証コマンド:"), r.stdout + r.stderr)
 
+    for section, want in (("- 画面を目視で確かめる", False), ("1. 通る\n2. [目視] 狭い幅で崩れない", True),
+                          ("[目視] 画面を確かめる", True), ("1. 文中の [目視] は印でない", False)):
+        check(f"visual_required({section!r}) は {want}", taskfile.visual_required(section) is want)
+
     with tempfile.TemporaryDirectory() as tmp:
         wt1 = claimed(tmp, task_body(acceptance="- 画面を目視で確かめる"))
         r = run_task(wt1, "done", "T-100", "--result-file", "-", stdin=RESULT_FULL)
-        check("完了条件に目視があれば - 目視: が欠けると拒む", refused(r, wt1, "- 目視:"), r.stdout + r.stderr)
+        check("完了条件に語「目視」があるだけなら - 目視: が無くても通る", r.returncode == 0, r.stdout + r.stderr)
+
+    marked = "1. 通る\n2. [目視] 狭い幅で崩れない"
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1 = claimed(tmp, task_body(acceptance=marked))
+        r = run_task(wt1, "done", "T-100", "--result-file", "-", stdin=RESULT_FULL)
+        check("完了条件の項目の頭に印 [目視] があれば - 目視: が欠けると拒む", refused(r, wt1, "- 目視:"), r.stdout + r.stderr)
         r = run_task(wt1, "done", "T-100", "--result-file", "-", stdin=RESULT_FULL + "- 目視: a.png を見比べて可\n")
-        check("- 目視: があれば通る", r.returncode == 0, r.stdout + r.stderr)
+        check("印があって - 目視: があれば通る", r.returncode == 0, r.stdout + r.stderr)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1 = claimed(tmp, task_body(acceptance=marked))
+        r = run_task(wt1, "done", "T-100", "--dropped", "--result-file", "-", stdin="- 却下: 要らない\n")
+        check("印があっても --dropped は - 目視: を見ない", r.returncode == 0, r.stdout + r.stderr)
 
     with tempfile.TemporaryDirectory() as tmp:
         wt1 = claimed(tmp)
