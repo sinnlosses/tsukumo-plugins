@@ -11,6 +11,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 from selftest_support import RESULT_FULL, RESULT_REQUIRED, check, git, git_env, refuse_direct_run, say, weight, write  # noqa: E402
 import beads  # noqa: E402
+import commit_guard  # noqa: E402
 import gitinfo  # noqa: E402
 import handback_guard  # noqa: E402
 import ledger  # noqa: E402
@@ -1718,7 +1719,115 @@ def test_guard_denial_record() -> None:
               and (rows[0]["hook"], rows[0]["rule"], rows[0]["actor"]) == ("tw-ref-guard", "MOVE_REF", "main"), str(rows))
 
 
+@weight(9)
+def test_commit_guard_git_operations() -> None:
+    say("task.py commit-guard: 印が立った作業ツリーで git stash・add -A・push・worktree remove・branch -d を拒み、読む形は通す")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(tmp)
+        commit_task(main_path, taskfile.Task("T-100", "拒む", "todo", "sonnet", "Y", (), BODY))
+        disarm_ref_guard(main_path)
+        run_task(wt1, "claim", "T-100")
+
+        refused = (
+            ("git stash", "GIT_STASH"),
+            ("git stash push -u -m x", "GIT_STASH"),
+            ("git stash -u", "GIT_STASH"),
+            ("git stash pop", "GIT_STASH"),
+            ("git stash apply stash@{0}", "GIT_STASH"),
+            ("git stash drop", "GIT_STASH"),
+            ("git -c core.pager=cat stash save x", "GIT_STASH"),
+            ("git add -A", "GIT_ADD_ALL"),
+            ("git add --all", "GIT_ADD_ALL"),
+            ("git add -Av", "GIT_ADD_ALL"),
+            ("git add .", "GIT_ADD_ALL"),
+            ("git add ./", "GIT_ADD_ALL"),
+            ("git add -- .", "GIT_ADD_ALL"),
+            ("git add a.txt -A", "GIT_ADD_ALL"),
+            ("git push", "GIT_PUSH"),
+            ("git push origin main", "GIT_PUSH"),
+            ("git push --force-with-lease", "GIT_PUSH"),
+            ("/usr/bin/git push", "GIT_PUSH"),
+            ("env FOO=1 git push", "GIT_PUSH"),
+            ("git status && git push 2>&1", "GIT_PUSH"),
+            (f"git -C {wt1} push", "GIT_PUSH"),
+            ("git worktree remove ../x", "GIT_WORKTREE_REMOVE"),
+            ("git worktree remove --force ../x", "GIT_WORKTREE_REMOVE"),
+            ("git worktree prune", "GIT_WORKTREE_REMOVE"),
+            ("git branch -d x", "GIT_BRANCH_DELETE"),
+            ("git branch -D x", "GIT_BRANCH_DELETE"),
+            ("git branch --delete x", "GIT_BRANCH_DELETE"),
+            ("git branch -vd x", "GIT_BRANCH_DELETE"),
+        )
+        for command, rule in refused:
+            check(f"拒む: {command}", run_guard(tmp, wt1, command) is not None)
+            invocations = commit_guard._git_invocations(command, wt1)
+            keys = [hit[0] for _w, sub, rest in invocations if (hit := commit_guard._dangerous_git(sub, rest))]
+            check(f"規則 {rule}: {command}", keys == [rule], str(keys))
+        reason = run_guard(tmp, wt1, "git push")
+        check("理由にタスクIDと次の一手が入る", reason is not None and "T-100" in reason and "git push" in reason, str(reason))
+
+        for command in (
+            "git stash list",
+            "git stash show",
+            "git stash show -p stash@{0}",
+            "git stash --help",
+            "git add a.txt",
+            "git add -- -A",
+            "git add -- -A b.txt",
+            "git add .gitignore",
+            "git add src/.x",
+            "git add -n -A",
+            "git add --dry-run .",
+            "git push -n",
+            "git push --dry-run origin main",
+            "git worktree list",
+            "git worktree add ../y -b y",
+            "git branch",
+            "git branch -a",
+            "git branch -v",
+            "git branch --list",
+            "git branch --show-current",
+            "git branch -m a b",
+            "git status",
+            "git log --grep=stash",
+            "git log --oneline -- push",
+            "git config alias.push x",
+            "git config --get remote.origin.url",
+            "git diff -- .",
+            "git show HEAD:push",
+            'echo "git push"',
+            "echo git add -A",
+            'grep -n "git stash" README.md',
+            "gh pr create",
+            "gh pr push",
+            "tw verify",
+            "tw ship",
+            "tw land gh-950",
+            "tw finish T-100 --add a.txt",
+            "git stash 'unclosed",
+            f"git -C {wt2} push",
+            f"cd {wt2} && git push",
+            f"cd {wt2} && git add -A",
+            "sh -c 'git push'",
+        ):
+            check(f"通す: {command}", run_guard(tmp, wt1, command) is None)
+        check("控えの無い作業ツリーでは通す", run_guard(tmp, wt2, "git push") is None)
+
+        payload = {"tool_name": "Bash", "tool_input": {"command": "git push"}, "cwd": wt1}
+        for agent_id, expect in ((None, False), ("a-implementer", True)):
+            fields = dict(payload, **({"agent_id": agent_id} if agent_id else {}))
+            r = run_task(tmp, "commit-guard", "--agent-scoped", stdin=json.dumps(fields))
+            check(f"--agent-scoped の git の拒否は agent_id={agent_id} で{'拒む' if expect else '通す'}",
+                  r.returncode == 0 and (r.stdout != "") == expect, r.stdout + r.stderr)
+
+        result_path = write(os.path.join(tmp, "result.md"), RESULT_FULL)
+        run_task(wt1, "done", "T-100", "--result-file", result_path)
+        for command in ("git push", "git stash", "git add -A", "git branch -d x", "git worktree remove ../x"):
+            check(f"done のあとは通る: {command}", run_guard(tmp, wt1, command) is None)
+
+
 TESTS = (
+    test_commit_guard_git_operations,
     test_guard_denial_record,
     test_ref_guard_blocks_commits,
     test_ref_guard_install_states,

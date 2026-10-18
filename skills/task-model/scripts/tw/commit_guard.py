@@ -127,6 +127,15 @@ def decide(payload: dict) -> tuple[str, str] | None:
                 f"着手の印（{','.join(claims)}）が立っていて tw done の前の作業ツリー（{where}）では "
                 f"git {subcommand} を拒む。コミットせず、変更は作業ツリーに残したまま報告で返す"
             )
+    for where, sub, rest in _git_invocations(command, start):
+        danger = _dangerous_git(sub, rest)
+        claims = _open_claims_at(where) if danger else []
+        if danger and claims:
+            rule, how, next_step = danger
+            return rule, (
+                f"着手の印（{','.join(claims)}）が立っていて tw done の前の作業ツリー（{where}）では "
+                f"{how} を打たない。{next_step}"
+            )
     work_claims = _WorkTreeClaims(start)
     for path, how in _shell_writes(command, start):
         where, claims = _claims_for_write(path, work_claims)
@@ -357,12 +366,46 @@ def _is_ignored(path: str, directory: str) -> bool:
 
 def _git_commits(command: str, start: str) -> list[tuple[str, str]]:
     """`(作業先, サブコマンド)` の並び。コミットを作る git のサブコマンドだけ。割れなければ空。"""
-    found: list[tuple[str, str]] = []
+    return [(where, sub) for where, sub, _rest in _git_invocations(command, start) if sub in COMMIT_SUBCOMMANDS]
+
+
+def _git_invocations(command: str, start: str) -> list[tuple[str, str, tuple[str, ...]]]:
+    """`(作業先, サブコマンド, 後ろの語)` の並び。割れなければ空。"""
+    found = []
     for simple in _simple_commands(command, start):
-        hit = _git_subcommand([t.text for t in simple.words], simple.where)
-        if hit is not None and hit[1] in COMMIT_SUBCOMMANDS:
+        hit = _git_subcommand([t.text for t in simple.words if not t.op], simple.where)
+        if hit is not None:
             found.append(hit)
     return found
+
+
+def _is_flag_bundle(word: str, letters: str) -> bool:
+    return word.startswith("-") and not word.startswith("--") and any(c in letters for c in word[1:])
+
+
+def _dangerous_git(sub: str, rest: tuple[str, ...]) -> tuple[str, str, str] | None:
+    """`(規則のキー, 打った形, 次の一手)`。読むだけの形と対象外のサブコマンドは `None`。"""
+    first = rest[0] if rest else ""
+    if sub == "stash":
+        if first in ("list", "show", "-h", "--help"):
+            return None
+        return "GIT_STASH", "git stash", "stash の山は作業ツリーの間で共有される。変更の前後は `git show HEAD:<path>` で見る"
+    if sub == "add":
+        if "-n" in rest or "--dry-run" in rest:
+            return None
+        before = rest[: rest.index("--")] if "--" in rest else rest
+        if any(w == "--all" or _is_flag_bundle(w, "A") for w in before) or any(w in (".", "./") for w in rest):
+            return "GIT_ADD_ALL", "git add -A / git add .", "触ったファイルを個別に `git add <file>` する（コミットは委譲先はしない）"
+        return None
+    if sub == "push":
+        if "-n" in rest or "--dry-run" in rest:
+            return None
+        return "GIT_PUSH", "git push", "push はメインが頼まれたときに打つ。変更は作業ツリーに残して返す"
+    if sub == "worktree" and first in ("remove", "prune"):
+        return "GIT_WORKTREE_REMOVE", f"git worktree {first}", "作業ツリーの片付けは `tw land` がする"
+    if sub == "branch" and any(w == "--delete" or _is_flag_bundle(w, "dD") for w in rest):
+        return "GIT_BRANCH_DELETE", "git branch -d", "枝の片付けは `tw land` がする"
+    return None
 
 
 class Token(NamedTuple):
@@ -501,7 +544,7 @@ def _split_commands(tokens: list[Token]) -> list[list[Token]]:
     return commands
 
 
-def _git_subcommand(simple: list[str], where: str | None) -> tuple[str, str] | None:
+def _git_subcommand(simple: list[str], where: str | None) -> tuple[str, str, tuple[str, ...]] | None:
     i = 0
     while i < len(simple) and (simple[i] in ("env", "command") or _is_assignment(simple[i])):
         i += 1
@@ -519,7 +562,7 @@ def _git_subcommand(simple: list[str], where: str | None) -> tuple[str, str] | N
             i += 1
     if i >= len(simple) or where is None:
         return None
-    return where, simple[i]
+    return where, simple[i], tuple(simple[i + 1 :])
 
 
 def _is_assignment(word: str) -> bool:
