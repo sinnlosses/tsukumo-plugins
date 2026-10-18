@@ -271,6 +271,22 @@ def test_edit_keeps_plan_sections() -> None:
                   r.returncode == 2 and r.stderr.startswith("usage:") and want in r.stderr and shown(wt1, "T-120") == before,
                   r.stdout + r.stderr)
 
+        def reason(task_id: str, plan: str) -> str:
+            r = run_task(wt1, "edit", task_id, "--section", "やること", "--body-file", "-", stdin=plan)
+            return r.stderr if r.returncode == 2 else f"拒まれていない: {r.stdout}{r.stderr}"
+
+        no_range, unreadable = "NO_RANGE", "unreadable"
+        text = reason("T-120", step + files)
+        check("作業先だけ落ちた理由は NO_RANGE を言い、名指すファイルの影響は言わない", no_range in text and unreadable not in text, text)
+        text = reason("T-120", step + repo)
+        check("作業先のあるタスクで名指すファイルだけ落ちた理由は unreadable を言い、NO_RANGE・別のリポジトリは言わない",
+              unreadable in text and no_range not in text and "別のリポジトリ" not in text, text)
+        text = reason("T-120", step)
+        check("両方落ちた理由は NO_RANGE と unreadable の両方を言う", no_range in text and unreadable in text, text)
+        text = reason("T-121", step)
+        check("作業先の無いタスクで名指すファイルが落ちた理由は unreadable を言い、NO_RANGE・別のリポジトリは言わない",
+              unreadable in text and no_range not in text and "別のリポジトリ" not in text, text)
+
         r = run_task(wt1, "edit", "T-120", "--section", "やること", "--body-file", "-", stdin="### 1. 書く\n\ny\n\n" + repo + files)
         check("節を残して段の中身だけ変える書き直しは通る", r.returncode == 0 and r.stdout.startswith("EDITED\tT-120"), r.stdout + r.stderr)
         r = run_task(wt1, "edit", "T-120", "--section", "やること", "--body-file", "-", stdin=files + repo + step)
