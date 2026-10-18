@@ -470,9 +470,9 @@ def test_new_bd_calls() -> None:
             counted = os.path.join(tmp, "bd-count.txt")
             local.env = {**local.env, "BD_COUNT_FILE": counted}
 
-            def register(*extra: str) -> tuple[subprocess.CompletedProcess, list[str]]:
+            def register(*extra: str, summary: str = "数える") -> tuple[subprocess.CompletedProcess, list[str]]:
                 open(counted, "w").close()
-                r = run_task(main_path, "new", "--summary", "数える", "--difficulty", "sonnet", "--loopable", "Y",
+                r = run_task(main_path, "new", "--summary", summary, "--difficulty", "sonnet", "--loopable", "Y",
                              *extra, "--body-file", "-", stdin=PLANNED_BODY)
                 return r, open(counted).read().splitlines()
 
@@ -480,8 +480,9 @@ def test_new_bd_calls() -> None:
             lists = [c for c in calls if c.startswith("list ")]
             say(f"  {kind}・--deps なし: bd {len(calls)} 回（うち list {len(lists)} 回）")
             check(f"{kind}・--deps なしは CREATED", r.returncode == 0 and r.stdout.startswith("CREATED\t"), r.stdout + r.stderr)
+            same_title = r.stdout.split("\t")[1]
             if bidirectional:
-                check("双方向・--deps なしの list は create のあとの取り込みの1回だけ", len(lists) == 1, "\n".join(calls))
+                check("双方向・--deps なしで GitHub に合う Issue が無ければ list を打たない", len(lists) == 0, "\n".join(calls))
             else:
                 check("双方向でない道は採番のため list を1回打つ", len(lists) == 1, "\n".join(calls))
                 created = r.stdout.split("\t")[1]
@@ -492,16 +493,19 @@ def test_new_bd_calls() -> None:
             say(f"  {kind}・--deps 1件: bd {len(calls)} 回（うち list {len(lists)} 回）")
             check(f"{kind}・--deps ありは CREATED", r.returncode == 0 and r.stdout.startswith("CREATED\t"), r.stdout + r.stderr)
             if bidirectional:
-                check("双方向・--deps ありは依存先を show で引く",
+                check("双方向・--deps ありは依存先を show で引き、題・本文が同じ Issue が既にあるので taken の list を1回読む",
                       f"show {beads.to_bd_id(first)} --json" in calls and len(lists) == 1, "\n".join(calls))
+                twin = r.stdout.split("\t")[1]
+                check("題・本文が同じ別の課題の Issue は取り違えず、別の番号で立つ",
+                      twin != same_title and num(twin) != num(same_title), f"{same_title} {twin}")
                 many = [first, *(new(main_path, f"依存{i}") for i in range(3))]
-                r, calls = register("--deps", ",".join(many))
+                r, calls = register("--deps", ",".join(many), summary="数える3")
                 lists = [c for c in calls if c.startswith("list ")]
                 say(f"  {kind}・--deps {len(many)}件: bd {len(calls)} 回（うち list {len(lists)} 回）")
                 check("双方向・--deps が3件を超えたら全件読み1回で確かめ、依存先を show で引かない",
-                      r.returncode == 0 and r.stdout.startswith("CREATED\t") and len(lists) == 2
+                      r.returncode == 0 and r.stdout.startswith("CREATED\t") and len(lists) == 1
                       and not any(f"show {beads.to_bd_id(d)} --json" in calls for d in many), r.stdout + r.stderr + "\n".join(calls))
-                r, calls = register("--deps", ",".join([*many, "GH-99999"]))
+                r, calls = register("--deps", ",".join([*many, "GH-99999"]), summary="数える4")
                 check("双方向・3件を超える --deps に無い ID があれば終了コード2で拒む",
                       r.returncode == 2 and "GH-99999" in r.stderr and not any(c.startswith("create ") for c in calls),
                       r.stdout + r.stderr + "\n".join(calls))

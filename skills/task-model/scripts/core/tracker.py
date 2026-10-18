@@ -505,17 +505,17 @@ class Session:
         pending = [i for i in self._issues_of(bd_ids) if i.bd_id in bd_ids and _ref_number(i.external_ref) is None]
         if not pending:
             return
-        taken = {n for i in self._issues() if (n := _ref_number(i.external_ref)) is not None}
+        taken: set[int] | None = None
         # 照らす Issue は作成が課題の作成 - SYNC_SLACK 以後なので、更新もそれ以後。読めない課題があれば全件。
         starts = [beads.parse_time(i.raw.get("created_at")) for i in pending]
         query = "state=all&per_page=100"
         if all(t is not None for t in starts):
             query += "&since=" + _format_time(min(starts) - SYNC_SLACK)
         found = self._rest_issues(query)
-        remote = [found[n] for n in sorted(found) if n not in taken]
+        remote = [found[n] for n in sorted(found)]
         for issue in pending:
             created = beads.parse_time(issue.raw.get("created_at"))
-            for item in remote:
+            for item in list(remote):
                 made = beads.parse_time(item.get("created_at"))
                 if (
                     item.get("title") == issue.title
@@ -523,6 +523,11 @@ class Session:
                     and item.get("html_url")
                     and (created is None or made is None or made >= created - SYNC_SLACK)
                 ):
+                    if taken is None:
+                        taken = {n for i in self._issues() if (n := _ref_number(i.external_ref)) is not None}
+                    if item.get("number") in taken:
+                        remote.remove(item)
+                        continue
                     self._write(["update", issue.bd_id, "--external-ref", item["html_url"]], check=True)
                     remote.remove(item)
                     break
