@@ -25,6 +25,7 @@ import tw_ship
 
 STRAY_COMMITS_EXIT = 12
 LOCAL_DIR = ".tw/local"
+GITMODULES = ".gitmodules"
 
 
 def cmd_finish(
@@ -106,10 +107,11 @@ def _submodule_paths(toplevel: str) -> set[str]:
 def _skipped_kind(toplevel: str, path: str, submodules: set[str]) -> str | None:
     """`--add` 省略時に対象から外す種類（`symlink`／`submodule`）。通常のファイルなら `None`。
 
-    サブモジュールは、指す先のずれ・中の変更・削除（索引か `HEAD` に載るパス）と、
-    追加前の入れ子のリポジトリ（`git status` が末尾 `/` のディレクトリで出す）。
+    サブモジュールは、指す先のずれ・中の変更・削除・移動（索引か `HEAD` に載るパス）と、
+    追加前の入れ子のリポジトリ（`git status` が末尾 `/` のディレクトリで出す）、
+    それらの設定の `.gitmodules`（追加・削除・移動・URL の変更のどれでも）。
     """
-    if path.rstrip("/") in submodules or path.endswith("/"):
+    if path.rstrip("/") in submodules or path.endswith("/") or path == GITMODULES:
         return "submodule"
     if os.path.islink(os.path.join(toplevel, path)):
         return "symlink"
@@ -121,13 +123,16 @@ def _commit(toplevel: str, message: str, files: list[str]) -> None:
     if not files:
         targets = []
         submodules = _submodule_paths(toplevel)
+        for path in sorted(submodules):
+            tw_base.run_git(toplevel, ["reset", "-q", "--", path])
         for path in gitinfo.dirty_paths(cwd=toplevel):
             if _is_local(path):
                 continue
             kind = _skipped_kind(toplevel, path, submodules)
             if kind is not None:
+                path = path.rstrip("/")
                 print(f"SKIPPED\t{path}\t{kind}")
-                tw_base.run_git(toplevel, ["reset", "-q", "--", path.rstrip("/")])
+                tw_base.run_git(toplevel, ["reset", "-q", "--", path])
                 continue
             targets.append(path)
     for path in targets:

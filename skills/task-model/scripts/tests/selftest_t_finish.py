@@ -270,13 +270,24 @@ def _with_submodule(tmp: str) -> tuple[str, str, str]:
     return wt1, git(wt1, "rev-parse", "HEAD:vendor/sub").stdout.strip(), os.path.join(tmp, "other-origin")
 
 
-def _finish_without_add(wt1: str, kind_path: str, kind: str) -> str:
-    """`--add` を省いて `finish` を打ち、`SKIPPED` の行と、コミットに通常ファイルだけが入ったことを確かめて出力を返す。"""
+def _finish_without_add(wt1: str, kind_path: str, kind: str = "submodule", gitmodules: bool = False) -> str:
+    """`--add` を省いて `finish` を打ち、`SKIPPED` の行と、コミットに通常ファイルだけが入ったことを確かめて出力を返す。
+
+    `gitmodules` が真なら `.gitmodules` も `SKIPPED` で出て、`HEAD` の `.gitmodules` が変わらないことを見る。
+    """
+    gitmodules_before = git(wt1, "rev-parse", "HEAD:.gitmodules").stdout.strip()
     write(os.path.join(wt1, "work.txt"), "x")
     r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "完了", stdin=RESULT)
     check(f"SKIPPED\\t{kind_path}\\t{kind} が出て COMMITTED になる", f"SKIPPED\t{kind_path}\t{kind}" in r.stdout and "COMMITTED\t" in r.stdout, r.stdout + r.stderr)
     changed = git(wt1, "show", "--name-only", "--format=", "HEAD").stdout.split()
     check("コミットに work.txt が入り、サブモジュールのパスは入らない", "work.txt" in changed and kind_path not in changed, repr(changed))
+    check(
+        ".gitmodules はコミットに入らず、HEAD のものが変わらない",
+        ".gitmodules" not in changed and git(wt1, "rev-parse", "HEAD:.gitmodules").stdout.strip() == gitmodules_before,
+        repr(changed),
+    )
+    if gitmodules:
+        check("SKIPPED\\t.gitmodules\\tsubmodule が出る", "SKIPPED\t.gitmodules\tsubmodule" in r.stdout, r.stdout)
     return r.stdout
 
 
@@ -299,13 +310,45 @@ def test_finish_without_add_skips_added_and_removed_submodule() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         wt1, _before, other = _with_submodule(tmp)
         git(wt1, *_ALLOW_FILE, "submodule", "add", "-q", other, "vendor/other")
-        _finish_without_add(wt1, "vendor/other", "submodule")
+        _finish_without_add(wt1, "vendor/other", gitmodules=True)
         check("HEAD に vendor/other が無い", git(wt1, "ls-tree", "HEAD", "vendor/other").stdout.strip() == "")
     with tempfile.TemporaryDirectory() as tmp:
         wt1, before, _other = _with_submodule(tmp)
         shutil.rmtree(os.path.join(wt1, "vendor", "sub"))
-        _finish_without_add(wt1, "vendor/sub", "submodule")
+        _finish_without_add(wt1, "vendor/sub")
         check("削除してもコミットに入らず、HEAD の vendor/sub は残る", git(wt1, "rev-parse", "HEAD:vendor/sub").stdout.strip() == before)
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1, before, _other = _with_submodule(tmp)
+        git(wt1, "rm", "-q", "vendor/sub")
+        _finish_without_add(wt1, "vendor/sub", gitmodules=True)
+        check("git rm したあとも HEAD の vendor/sub は残る", git(wt1, "rev-parse", "HEAD:vendor/sub").stdout.strip() == before)
+
+
+def test_finish_without_add_skips_moved_submodule_and_url_change() -> None:
+    say("task.py finish: --add を省くと、サブモジュールの移動と .gitmodules だけの変更（URL）も件名つきのコミットに混ぜない。--add で明示すれば入る")
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1, before, _other = _with_submodule(tmp)
+        git(wt1, "mv", "vendor/sub", "vendor/moved")
+        _finish_without_add(wt1, "vendor/moved", gitmodules=True)
+        check("移動してもコミットに入らず、HEAD は元のパスのまま",
+              git(wt1, "rev-parse", "HEAD:vendor/sub").stdout.strip() == before
+              and git(wt1, "ls-tree", "HEAD", "vendor/moved").stdout.strip() == "")
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1, _before, _other = _with_submodule(tmp)
+        path = os.path.join(wt1, ".gitmodules")
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        write(path, text.replace("sub-origin", "sub-moved"))
+        _finish_without_add(wt1, ".gitmodules")
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1, _before, _other = _with_submodule(tmp)
+        path = os.path.join(wt1, ".gitmodules")
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        write(path, text.replace("sub-origin", "sub-moved"))
+        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "完了", "--add", ".gitmodules", stdin=RESULT)
+        changed = git(wt1, "show", "--name-only", "--format=", "HEAD").stdout.split()
+        check("--add で明示した .gitmodules は従来どおりコミットに入る", ".gitmodules" in changed and "SKIPPED" not in r.stdout, r.stdout + repr(changed))
 
 
 def test_finish_subject_prefix_once() -> None:
@@ -371,6 +414,7 @@ def test_finish_twice_without_resume_is_refused() -> None:
 TESTS = (
     test_finish_without_add_skips_drifted_submodule,
     test_finish_without_add_skips_added_and_removed_submodule,
+    test_finish_without_add_skips_moved_submodule_and_url_change,
     test_finish_without_add_commits_changes,
     test_finish_subject_prefix_once,
     test_finish_unadded_warning,
