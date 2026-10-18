@@ -18,6 +18,7 @@ import tw_plan
 
 
 VERIFY_TAIL_LINES = 40
+VERIFY_INFRA_EXIT_CODES = (2,)
 
 
 def cmd_verify(toplevel: str, task_id: str | None = None) -> None:
@@ -60,7 +61,9 @@ def cmd_verify(toplevel: str, task_id: str | None = None) -> None:
             stamps.clear_verify_stamp(cwd=toplevel)
             with open(log_path, encoding="utf-8", errors="replace") as f:
                 format_tail = "\n".join(f.read().splitlines()[-VERIFY_TAIL_LINES:])
-            tw_base.record_claimed(toplevel, "verify", result="FORMAT_FAILED", seconds=round(time.monotonic() - started))
+            tw_base.record_claimed(
+                toplevel, "verify", result="FORMAT_FAILED", seconds=round(time.monotonic() - started), cause="real"
+            )
             _print_verify_end(folded_line, f"FORMAT_FAILED\t{log_path}", format_tail)
             raise SystemExit(10)
     before = stamps.content_key(verify_command, cwd=toplevel)
@@ -70,7 +73,14 @@ def cmd_verify(toplevel: str, task_id: str | None = None) -> None:
         tail = "\n".join(f.read().splitlines()[-VERIFY_TAIL_LINES:])
     if r.returncode != 0:
         stamps.clear_verify_stamp(cwd=toplevel)
-        tw_base.record_claimed(toplevel, "verify", result="VERIFY_NOT_PASSED", seconds=round(time.monotonic() - started))
+        tw_base.record_claimed(
+            toplevel,
+            "verify",
+            result="VERIFY_NOT_PASSED",
+            seconds=round(time.monotonic() - started),
+            cause="infra" if r.returncode in VERIFY_INFRA_EXIT_CODES else "real",
+            key=before.tree,
+        )
         _print_verify_end(folded_line, f"VERIFY_NOT_PASSED\t{stamps.keep_failed_log(log_path)}", tail)
         raise SystemExit(10)
     if stamps.content_key(verify_command, cwd=toplevel) != before:
@@ -79,7 +89,9 @@ def cmd_verify(toplevel: str, task_id: str | None = None) -> None:
     else:
         stamps.write_verify_stamp(before, cwd=toplevel)
         verdict = f"VERIFIED\t{before.tree}\t{log_path}"
-    tw_base.record_claimed(toplevel, "verify", result=verdict.split("\t")[0], seconds=round(time.monotonic() - started))
+    tw_base.record_claimed(
+        toplevel, "verify", result=verdict.split("\t")[0], seconds=round(time.monotonic() - started), key=before.tree
+    )
     _print_verify_end(folded_line, verdict, tail)
 
 

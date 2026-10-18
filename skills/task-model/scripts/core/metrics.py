@@ -16,11 +16,15 @@ import ledger
 
 DAYS_DEFAULT = 7
 VERIFY_FAILED_RESULTS = ("FORMAT_FAILED", "VERIFY_NOT_PASSED")
+VERIFY_PASSED_RESULTS = ("VERIFIED", "VERIFIED_UNSTAMPED")
 HIGHER_IS_WORSE = (
     "lead_median_seconds",
     "lead_max_seconds",
     "verify_per_task",
     "verify_failed",
+    "verify_real",
+    "verify_flaky",
+    "verify_infra",
     "ship_verify_failed",
     "reclaim",
 )
@@ -86,6 +90,24 @@ def _lead_seconds(events: list[Event], shipped: Event) -> float | None:
     return (shipped.at - claims[-1].at).total_seconds() if claims else None
 
 
+def verify_cause(events: list[Event], failed: Event) -> str:
+    """落ちた `verify` の内訳（`real`・`flaky`・`infra`）。書かれた `cause` が `infra` ならそれ、
+    同じタスクの次の `claim` までに同じ `key` で通った回があれば `flaky`、ほかは `real`。"""
+    if failed.fields.get("cause") == "infra":
+        return "infra"
+    key = failed.fields.get("key")
+    if not key:
+        return "real"
+    for later in events[events.index(failed) + 1 :]:
+        if later.task != failed.task:
+            continue
+        if later.kind == "claim":
+            break
+        if later.kind == "verify" and later.fields.get("key") == key and later.fields.get("result") in VERIFY_PASSED_RESULTS:
+            return "flaky"
+    return "real"
+
+
 def _column(events: list[Event], start: datetime, end: datetime) -> dict[str, str]:
     inside = [e for e in events if start <= e.at < end]
     shipped = [e for e in inside if e.kind == "ship" and e.fields.get("result") == "SHIPPED"]
@@ -102,12 +124,16 @@ def _column(events: list[Event], start: datetime, end: datetime) -> dict[str, st
         e for e in inside if e.kind == "done" and not e.fields.get("dropped") and e.fields.get("reflection") != "skipped"
     ]
     clean = [e for e in dones if e.fields.get("reflection") == "none"]
+    causes = [verify_cause(events, e) for e in verifies if e.fields.get("result") in VERIFY_FAILED_RESULTS]
     return {
         "shipped": str(len(shipped)),
         "lead_median_seconds": str(round(statistics.median(leads))) if leads else "-",
         "lead_max_seconds": str(round(max(leads))) if leads else "-",
         "verify_per_task": f"{len(verifies) / len(verify_tasks):.1f}" if verifies else "-",
         "verify_failed": str(sum(1 for e in verifies if e.fields.get("result") in VERIFY_FAILED_RESULTS)),
+        "verify_real": str(causes.count("real")),
+        "verify_flaky": str(causes.count("flaky")),
+        "verify_infra": str(causes.count("infra")),
         "ship_verify_failed": str(sum(1 for e in inside if e.kind == "ship" and e.fields.get("result") == "VERIFY_FAILED")),
         "reclaim": str(len(reclaims)),
         "reflection_none_ratio": f"{round(100 * len(clean) / len(dones))}% ({len(clean)}/{len(dones)})" if dones else "-",
