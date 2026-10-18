@@ -53,8 +53,7 @@ if [ "$mode" != full ]; then
     && untracked=$(git -C "$here" ls-files --others --exclude-standard 2>/dev/null); then
     changed=$(printf '%s\n%s\n' "$diffed" "$untracked")
     scoped=yes
-    # agents/*.md の本文だけの変更は、追加・削除ではないので変更に数えない。
-    # 自己テストが実物を読むのは no-delegate.md の frontmatter の hook 行だけ
+    # agents/*.md のうち自己テストが実物を読むのは、no-delegate.md の frontmatter の hook 行だけ
     bodyonly=$(git -C "$here" diff --name-only --no-renames --diff-filter=M "$base" -- 'agents/*.md' 2>/dev/null)
     fm_end=$(git -C "$here" show "$base:agents/no-delegate.md" 2>/dev/null \
       | { n=0; d=0; while IFS= read -r l; do n=$((n+1)); [ "$l" = --- ] && d=$((d+1)); [ "$d" -eq 2 ] && { echo "$n"; break; }; done; })
