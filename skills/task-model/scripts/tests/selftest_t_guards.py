@@ -88,6 +88,11 @@ def test_commit_guard() -> None:
         run_task(wt2, "release", "T-101")
         check("release のあとは通る", run_guard(tmp, wt2, "git commit -m x") is None)
 
+        run_task(wt2, "claim", "T-101")
+        run_task(wt1, "release", "T-101", "--force")
+        check("人が --force で外すと持ち主の作業ツリーの控えも消え、コミットは通る",
+              ledger.open_claims(cwd=wt2) == [] and run_guard(tmp, wt2, "git commit -m x") is None)
+
 
 def run_ask_guard(tmp: str, where: str, tool: str = "AskUserQuestion", extra: dict | None = None) -> str | None:
     """`tw ask-guard` を git の外（`tmp`）から打つ。拒んだら理由、通したら `None`（落ちたら例外）。"""

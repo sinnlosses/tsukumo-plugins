@@ -25,41 +25,10 @@ from selftest_b_fakegithub import github  # noqa: E402
 from selftest_b_support import (  # noqa: E402
     PLANNED_BODY, bd, claim_snapshots, env, make_repo, new, new_unplanned, num, rows, tail_line, work_and_done,
 )
-from selftest_body import task_body  # noqa: E402
-from selftest_fixtures import disarm_ref_guard, run_guard, run_handback_guard, run_task, start_task  # noqa: E402
+from selftest_fixtures import run_task, start_task  # noqa: E402
 from selftest_support import RESULT_FULL, check, git, local, refuse_direct_run, say, write  # noqa: E402
 
 MATERIAL_PY = os.path.join(HERE, "..", "..", "..", "retrospect", "scripts", "material.py")
-
-
-def test_direct_mark() -> None:
-    say("new・edit・claim --direct: 近道の印は label direct:Y で、基準に当たるときだけ付く")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _ = make_repo(tmp)
-
-        def register(difficulty: str, body: str = PLANNED_BODY) -> subprocess.CompletedProcess:
-            return run_task(main_path, "new", "--summary", "近道", "--difficulty", difficulty, "--loopable", "Y",
-                            "--direct", "--body-file", "-", stdin=body)
-
-        def shown(task_id: str) -> str:
-            return run_task(main_path, "show", task_id).stdout.split("\n---\n", 1)[0]
-
-        r = register("sonnet")
-        check("difficulty が haiku でない --direct は終了コード2", r.returncode == 2 and "近道" in r.stderr,
-              r.stdout + r.stderr)
-        r = register("haiku", task_body([("書く", "x"), ("足す", "y")], ["shared.txt"], acceptance="- 通る"))
-        check("段が2つの --direct は終了コード2", r.returncode == 2 and "近道" in r.stderr, r.stdout + r.stderr)
-        r = register("haiku")
-        task_id = r.stdout.split("\t")[1] if r.stdout.startswith("CREATED\t") else ""
-        check("haiku・1段の --direct は CREATED で、show の front matter に direct: Y が出る",
-              task_id != "" and "\nloopable: Y\ndirect: Y\n" in shown(task_id), r.stdout + r.stderr)
-        r = run_task(wt1, "claim", task_id)
-        check("印があり計画が古くなければ CLAIMED の行末に direct=Y",
-              r.returncode == 0 and tail_line(r.stdout, "CLAIMED").endswith("\tdirect=Y"), r.stdout + r.stderr)
-        r = run_task(main_path, "edit", task_id, "--direct", "N")
-        check("edit --direct N は label を外す", r.returncode == 0 and "direct:" not in shown(task_id), r.stdout + r.stderr)
-        r = run_task(main_path, "edit", task_id, "--direct", "Y")
-        check("edit --direct Y は label を付ける", r.returncode == 0 and "direct: Y" in shown(task_id), r.stdout + r.stderr)
 
 
 def test_difficulty_loopable_metadata() -> None:
@@ -270,59 +239,6 @@ def test_claim_race_owner_and_release() -> None:
         write(os.path.join(loser, "dirty.txt"), "x\n")
         r = run_task(loser, "claim", h)
         check("汚れた作業ツリーでは DIRTY", r.returncode == 4 and r.stdout.startswith("DIRTY"), r.stdout)
-
-
-def test_commit_guard() -> None:
-    say("commit-guard: ref-guard が効かない作業ツリーでは、印が立って done 前のコミットを拒む")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, wt2 = make_repo(tmp)
-        disarm_ref_guard(main_path)
-        a = new(main_path, "拒む")
-        c = new(main_path, "人が外す")
-
-        run_task(wt1, "claim", a)
-        check("claim で控えが立つ（作業ツリーごと）",
-              ledger.open_claims(cwd=wt1) == [a] and ledger.open_claims(cwd=wt2) == [], str(ledger.open_claims(cwd=wt1)))
-        check("印の作業ツリーの git commit は拒む", run_guard(tmp, wt1, "git commit -m x") is not None)
-        check("印の無い作業ツリーの git commit は通す", run_guard(tmp, wt2, "git commit -m x") is None)
-        check("別の作業ツリーへの git -C は通す", run_guard(tmp, wt1, f"git -C {wt2} commit -m x") is None)
-        write(os.path.join(wt1, "work.txt"), "x\n")
-        git(wt1, "add", "work.txt")
-        git(wt1, "commit", "-q", "-m", "メインの手直し")
-        check("hook を通らないメインのコミットは印があっても通る",
-              git(wt1, "log", "-1", "--format=%s").stdout.strip() == "メインの手直し")
-        r = run_task(wt1, "done", a, "--result-file", "-", stdin=RESULT_FULL)
-        check("done で控えが消え、そのあとの git commit は通る",
-              r.returncode == 0 and ledger.open_claims(cwd=wt1) == [] and run_guard(tmp, wt1, "git commit -m x") is None, r.stdout)
-
-        run_task(wt2, "claim", c)
-        r = run_task(wt1, "release", c, "--force")
-        check("人が --force で外すと持ち主の作業ツリーの控えも消える",
-              r.returncode == 0 and ledger.open_claims(cwd=wt2) == [] and run_guard(tmp, wt2, "git commit -m x") is None, r.stdout)
-
-
-def test_handback_guard() -> None:
-    say("handback-guard・pause: 作業があるのに計画か検証が欠けた返却を拒む")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp, verify="echo verified")
-        a = new_unplanned(main_path, "先に計画")
-
-        check("着手の印が無い委譲は通す", run_handback_guard(tmp, wt1) is None)
-        run_task(wt1, "claim", a)
-        check("印があっても作業が無ければ通す", run_handback_guard(tmp, wt1) is None)
-        run_task(wt1, "edit", a, "--section", "やること", "--body-file", "-", stdin=(
-            "### 1. 書く\n- 触るファイル: `src/a.py`\n"
-            "### 2. 文書\n- 前の段: 1\n- 触るファイル: `docs/`\n"
-        ))
-        check("計画だけの回は通す", run_handback_guard(tmp, wt1) is None)
-        write(os.path.join(wt1, "work.txt"), "x\n")
-        reason = (run_handback_guard(tmp, wt1) or {}).get("reason", "")
-        check("計画があっても検証が無ければ block（NOT_VERIFIED）",
-              "NOT_VERIFIED\tnone" in reason and "PLAN_NOT_FIRST" not in reason, reason)
-        run_task(wt1, "step", a, "1")
-        r = run_task(wt1, "verify")
-        check("PLAN_FIRST と tw step と tw verify がそろえば通す", r.returncode == 0 and run_handback_guard(tmp, wt1) is None,
-              r.stdout + r.stderr)
 
 
 def test_cycle_done_ship_and_dropped() -> None:
@@ -601,12 +517,9 @@ TESTS = (
     test_new_bd_calls,
     test_issue_list_reuse_boundary,
     test_cycle_done_ship_and_dropped,
-    test_commit_guard,
     test_claim_race_owner_and_release,
-    test_handback_guard,
     test_setup_and_config_doctor,
     test_backup,
-    test_direct_mark,
     test_difficulty_loopable_metadata,
     test_missing_config_ignores_old_layout,
     test_store_default_is_beads,

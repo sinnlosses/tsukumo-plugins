@@ -826,19 +826,6 @@ def _squeeze(content: str) -> str:
     return "\n".join(kept).strip()
 
 
-def strip_result_section(body: str) -> str:
-    """本文から `## 結果` 節を丸ごと外す（無ければそのまま）。"""
-    lines = body.split("\n")
-    start = next((i for i, l in enumerate(lines) if l == RESULT_HEADING), None)
-    if start is None:
-        return body
-    end = next(
-        (i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")),
-        len(lines),
-    )
-    return "\n".join(lines[:start] + lines[end:])
-
-
 def section_heading(name: str) -> str | None:
     """`やること`・`## やること` を枠の見出しの行にそろえる。枠に無い名前は `None`。"""
     heading = name.strip()

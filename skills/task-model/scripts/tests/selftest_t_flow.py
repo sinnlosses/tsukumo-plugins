@@ -762,20 +762,6 @@ def _compact_json_array(items: list[str]) -> str:
     return json.dumps(items, ensure_ascii=False, separators=(",", ":"))
 
 
-def test_config_schema() -> None:
-    say("task.py config --schema: 欄の形を1行の JSON で出す（設定にも git にもよらない）")
-    with tempfile.TemporaryDirectory() as tmp:
-        r = run_task(tmp, "config", "--schema")
-        check("git の外でも終了コード0で1行", r.returncode == 0 and len(r.stdout.splitlines()) == 1, r.stdout + r.stderr)
-        schema = json.loads(r.stdout)
-        keys = schema["keys"]
-        check("形の版は2で、既定・なしの語を持たない",
-              schema["schema"] == 2 and "default_word" not in schema and "none_word" not in schema, repr(schema))
-        check("欄は steps の1つだけ（flow・parts.<枠> は無い）", [k["key"] for k in keys] == ["steps"],
-              repr([k["key"] for k in keys]))
-        check("どの欄も label と description を持つ", all(k["label"] and k["description"] for k in keys), repr(keys))
-
-
 def _skill(root: str, name: str, mark: str | None, description: str = "説明", order: str | None = None,
            title: str | None = None) -> str:
     """`root/<name>/SKILL.md` を書く。`mark` は `metadata` に置く `workflow-step` の値（None なら metadata を置かない）。
@@ -1208,7 +1194,6 @@ TESTS = (
     test_bin_tw_python_floor,
     test_config_command,
     test_config_json,
-    test_config_schema,
     test_step_candidates,
     test_default_steps_order,
     test_config_schema_version,

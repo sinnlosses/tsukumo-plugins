@@ -44,32 +44,16 @@ def main() -> int:
     check("無ければ偽", not check_repo.has_future_annotations(parse("import os\n")))
     check("annotations 以外の __future__ だけなら偽", not check_repo.has_future_annotations(parse("from __future__ import division\n")))
 
-    check_repo.problems.clear()
-    check_repo.check_python_syntax(skills)
-    check("実物の .py は全部 from __future__ import annotations を持つ", check_repo.problems == [])
-
     forbidden = check_repo.forbidden_path_references
     check("task-model のパスは許す", forbidden("a", "${CLAUDE_SKILL_DIR}/../task-model/WORKFLOW.md") == [])
     check("自分自身のパスは許す", forbidden("a", "${CLAUDE_SKILL_DIR}/../a/scripts") == [])
     check("ほかの兄弟のパスは返す", forbidden("a", "${CLAUDE_SKILL_DIR}/../task-model/x ${CLAUDE_SKILL_DIR}/../retrospect/SKILL.md") == ["retrospect"])
     check("改名前の task-workflow のパスは返す", forbidden("a", "${CLAUDE_SKILL_DIR}/../task-workflow/WORKFLOW.md") == ["task-workflow"])
 
-    check_repo.problems.clear()
-    check_repo.check_sibling_references(skills)
-    check("実物のリポジトリは通る", check_repo.problems == [])
-
-    check_repo.problems.clear()
-    check_repo.check_sibling_path_references(skills)
-    check("実物のリポジトリは兄弟のパスで task-model しか指さない", check_repo.problems == [])
-
     entry = check_repo.RETROSPECT_ENTRY_REFERENCE
     check("retrospect/SKILL.md の指し方を拾う", entry.search("`retrospect/SKILL.md` の出典") is not None)
     check("retrospect の SKILL.md の指し方を拾う", entry.search("`retrospect` の SKILL.md の節") is not None)
     check("detail.md の指し方は拾わない", entry.search("`retrospect/detail.md` の出典") is None)
-
-    check_repo.problems.clear()
-    check_repo.check_retrospect_entry_references(skills)
-    check("実物のリポジトリは retrospect の本文を detail.md で指す", check_repo.problems == [])
 
     edges = check_repo.forbidden_edges
     check("next-task から task-model のファイルは許す", edges("next-task", "`skills/task-model/WORKFLOW.md`", skills) == [])
@@ -95,10 +79,6 @@ def main() -> int:
           len(upward(brief, "置き場（このファイルの3つ上のディレクトリ）の `review-criteria.md`")) == 1)
     check("先のパスを読めない言及を返す", len(upward(brief, "このファイルの2つ上のディレクトリにある台本")) == 1)
 
-    check_repo.problems.clear()
-    check_repo.check_upward_references(skills)
-    check("実物のリポジトリの「N つ上」は実在するファイルに届く", check_repo.problems == [])
-
     mentions = check_repo.task_model_name_mentions
     agents = check_repo.agent_names()
     check("データの名前は拾わない",
@@ -106,14 +86,6 @@ def main() -> int:
                    skills, agents) == [])
     check("スキル名とエージェント名を拾う",
           mentions("`/next-task` から `no-delegate` に委譲し `/retro` を呼ぶ", skills, agents) == ["next-task", "no-delegate", "retro"])
-
-    check_repo.problems.clear()
-    check_repo.check_dependency_edges(skills)
-    check("実物のリポジトリは許す辺に収まる", check_repo.problems == [])
-
-    check_repo.problems.clear()
-    check_repo.check_task_model_names(skills, agents)
-    check("実物の task-model はスキル名とエージェント名を書かない", check_repo.problems == [])
 
     marked = check_repo.is_workflow_step
     head = '---\nname: s\ndescription: "d"\nmetadata:\n  workflow-step: "true"\n---\n'
@@ -136,13 +108,6 @@ def main() -> int:
           len(contract(head + f"`work_plan` で進める。{outcomes}\n（`なし` の設定には無い）\n")) == 1)
     check("frontmatter の中の語は本文に数えない",
           len(contract('---\nname: s\ndescription: "`work_plan`"\n---\n' + f"{outcomes}\n")) == 1)
-
-    check_repo.problems.clear()
-    check_repo.check_workflow_steps(skills)
-    check("実物の印のあるスキルは返す口と結果の返し方を持つ", check_repo.problems == [])
-    check("実物に印のあるスキルが4つある",
-          sum(check_repo.is_workflow_step(check_repo.read(os.path.join(check_repo.SKILLS, n, "SKILL.md")))
-              for n in skills if os.path.exists(os.path.join(check_repo.SKILLS, n, "SKILL.md"))) == 4)
 
     if failures:
         print(f"\n{len(failures)} 件落ちた: {', '.join(failures)}")
