@@ -61,6 +61,8 @@ LOOPABLE_KEY = "loopable"
 # ドラフトの印（`tw new --draft` が `deferred` の課題に付ける metadata）。
 DRAFT_KEY = "draft"
 DRAFT_ON = "Y"
+# 直しが結ぶ元のタスク（`tw new --fixes` が置く。見せる ID のカンマ区切り）。
+FIXES_KEY = "fixes"
 # ドラフトから `todo`・`hold` へ進めた課題の出自（値はドラフトの `- 観点:` の観点。読めなければ `不明`）。
 FROM_DRAFT_KEY = "from_draft"
 FROM_DRAFT_UNKNOWN = "不明"

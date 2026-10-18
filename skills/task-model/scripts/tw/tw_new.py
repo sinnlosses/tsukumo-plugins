@@ -26,6 +26,15 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
         if not layout.ANY_ID_PATTERN.match(d):
             print(f"usage: --deps の {d!r} が T-999・GH-5・PROJ-123 の形式でない", file=sys.stderr)
             raise SystemExit(2)
+    fixes = tuple(dict.fromkeys(x.strip().upper() for x in args.fixes.split(",") if x.strip()))
+    for f in fixes:
+        if not layout.ANY_ID_PATTERN.match(f):
+            print(f"usage: --fixes の {f!r} が T-999・GH-5・PROJ-123 の形式でない", file=sys.stderr)
+            raise SystemExit(2)
+    missing_fixes = [f for f in fixes if beads.show(toplevel, beads.to_bd_id(f)) is None]
+    if missing_fixes:
+        print(f"usage: --fixes の {','.join(missing_fixes)} が Beads に無い", file=sys.stderr)
+        raise SystemExit(2)
     if args.draft and (args.hold or args.direct):
         print("usage: --draft は --hold・--direct と一緒に使えない", file=sys.stderr)
         raise SystemExit(2)
@@ -56,6 +65,12 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
         metadata[beads.PLAN_BASE_KEY] = plan_base
     if args.draft:
         metadata[beads.DRAFT_KEY] = beads.DRAFT_ON
+    if fixes:
+        metadata[beads.FIXES_KEY] = ",".join(fixes)
+
+    def record_fixes(bd_id: str) -> None:
+        if fixes:
+            tw_base.record(toplevel, "new", beads.to_task_id(bd_id), fixes=",".join(fixes))
 
     def create_cmd(bd_id: str) -> list[str]:
         cmd = ["create", "--id", bd_id, "--title", summary, "--body-file", "-", "--metadata", json.dumps(metadata), "--silent"]
@@ -78,6 +93,7 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
         provisional = f"{beads.PROVISIONAL_PREFIX}{re.sub(r'[^0-9a-z]+', '-', actor.lower()).strip('-')}-{time.time_ns()}"
         beads.run_ok(toplevel, create_cmd(provisional), actor, parts.description)
         bd_id, lines = trk.register(provisional)
+        record_fixes(bd_id)
         print(f"CREATED\t{beads.to_task_id(bd_id)}\tbeads:{bd_id}")
         tw_base.print_lines(lines)
         return
@@ -89,6 +105,7 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
         r = beads.run(toplevel, create_cmd(bd_id), actor, parts.description)
         if r.returncode == 0:
             beads.write_last_id(toplevel, number)
+            record_fixes(bd_id)
             print(f"CREATED\t{beads.to_task_id(bd_id)}\tbeads:{bd_id}")
             tw_base.print_lines(trk.after([bd_id]))
             return
