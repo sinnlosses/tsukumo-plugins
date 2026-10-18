@@ -818,6 +818,16 @@ def draft_viewpoint(body: str) -> str | None:
     return (match.group(1) or None) if match is not None else None
 
 
+def draft_color(body: str) -> str | None:
+    """`## 目的・背景` の最初の `- 観点:` の行の色（`赤`・`黄`）。行か色が無ければ None。"""
+    match = _viewpoint_match(body)
+    if match is None:
+        return None
+    rest = match.group(0)[len("- 観点:") :].strip()
+    color = rest[:1]
+    return color if color in VIEWPOINT_COLORS and (rest[1:2] == "" or rest[1:2].isspace()) else None
+
+
 def _viewpoint_match(body: str) -> re.Match[str] | None:
     purpose = dict(_frame_sections(body)[1]).get(PURPOSE_HEADING, "")
     for line in purpose.split("\n"):

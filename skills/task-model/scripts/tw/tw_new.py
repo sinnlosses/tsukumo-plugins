@@ -7,6 +7,7 @@ import json
 import re
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 
 import beads
 import layout
@@ -40,6 +41,8 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
         raise SystemExit(2)
     body = tw_base.read_body(args.body_file)
     error = taskfile.validate_draft_body(body) if args.draft else taskfile.validate_new_body(body, args.hold, args.difficulty)
+    if error is None and args.candidate is not None:
+        error = _candidate_refusal(args.draft, body, args.candidate)
     if error is not None:
         print(f"usage: {error}", file=sys.stderr)
         raise SystemExit(2)
@@ -60,11 +63,22 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
 
     parts = beads.split_body(body)
     actor = tw_base.actor(toplevel)
+    candidate = None
+    if args.candidate is not None:
+        signal, place = args.candidate[0].strip(), beads.candidate_place(args.candidate[1])
+        candidate = (taskfile.draft_viewpoint(body) or "", signal, place)
+        recurred = _recurred_candidate(toplevel, candidate)
+        if recurred is not None:
+            _promote(toplevel, trk, recurred, actor, parts.description, candidate)
+            return
     metadata = {beads.DIFFICULTY_KEY: args.difficulty, beads.LOOPABLE_KEY: args.loopable}
     if plan_base is not None:
         metadata[beads.PLAN_BASE_KEY] = plan_base
     if args.draft:
         metadata[beads.DRAFT_KEY] = beads.DRAFT_ON
+    if candidate is not None:
+        metadata[beads.CANDIDATE_SIGNAL_KEY] = candidate[1]
+        metadata[beads.CANDIDATE_PLACE_KEY] = candidate[2]
     if fixes:
         metadata[beads.FIXES_KEY] = ",".join(fixes)
 
@@ -78,6 +92,8 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
             cmd += ["-l", beads.DIRECT_ON]
         if args.kind:
             cmd += ["-l", f"{beads.KIND_LABEL}{args.kind}"]
+        if candidate is not None:
+            cmd += ["-l", beads.CANDIDATE_LABEL]
         if parts.acceptance:
             cmd += ["--acceptance", parts.acceptance]
         if parts.notes:
@@ -117,6 +133,44 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
 
 
 SHOW_DEPS_LIMIT = 3
+
+
+def _candidate_refusal(draft: bool, body: str, candidate: list[str]) -> str | None:
+    """`--candidate <SIGNAL の種類> <場所>` の誤り。黄のドラフトだけが候補になる。"""
+    if not draft:
+        return "--candidate は --draft と一緒に使う"
+    color = taskfile.draft_color(body)
+    if color != "黄" or not taskfile.draft_viewpoint(body):
+        found = "赤（赤は1件でも承認の列へ積む。--candidate を外す）" if color == "赤" else "色か観点の無い行"
+        return f"--candidate は `- 観点: 黄 <観点>` の行を持つドラフトだけ（{found}）"
+    signal, place = candidate[0].strip(), beads.candidate_place(candidate[1])
+    if not signal or not place or any(c in s for s in (signal, place) for c in "\t\n"):
+        return "--candidate の SIGNAL の種類と場所は、タブ・改行を含まない空でない値"
+    return None
+
+
+def _recurred_candidate(toplevel: str, key: tuple[str, str, str]) -> beads.Issue | None:
+    """同じ `(観点, SIGNAL の種類, 場所)` で `CANDIDATE_WINDOW_DAYS` 日以内に積んだ候補のうち最も古いもの。"""
+    since = datetime.now(timezone.utc) - timedelta(days=beads.CANDIDATE_WINDOW_DAYS)
+    found = []
+    for issue in beads.list_issues(toplevel):
+        created = beads.parse_time(issue.raw.get("created_at"))
+        if beads.is_candidate(issue) and beads.candidate_key(issue) == key and created is not None and created >= since:
+            found.append((created, issue))
+    return min(found, key=lambda x: x[0])[1] if found else None
+
+
+def _promote(
+    toplevel: str, trk: tracker.Session, issue: beads.Issue, actor: str, description: str, key: tuple[str, str, str]
+) -> None:
+    """候補の印を外して承認の列（`DRAFT`）へ上げ、2件目の本文を comment に残す。2件目の課題は作らない。"""
+    beads.run_ok(toplevel, ["update", issue.bd_id, "--remove-label", beads.CANDIDATE_LABEL], actor)
+    beads.run_ok(toplevel, ["comment", issue.bd_id, "--stdin"], actor, f"{RECURRED_HEADING}\n\n{description.strip()}\n")
+    print("PROMOTED\t" + "\t".join((beads.to_task_id(issue.bd_id), *key)))
+    tw_base.print_lines(trk.after([issue.bd_id]))
+
+
+RECURRED_HEADING = "## 再発"
 
 # 番号の取り合いに続けて負けたら諦める回数（`bd create --id` は同じ番号を1つしか作らない）。
 NEW_ATTEMPTS = 20

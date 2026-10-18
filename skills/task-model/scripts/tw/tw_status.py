@@ -58,11 +58,14 @@ def cmd_status(toplevel: str, show_all: bool, check: bool) -> None:
          "TRIAGE", i.assignee or "-", " ".join(i.title.split()) or "-"]
         for i in open_triage
     ]
+    candidates = {tid for tid in snap.tasks if beads.is_candidate(snap.issues[tid])}
     _print_status_table(
-        snap.tasks, snap.invalid, snap.claims, show_all, marker_of, stale_entries, triage_rows, beads.sort_key
+        snap.tasks, snap.invalid, snap.claims, show_all, marker_of, stale_entries, triage_rows, beads.sort_key, candidates
     )
     triage_ids = [row[0] for row in triage_rows]
     print(f"triage\t{len(triage_ids)}\t" + (",".join(triage_ids) or "-"))
+    candidate_ids = sorted(candidates, key=beads.sort_key)
+    print(f"CANDIDATE\t{len(candidate_ids)}\t" + (",".join(candidate_ids) or "-"))
     if tracker.read_tracker(toplevel).kind == "jira":
         waiting = [tid for tid, i in sorted(snap.issues.items()) if beads.JIRA_CLOSE_LABEL in i.labels]
         print(f"jira_close\t{len(waiting)}\t" + (",".join(waiting) or "-"))
@@ -194,12 +197,15 @@ def _print_status_table(
     stale_entries: list[str],
     extra_rows: list[list[str]],
     sort_key: Callable[[str], object],
+    hidden: set[str],
 ) -> None:
     """`status` の行と `---` 以降の集計（`invalid` の行まで）。
 
     `extra_rows` は番号順の行のあとに足す行（振り分け前の課題）。集計には数えない。
+    `hidden`（候補）は行にも集計にも出さないが、依存の解決には `tasks` のまま数える。
     """
-    for tid in sorted(tasks, key=sort_key):
+    shown = {tid: t for tid, t in tasks.items() if tid not in hidden}
+    for tid in sorted(shown, key=sort_key):
         t = tasks[tid]
         if not show_all and t.status in ("done", "dropped"):
             continue
@@ -223,7 +229,7 @@ def _print_status_table(
         print("\t".join(row))
 
     print("---")
-    counts = {s: sum(1 for t in tasks.values() if t.status == s) for s in taskfile.STATUS_VALUES}
+    counts = {s: sum(1 for t in shown.values() if t.status == s) for s in taskfile.STATUS_VALUES}
     counts["claimed"] = len(claims)
     print("counts\t" + "\t".join(f"{k}={v}" for k, v in counts.items()))
 
@@ -237,8 +243,8 @@ def _print_status_table(
 
     long_ids = [
         tid
-        for tid in sorted(tasks, key=sort_key)
-        if tasks[tid].status in ("todo", "hold", "draft") and display_width(tasks[tid].summary) > LONG_SUMMARY_WIDTH
+        for tid in sorted(shown, key=sort_key)
+        if shown[tid].status in ("todo", "hold", "draft") and display_width(shown[tid].summary) > LONG_SUMMARY_WIDTH
     ]
     print(f"long_summary\t{len(long_ids)}\t" + (",".join(long_ids) or "-"))
 

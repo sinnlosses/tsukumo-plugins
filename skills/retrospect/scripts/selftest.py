@@ -522,8 +522,9 @@ def test_stage_signals() -> None:
         check("受け入れ 40% は SIGNAL にしない", not any(l.startswith("SIGNAL\t段の所要時間\t受け入れ") for l in lines), r.stdout)
         heads = [l for l in lines if l.startswith("===== ")]
         check(
-            "当たったときの節の並びは 手数 → 段の所要時間 → ドラフトの行方",
-            len(heads) == 3 and heads[0].startswith("===== 手数") and heads[1] == title and heads[2].startswith("===== ドラフトの行方"),
+            "当たったときの節の並びは 手数 → 段の所要時間 → 同じ兆候の候補 → ドラフトの行方",
+            len(heads) == 4 and heads[0].startswith("===== 手数") and heads[1] == title
+            and heads[2].startswith("===== 同じ兆候の候補") and heads[3].startswith("===== ドラフトの行方"),
             "\n".join(heads),
         )
         stages = lines_of("段の所要時間（flow/ から取った秒）", r.stdout)

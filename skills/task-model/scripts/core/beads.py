@@ -61,6 +61,13 @@ LOOPABLE_KEY = "loopable"
 # ドラフトの印（`tw new --draft` が `deferred` の課題に付ける metadata）。
 DRAFT_KEY = "draft"
 DRAFT_ON = "Y"
+# 黄1件のドラフト（`tw new --draft --candidate`）の印。印のあいだは `tw status` の本表に出さない。
+CANDIDATE_LABEL = "candidate"
+# 候補の兆候の種類（判定の口の `SIGNAL` の2列目）と当たった場所。観点は本文の `- 観点:` の行から読む。
+CANDIDATE_SIGNAL_KEY = "candidate_signal"
+CANDIDATE_PLACE_KEY = "candidate_place"
+# 同じ兆候の2件目で候補を上げる期間（日）。
+CANDIDATE_WINDOW_DAYS = 28
 # 直しが結ぶ元のタスク（`tw new --fixes` が置く。見せる ID のカンマ区切り）。
 FIXES_KEY = "fixes"
 # ドラフトから `todo`・`hold` へ進めた課題の出自（値はドラフトの `- 観点:` の観点。読めなければ `不明`）。
@@ -91,7 +98,20 @@ PLAN_TIP_KEY = "task_plan_tip"
 SHIPPED_KEY = "task_shipped"
 SHIPPED_RANGE_PATTERN = re.compile(r"([0-9a-f]{40})\.\.([0-9a-f]{40})")
 # この運用が metadata に置く印（GitHub には載らないので、取り込みで消えたら戻す）。
-MARK_KEYS = (CLAIM_BRANCH_KEY, CLAIM_HEAD_KEY, PLAN_KEY, PLAN_BASE_KEY, PLAN_TIP_KEY, DIFFICULTY_KEY, LOOPABLE_KEY, DRAFT_KEY, FROM_DRAFT_KEY, SHIPPED_KEY)
+MARK_KEYS = (
+    CLAIM_BRANCH_KEY,
+    CLAIM_HEAD_KEY,
+    PLAN_KEY,
+    PLAN_BASE_KEY,
+    PLAN_TIP_KEY,
+    DIFFICULTY_KEY,
+    LOOPABLE_KEY,
+    DRAFT_KEY,
+    FROM_DRAFT_KEY,
+    SHIPPED_KEY,
+    CANDIDATE_SIGNAL_KEY,
+    CANDIDATE_PLACE_KEY,
+)
 RESULT_HEADING = taskfile.RESULT_HEADING
 # 段の申し送りの comment の頭（あとに鍵が付く）。
 RELAY_HEADING_PREFIX = "## 申し送り: "
@@ -430,6 +450,31 @@ def is_draft(issue: Issue) -> bool:
         and isinstance(metadata, dict)
         and str(metadata.get(DRAFT_KEY) or "") == DRAFT_ON
     )
+
+
+def is_candidate(issue: Issue) -> bool:
+    """ドラフトで、黄1件の候補の印（label `candidate`）があるか。"""
+    return is_draft(issue) and CANDIDATE_LABEL in issue.labels
+
+
+def candidate_place(place: str) -> str:
+    """場所をファイル単位で比べる形に。囲みの `` ` ``・頭の `./`・末尾の `×N`・`:<行>`（`:<行>-<行>`）を落とす。"""
+    p = place.strip().strip("`").strip()
+    p = re.sub(r"\s*×\d+$", "", p)
+    p = re.sub(r":\d+(?:-\d+)?$", "", p)
+    return p[2:] if p.startswith("./") else p
+
+
+def candidate_key(issue: Issue) -> tuple[str, str, str] | None:
+    """候補の兆候 `(観点, SIGNAL の種類, 場所)`。どれかが欠ければ `None`。"""
+    metadata = issue.raw.get("metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    viewpoint = taskfile.draft_viewpoint(str(issue.raw.get("description") or ""))
+    signal = str(metadata.get(CANDIDATE_SIGNAL_KEY) or "").strip()
+    place = str(metadata.get(CANDIDATE_PLACE_KEY) or "").strip()
+    if not viewpoint or not signal or not place:
+        return None
+    return viewpoint, signal, place
 
 
 def label_values(labels: tuple[str, ...], prefix: str) -> list[str]:

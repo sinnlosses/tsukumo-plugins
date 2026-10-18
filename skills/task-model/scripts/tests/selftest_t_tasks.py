@@ -822,6 +822,75 @@ def test_draft_dropped() -> None:
         check("show に ## 結果 の却下の理由", "## 結果\n\n見送る: 別のタスクで足りる" in shown(wt1, task_id))
 
 
+def candidate_body(color: str, viewpoint: str = "道案内") -> str:
+    return f"## 目的・背景\n\n- 出どころ: 振り返り: T-001\n- 観点: {color} {viewpoint}\n\n## 介入\n\n{INTERVENTION}\n"
+
+
+def test_draft_candidate() -> None:
+    say("task.py new --draft --candidate（黄1件は CANDIDATE に留め、同じ兆候の2件目で DRAFT へ上げる）")
+    with tempfile.TemporaryDirectory() as tmp:
+        _main_path, wt1, _wt2 = make_repo(tmp)
+
+        def new(*extra: str, body: str) -> subprocess.CompletedProcess:
+            return run_task(
+                wt1, "new", "--summary", "候補", "--difficulty", "sonnet", "--loopable", "Y", *extra,
+                "--body-file", "-", stdin=body,
+            )
+
+        def status_of(task_id: str) -> tuple[list[str], str]:
+            r = run_task(wt1, "status", "--all")
+            row = next((l.split("\t") for l in r.stdout.splitlines() if l.startswith(f"{task_id}\t")), [])
+            line = next((l for l in r.stdout.splitlines() if l.startswith("CANDIDATE\t")), "")
+            return row, line
+
+        r = new("--draft", "--candidate", "同じファイルの直し直し", "`./docs/a.md:12`", body=candidate_body("黄"))
+        check("黄の --candidate は CREATED", r.returncode == 0 and r.stdout.startswith("CREATED\t"), r.stdout + r.stderr)
+        first = r.stdout.split("\t")[1]
+        meta = metadata(wt1, first)
+        check("場所はファイル単位で控える", meta.get(beads.CANDIDATE_PLACE_KEY) == "docs/a.md"
+              and meta.get(beads.CANDIDATE_SIGNAL_KEY) == "同じファイルの直し直し", str(meta))
+        row, line = status_of(first)
+        check("候補は本表に出ず CANDIDATE の行に出る", row == [] and line == f"CANDIDATE\t1\t{first}", line)
+        r = run_task(wt1, "status")
+        check("候補は draft= に数えない", "\tdraft=0" in r.stdout, r.stdout)
+
+        r = new("--draft", "--candidate", "同じファイルの直し直し", "docs/b.md", body=candidate_body("黄"))
+        other = r.stdout.split("\t")[1] if r.stdout.startswith("CREATED\t") else ""
+        check("場所が違えば別の候補", other != "" and status_of(other)[1] == f"CANDIDATE\t2\t{first},{other}", r.stdout + r.stderr)
+
+        r = new("--draft", body=candidate_body("赤"))
+        red = r.stdout.split("\t")[1] if r.stdout.startswith("CREATED\t") else ""
+        check("赤は従来どおり DRAFT", red != "" and status_of(red)[0][5:6] == ["DRAFT"], r.stdout + r.stderr)
+
+        before = issue_count(wt1)
+        for label, extra, body in (
+            ("--draft の無い --candidate", ("--hold", "--candidate", "x", "y"), candidate_body("黄")),
+            ("赤の --candidate", ("--draft", "--candidate", "x", "y"), candidate_body("赤")),
+            ("色の無い --candidate", ("--draft", "--candidate", "x", "y"), candidate_body("")),
+            ("空の場所の --candidate", ("--draft", "--candidate", "x", "``"), candidate_body("黄")),
+        ):
+            r = new(*extra, body=body)
+            check(f"{label} は終了コード2", r.returncode == 2 and r.stdout == "", r.stdout + r.stderr)
+        check("拒んだ登録は課題を作らない", issue_count(wt1) == before)
+
+        r = new("--draft", "--candidate", "同じファイルの直し直し", "docs/a.md×3", body=candidate_body("黄"))
+        check(
+            "同じ兆候の2件目は PROMOTED で、課題を作らない",
+            r.returncode == 0
+            and r.stdout.splitlines()[0] == f"PROMOTED\t{first}\t道案内\t同じファイルの直し直し\tdocs/a.md"
+            and issue_count(wt1) == before,
+            r.stdout + r.stderr,
+        )
+        row, line = status_of(first)
+        check("上がった候補は DRAFT の行に出て CANDIDATE から外れる",
+              row[5:6] == ["DRAFT"] and line == f"CANDIDATE\t1\t{other}", row and line)
+        check("2件目の本文は ## 再発 の comment", "## 再発" in "".join(
+            c.get("text") or "" for c in beads.comments(wt1, beads.to_bd_id(first))))
+
+        r = new("--draft", "--candidate", "同じファイルの直し直し", "docs/a.md", body=candidate_body("黄", "機械の検査"))
+        check("観点が違えば上げずに別の候補", r.stdout.startswith("CREATED\t"), r.stdout + r.stderr)
+
+
 def test_part_direct_run_refused() -> None:
     say("selftest_t_*.py・selftest_b_*.py を直に打ったときの案内（部品を glob で全部引く）")
     here = os.path.dirname(os.path.abspath(__file__))
@@ -868,6 +937,7 @@ TESTS = (
     test_find,
     test_draft_register_and_refuse_claim,
     test_draft_dropped,
+    test_draft_candidate,
     test_new_parallel_no_collision,
     test_new_avoids_history_ids,
     test_taskfile_body,

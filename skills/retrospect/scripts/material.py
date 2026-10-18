@@ -9,7 +9,9 @@
 材料を観点に当てるときに、当たりの目安を数だけで見るのに使う。本文と diff はメインが受け入れで読み終えている）。
 
 `--gate` のときは判定だけを出す。5つの答えと手数の当たりの目安のどれにも当たらなければ `QUIET` の1行、
-当たれば当たった材料ごとに `SIGNAL\t<材料>\t<値>` を並べ、続けて「手数」と「段の所要時間」と「ドラフトの行方」を出す。段の所要時間の `SIGNAL` は、
+当たれば当たった材料ごとに `SIGNAL\t<材料>\t<値>` を並べ、続けて「手数」と「段の所要時間」と「同じ兆候の候補」と「ドラフトの行方」を出す。
+同じ兆候の候補は、今回の `SIGNAL` の材料と同じ種類で直近28日に積んだ候補（label `candidate` のドラフト）を
+`RECUR\t<ID>\t<観点>\t<SIGNAL の種類>\t<場所>\t<積んでからの日数>d` で積んだ順に出す（無ければ `EMPTY`）。段の所要時間の `SIGNAL` は、
 1つの段が着手から最後の出来事までの50%以上・終わりの無い段がある・段のあいだの空きが20%以上のとき。5つの答え:
 
 - `--friction`（必須）: 委譲先の friction log が全部「なし」（`none`）／行がある（`some`）／書いていない返却がある（`missing`）
@@ -50,7 +52,7 @@ import os
 import re
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 _TASK_MODEL_SCRIPTS = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "task-model", "scripts", "core")
@@ -531,7 +533,47 @@ def print_gate(root: str, task_id: str, gate: dict[str, str]) -> None:
     section("手数（トランスクリプトから取った数だけ）")
     print_signals(root, task_id, read)
     print_stages(stages)
-    draft_fate.print_section(root, datetime.now(timezone.utc))
+    now = datetime.now(timezone.utc)
+    print_recurring_candidates(root, {name for name, _ in hits}, now)
+    draft_fate.print_section(root, now)
+
+
+CANDIDATE_SECTION_TITLE = f"同じ兆候の候補（直近{beads.CANDIDATE_WINDOW_DAYS}日）"
+
+
+def recurring_candidates(issues: list[beads.Issue], signals: set[str], now: datetime) -> list[tuple[str, tuple[str, str, str], int]]:
+    """`signals` の種類の候補を `(ID, (観点, SIGNAL の種類, 場所), 積んでからの日数)` で、積んだ順に。"""
+    since = now - timedelta(days=beads.CANDIDATE_WINDOW_DAYS)
+    found = []
+    for issue in issues:
+        key = beads.candidate_key(issue) if beads.is_candidate(issue) else None
+        created = beads.parse_time(issue.raw.get("created_at"))
+        if key is None or key[1] not in signals or created is None or created < since:
+            continue
+        found.append((created, beads.to_task_id(issue.bd_id), key))
+    return [(tid, key, (now - created).days) for created, tid, key in sorted(found)]
+
+
+def print_recurring_candidates(root: str, signals: set[str], now: datetime) -> None:
+    """今回の `SIGNAL` と同じ種類の候補（`tw new --draft --candidate` で積んだ黄1件）を `RECUR` の行で出す。
+
+    観点と場所が同じなら、同じ `--candidate` で積むと `tw new` が候補を上げる。
+    """
+    section(CANDIDATE_SECTION_TITLE)
+    try:
+        if not beads.is_initialized(root):
+            print("-\tBeads が無い（この節は飛ばす）")
+            return
+        issues = beads.list_issues(root)
+    except (beads.BeadsError, OSError) as e:
+        print(f"-\tBeads が読めない（{e}）")
+        return
+    rows = recurring_candidates(issues, signals, now)
+    if not rows:
+        print("EMPTY")
+        return
+    for tid, (viewpoint, signal, place), days in rows:
+        print(f"RECUR\t{tid}\t{viewpoint}\t{signal}\t{place}\t{days}d")
 
 
 # ---- 共通 ---------------------------------------------------------------------
