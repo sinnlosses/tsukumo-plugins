@@ -20,6 +20,7 @@ import layout  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
 import tracker  # noqa: E402
+import tracker_claims  # noqa: E402
 import tracker_github  # noqa: E402
 from selftest_b_fakegithub import github  # noqa: E402
 from selftest_b_support import (  # noqa: E402
@@ -540,12 +541,14 @@ def test_ship_bd_calls() -> None:
         say(f"  番号つきの ship: bd {len(calls)} 回（うち list {len(lists)} 回・show {len(shows)} 回）")
         check("番号つきだけの ship は成功し、その課題だけを --issues で送る",
               r.returncode == 0 and "SHIPPED" in r.stdout and "TRACKER\tOK\tgithub" in r.stdout
-              and sent_line == f"github sync --push-only --issues {beads.to_bd_id(a)} --json",
+              and sent_line == f"github sync --push-only --issues {beads.to_bd_id(a)} --json"
+              and sum(c.startswith("github sync --push-only") for c in calls) == 1,
               f"{sent_line!r}\n{r.stdout}{r.stderr}" + "\n".join(calls))
         check("番号つきだけの ship の list は2回以下、送った課題の show は1回以下",
               len(lists) <= 2 and len(shows) <= 1, "\n".join(calls))
         check("番号つきだけの ship は送りのあとに同期の控えを書き（空振りでない）、list・show を打たない",
-              sent_line is not None and any(c.startswith("kv set ") for c in after)
+              sent_line is not None
+              and any(c.startswith(f"kv set {tracker_claims.SYNCED_ITEM_PREFIX}") for c in after)
               and not any(c.startswith(("list ", "show ")) for c in after), "\n".join(after))
 
         provisional = f"{beads.PROVISIONAL_PREFIX}wt1-1700000000"
@@ -556,7 +559,7 @@ def test_ship_bd_calls() -> None:
               r.returncode == 0 and "NOTHING" in r.stdout and len(fake.issues) == 2 and renamed is not None
               and sent_line is not None and provisional in sent_line
               and not any(beads.is_provisional(i.bd_id) for i in beads.list_issues(main_path))
-              and fake.status_of(2) is not None and any(c.startswith(("list ", "show ")) for c in after),
+              and fake.status_of(2) is not None and any(c.startswith("list ") for c in after),
               r.stdout + r.stderr + "\n".join(calls))
 
 
