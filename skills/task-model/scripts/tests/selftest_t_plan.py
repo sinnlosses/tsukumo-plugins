@@ -236,7 +236,7 @@ def test_edit_section() -> None:
 
 @weight(4)
 def test_edit_keeps_plan_sections() -> None:
-    say("task.py edit: ## やること の書き直しで ### 作業先・### 名指すファイル が落ちるのは終了コード2で拒む")
+    say("task.py edit: ## やること の書き直しで作業先・名指すファイルの小見出しが落ちるのは終了コード2で拒む")
     other = "/tmp/other-repo"
     step = "### 1. 書く\n\nx\n"
     repo = f"{taskfile.PLAN_WORK_REPO_HEADING}\n- `{other}`\n"
