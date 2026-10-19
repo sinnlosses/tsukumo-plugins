@@ -648,13 +648,18 @@ def check_upward_references(names: list[str]) -> None:
                 fail(f"{os.path.relpath(md, ROOT)}: {p}")
 
 
-# task-model の文書に出てよいデータの名前（kv キー・台帳の置き場・振り返りの記録・`tw status` の行の名前）。
-TASK_MODEL_DATA_NAMES = re.compile(r"task-workflow\.[\w.<>-]+|/task-workflow/|docs/history/retrospect\.md|retrospect_due")
+# task-model の文書に出てよいデータの名前（kv キー・台帳の置き場・振り返りの記録・`tw status` の行の名前・`tw brief` の役の語）。
+TASK_MODEL_DATA_NAMES = re.compile(
+    r"task-workflow\.[\w.<>-]+|/task-workflow/|docs/history/retrospect\.md|retrospect_due"
+    r"|brief (?:acceptor|implementer)(?![\w-])"
+)
 
 
 def task_model_name_mentions(text: str, names: list[str], agents: list[str]) -> list[str]:
     """task-model の文書が書いているほかのスキル名とエージェント名（出てきた順、重複なし）。
-    `retro` は lap の段の名と重なるので `/retro` の形だけを見る。"""
+    `retro` は lap の段の名と重なるので `/retro` の形だけを見る。役の語と同じ綴りのエージェント名は、
+    `brief` に続くときだけ CLI の引数として許し、裸で書けば名指しとして拾う（`workflow-brief-<役>` は
+    `-` に続く語なので元から拾わない）。"""
     body = TASK_MODEL_DATA_NAMES.sub("", text)
     others = [n for n in names if n not in ("task-model", "retro")] + list(agents)
     alt = "|".join(re.escape(n) for n in sorted(others, key=len, reverse=True))
