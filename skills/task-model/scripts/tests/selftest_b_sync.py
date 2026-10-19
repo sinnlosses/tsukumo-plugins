@@ -20,8 +20,8 @@ import tracker_claims  # noqa: E402
 import tracker_github  # noqa: E402
 from selftest_b_fakegithub import arm_kv_write, github, kv_written_during  # noqa: E402
 from selftest_b_support import bd, new, num, rows  # noqa: E402
-from selftest_fixtures import run_task, start_task  # noqa: E402
-from selftest_support import check, local, refuse_direct_run, say  # noqa: E402
+from selftest_fixtures import PLANNED_BODY, run_task, start_task  # noqa: E402
+from selftest_support import check, local, refuse_direct_run, say, write  # noqa: E402
 
 
 def test_tracker_github_bidirectional() -> None:
@@ -150,6 +150,47 @@ def test_tracker_register_timeout_no_duplicate() -> None:
         check("sync の拾い探しも古い Issue を取りに行かない", any(old not in got for got in fake.listed), repr(fake.listed))
         check("仮の ID は gh-2 へ付け替わる", beads.show(main_path, "gh-2") is not None
               and not any(beads.is_provisional(i.bd_id) for i in beads.list_issues(main_path)), r.stdout)
+
+
+def test_new_batch_github() -> None:
+    say("トラッカー github・new --batch（Issue を一度にまとめて立て、依存を最終の ID で結び、反映は1回。10件の所要は1件ずつの半分以下）")
+    count = 10
+    with github() as (fake, tmp, main_path, _wt1):
+        fake.delay = 0.1
+        started = time.monotonic()
+        singles = [new(main_path, f"単件{i}") for i in range(count)]
+        single_seconds = time.monotonic() - started
+
+        entries = []
+        for i in range(count):
+            name = f"body{i}.md"
+            write(os.path.join(tmp, name), PLANNED_BODY)
+            entry = {"summary": f"一括{i}", "difficulty": "sonnet", "loopable": "Y", "body_file": name}
+            if i > 0:
+                entry["deps"] = ["@1"] if i == 1 else [singles[0], f"@{i}"]
+            entries.append(entry)
+        path = write(os.path.join(tmp, "batch.json"), json.dumps(entries))
+        started = time.monotonic()
+        r = run_task(main_path, "new", "--batch", path)
+        batch_seconds = time.monotonic() - started
+        created = [l.split("\t")[1] for l in r.stdout.splitlines() if l.startswith("CREATED\t")]
+        tracker_lines = [l for l in r.stdout.splitlines() if l.startswith("TRACKER")]
+        check("10件が gh-<Issue 番号> の ID で返る", r.returncode == 0 and len(created) == count
+              and all(c.startswith("GH-") for c in created), r.stdout + r.stderr)
+        check("TRACKER OK は1回で pushed=10", len(tracker_lines) == 1 and "pushed=10" in tracker_lines[0], r.stdout)
+        check("Issue が 20 件立つ", len(fake.issues) == 2 * count, str(len(fake.issues)))
+        check("仮の ID は残らない", not any(beads.is_provisional(i.bd_id) for i in beads.list_issues(main_path)))
+        shown_deps = lambda t: sorted(d.get("depends_on_id") or d.get("id") for d in
+                                      (beads.show(main_path, beads.to_bd_id(t)).raw.get("dependencies") or []))
+        check("前の要素への依存が付け替え後の ID で結ばれる",
+              shown_deps(created[1]) == [beads.to_bd_id(created[0])]
+              and shown_deps(created[3]) == sorted([beads.to_bd_id(singles[0]), beads.to_bd_id(created[2])]),
+              str([shown_deps(c) for c in created[:4]]))
+        check("Status 欄が全件に書かれる", all(fake.status_of(int(c.split("-")[1])) == "Todo" for c in created),
+              str([fake.status_of(int(c.split("-")[1])) for c in created]))
+        # 並列の自己テストの負荷で秒数がぶれるので、半分（単独で測ると 0.47）に余裕を足した 0.6 を上限にする。
+        check(f"10件の一括は1件ずつ10回より十分に速い（一括 {batch_seconds:.1f}秒・1件ずつ {single_seconds:.1f}秒）",
+              batch_seconds <= single_seconds * 0.6, f"{batch_seconds:.1f} {single_seconds:.1f}")
 
 
 def test_tracker_pull_reports_duplicate() -> None:
@@ -437,6 +478,7 @@ TESTS = (
     test_tracker_github_conflict,
     test_tracker_github_draft,
     test_tracker_sync_pushes_only_changed,
+    test_new_batch_github,
     test_tracker_timeout,
     test_tracker_deadline_counted_per_gh_call,
     test_tracker_register_timeout_no_duplicate,

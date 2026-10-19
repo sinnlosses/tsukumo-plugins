@@ -65,9 +65,9 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     ),
     "new": (
         "採番して Beads に課題を作る（コミットしない）。",
-        r"""採番して Beads に課題を作る（コミットしない。採番は TRACKER.md の「タスクの要素と Beads の置き場」）。`--draft` はドラフト（WORKFLOW.md の「ドラフトの課題」）を作る: 本文は「タスクの本文」のドラフトの緩い検査で見て、`deferred` と metadata `draft`=`Y` で作り、`task_plan_base` は控えない。`--hold` と同時・`--direct` と同時は何も作らずに終了コード2。ドラフトの本文に `- 観点:` の行があって観点が語彙（`skills/retrospect/detail.md` の7観点と、横断の振り返りの3観点）の外か、色が赤・黄以外なら何も作らずに終了コード2。`--candidate <SIGNAL の種類> <場所>` は黄1件のドラフトを候補（label `candidate`、metadata `candidate_signal`・`candidate_place`）で積む。場所はファイル単位で比べ、囲みの `` ` ``・頭の `./`・末尾の `×N`・`:<行>` を落として控える。`--draft` が無い・`- 観点:` の行の色が黄でない（赤は候補にせず従来どおり積む）・値が空かタブ・改行を含めば何も作らずに終了コード2。同じ（`- 観点:` の観点・SIGNAL の種類・場所）の候補が28日以内にあれば、新しい課題は作らず、最も古い候補の label `candidate` を外して承認の列へ上げ、渡した本文を見出し `## 再発` の comment に入れて `PROMOTED\tT-xxx\t<観点>\t<SIGNAL の種類>\t<場所>` を出す（`--deps`・`--fixes`・`--kind` はそのとき使わない）。以下は `--draft` でないとき。`--difficulty opus` で `## 解くべき論点` が空か「なし」なら何も作らずに終了コード2（`adopt` も同じ）。`--difficulty`・`--loopable` は metadata `difficulty`・`loopable` に書く（label は付けない）。`--direct` は委譲しない近道の印（label `direct:Y`）を付け、「difficulty とモデルの切り替え」の基準の表で `tw` が見る条件を外れれば何も作らずに終了コード2。`--kind` は種類（WORKFLOW.md の「kind（種類）」の語彙）を label `kind:<種類>` で付ける（省くと付けない。`--draft` でも付けられる）。`## やること` の中身が要る（空にできるのは `--hold` だけ。段の形に沿わない・`### 名指すファイル` が無い・形が違う・パスが木に無い・`### 作業先` が絶対パス1行でないか git のリポジトリの根でなければ、何も作らずに終了コード2）。中身があれば、計画のリポジトリ（`### 作業先` があればそこ）の `HEAD` と主ブランチの分かれ目の SHA を metadata `task_plan_base` に控える。`--fixes <ID,…>` は、この課題が直す送り出し済みの元のタスクを metadata `fixes` にカンマ区切りで置き（`--draft` とも組める。形の違うIDと Beads に無いIDは何も作らずに終了コード2）、`CREATED` のとき台帳に `new` の出来事（`fixes` つき）を足す。`tw metrics` の `fix_within_7d` がこれを数える
+        r"""採番して Beads に課題を作る（コミットしない。採番は TRACKER.md の「タスクの要素と Beads の置き場」）。`--draft` はドラフト（WORKFLOW.md の「ドラフトの課題」）を作る: 本文は「タスクの本文」のドラフトの緩い検査で見て、`deferred` と metadata `draft`=`Y` で作り、`task_plan_base` は控えない。`--hold` と同時・`--direct` と同時は何も作らずに終了コード2。ドラフトの本文に `- 観点:` の行があって観点が語彙（`skills/retrospect/detail.md` の7観点と、横断の振り返りの3観点）の外か、色が赤・黄以外なら何も作らずに終了コード2。`--candidate <SIGNAL の種類> <場所>` は黄1件のドラフトを候補（label `candidate`、metadata `candidate_signal`・`candidate_place`）で積む。場所はファイル単位で比べ、囲みの `` ` ``・頭の `./`・末尾の `×N`・`:<行>` を落として控える。`--draft` が無い・`- 観点:` の行の色が黄でない（赤は候補にせず従来どおり積む）・値が空かタブ・改行を含めば何も作らずに終了コード2。同じ（`- 観点:` の観点・SIGNAL の種類・場所）の候補が28日以内にあれば、新しい課題は作らず、最も古い候補の label `candidate` を外して承認の列へ上げ、渡した本文を見出し `## 再発` の comment に入れて `PROMOTED\tT-xxx\t<観点>\t<SIGNAL の種類>\t<場所>` を出す（`--deps`・`--fixes`・`--kind` はそのとき使わない）。以下は `--draft` でないとき。`--difficulty opus` で `## 解くべき論点` が空か「なし」なら何も作らずに終了コード2（`adopt` も同じ）。`--difficulty`・`--loopable` は metadata `difficulty`・`loopable` に書く（label は付けない）。`--direct` は委譲しない近道の印（label `direct:Y`）を付け、「difficulty とモデルの切り替え」の基準の表で `tw` が見る条件を外れれば何も作らずに終了コード2。`--kind` は種類（WORKFLOW.md の「kind（種類）」の語彙）を label `kind:<種類>` で付ける（省くと付けない。`--draft` でも付けられる）。`## やること` の中身が要る（空にできるのは `--hold` だけ。段の形に沿わない・`### 名指すファイル` が無い・形が違う・パスが木に無い・`### 作業先` が絶対パス1行でないか git のリポジトリの根でなければ、何も作らずに終了コード2）。中身があれば、計画のリポジトリ（`### 作業先` があればそこ）の `HEAD` と主ブランチの分かれ目の SHA を metadata `task_plan_base` に控える。`--fixes <ID,…>` は、この課題が直す送り出し済みの元のタスクを metadata `fixes` にカンマ区切りで置き（`--draft` とも組める。形の違うIDと Beads に無いIDは何も作らずに終了コード2）、`CREATED` のとき台帳に `new` の出来事（`fixes` つき）を足す。`tw metrics` の `fix_within_7d` がこれを数える。`--batch <JSON>` は複数件をまとめて登録する（単件の引数とは同時に使えず、打てば終了コード2）: JSON は要素（`summary`・`difficulty`・`loopable`・`body_file`〔JSON のあるディレクトリからの相対か絶対。`-` は不可〕と、あれば `deps`・`fixes`〔文字列の配列〕・`hold`・`direct`・`kind`）の配列。`deps` には既存のIDと、同じ配列の前の要素を指す `@<n>`（1始まり）を混ぜてよい。先に全要素を単件と同じ検査にかけ、1つでも落ちれば何も作らず終了コード2（どの要素かを標準エラーに出す）。通れば順に作って要素ごとに `CREATED` を出し、トラッカーへの反映（`TRACKER`）は最後に1回だけ行う（`github` では Issue を立てる・付け替える・Status 欄を書くのを全件まとめて行う）。作る途中で失敗したら、作った分は残して反映し、続きは作らず `NOT_CREATED\t@<n>\t<題>` の行を出して終了コード4
 
-出力: `CREATED`・`LOCKED`（20回打ち直しても番号が取れない）""",
+出力: `CREATED`・`LOCKED`（20回打ち直しても番号が取れない）・`NOT_CREATED`（`--batch` で作れなかった要素）""",
     ),
     "claim": (
         "clean・未送りなしを確かめ、主ブランチへ追い付き、印を立てる。",
@@ -304,9 +304,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_status.add_argument("--check", action="store_true")
 
     p_new = sub.add_parser("new")
-    p_new.add_argument("--summary", required=True)
-    p_new.add_argument("--difficulty", required=True, choices=taskfile.DIFFICULTY_VALUES)
-    p_new.add_argument("--loopable", required=True, choices=taskfile.LOOPABLE_VALUES)
+    p_new.add_argument("--summary")
+    p_new.add_argument("--difficulty", choices=taskfile.DIFFICULTY_VALUES)
+    p_new.add_argument("--loopable", choices=taskfile.LOOPABLE_VALUES)
     p_new.add_argument("--deps", default="")
     p_new.add_argument("--fixes", default="")
     p_new.add_argument("--hold", action="store_true")
@@ -314,7 +314,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_new.add_argument("--candidate", nargs=2, default=None, metavar=("SIGNAL", "PLACE"))
     p_new.add_argument("--direct", action="store_true")
     p_new.add_argument("--kind", default=None, choices=taskfile.KIND_VALUES)
-    p_new.add_argument("--body-file", required=True)
+    p_new.add_argument("--body-file")
+    p_new.add_argument("--batch", metavar="JSON")
 
     p_claim = sub.add_parser("claim")
     p_claim.add_argument("task_id")
@@ -459,6 +460,16 @@ def main(argv: list[str] | None = None) -> None:
             tw_config.cmd_config_schema()
             return
 
+    if args.command == "new":
+        single = [
+            args.summary, args.difficulty, args.loopable, args.deps or None, args.fixes or None, args.candidate,
+            args.kind, args.body_file, args.hold or None, args.draft or None, args.direct or None,
+        ]
+        if args.batch is not None and any(v is not None for v in single):
+            parser.error("new: --batch は --summary・--body-file などの単件の引数と一緒に打てない")
+        if args.batch is None and (args.summary is None or args.difficulty is None or args.loopable is None or args.body_file is None):
+            parser.error("new: --summary・--difficulty・--loopable・--body-file が要る（まとめて登録するなら --batch）")
+
     if args.command == "brief":
         acceptor_flags = args.accept_file is not None or args.images or args.visual_wait or args.round_number is not None or args.since
         implementer_flags = args.step is not None or args.rewrite
@@ -537,7 +548,10 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
         if args.command == "status":
             tw_status.cmd_status(toplevel, args.show_all, args.check)
         elif args.command == "new":
-            tw_new.cmd_new(toplevel, args)
+            if args.batch is not None:
+                tw_new.cmd_new_batch(toplevel, args.batch)
+            else:
+                tw_new.cmd_new(toplevel, args)
         elif args.command == "claim":
             tw_claim.cmd_claim(toplevel, args.task_id)
         elif args.command == "release":
