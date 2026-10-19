@@ -1347,6 +1347,38 @@ def test_step_stamps_other_repo() -> None:
         check("段の控えが無ければ、検証が通っていても拒む", "段の控えが無い" in reason, reason)
 
 
+@weight(15)
+def test_handback_guard_step_before_work_tree() -> None:
+    say("task.py handback-guard: 作業先の作業ツリーを作る前の段でだけ tw step を打った別のリポジトリのタスクも、着手した側の段の控えで最後の段の返却を通す")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _ = make_repo(os.path.join(tmp, "own"), verify="`true`")
+        work_repo, _, _ = make_repo(os.path.join(tmp, "work"), verify="`true`")
+        commit_task(main_path, taskfile.Task("T-100", "作業先で直す", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        plan = f"### 1. 読む\n\n### 2. 直す\n\n### 作業先\n- `{work_repo}`\n"
+        run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-", stdin=plan)
+        work_tree = os.path.join(tmp, "work-t-100")
+        r = run_task(wt1, "step", "T-100", "1")
+        check("作業先の作業ツリーを作る前の tw step が STEPPED",
+              r.returncode == 0 and r.stdout.startswith("STEPPED\tT-100\t1/2\t") and not os.path.exists(work_tree),
+              r.stdout + r.stderr)
+
+        git(work_repo, "worktree", "add", "-q", "-b", "t-100", work_tree, "main")
+        write(os.path.join(work_tree, "work.txt"), "x\n")
+        git(work_tree, "add", "work.txt")
+        git(work_tree, "commit", "-q", "-m", "作業先で直す")
+        r = run_task(work_tree, "verify")
+        reason = _block_reason(run_handback_guard(tmp, wt1))
+        check("作業先の作業ツリーに段の控えが無くても、着手した側に控えがあれば最後の段の返却を通す",
+              r.returncode == 0 and not stamps.read_step_stamps(cwd=work_tree) and reason == "",
+              r.stdout + r.stderr + reason)
+
+        stamps.remove_step_stamps(["T-100"], cwd=wt1)
+        reason = _block_reason(run_handback_guard(tmp, wt1))
+        check("どの木にも段の控えが無ければ、作業先で検証が通っていても拒み、理由に作業先のパス",
+              "段の控えが無い" in reason and work_tree in reason, reason)
+
+
 @weight(17)
 def test_worktree_state_dir() -> None:
     say("stamps.py .tw/local/: 作業ツリーごとの控えとログを .tw/local/ に置き、旧い置き場の控えも読んで移す")
@@ -2149,6 +2181,7 @@ TESTS = (
     test_handback_guard,
     test_handback_guard_other_repo,
     test_step_stamps_other_repo,
+    test_handback_guard_step_before_work_tree,
     test_worktree_state_dir,
     test_state_dir,
     test_handback_guard_parallel_steps,

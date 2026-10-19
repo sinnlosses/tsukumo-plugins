@@ -315,9 +315,13 @@ def _handback_gaps(toplevel: str, task_id: str, last_stage: list[str] | None = N
 
 
 def _skipped_steps(toplevel: str, tree: str, task_id: str) -> bool:
-    """計画の段が2つ以上なのに、`tree` にこのタスクの段の控えが1つも無い。"""
+    """計画の段が2つ以上なのに、`tree` にも着手した作業ツリー `toplevel` にもこのタスクの段の控えが1つも無い。"""
     specs, _ = taskfile.plan_step_specs(_claimed_plan_body(toplevel, task_id))
-    return len(specs) >= 2 and not any(s.task_id == task_id for s in stamps.read_step_stamps(cwd=tree))
+    if len(specs) < 2:
+        return False
+    return not any(
+        s.task_id == task_id for where in dict.fromkeys((tree, toplevel)) for s in stamps.read_step_stamps(cwd=where)
+    )
 
 
 def _tree_verify_line(tree: str) -> str:
