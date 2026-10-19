@@ -17,7 +17,7 @@
 # 2. install.sh・uninstall.sh の自己テスト
 # 3. task-model のスクリプトの自己テスト（review_needed.py・review_snapshot.py を含む。台帳と Beads 方式は並べて走らせ、出力は流し終えてから順に出す）
 # 4. task-model の WORKFLOW.md・tw-reference.md を読む検査（それだけが変わったときの軽い段）
-# 5. retrospect のスクリプトの自己テスト
+# 5. retrospect のスクリプトの自己テスト（3 の段と並べて走らせ、出力はこの段で出す）
 # 6. plan-tasks のスクリプトの自己テスト
 # 7. comment-audit のスクリプトの自己テスト
 # 8. task-workflow のスクリプトの自己テスト
@@ -100,6 +100,15 @@ if stage "install.sh・uninstall.sh の自己テスト" \
   $LOWPRI sh "$here/scripts/selftest_links.sh"
 fi
 
+# retrospect の自己テストも自前の一時ディレクトリと HOME で動くので、task-model の段と並べて先に起こす（出力は自分の段で出す）
+pid_retro=
+out_retro=
+if [ "$mode" != plan ] && touched 'skills/retrospect/*' 'skills/task-model/scripts/*'; then
+  out_retro=$(mktemp)
+  $LOWPRI python3 "$here/skills/retrospect/scripts/selftest.py" >"$out_retro" 2>&1 &
+  pid_retro=$!
+fi
+
 if stage "task-model: scripts・task コマンドの自己テスト" \
   'skills/task-model/scripts/*' 'agents/*' 'hooks/*' 'bin/*' 'skills/retrospect/scripts/*'; then
   $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest.py"
@@ -122,7 +131,11 @@ if stage "task-model: scripts・task コマンドの自己テスト" \
   echo "-- task コマンド（Beads 方式。bd が無ければ飛ばす） --"
   cat "$out_beads"
   rm -f "$out_task" "$out_beads"
-  [ "$rc" -eq 0 ] || exit 1
+  if [ "$rc" -ne 0 ]; then
+    [ -z "$pid_retro" ] || kill "$pid_retro" 2>/dev/null || true
+    rm -f "$out_retro"
+    exit 1
+  fi
 fi
 
 if stage "task-model: WORKFLOW.md・tw-reference.md を読む検査" skills/task-model/WORKFLOW.md skills/task-model/tw-reference.md; then
@@ -131,7 +144,11 @@ fi
 
 if stage "retrospect scripts の自己テスト" \
   'skills/retrospect/*' 'skills/task-model/scripts/*'; then
-  $LOWPRI python3 "$here/skills/retrospect/scripts/selftest.py"
+  rc=0
+  wait "$pid_retro" || rc=1
+  cat "$out_retro"
+  rm -f "$out_retro"
+  [ "$rc" -eq 0 ] || exit 1
 fi
 
 if stage "plan-tasks scripts の自己テスト" 'skills/plan-tasks/*'; then
