@@ -22,7 +22,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import sys
@@ -211,27 +210,12 @@ def judge(
 
 
 def read_denials(root: str) -> list[Denial]:
-    """共有の git dir の hook の拒否の記録。読めない行・ファイルは飛ばす。"""
-    try:
-        d = os.path.join(gitinfo.git_common_dir(root), ledger.DENIALS_DIR_NAME)
-        names = sorted(n for n in os.listdir(d) if n.endswith(".jsonl"))
-    except (gitinfo.GitCommandError, OSError):
-        return []
+    """共有の git dir の hook の拒否の記録のうち、時刻と `rule` の読める行。"""
     found: list[Denial] = []
-    for name in names:
-        try:
-            with open(os.path.join(d, name), encoding="utf-8", errors="replace") as f:
-                lines = f.readlines()
-        except OSError:
-            continue
-        for line in lines:
-            try:
-                row = json.loads(line)
-                at = datetime.fromisoformat(str(row["at"]).replace("Z", "+00:00"))
-            except (ValueError, KeyError, TypeError):
-                continue
-            if at.tzinfo is not None and isinstance(row.get("rule"), str):
-                found.append(Denial(at, row["rule"]))
+    for row in material.denial_rows(root):
+        at = beads.parse_time(row.get("at"))
+        if at is not None and at.tzinfo is not None and isinstance(row.get("rule"), str):
+            found.append(Denial(at, row["rule"]))
     return found
 
 

@@ -1116,6 +1116,15 @@ def test_intervention_effect() -> None:
           repr(lines))
     check("該当が無ければ EMPTY", ie.section_lines([]) == ["EMPTY"])
 
+    with tempfile.TemporaryDirectory() as d:
+        git(d, "init", "-q", "-b", "main")
+        write(os.path.join(d, ".git", "hook-denials", "2026-10.jsonl"),
+              "".join(json.dumps({"at": at, "hook": "h", "rule": "r", "actor": "main"}) + "\n"
+                      for at in ("2026-10-03T19:53:14.58175Z", "2026-10-03T20:33:38.942169922Z", "2026-10-03T20:33:38+09:00"))
+              + json.dumps({"at": "壊れた時刻", "rule": "r"}) + "\n" + "壊れた行\n")
+        got = ie.read_denials(d)
+        check("拒否の記録の時刻は小数の桁によらず読み、読めない行は飛ばす", [x.rule for x in got] == ["r", "r", "r"], repr(got))
+
 
 def main() -> None:
     test_viewpoint_vocabulary()

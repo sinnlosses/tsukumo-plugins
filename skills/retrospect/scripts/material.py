@@ -358,11 +358,23 @@ def read_denials(root: str) -> Counter[str]:
     読めなければ空。
     """
     found: Counter[str] = Counter()
+    for row in denial_rows(root):
+        if row.get("actor") != "subagent":
+            continue
+        agent = row.get(ledger.DENIAL_AGENT_KEY)
+        if isinstance(agent, str) and agent:
+            found[agent] += 1
+    return found
+
+
+def denial_rows(root: str) -> list[dict]:
+    """共有の git dir の hook の拒否の記録の行（JSON の辞書）。読めない行・ファイルは飛ばし、読めなければ空。"""
     try:
         d = os.path.join(gitinfo.git_common_dir(root), ledger.DENIALS_DIR_NAME)
         names = sorted(n for n in os.listdir(d) if n.endswith(".jsonl"))
     except (gitinfo.GitCommandError, OSError):
-        return found
+        return []
+    rows: list[dict] = []
     for name in names:
         try:
             with open(os.path.join(d, name), encoding="utf-8", errors="replace") as f:
@@ -374,12 +386,9 @@ def read_denials(root: str) -> Counter[str]:
                 row = json.loads(line)
             except ValueError:
                 continue
-            if not isinstance(row, dict) or row.get("actor") != "subagent":
-                continue
-            agent = row.get(ledger.DENIAL_AGENT_KEY)
-            if isinstance(agent, str) and agent:
-                found[agent] += 1
-    return found
+            if isinstance(row, dict):
+                rows.append(row)
+    return rows
 
 
 def print_signals(root: str, task_id: str, read: list[tuple[str, dict | None]] | None = None) -> None:
