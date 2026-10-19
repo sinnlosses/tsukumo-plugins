@@ -100,7 +100,6 @@ if stage "install.sh・uninstall.sh の自己テスト" \
   $LOWPRI sh "$here/scripts/selftest_links.sh"
 fi
 
-# retrospect の自己テストも自前の一時ディレクトリと HOME で動くので、task-model の段と並べて先に起こす（出力は自分の段で出す）
 pid_retro=
 out_retro=
 if [ "$mode" != plan ] && touched 'skills/retrospect/*' 'skills/task-model/scripts/*'; then
@@ -114,7 +113,6 @@ if stage "task-model: scripts・task コマンドの自己テスト" \
   $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest.py"
   $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_review_needed.py"
   $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_review_snapshot.py"
-  # 台帳と Beads 方式は、それぞれ自分の一時の家（HOME・RAM ディスク・bd のデータ）を作り、ポートも共有しないので並べて走らせる
   out_task=$(mktemp)
   out_beads=$(mktemp)
   $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_task.py" >"$out_task" 2>&1 &
