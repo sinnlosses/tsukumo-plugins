@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import beads
@@ -17,7 +20,19 @@ import tw_base
 import tw_plan
 
 
-def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
+@dataclass(frozen=True)
+class _Checked:
+    """検査を通した1件分の入力。`deps` は `T-9`・`GH-5` の形のID。"""
+
+    summary: str
+    deps: tuple[str, ...]
+    fixes: tuple[str, ...]
+    body: str
+    plan_base: str | None
+
+
+def _check_one(toplevel: str, args: argparse.Namespace) -> _Checked:
+    """1件分の引数と本文を検査する（何も書かない）。誤りは `usage:` の行と終了コード2。"""
     summary = args.summary.strip()
     if summary == "" or "\n" in args.summary:
         print("usage: --summary は改行を含まない1行にする", file=sys.stderr)
@@ -49,6 +64,63 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
     if args.direct:
         tw_plan.refuse_direct(args.difficulty, body)
     plan_base = tw_plan.registered_plan_base(toplevel, body) if taskfile.has_plan(body) and not args.draft else None
+    return _Checked(summary, deps, fixes, body, plan_base)
+
+
+def _metadata(args: argparse.Namespace, checked: _Checked, candidate: tuple[str, str, str] | None) -> dict[str, str]:
+    metadata = {beads.DIFFICULTY_KEY: args.difficulty, beads.LOOPABLE_KEY: args.loopable}
+    if checked.plan_base is not None:
+        metadata[beads.PLAN_BASE_KEY] = checked.plan_base
+    if args.draft:
+        metadata[beads.DRAFT_KEY] = beads.DRAFT_ON
+    if candidate is not None:
+        metadata[beads.CANDIDATE_SIGNAL_KEY] = candidate[1]
+        metadata[beads.CANDIDATE_PLACE_KEY] = candidate[2]
+    if checked.fixes:
+        metadata[beads.FIXES_KEY] = ",".join(checked.fixes)
+    return metadata
+
+
+def _create_cmd(
+    args: argparse.Namespace,
+    checked: _Checked,
+    parts: beads.BodyParts,
+    metadata: dict[str, str],
+    candidate: tuple[str, str, str] | None,
+    bd_id: str,
+    dep_bd_ids: list[str],
+) -> list[str]:
+    cmd = ["create", "--id", bd_id, "--title", checked.summary, "--body-file", "-", "--metadata", json.dumps(metadata), "--silent"]
+    if args.direct:
+        cmd += ["-l", beads.DIRECT_ON]
+    if args.kind:
+        cmd += ["-l", f"{beads.KIND_LABEL}{args.kind}"]
+    if candidate is not None:
+        cmd += ["-l", beads.CANDIDATE_LABEL]
+    if parts.acceptance:
+        cmd += ["--acceptance", parts.acceptance]
+    if parts.notes:
+        cmd += ["--notes", parts.notes]
+    if args.hold or args.draft:
+        cmd += ["-s", beads.HOLD_STATUS]
+    if dep_bd_ids:
+        cmd += ["--deps", ",".join(dep_bd_ids)]
+    return cmd
+
+
+def _record_fixes(toplevel: str, checked: _Checked, bd_id: str) -> None:
+    if checked.fixes:
+        tw_base.record(toplevel, "new", beads.to_task_id(bd_id), fixes=",".join(checked.fixes))
+
+
+def _provisional_id(actor: str) -> str:
+    # 番号は Issue を立てるまで決まらないので、仮の ID で作ってから `gh-<Issue 番号>` へ付け替える。
+    return f"{beads.PROVISIONAL_PREFIX}{re.sub(r'[^0-9a-z]+', '-', actor.lower()).strip('-')}-{time.time_ns()}"
+
+
+def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
+    checked = _check_one(toplevel, args)
+    deps, body = checked.deps, checked.body
 
     trk = tracker.session(toplevel)
     snap = None
@@ -71,67 +143,177 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
         if recurred is not None:
             _promote(toplevel, trk, recurred, actor, parts.description, candidate)
             return
-    metadata = {beads.DIFFICULTY_KEY: args.difficulty, beads.LOOPABLE_KEY: args.loopable}
-    if plan_base is not None:
-        metadata[beads.PLAN_BASE_KEY] = plan_base
-    if args.draft:
-        metadata[beads.DRAFT_KEY] = beads.DRAFT_ON
-    if candidate is not None:
-        metadata[beads.CANDIDATE_SIGNAL_KEY] = candidate[1]
-        metadata[beads.CANDIDATE_PLACE_KEY] = candidate[2]
-    if fixes:
-        metadata[beads.FIXES_KEY] = ",".join(fixes)
-
-    def record_fixes(bd_id: str) -> None:
-        if fixes:
-            tw_base.record(toplevel, "new", beads.to_task_id(bd_id), fixes=",".join(fixes))
+    metadata = _metadata(args, checked, candidate)
+    dep_bd_ids = [beads.to_bd_id(d) for d in deps]
 
     def create_cmd(bd_id: str) -> list[str]:
-        cmd = ["create", "--id", bd_id, "--title", summary, "--body-file", "-", "--metadata", json.dumps(metadata), "--silent"]
-        if args.direct:
-            cmd += ["-l", beads.DIRECT_ON]
-        if args.kind:
-            cmd += ["-l", f"{beads.KIND_LABEL}{args.kind}"]
-        if candidate is not None:
-            cmd += ["-l", beads.CANDIDATE_LABEL]
-        if parts.acceptance:
-            cmd += ["--acceptance", parts.acceptance]
-        if parts.notes:
-            cmd += ["--notes", parts.notes]
-        if args.hold or args.draft:
-            cmd += ["-s", beads.HOLD_STATUS]
-        if deps:
-            cmd += ["--deps", ",".join(beads.to_bd_id(d) for d in deps)]
-        return cmd
+        return _create_cmd(args, checked, parts, metadata, candidate, bd_id, dep_bd_ids)
 
     if trk.bidirectional:
-        # 番号は Issue を立てるまで決まらないので、仮の ID で作ってから `gh-<Issue 番号>` へ付け替える。
-        provisional = f"{beads.PROVISIONAL_PREFIX}{re.sub(r'[^0-9a-z]+', '-', actor.lower()).strip('-')}-{time.time_ns()}"
+        provisional = _provisional_id(actor)
         beads.run_ok(toplevel, create_cmd(provisional), actor, parts.description)
         bd_id, lines = trk.register(provisional)
-        record_fixes(bd_id)
+        _record_fixes(toplevel, checked, bd_id)
         print(f"CREATED\t{beads.to_task_id(bd_id)}\tbeads:{bd_id}")
         tw_plan.warn_report_names(body)
         tw_base.print_lines(lines)
         return
 
     assert snap is not None
-    number = _next_number(toplevel, snap)
+    try:
+        bd_id, _ = _create_numbered(toplevel, actor, _next_number(toplevel, snap), create_cmd, parts.description)
+    except _Locked as e:
+        print(f"LOCKED\t{e}")
+        raise SystemExit(4)
+    _record_fixes(toplevel, checked, bd_id)
+    print(f"CREATED\t{beads.to_task_id(bd_id)}\tbeads:{bd_id}")
+    tw_plan.warn_report_names(body)
+    tw_base.print_lines(trk.after([bd_id]))
+
+
+class _Locked(Exception):
+    pass
+
+
+def _create_numbered(
+    toplevel: str, actor: str, number: int, make_cmd: Callable[[str], list[str]], description: str
+) -> tuple[str, int]:
+    """番号を取り合う作り方（`bd create --id` は同じ番号を1つしか作らない）。作ったIDと次の番号を返す。"""
     for _ in range(NEW_ATTEMPTS):
         bd_id = beads.format_bd_id(number)
-        r = beads.run(toplevel, create_cmd(bd_id), actor, parts.description)
+        r = beads.run(toplevel, make_cmd(bd_id), actor, description)
         if r.returncode == 0:
             beads.write_last_id(toplevel, number)
-            record_fixes(bd_id)
-            print(f"CREATED\t{beads.to_task_id(bd_id)}\tbeads:{bd_id}")
-            tw_plan.warn_report_names(body)
-            tw_base.print_lines(trk.after([bd_id]))
-            return
+            return bd_id, number + 1
         if "already exists" not in (r.stderr + r.stdout):
             raise beads.BeadsError(f"bd create が失敗: {(r.stderr or r.stdout).strip()}")
         number += 1
-    print(f"LOCKED\t{NEW_ATTEMPTS}回続けて番号を取られた")
-    raise SystemExit(4)
+    raise _Locked(f"{NEW_ATTEMPTS}回続けて番号を取られた")
+
+
+BATCH_FIELDS = {"summary", "difficulty", "loopable", "deps", "body_file", "hold", "direct", "kind", "fixes"}
+BATCH_REF = re.compile(r"^@([1-9][0-9]*)$")
+
+
+def _batch_entries(path: str) -> list[dict]:
+    try:
+        with open(path, encoding="utf-8") as f:
+            entries = json.load(f)
+    except (OSError, ValueError) as e:
+        print(f"usage: --batch の {path} が読めない: {e}", file=sys.stderr)
+        raise SystemExit(2)
+    if not isinstance(entries, list) or not entries or not all(isinstance(e, dict) for e in entries):
+        print("usage: --batch は要素が1つ以上の、オブジェクトの配列にする", file=sys.stderr)
+        raise SystemExit(2)
+    return entries
+
+
+def _batch_refuse(n: int, reason: str) -> None:
+    print(f"usage: --batch の{n}件目の{reason}。何も作っていない", file=sys.stderr)
+    raise SystemExit(2)
+
+
+def _batch_args(n: int, entry: dict, base_dir: str) -> tuple[argparse.Namespace, list[int]]:
+    """要素 `n`（1始まり）を単件の引数に直す。`deps` の `@k`（前の要素）は外して番号で返す。"""
+    unknown = sorted(set(entry) - BATCH_FIELDS)
+    if unknown:
+        _batch_refuse(n, f"未知の欄 {','.join(unknown)}")
+    for key in ("summary", "difficulty", "loopable", "body_file"):
+        if not isinstance(entry.get(key), str):
+            _batch_refuse(n, f"{key} が文字列でない")
+    if entry["difficulty"] not in taskfile.DIFFICULTY_VALUES or entry["loopable"] not in taskfile.LOOPABLE_VALUES:
+        _batch_refuse(n, "difficulty か loopable が語彙の外")
+    if entry["body_file"] == "-":
+        _batch_refuse(n, "body_file に - は使えない（ファイルのパスにする）")
+    kind = entry.get("kind")
+    if kind is not None and kind not in taskfile.KIND_VALUES:
+        _batch_refuse(n, f"kind {kind!r} が語彙の外")
+    raw_deps, fixes = entry.get("deps", []), entry.get("fixes", [])
+    for key, value in (("deps", raw_deps), ("fixes", fixes)):
+        if not isinstance(value, list) or not all(isinstance(x, str) for x in value):
+            _batch_refuse(n, f"{key} が文字列の配列でない")
+    refs: list[int] = []
+    external: list[str] = []
+    for d in raw_deps:
+        m = BATCH_REF.match(d.strip())
+        if m is None:
+            external.append(d)
+        elif int(m.group(1)) >= n:
+            _batch_refuse(n, f"deps の {d} が前の要素を指していない")
+        else:
+            refs.append(int(m.group(1)))
+    args = argparse.Namespace(
+        summary=entry["summary"], difficulty=entry["difficulty"], loopable=entry["loopable"],
+        deps=",".join(external), fixes=",".join(fixes), hold=bool(entry.get("hold")), draft=False,
+        candidate=None, direct=bool(entry.get("direct")), kind=kind,
+        body_file=os.path.join(base_dir, entry["body_file"]),
+    )
+    return args, refs
+
+
+def cmd_new_batch(toplevel: str, path: str) -> None:
+    """`new --batch <JSON>`: 全件を検査してから順に作り、トラッカーへの反映は最後に1回だけ行う。"""
+    entries = _batch_entries(path)
+    base_dir = os.path.dirname(os.path.abspath(path))
+    prepared: list[tuple[argparse.Namespace, _Checked, list[int]]] = []
+    for n, entry in enumerate(entries, 1):
+        args, refs = _batch_args(n, entry, base_dir)
+        try:
+            checked = _check_one(toplevel, args)
+        except OSError as e:
+            _batch_refuse(n, f"body_file が読めない: {e}")
+        except SystemExit:
+            print(f"usage: （--batch の{n}件目で止めた。何も作っていない）", file=sys.stderr)
+            raise
+        prepared.append((args, checked, refs))
+
+    trk = tracker.session(toplevel)
+    snap = tw_base.beads_snapshot(toplevel)
+    missing = sorted({d for _, c, _ in prepared for d in c.deps if d not in snap.issues})
+    if missing:
+        print(f"usage: --batch の deps の {','.join(missing)} が Beads に無い（解決済みなら外す）。何も作っていない", file=sys.stderr)
+        raise SystemExit(2)
+
+    actor = tw_base.actor(toplevel)
+    number = None if trk.bidirectional else _next_number(toplevel, snap)
+    created: list[str] = []
+    failure: str | None = None
+    for args, checked, refs in prepared:
+        parts = beads.split_body(checked.body)
+        metadata = _metadata(args, checked, None)
+        dep_bd_ids = [beads.to_bd_id(d) for d in checked.deps] + [created[r - 1] for r in refs]
+
+        def make_cmd(bd_id: str) -> list[str]:
+            return _create_cmd(args, checked, parts, metadata, None, bd_id, dep_bd_ids)
+
+        try:
+            if number is None:
+                bd_id = _provisional_id(actor)
+                beads.run_ok(toplevel, make_cmd(bd_id), actor, parts.description)
+            else:
+                bd_id, number = _create_numbered(toplevel, actor, number, make_cmd, parts.description)
+        except (beads.BeadsError, _Locked) as e:
+            failure = str(e)
+            break
+        created.append(bd_id)
+
+    lines: list[str] = []
+    finals = {b: b for b in created}
+    if trk.bidirectional:
+        finals, lines = trk.register_many(created)
+    elif created:
+        lines = trk.after(created)
+    for (_, checked, _refs), bd_id in zip(prepared, created):
+        final = finals[bd_id]
+        _record_fixes(toplevel, checked, final)
+        print(f"CREATED\t{beads.to_task_id(final)}\tbeads:{final}")
+        tw_plan.warn_report_names(checked.body)
+    tw_base.print_lines(lines)
+    if failure is not None:
+        for n, (_, checked, _refs) in enumerate(prepared[len(created):], len(created) + 1):
+            print(f"NOT_CREATED\t@{n}\t{checked.summary}")
+        print(f"usage: --batch の{len(created) + 1}件目を作るのに失敗して止めた: {failure}", file=sys.stderr)
+        raise SystemExit(4)
 
 
 SHOW_DEPS_LIMIT = 3

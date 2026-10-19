@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import functools
 import glob
+import json
 import os
 import subprocess
 import sys
@@ -248,6 +249,61 @@ def test_new_fixes() -> None:
         for bad in ("T-9999", "foo"):
             r = new("--fixes", bad)
             check(f"--fixes {bad} は終了コード2で何も作らない", r.returncode == 2 and r.stdout == "" and issue_count(wt1) == before, r.stdout + r.stderr)
+
+
+def _batch_file(dirpath: str, entries: list[dict]) -> str:
+    return write(os.path.join(dirpath, "batch.json"), json.dumps(entries, ensure_ascii=False))
+
+
+def _batch_entry(dirpath: str, summary: str, **extra) -> dict:
+    name = f"body-{summary}.md"
+    body_file(dirpath, name)
+    return {"summary": summary, "difficulty": "sonnet", "loopable": "Y", "body_file": name, **extra}
+
+
+def test_new_batch() -> None:
+    say("task.py new --batch（複数件を1回で登録。後ろの要素が前の要素を deps に使える・1件の誤りで何も作らない・単件は従来どおり）")
+    with tempfile.TemporaryDirectory() as tmp:
+        _main_path, wt1, _wt2 = make_repo(tmp)
+        first = run_task(wt1, "new", "--summary", "既存", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", body_file(wt1))
+        existing = first.stdout.split("\t")[1]
+
+        entries = [
+            _batch_entry(wt1, "一つ目", deps=[existing]),
+            _batch_entry(wt1, "二つ目", deps=["@1"]),
+            _batch_entry(wt1, "三つ目", deps=["@1", "@2"], kind="bug"),
+        ]
+        r = run_task(wt1, "new", "--batch", _batch_file(wt1, entries))
+        created = [l.split("\t")[1] for l in r.stdout.splitlines() if l.startswith("CREATED\t")]
+        check("3件が CREATED の行で順に返る", r.returncode == 0 and len(created) == 3, r.stdout + r.stderr)
+        check("TRACKER の行は高々1回（トラッカー無しなら0回）", sum(1 for l in r.stdout.splitlines() if l.startswith("TRACKER")) <= 1, r.stdout)
+        deps = lambda t: sorted(d.get("depends_on_id") or d.get("id") for d in issue_json(wt1, t).get("dependencies") or [])
+        check("1件目は既存のタスク、2件目は1件目、3件目は1・2件目に依存する",
+              deps(created[0]) == [beads.to_bd_id(existing)] and deps(created[1]) == [beads.to_bd_id(created[0])]
+              and deps(created[2]) == sorted(beads.to_bd_id(c) for c in created[:2]),
+              str([deps(c) for c in created]))
+        check("kind が付く", f"{beads.KIND_LABEL}bug" in (issue_json(wt1, created[2]).get("labels") or []))
+
+        before = issue_count(wt1)
+        write(os.path.join(wt1, "bad.md"), "## 目的\nx\n")
+        broken = [_batch_entry(wt1, "良い"), {**_batch_entry(wt1, "悪い"), "body_file": "bad.md"}]
+        r = run_task(wt1, "new", "--batch", _batch_file(wt1, broken))
+        check("本文が検査に落ちる要素が1つでもあれば終了コード2で何も作らない",
+              r.returncode == 2 and r.stdout == "" and issue_count(wt1) == before and "2件目" in r.stderr, r.stdout + r.stderr)
+        for label, bad in (
+            ("前の要素でない参照", [_batch_entry(wt1, "自分", deps=["@1"])]),
+            ("Beads に無い deps", [_batch_entry(wt1, "無い", deps=["T-9999"])]),
+            ("未知の欄", [_batch_entry(wt1, "未知", draft=True)]),
+        ):
+            r = run_task(wt1, "new", "--batch", _batch_file(wt1, bad))
+            check(f"{label}は終了コード2で何も作らない", r.returncode == 2 and r.stdout == "" and issue_count(wt1) == before, r.stdout + r.stderr)
+
+        r = run_task(wt1, "new", "--batch", _batch_file(wt1, [_batch_entry(wt1, "混ぜる")]), "--summary", "x")
+        check("単件の引数と一緒だと終了コード2", r.returncode == 2 and issue_count(wt1) == before, r.stdout + r.stderr)
+        r = run_task(wt1, "new", "--summary", "単件", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", body_file(wt1))
+        check("単件の new は従来どおり CREATED", r.returncode == 0 and r.stdout.startswith("CREATED\t"), r.stdout + r.stderr)
+        r = run_task(wt1, "new", "--summary", "足りない")
+        check("--batch も単件の必須の引数も無ければ終了コード2", r.returncode == 2, r.stdout + r.stderr)
 
 
 def test_kind_label() -> None:
@@ -953,6 +1009,7 @@ TESTS = (
     test_claim_and_release_single_worktree,
     test_new_and_status_single_worktree,
     test_new_fixes,
+    test_new_batch,
     test_kind_label,
     test_find,
     test_draft_register_and_refuse_claim,

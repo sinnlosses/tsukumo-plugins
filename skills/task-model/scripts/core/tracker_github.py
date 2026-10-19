@@ -70,10 +70,21 @@ def rest_issues(toplevel: str, repo: str, query: str, remaining: Remaining) -> d
 
 
 def write_status(
-    toplevel: str, tracker, project: dict, items: dict, dirty: set[str], url: str, want: str, remaining: Remaining
+    toplevel: str,
+    tracker,
+    project: dict,
+    items: dict,
+    dirty: set[str],
+    url: str,
+    want: str,
+    remaining: Remaining,
+    content_id: str | None = None,
 ) -> None:
-    """Issue の Status 欄を `want` に書き、控え（`items`・`dirty`）を更新する。控えが古ければ `project` を読み直した版に差し替える。"""
-    item_id = (items.get(url) or {}).get("item") or find_item(toplevel, project, url, remaining)
+    """Issue の Status 欄を `want` に書き、控え（`items`・`dirty`）を更新する。控えが古ければ `project` を読み直した版に差し替える。
+
+    `content_id`（Issue の node_id。REST の一覧から分かる）があれば、Issue 側の引きを飛ばして Project へ足す。
+    """
+    item_id = (items.get(url) or {}).get("item") or find_item(toplevel, project, url, remaining, content_id)
     try:
         set_field(toplevel, project, item_id, want, remaining)
     except _Failed:
@@ -95,8 +106,14 @@ def set_field(toplevel: str, project: dict, item_id: str, want: str, remaining: 
     graphql(toplevel, SET_STATUS, variables, remaining)
 
 
-def find_item(toplevel: str, project: dict, url: str, remaining: Remaining) -> str:
-    """Issue 側から、この Project の項目を引く（無ければ足す）。"""
+def find_item(toplevel: str, project: dict, url: str, remaining: Remaining, content_id: str | None = None) -> str:
+    """Issue 側から、この Project の項目を引く（無ければ足す）。`content_id` があれば引かずに足す（足すのは項目が既にあっても同じ項目を返す）。"""
+    if content_id is not None:
+        added = graphql(toplevel, ADD_ITEM, {"project": project["id"], "content": content_id}, remaining)
+        item = (added.get("addProjectV2ItemById") or {}).get("item") or {}
+        if not item.get("id"):
+            raise _Failed(f"Project に足せなかった: {url}")
+        return str(item["id"])
     m = ISSUE_URL.match(url)
     if m is None:
         raise _Failed(f"Issue の URL でない: {url}")

@@ -199,6 +199,32 @@ class Session:
             return provisional, [f"TRACKER\tFAILED\tgithub\t{e}"]
         return final, lines + [f"TRACKER\tOK\tgithub\tpushed=1\tstatus_changed={changed}"]
 
+    def register_many(self, provisionals: list[str]) -> tuple[dict[str, str], list[str]]:
+        """`task new --batch`（双方向のとき）: 仮の ID の課題をまとめて送り、`gh-<Issue 番号>` へ付け替える。`{仮: 最終}` と行を返す。
+
+        `register` を1件ずつ打つのと同じ結果を、送り・付け替え・Status 欄の書き込みを各1回にして得る。
+        付け替えられなかった課題は `{仮: 仮}` のまま返し（`task sync` が送り直す）、行に `FAILED` を足す。
+        """
+        self._begin(time.monotonic() + _op_timeout())
+        if not provisionals:
+            return {}, []
+        try:
+            self._push(provisionals)
+            renamed, lines = self._rename(provisionals)
+            finals = {p: renamed.get(p, p) for p in provisionals}
+            done = [f for p, f in finals.items() if p in renamed]
+            if done:
+                self._push(done)
+                self._mark_synced(done)
+            sent = [i for i in (self._issue(x, many=True) for x in done) if i is not None]
+            changed = self._bridge(sent, self._content_ids(sent))
+            self._save()
+        except _Failed as e:
+            return {p: p for p in provisionals}, [f"TRACKER\tFAILED\tgithub\t{e}"]
+        lost = [p for p in provisionals if p not in renamed]
+        lines = lines + [f"TRACKER\tFAILED\tgithub\t{p} に Issue の番号が付かなかった" for p in lost]
+        return finals, lines + [f"TRACKER\tOK\tgithub\tpushed={len(done)}\tstatus_changed={changed}"]
+
     # --- 全件 ------------------------------------------------------------------
 
     def sync_all(self, pull: bool) -> list[str]:
@@ -412,8 +438,11 @@ class Session:
 
     # --- Project の Status 欄 --------------------------------------------------------
 
-    def _bridge(self, issues: list[beads.Issue]) -> int:
-        """Status 欄を Beads の状態に揃える。最後に書いた Status と同じ課題には触らない。書いた件数を返す。"""
+    def _bridge(self, issues: list[beads.Issue], content_ids: dict[str, str] | None = None) -> int:
+        """Status 欄を Beads の状態に揃える。最後に書いた Status と同じ課題には触らない。書いた件数を返す。
+
+        `content_ids`（`{Issue の URL: node_id}`）にある課題は、Issue 側の引きを飛ばして Project へ足す。
+        """
         items = self._load_items()
         todo: list[tuple[str, str]] = []
         for issue in issues:
@@ -428,9 +457,26 @@ class Session:
             todo = [(url, want) for url, want in todo if (items.get(url) or {}).get("status") != want]
         for url, want in todo:
             gh.write_status(
-                self.toplevel, self.tracker, self._load_project(), items, self._items_dirty, url, want, self._remaining
+                self.toplevel, self.tracker, self._load_project(), items, self._items_dirty, url, want, self._remaining,
+                (content_ids or {}).get(url),
             )
         return len(todo)
+
+    def _content_ids(self, issues: list[beads.Issue]) -> dict[str, str]:
+        """送った Issue の `{URL: node_id}` を、REST の一覧1回で引く（Status 欄を書くとき Issue ごとに引かないため）。引けなければ空。"""
+        repo = self._repository_or_none()
+        urls = {u for i in issues if (u := _issue_url(i.external_ref, repo)) is not None}
+        if not urls:
+            return {}
+        starts = [beads.parse_time(i.raw.get("created_at")) for i in issues]
+        query = "state=open&per_page=100"
+        if all(t is not None for t in starts):
+            query = "state=all&per_page=100&since=" + _format_time(min(starts) - SYNC_SLACK)
+        try:
+            found = self._rest_issues(query)
+        except _Failed:
+            return {}
+        return {str(i["html_url"]): str(i["node_id"]) for i in found.values() if i.get("html_url") in urls and i.get("node_id")}
 
     def _load_project(self) -> dict:
         if self._project is None:
