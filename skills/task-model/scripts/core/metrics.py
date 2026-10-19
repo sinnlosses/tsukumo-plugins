@@ -78,7 +78,7 @@ def read_events(root: str) -> tuple[list[Event], int]:
     return sorted(events, key=lambda e: e.at), skipped
 
 
-def _number(value: str) -> float | None:
+def leading_number(value: str) -> float | None:
     """`12`・`2.0`・`50% (1/2)` の先頭の数。`-` は `None`。"""
     head = value.split("%")[0].strip()
     try:
@@ -110,7 +110,8 @@ def verify_cause(events: list[Event], failed: Event) -> str:
     return "real"
 
 
-def _column(events: list[Event], start: datetime, end: datetime) -> dict[str, str]:
+def column_between(events: list[Event], start: datetime, end: datetime) -> dict[str, str]:
+    """`[start, end)` の流れの数（`tw metrics` の1列）。"""
     inside = [e for e in events if start <= e.at < end]
     shipped = [e for e in inside if e.kind == "ship" and e.fields.get("result") == "SHIPPED"]
     leads = [s for s in (_lead_seconds(events, e) for e in shipped) if s is not None]
@@ -348,12 +349,12 @@ def columns(events: list[Event], days: int) -> tuple[dict[str, str], dict[str, s
     """`(直近 days 日の数, その前の同じ長さの期間の数)`。"""
     now = datetime.now(timezone.utc)
     span = timedelta(days=days)
-    return _column(events, now - span, now + timedelta(seconds=1)), _column(events, now - 2 * span, now - span)
+    return column_between(events, now - span, now + timedelta(seconds=1)), column_between(events, now - 2 * span, now - span)
 
 
 def worse(name: str, current: str, previous: str) -> bool:
     """前の期間より悪くなったか。どちらかが `-` なら比べない。"""
-    now, before = _number(current), _number(previous)
+    now, before = leading_number(current), leading_number(previous)
     if now is None or before is None:
         return False
     if name in LOWER_IS_WORSE:

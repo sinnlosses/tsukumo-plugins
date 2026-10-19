@@ -12,7 +12,8 @@
 当たれば当たった材料ごとに `SIGNAL\t<材料>\t<値>` を並べ、続けて「手数」と「段の所要時間」と「同じ兆候の候補」と「ドラフトの行方」を出す。
 同じ兆候の候補は、今回の `SIGNAL` の材料と同じ種類で直近28日に積んだ候補（label `candidate` のドラフト）を
 `RECUR\t<ID>\t<観点>\t<SIGNAL の種類>\t<場所>\t<積んでからの日数>d` で積んだ順に出す（無ければ `EMPTY`）。段の所要時間の `SIGNAL` は、
-1つの段が着手から最後の出来事までの50%以上・終わりの無い段がある・段のあいだの空きが20%以上のとき。5つの答え:
+1つの段が着手から最後の出来事までの50%以上・終わりの無い段がある・段のあいだの空きが20%以上のとき。
+出し終えたら台帳 `flow/` に出来事 `gate` を1行残す（`signals` は当たった `SIGNAL` の種類を出た順に `・` でつないだもの。`QUIET` なら空）。5つの答え:
 
 - `--friction`（必須）: 委譲先の friction log が全部「なし」（`none`）／行がある（`some`）／書いていない返却がある（`missing`）
 - `--human`（必須）: 人の差し戻しの回数
@@ -79,6 +80,17 @@ import taskfile  # noqa: E402
 import transcript  # noqa: E402
 
 DEFAULT_DIFF_BYTES = 40000
+GATE_EVENT = "gate"
+SIGNAL_KINDS = (
+    "friction log",
+    "検証の打ち直し",
+    "受け入れでの直し",
+    "人の差し戻し",
+    "ツールのエラー",
+    "同じファイルの直し直し",
+    "時間の偏り",
+    "段の所要時間",
+)
 
 
 def main() -> None:
@@ -406,12 +418,12 @@ SLOW_SECONDS = 180
 
 
 def read_ledger(root: str) -> list[metrics.Event] | str:
-    """台帳の出来事を時刻順に。読めなければ理由の文字列。"""
+    """台帳の出来事を時刻順に（`GATE_EVENT` を除く）。読めなければ理由の文字列。"""
     try:
         events, _ = metrics.read_events(ledger.ledger_root(cwd=root))
     except (gitinfo.GitCommandError, OSError):
         return "台帳が読めない（git のリポジトリでない）"
-    return events
+    return [e for e in events if e.kind != GATE_EVENT]
 
 
 def count_from_ledger(
@@ -636,7 +648,23 @@ def print_gate(root: str, task_id: str, gate: dict[str, str]) -> None:
     hits = gate_signals(root, decide_gate(events, task_id, gate, fix_times), read, stages)
     if not hits:
         print("QUIET")
+        record_gate(root, events, task_id, hits)
         return
+    print_gate_hits(root, task_id, read, stages, hits)
+    record_gate(root, events, task_id, hits)
+
+
+def record_gate(root: str, events: list[metrics.Event] | str, task_id: str, hits: list[tuple[str, str]]) -> None:
+    """判定の口の当たりを台帳に `GATE_EVENT` で1行残す。difficulty はそのタスクの最後の `claim` の値（無ければ `-`）。"""
+    claims = [e for e in events if e.kind == "claim" and e.task == task_id] if isinstance(events, list) else []
+    difficulty = str(claims[-1].fields.get("difficulty") or "-") if claims else "-"
+    kinds = list(dict.fromkeys(name for name, _ in hits))
+    ledger.record_event(root, GATE_EVENT, task_id, difficulty, signals="・".join(kinds))
+
+
+def print_gate_hits(
+    root: str, task_id: str, read: list[tuple[str, dict | None]], stages: StageTimes | str | None, hits: list[tuple[str, str]]
+) -> None:
     for name, value in hits:
         print(f"SIGNAL\t{name}\t{value}")
     section("手数（トランスクリプトから取った数だけ）")

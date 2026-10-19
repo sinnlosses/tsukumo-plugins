@@ -299,15 +299,18 @@ def test_gate() -> None:
         root = os.path.join(d, "repo")
         os.makedirs(root)
         env = {**os.environ, "CLAUDE_CONFIG_DIR": os.path.join(d, "cfg")}
+        kinds: set[str] = set()
 
         def gate(task_id: str, answers: dict[str, str]) -> subprocess.CompletedProcess:
             args = [a for kv in answers.items() for a in kv]
-            return subprocess.run(
+            r = subprocess.run(
                 [sys.executable, os.path.join(HERE, "material.py"), root, task_id, "--gate", *args],
                 capture_output=True,
                 text=True,
                 env=env,
             )
+            kinds.update(l.split("\t")[1] for l in r.stdout.splitlines() if l.startswith("SIGNAL\t"))
+            return r
 
         r = gate("GH-1", quiet)
         check("5つとも当たらずトランスクリプトも無ければ QUIET の1行だけ", r.returncode == 0 and r.stdout == "QUIET\n", r.stdout + r.stderr)
@@ -377,6 +380,14 @@ def test_gate() -> None:
         check("5つのうち1つでも欠ければ終了コード2", r.returncode == 2 and r.stdout == "", r.stdout + r.stderr)
         r = gate("GH-1", {**quiet, "--review": "maybe"})
         check("値が違えば終了コード2", r.returncode == 2, r.stdout + r.stderr)
+
+    sys.path.insert(0, HERE)
+    import material
+
+    staged = material.stage_signals(material.StageTimes(100, {"委譲": 60}, ["受け入れ"], 0))
+    kinds.update(name for name, _ in staged)
+    check("判定の口が出す SIGNAL の種類は SIGNAL_KINDS の中だけ",
+          len(kinds) == 6 and kinds <= set(material.SIGNAL_KINDS), repr(sorted(kinds)))
 
 
 def test_hook_denials() -> None:
@@ -514,6 +525,25 @@ def test_gate_ledger() -> None:
               r.stdout == "QUIET\n" and all(f"UNCOUNTED\t{o}" in r.stderr for o in ("--reverify", "--fixes", "--review")), r.stdout + r.stderr)
         r = gate("GH-70", reverify="1")
         check("claim が無ければ引数に戻る", "SIGNAL\t検証の打ち直し\t1回" in r.stdout.splitlines() and "MISMATCH" not in r.stderr, r.stdout + r.stderr)
+
+        def gate_rows(task_id: str) -> list[dict]:
+            flow = os.path.join(root, ".git", "task-workflow", "flow")
+            rows = [json.loads(l) for n in sorted(os.listdir(flow)) for l in open(os.path.join(flow, n), encoding="utf-8") if l.strip()]
+            return [x for x in rows if x["event"] == "gate" and x["task"] == task_id]
+
+        signal_kinds = lambda out: "・".join(dict.fromkeys(l.split("\t")[1] for l in out.splitlines() if l.startswith("SIGNAL\t")))
+        first = gate("GH-63")
+        rows = gate_rows("GH-63")
+        check("--gate は台帳に gate を1行足し、signals は出した SIGNAL の種類を重ねずに出た順でつないだもの",
+              len(rows) == 2 and rows[-1]["signals"] == signal_kinds(first.stdout)
+              and rows[-1]["signals"].startswith("受け入れでの直し") and rows[-1]["difficulty"] == "opus",
+              repr(rows))
+        check("QUIET のときの gate の signals は空で、claim が無ければ difficulty は -",
+              [(x["signals"], x["difficulty"]) for x in gate_rows("GH-70")] == [("", "-"), ("検証の打ち直し", "-")], repr(gate_rows("GH-70")))
+        second = gate("GH-63")
+        check("前の gate の行は段の所要時間に入らず、2回目も同じ節を出す",
+              lines_of("段の所要時間（flow/ から取った秒）", first.stdout) == lines_of("段の所要時間（flow/ から取った秒）", second.stdout),
+              first.stdout + second.stdout)
 
 
 def test_gate_work_repo() -> None:
