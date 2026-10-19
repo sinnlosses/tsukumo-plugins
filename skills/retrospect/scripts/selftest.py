@@ -116,7 +116,7 @@ def test_weekly() -> None:
         check("記録が無ければ期間は7日で last=-", lines_of("期間", out) == [f"PERIOD\t7d\t{(today - timedelta(days=7)).isoformat()}\t{today.isoformat()}\tlast=-"], out)
         headings = [l for l in out.splitlines() if l.startswith("===== ")]
         check(
-            "節は期間・流れの数・段の所要時間・規則の棚卸し・再発しなかった候補・ドラフトの行方の6つだけ",
+            "節は期間・流れの数・段の所要時間・規則の棚卸し・期日を過ぎた介入・再発しなかった候補・ドラフトの行方の7つだけ",
             headings == ["===== 期間 =====", "===== 流れの数 =====", "===== 段の所要時間 =====", "===== 規則の棚卸し =====",
                          "===== 期日を過ぎた介入（期間の中に期日が来たもの） =====",
                          "===== 再発しなかった候補（28日より前） =====", "===== ドラフトの行方（直近28日） ====="],
@@ -1079,6 +1079,44 @@ def test_intervention_effect() -> None:
     check("どちらかの分母が10未満なら判定保留",
           verdicts(one, ships(base_at, 10) + fails(base_at, 10) + ships(now_at, 9) + fails(now_at, 1))
           == [("GH-1", "verify_failed", ie.PENDING, ie.TOO_FEW)])
+
+    def flaky(at: datetime, n: int) -> list[metrics.Event]:
+        rows: list[metrics.Event] = []
+        for i in range(n):
+            task = f"GH-{next(serial)}"
+            rows += [event(at, "verify", task=task, result="VERIFY_NOT_PASSED", key=f"k{i}"),
+                     event(at + timedelta(minutes=1), "verify", task=task, result="VERIFIED", key=f"k{i}")]
+        return rows
+
+    def reclaims(at: datetime, n: int) -> list[metrics.Event]:
+        rows: list[metrics.Event] = []
+        for _ in range(n):
+            task = f"GH-{next(serial)}"
+            rows += [event(at - timedelta(minutes=1), "release", task=task), event(at, "claim", task=task)]
+        return rows
+
+    makers = {
+        "verify_failed": fails,
+        "verify_real": fails,
+        "verify_flaky": flaky,
+        "verify_infra": lambda at, n: [event(at, "verify", result="VERIFY_NOT_PASSED", cause="infra") for _ in range(n)],
+        "ship_verify_failed": lambda at, n: [event(at, "ship", result="VERIFY_FAILED") for _ in range(n)],
+        "reclaim": reclaims,
+    }
+    check("件数の数の表は、tw metrics の数のうち割合・秒・1件あたりでも shipped でもないものと同じ",
+          set(makers) == set(ie.COUNT_METRICS) and set(ie.COUNT_METRICS) < set(ie.METRIC_NAMES) and "shipped" not in ie.COUNT_METRICS)
+    for name, make in makers.items():
+        target = [issue("gh-10", f"`{name}`")]
+        check(f"{name} は送り出しの数で割り、送り出しが倍になっても率が同じなら no observed effect",
+              verdicts(target, ships(base_at, 10) + make(base_at, 4) + ships(now_at, 20) + make(now_at, 8))
+              == [("GH-10", name, ie.NO_EFFECT, "-")])
+        check(f"{name} は件数が増えても率が下がれば helped（送り出し10件で4件 → 20件で6件）",
+              verdicts(target, ships(base_at, 10) + make(base_at, 4) + ships(now_at, 20) + make(now_at, 6))
+              == [("GH-10", name, ie.HELPED, "-")])
+
+    per_task = ships(base_at, 10) + [event(base_at, "verify", task=f"GH-{800 + i // 2}", result="VERIFIED") for i in range(10)]
+    measured = ie.measure("verify_per_task", sorted(per_task, key=lambda e: e.at), [], base_at - timedelta(days=1), base_at + timedelta(days=1))
+    check("1件あたりの数（verify_per_task）は送り出しの数で割らない", measured == ie.Measure(2.0, 10), repr(measured))
     check("行頭が表の名前でもバッククォートの語でもなければ判定保留（測れない兆候）",
           verdicts([issue("gh-2", "描画のタスクで `material.py` の数")], ships(base_at, 10) + ships(now_at, 10))
           == [("GH-2", None, ie.PENDING, ie.UNMEASURABLE)])
@@ -1112,7 +1150,7 @@ def test_intervention_effect() -> None:
         [issue("gh-9", "`verify_failed`", metadata={"from_draft": "機械の検査"})],
         sorted(ships(base_at, 10) + fails(base_at, 2) + ships(now_at, 10) + fails(now_at, 10), key=lambda e: e.at), [], now, 7))
     check("hurt の介入は INTERVENTION の行と、観点・出し先の種類つきの REVERT の行を出す",
-          lines == ["INTERVENTION\tGH-9\tverify_failed\t2(n=10)\t10(n=10)\thurt\t-", "REVERT\tGH-9\t機械の検査\thurt\tスクリプト"],
+          lines == ["INTERVENTION\tGH-9\tverify_failed\t0.2(n=10)\t1(n=10)\thurt\t-", "REVERT\tGH-9\t機械の検査\thurt\tスクリプト"],
           repr(lines))
     check("該当が無ければ EMPTY", ie.section_lines([]) == ["EMPTY"])
 
