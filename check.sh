@@ -15,7 +15,7 @@
 #
 # 1. 構文: install.sh・uninstall.sh・scripts/links.sh（いつも）
 # 2. install.sh・uninstall.sh の自己テスト
-# 3. task-model のスクリプトの自己テスト（review_needed.py・review_snapshot.py を含む）
+# 3. task-model のスクリプトの自己テスト（review_needed.py・review_snapshot.py を含む。台帳と Beads 方式は並べて走らせ、出力は流し終えてから順に出す）
 # 4. task-model の WORKFLOW.md・tw-reference.md を読む検査（それだけが変わったときの軽い段）
 # 5. retrospect のスクリプトの自己テスト
 # 6. plan-tasks のスクリプトの自己テスト
@@ -105,12 +105,24 @@ if stage "task-model: scripts・task コマンドの自己テスト" \
   $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest.py"
   $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_review_needed.py"
   $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_review_snapshot.py"
+  # 台帳と Beads 方式は、それぞれ自分の一時の家（HOME・RAM ディスク・bd のデータ）を作り、ポートも共有しないので並べて走らせる
+  out_task=$(mktemp)
+  out_beads=$(mktemp)
+  $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_task.py" >"$out_task" 2>&1 &
+  pid_task=$!
+  $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_beads.py" >"$out_beads" 2>&1 &
+  pid_beads=$!
+  rc=0
+  wait "$pid_task" || rc=1
+  wait "$pid_beads" || rc=1
   echo
   echo "-- task コマンド（develop/task/ + 台帳） --"
-  $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_task.py"
+  cat "$out_task"
   echo
   echo "-- task コマンド（Beads 方式。bd が無ければ飛ばす） --"
-  $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_beads.py"
+  cat "$out_beads"
+  rm -f "$out_task" "$out_beads"
+  [ "$rc" -eq 0 ] || exit 1
 fi
 
 if stage "task-model: WORKFLOW.md・tw-reference.md を読む検査" skills/task-model/WORKFLOW.md skills/task-model/tw-reference.md; then
