@@ -101,7 +101,19 @@ if stage "install.sh・uninstall.sh の自己テスト" \
 fi
 
 pid_retro=
+pid_task=
+pid_beads=
 out_retro=
+out_task=
+out_beads=
+stop_background() {
+  for pid in $pid_retro $pid_task $pid_beads; do
+    kill "$pid" 2>/dev/null || true
+  done
+  rm -f "$out_retro" "$out_task" "$out_beads"
+}
+trap stop_background EXIT
+trap 'exit 130' INT TERM
 if [ "$mode" != plan ] && touched 'skills/retrospect/*' 'skills/task-model/scripts/*'; then
   out_retro=$(mktemp)
   $LOWPRI python3 "$here/skills/retrospect/scripts/selftest.py" >"$out_retro" 2>&1 &
@@ -121,19 +133,16 @@ if stage "task-model: scripts・task コマンドの自己テスト" \
   pid_beads=$!
   rc=0
   wait "$pid_task" || rc=1
+  pid_task=
   wait "$pid_beads" || rc=1
+  pid_beads=
   echo
   echo "-- task コマンド（develop/task/ + 台帳） --"
   cat "$out_task"
   echo
   echo "-- task コマンド（Beads 方式。bd が無ければ飛ばす） --"
   cat "$out_beads"
-  rm -f "$out_task" "$out_beads"
-  if [ "$rc" -ne 0 ]; then
-    [ -z "$pid_retro" ] || kill "$pid_retro" 2>/dev/null || true
-    rm -f "$out_retro"
-    exit 1
-  fi
+  [ "$rc" -eq 0 ] || exit 1
 fi
 
 if stage "task-model: WORKFLOW.md・tw-reference.md を読む検査" skills/task-model/WORKFLOW.md skills/task-model/tw-reference.md; then
@@ -144,8 +153,8 @@ if stage "retrospect scripts の自己テスト" \
   'skills/retrospect/*' 'skills/task-model/scripts/*'; then
   rc=0
   wait "$pid_retro" || rc=1
+  pid_retro=
   cat "$out_retro"
-  rm -f "$out_retro"
   [ "$rc" -eq 0 ] || exit 1
 fi
 
