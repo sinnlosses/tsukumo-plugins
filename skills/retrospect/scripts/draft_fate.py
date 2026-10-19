@@ -100,7 +100,7 @@ def expired_candidates(issues: list[beads.Issue], now: datetime) -> list[Candida
     return _rows([c for c in beads.candidates(issues, now) if not c.recent], now)
 
 
-def _read_issues(root: str) -> list[beads.Issue] | None:
+def read_issues(root: str) -> list[beads.Issue] | None:
     """Beads の課題。読めなければ理由の行を出して `None`。"""
     try:
         if not beads.is_initialized(root):
@@ -117,7 +117,7 @@ def print_candidates(
 ) -> None:
     print()
     print(f"===== {title} =====")
-    issues = _read_issues(root)
+    issues = read_issues(root)
     if issues is None:
         return
     rows = select(issues)
@@ -131,7 +131,7 @@ def print_candidates(
 def print_section(root: str, now: datetime) -> None:
     print()
     print(f"===== {SECTION_TITLE} =====")
-    issues = _read_issues(root)
+    issues = read_issues(root)
     if issues is None:
         return
     print(f"WINDOW\t{WINDOW_DAYS}d\t却下>={THROTTLE_MIN_DROPPED}かつ却下>採用で{THROTTLED}")

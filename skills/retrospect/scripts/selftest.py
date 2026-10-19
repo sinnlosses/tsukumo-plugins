@@ -118,9 +118,12 @@ def test_weekly() -> None:
         check(
             "節は期間・流れの数・段の所要時間・規則の棚卸し・再発しなかった候補・ドラフトの行方の6つだけ",
             headings == ["===== 期間 =====", "===== 流れの数 =====", "===== 段の所要時間 =====", "===== 規則の棚卸し =====",
+                         "===== 期日を過ぎた介入（期間の中に期日が来たもの） =====",
                          "===== 再発しなかった候補（28日より前） =====", "===== ドラフトの行方（直近28日） ====="],
             "\n".join(headings),
         )
+        effect = lines_of("期日を過ぎた介入（期間の中に期日が来たもの）", out)
+        check("Beads の無いリポジトリでは期日を過ぎた介入は - の1行", len(effect) == 1 and effect[0].startswith("-\t"), out)
         fate = lines_of("ドラフトの行方（直近28日）", out)
         check("Beads の無いリポジトリではドラフトの行方は - の1行", len(fate) == 1 and fate[0].startswith("-\t"), out)
         flow = lines_of("流れの数", out)
@@ -1026,6 +1029,94 @@ def test_viewpoint_vocabulary() -> None:
           tuple(re.findall(r"`([^`]+)`", ladder)) == taskfile.INTERVENTION_TARGETS, repr(ladder))
 
 
+def test_intervention_effect() -> None:
+    print("intervention_effect（期日を過ぎた介入の判定）")
+    sys.path.insert(0, HERE)
+    import intervention_effect as ie
+    from intervention_effect import beads, metrics
+
+    now = datetime(2026, 12, 1, tzinfo=timezone.utc)
+    shipped_at = now - timedelta(days=15)  # 期日は now − 1日
+    base_at = shipped_at - timedelta(days=20)  # 基準線の窓だけに入る
+    now_at = shipped_at + timedelta(days=5)  # いまの窓だけに入る
+    serial = iter(range(1, 100000))
+
+    def stamp(t: datetime) -> str:
+        return t.isoformat(timespec="seconds").replace("+00:00", "Z")
+
+    def issue(bd_id: str, signal: str, *, shipped: datetime = shipped_at, labels: tuple[str, ...] = (),
+              metadata: dict | None = None) -> beads.Issue:
+        description = (f"## 目的・背景\n\nx\n\n## 介入\n\n- 狙う兆候: {signal}\n- 基準線: 直近28日で12回\n"
+                       "- 出し先の種類: スクリプト\n- 判定の期日: 送り出しから14日、または比較できるタスク20件\n- やめる条件: 減らなければ外す\n")
+        raw = {"description": description, "created_at": stamp(shipped - timedelta(days=1)), "closed_at": stamp(shipped),
+               "metadata": metadata or {}}
+        return beads.Issue(bd_id, "題", "closed", labels, (), None, None, None, raw)
+
+    def event(at: datetime, kind: str, **fields: object) -> metrics.Event:
+        task = str(fields.pop("task", f"GH-{next(serial)}"))
+        return metrics.Event(at, kind, task, {"event": kind, "task": task, **fields})
+
+    def ships(at: datetime, n: int) -> list[metrics.Event]:
+        return [event(at, "ship", result="SHIPPED") for _ in range(n)]
+
+    def fails(at: datetime, n: int) -> list[metrics.Event]:
+        return [event(at, "verify", result="VERIFY_NOT_PASSED") for _ in range(n)]
+
+    def verdicts(issues: list[beads.Issue], events: list[metrics.Event], denials: list = (), days: int = 7) -> list[tuple]:
+        found = ie.judge(issues, sorted(events, key=lambda e: e.at), list(denials), now, days)
+        return [(v.task_id, v.name, v.verdict, v.reason) for v in found]
+
+    one = [issue("gh-1", "`verify_failed`（検証の落ち）")]
+    check("tw metrics の数が20%以上減れば helped",
+          verdicts(one, ships(base_at, 10) + fails(base_at, 10) + ships(now_at, 10) + fails(now_at, 2))
+          == [("GH-1", "verify_failed", ie.HELPED, "-")])
+    check("20%以上増えれば hurt",
+          verdicts(one, ships(base_at, 10) + fails(base_at, 2) + ships(now_at, 10) + fails(now_at, 10))
+          == [("GH-1", "verify_failed", ie.HURT, "-")])
+    check("変化が20%未満なら no observed effect",
+          verdicts(one, ships(base_at, 10) + fails(base_at, 10) + ships(now_at, 10) + fails(now_at, 11))
+          == [("GH-1", "verify_failed", ie.NO_EFFECT, "-")])
+    check("どちらかの分母が10未満なら判定保留",
+          verdicts(one, ships(base_at, 10) + fails(base_at, 10) + ships(now_at, 9) + fails(now_at, 1))
+          == [("GH-1", "verify_failed", ie.PENDING, ie.TOO_FEW)])
+    check("行頭が表の名前でもバッククォートの語でもなければ判定保留（測れない兆候）",
+          verdicts([issue("gh-2", "描画のタスクで `material.py` の数")], ships(base_at, 10) + ships(now_at, 10))
+          == [("GH-2", None, ie.PENDING, ie.UNMEASURABLE)])
+
+    pair = [issue("gh-3", "friction log"), issue("gh-4", "`friction log`", shipped=shipped_at - timedelta(days=3))]
+    check("同じ名前を測る介入が比較の範囲の中で送り出されれば両方 confounded",
+          verdicts(pair, ships(base_at, 10) + ships(now_at, 10), days=10)
+          == [("GH-4", "friction log", ie.CONFOUNDED, "重なり:GH-3"), ("GH-3", "friction log", ie.CONFOUNDED, "重なり:GH-4")])
+
+    def gates(at: datetime, n: int, hit: int) -> list[metrics.Event]:
+        return [event(at, "gate", signals="friction log・時間の偏り" if i < hit else "") for i in range(n)]
+
+    again = event(now_at + timedelta(hours=1), "gate", task="GH-900", signals="")
+    first = event(now_at, "gate", task="GH-900", signals="friction log")
+    check("SIGNAL の種類は gate を持つタスクの割合で、同じタスクは最後の1件",
+          verdicts([issue("gh-5", "friction log（委譲先）")], gates(base_at, 10, 5) + gates(now_at, 9, 1) + [first, again])
+          == [("GH-5", "friction log", ie.HELPED, "-")])
+    check("gate の記録が無い窓は分母0で判定保留",
+          verdicts([issue("gh-5", "friction log")], gates(now_at, 10, 1)) == [("GH-5", "friction log", ie.PENDING, ie.TOO_FEW)])
+
+    denials = [ie.Denial(base_at, "worktree-write") for _ in range(10)] + [ie.Denial(now_at, "worktree-write") for _ in range(30)]
+    check("hook の規則のキーは拒否の数を送り出しの数で割り、増えれば hurt",
+          verdicts([issue("gh-6", "`worktree-write` の拒否")], ships(base_at, 10) + ships(now_at, 10), denials)
+          == [("GH-6", "worktree-write", ie.HURT, "-")])
+
+    check("期日が期間の外の介入と、label cancelled の介入は出さない",
+          verdicts([issue("gh-7", "`reclaim`", shipped=now - timedelta(days=30)),
+                    issue("gh-8", "`reclaim`", labels=("cancelled",))], ships(base_at, 10) + ships(now_at, 10)) == [])
+
+    lines = ie.section_lines(ie.judge(
+        [issue("gh-9", "`verify_failed`", metadata={"from_draft": "機械の検査"})],
+        sorted(ships(base_at, 10) + fails(base_at, 2) + ships(now_at, 10) + fails(now_at, 10), key=lambda e: e.at), [], now, 7))
+    check("hurt の介入は INTERVENTION の行と、観点・出し先の種類つきの REVERT の行を出す",
+          lines == ["INTERVENTION\tGH-9\tverify_failed\t2(n=10)\t10(n=10)\thurt\t-", "REVERT\tGH-9\t機械の検査\thurt\tスクリプト"],
+          repr(lines))
+    check("該当が無ければ EMPTY", ie.section_lines([]) == ["EMPTY"])
+
+
 def main() -> None:
     test_viewpoint_vocabulary()
     test_weekly()
@@ -1039,6 +1130,7 @@ def main() -> None:
     test_task_material()
     test_material_commits()
     test_draft_fate()
+    test_intervention_effect()
     print()
     if failures:
         print(f"FAILED {len(failures)}件: " + ", ".join(failures))
