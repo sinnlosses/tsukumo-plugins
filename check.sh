@@ -14,14 +14,14 @@
 # 自己テストは一時ディレクトリを RAM ディスクに置く（作れなければ今の場所）。
 #
 # 1. 構文: install.sh・uninstall.sh・scripts/links.sh（いつも）
-# 2. install.sh・uninstall.sh の自己テスト
-# 3. task-model のスクリプトの自己テスト（review_needed.py・review_snapshot.py を含む。台帳と Beads 方式は並べて走らせ、出力は流し終えてから順に出す）
-# 4. task-model の WORKFLOW.md・tw-reference.md を読む検査（それだけが変わったときの軽い段）
-# 5. retrospect のスクリプトの自己テスト（3 の段と並べて走らせ、出力はこの段で出す）
-# 6. plan-tasks のスクリプトの自己テスト
-# 7. comment-audit のスクリプトの自己テスト
-# 8. task-workflow のスクリプトの自己テスト
-# 9. リポジトリ全体の整合（frontmatter・README の索引・参照先の実在）（いつも）
+# 2. リポジトリ全体の整合（frontmatter・README の索引・参照先の実在）（いつも。1 秒未満なので自己テストより先に落とす）
+# 3. install.sh・uninstall.sh の自己テスト
+# 4. task-model のスクリプトの自己テスト（review_needed.py・review_snapshot.py を含む。台帳と Beads 方式は並べて走らせ、出力は流し終えてから順に出す）
+# 5. task-model の WORKFLOW.md・tw-reference.md を読む検査（それだけが変わったときの軽い段）
+# 6. retrospect のスクリプトの自己テスト（4 の段と並べて走らせ、出力はこの段で出す）
+# 7. plan-tasks のスクリプトの自己テスト
+# 8. comment-audit のスクリプトの自己テスト
+# 9. task-workflow のスクリプトの自己テスト
 #
 # 当たる段は `./check.sh --plan` で見る。
 set -e
@@ -92,6 +92,13 @@ stage() {
 echo "== install.sh・uninstall.sh・scripts/links.sh の構文 =="
 if [ "$mode" != plan ]; then
   sh -n "$here/install.sh" && sh -n "$here/uninstall.sh" && sh -n "$here/scripts/links.sh" && echo "  ok"
+fi
+
+echo
+echo "== リポジトリの整合 =="
+if [ "$mode" != plan ]; then
+  $LOWPRI python3 "$here/scripts/selftest_check_repo.py"
+  python3 "$here/scripts/check_repo.py"
 fi
 
 if stage "install.sh・uninstall.sh の自己テスト" \
@@ -168,11 +175,4 @@ fi
 
 if stage "task-workflow scripts の自己テスト" 'skills/task-workflow/scripts/*' 'skills/task-model/scripts/core/gitcmd.py' 'skills/comment-audit/*'; then
   $LOWPRI python3 "$here/skills/task-workflow/scripts/selftest_self_review.py"
-fi
-
-echo
-echo "== リポジトリの整合 =="
-if [ "$mode" != plan ]; then
-  $LOWPRI python3 "$here/scripts/selftest_check_repo.py"
-  python3 "$here/scripts/check_repo.py"
 fi
