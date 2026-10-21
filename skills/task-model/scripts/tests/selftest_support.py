@@ -215,7 +215,7 @@ def worker_count(test_count: int, env: dict[str, str] | None = None, cpus: int |
     except ValueError:
         wanted = 0
     if wanted < 1:
-        wanted = max(1, -(-cpus * 3 // 10))
+        wanted = max(1, -(-cpus * 5 // 10))
     return min(test_count, wanted)
 
 
