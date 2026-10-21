@@ -5,7 +5,7 @@
 
 見るもの:
 - 各 SKILL.md の frontmatter が読めて、`name` がディレクトリ名と一致すること
-- 各 `agents/*.md`（`install.sh` が `~/.claude/agents/` へ張るエージェント定義）の frontmatter が
+- 各 `agents/*.md`（plugin が持ち込むエージェント定義）の frontmatter が
   読めて、`name` がファイル名と一致し、`description` があること。`no-delegate` の frontmatter が
   コミットを拒む hook（`tw commit-guard`）と返却を拒む hook（`tw handback-guard`）を持つこと。
   `acceptor` が `model: opus` で、`Agent`・`Edit`・`Write`・`NotebookEdit` を持たず hooks も持たないこと
@@ -252,7 +252,7 @@ TW_TARGET = os.path.join(SKILLS, "task-model", "scripts", "tw", "task.py")
 
 def check_tw_entry(names: list[str]) -> None:
     if not os.path.exists(TW_TARGET):
-        fail(f"{os.path.relpath(TW_TARGET, ROOT)} が無い（install.sh の tw の張り先）")
+        fail(f"{os.path.relpath(TW_TARGET, ROOT)} が無い（bin/tw の呼び先）")
     else:
         if not os.access(TW_TARGET, os.X_OK):
             fail(f"{os.path.relpath(TW_TARGET, ROOT)} に実行ビットが無い（tw から起こせない）")

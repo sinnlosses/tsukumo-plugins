@@ -1,8 +1,7 @@
 ## `tw` コマンドの参照
 
-`tw <サブコマンド>` で打つ。`tw` は plugin の `bin/tw`（plugin が有効なあいだ Bash の PATH に入る）か、`install.sh` が PATH 上
-（既定は `~/.local/bin`）に張る `scripts/tw/task.py` へのシンボリックリンクで、どちらもロジックを持たない。
-PATH に無ければ plugin を入れるか、`./install.sh` を打ち直す（`task-model` を対象に含める）。どのディレクトリから打ってもリポジトリの根で動く。
+`tw <サブコマンド>` で打つ。`tw` は plugin の `bin/tw`（plugin が有効なあいだ Bash の PATH に入る。端末で人が打つときは README の wrapper）で、ロジックは持たず `scripts/tw/task.py` を呼ぶ。
+PATH に無ければ plugin を入れる。どのディレクトリから打ってもリポジトリの根で動く。
 出力は常に stdout の TSV で、1行目の先頭語が種類。
 表は「いつ打つか」と出力の先頭語だけを持ち、引数・内部の動き・例外・出力の列は `tw <サブコマンド> --help` が持つ。
 
@@ -84,8 +83,7 @@ hook 4種（Claude Code の hook 3種と git の hook `ref-guard`）の仕様の
 
 **掛かる口**: plugin で入れると、`hooks/hooks.json` が `"${CLAUDE_PLUGIN_ROOT}/bin/tw"` を呼ぶ（plugin のエージェント定義は frontmatter の `hooks` を無視するため）。
 `commit-guard`・`handback-guard` は `--agent-scoped` 付きで、入力に `agent_id` があるときだけ掛かる（`agent_type` は `--agent` で起こした主のセッションにも入るので見ない）。例外が2つあり、`commit-guard` は `agent_id` が無い主のセッションでも書き込みの `bd` だけは判定し（コマンドに `bd` の語が無ければ解析しない）、`agent_id` があるときは `agent_type` の末尾が受け入れ役のエージェント名なら受け入れ役の規則を足す（この `agent_type` が PreToolUse の入力に入るかは実物で確かめていない。`SubagentStart` の `agent_type` は `lap-hook` が使っている）。`handback-guard` は `Edit`・`Write`・`NotebookEdit` の `PreToolUse` でも呼ばれ、書いた印を残す。`commit-guard` は、入力に `agent_id`・`session_id` があり `cwd` の作業ツリーの着手の控えがちょうど1件なら、拒否の判定とは別に、台帳の `flow/` へ `agent` の出来事（`agent`・`session`）を最初の1回だけ足す（`WORKFLOW.md`「ファイル配置と設定ファイル」）。`ask-guard` は付けずに呼び、主のセッションにも掛かる。`lap-hook` も付けずに `SubagentStart` と matcher `Skill` の `PreToolUse` で呼ばれる（下の lap の段落）。
-`install.sh` のリンクだけで入れると `hooks/hooks.json` は読まれず、同梱の実装役のエージェント定義（`agents/` の下）の frontmatter の hook が PATH の `tw` で `commit-guard`・`handback-guard` を掛ける（`ask-guard` は掛からない）。この口は同梱の実装役にしか掛からず、frontmatter に hook を持たない自作の実装役には掛からない（導入経路の一本化 GH-771 の結論に任せる）。同梱の受け入れ役は `scripts/check_repo.py` の規則で frontmatter に hook を持てないので、受け入れ役の `tw`・検証コマンドの拒否はリンクだけで入れたときは掛からない（plugin で入れたときだけ `agent_type` で掛かる）。主のセッションの書き込みの `bd` の拒否も `hooks.json` の口なので、plugin 入れだけ。
-リンクと plugin を併用すると、同梱の実装役への委譲で両方の口が走り、PATH の `tw` と plugin の `bin/tw` の版が違うと `tw verify` のあとの関門が `NOT_VERIFIED scheme` で止まるので、2つを同じチェックアウトに揃える。
+導入は plugin の 1 経路だけ（GH-771 で決めた）。スキルとエージェント定義を `~/.claude/` へリンクで置くと `hooks/hooks.json` が読まれず、`ask-guard`・`lap-hook`・主のセッションの `bd` の書き込みの拒否・受け入れ役の拒否が掛からず、plugin と併用すると同じスキルが二重に見える。同梱の実装役のエージェント定義の frontmatter の hook はリンク導入の時代の口で、plugin では無視される。
 `ref-guard` は `tw claim` が共有の git dir の `hooks/reference-transaction` に置く薄い殻で、全作業ツリーに1つ。控えの無い作業ツリーでは何もしないので、`done`・`ship` では消さない（消してよい。次の `claim` が置き直す）。
 Bash のコマンド文字列に `git` が出ないコミット（`sh -c`・スクリプト越し）も、`ref-guard` が効く作業ツリーでは git の側で拒む。
 `commit-guard` は打つたびに `ref-guard` が効くかを確かめ（`ref_guard.inactive_reason`）、効かなければコミットを自分の文字列の判定で拒む。

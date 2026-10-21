@@ -223,7 +223,7 @@ ship = "既定"                  # 既定は tw finish の手順
 - **「他の人が使う」前提**: tsukumo の `docs/requirements.md` は対象ユーザーを作者本人だけとしている。このプラグインを他の人に向けるなら、tsukumo 側の記述をどう扱うかを決める必要がある
 - **tsukumo 側の追随の範囲**: 段階4で `vendor/tsukumo-plugins` を上げるとき、tsukumo の文書（`workflow-contract.md`・`CLAUDE.md` の手順の参照など）のどこが `task-workflow` を規則の正典として指しているかは数えていない
 - **パーツの選びの置き場**: 本文はリポジトリごと（`.tw/config.toml`。コミットされ、同じリポジトリの人と流れを共有できる）にした。利用者ごとの好み（受け入れ役だけ替えたい、など）を許すなら、利用者単位の設定を重ねる層が要る
-- **リンクで入れたときの関門**: `hooks.json` は plugin で入れたときだけ読まれる。リンクで入れた人が自作の実装役を使うと、frontmatter に hook を持たないので関門が掛からない。plugin で入れることを前提にするか、`setup-tasks` がプロジェクトの `.claude/settings.json` に hook を足すかを決める
+- **リンクで入れたときの関門**（GH-771 で決着）: `hooks.json` は plugin で入れたときだけ読まれるので、導入を plugin の 1 経路に一本化し、リンクの道具（`install.sh` ほか）を消した
 - **`next-task` から `task-workflow` を呼ぶ形**: Skill ツールで呼ぶと想定した。`/loop` の続行判断を `task-workflow` 側に置いたので、`/loop /next-task` が1サイクルで止まるかは段階4で確かめる
   - 段階4（GH-779）で決めた: 完了報告と `/loop` の続行判断は `task-workflow/completion-report.md` が持ち、文脈を空にして送り直すときは「呼ばれたときに渡された `/loop` の依頼文」をそのまま渡す。`next-task` は手順5より前で止まったときの節だけを持ち、そこからは続行しない。実際の `/loop` で1サイクルずつ回るかは、実タスクで確かめる
 - **改名と `tw` の張り替え**（段階4で決めた）: `install.sh` は、改名前の置き場（`skills/task-workflow/scripts/task.py`）を指す `~/.local/bin/tw` を自分のリンクとして張り替える。主ブランチへ入れたら、続けて `./install.sh` を打つ（打つまで PATH の `tw` は消えたパスを指して動かない）

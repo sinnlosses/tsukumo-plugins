@@ -21,22 +21,45 @@ tsukumo のワークフローの契約に型の合う1つの例だが、tsukumo 
 プラグインに入れたエージェント定義の frontmatter の `hooks` は無視されるので、hook は `hooks/hooks.json` が掛ける。
 hook の掛かり方は `skills/task-model/tw-reference.md`「hook の関門」節。
 
-開発中は `claude --plugin-dir .`（このリポジトリの根）で読ませ、`claude plugin validate .` で検査する。
+入れ方はこの1つだけにする。スキルを `~/.claude/skills/` へ、エージェント定義を `~/.claude/agents/` へリンクで置くと、
+同じスキルが二重に見え、`hooks/hooks.json` が読まれないぶん `ask-guard`・`lap-hook`・主のセッションの `bd` 書き込みの拒否・受け入れ役の拒否が掛からない。
 
-## リンクで入れる（`install.sh`）
+### このリポジトリの作業ツリーで直しながら使う
 
-マーケットプレイスの代わりに、`./install.sh` で `~/.claude/skills/<name>` へスキルを、`~/.claude/agents/` へ
-エージェント定義を、`~/.local/bin/tw` へ `tw` をシンボリックリンクで張る。入れ方はどちらか一方だけにする
-（両方で入れると同じスキルが二重に見える）。
-リンクだけで入れると `hooks/hooks.json` は読まれず、hook はエージェント定義の frontmatter が掛ける。
-hook の掛かり方と、やむを得ず plugin と併用したときの注意は `skills/task-model/tw-reference.md`「hook の関門」節。
+公開リポジトリではなく、手元の作業ツリーのパスでマーケットプレイスを足す。
 
-- 張る先は `--dest DIR` → `CLAUDE_CONFIG_DIR`（設定されていればその下の `skills/`）→ `$HOME/.claude/skills`
-  の順で決まる。`tw` の張る先は `--bin-dir DIR`（無ければ `~/.local/bin`）
-- 実ディレクトリや他所を指すリンクは触らず警告し、消したスキルの残骸は掃除する
-- 引数にスキル名を渡すと対象を絞れる。絞ったときは `REQUIRES`（依存する兄弟スキル名を1行ずつ書いた
-  ファイル）を読み、依存先が張る先に無ければ警告する
-- `./uninstall.sh [--dest DIR] [--bin-dir DIR] [スキル名...]` は、このリポジトリを指すリンクだけを外す
+```
+/plugin marketplace add /絶対パス/tsukumo-plugins
+/plugin install tsukumo-workflow@tsukumo-plugins
+```
+
+ローカルパスで足したマーケットプレイスの plugin は、キャッシュへコピーされず作業ツリーから直に読まれる。
+直したものは次のセッションの開始か `/reload-plugins` で効き、版を上げる必要は無い（自動更新の設定とも関係しない）。
+公開リポジトリから入れたときは、第三者のマーケットプレイスの自動更新は既定でオフなので、
+`/plugin` の Marketplaces タブで自動更新を有効にするか `claude plugin update tsukumo-workflow@tsukumo-plugins` を打つ。
+
+### 端末で `tw` を打つ
+
+`bin/tw` が PATH に入るのは Claude Code の Bash ツールの中だけで、人が端末で打つ `tw` には届かない。
+端末でも打つなら、`bin/tw` を呼ぶ 2 行を `~/.local/bin/tw` に置いて実行権を付ける。
+`bin/tw` は自分の場所から根を引くので、シンボリックリンクでは動かない。
+
+```sh
+#!/bin/sh
+exec /絶対パス/tsukumo-plugins/bin/tw "$@"
+```
+
+### リンクで入れていた環境の切り替え
+
+人がやる（グローバルな設定の書き換えにあたる）。
+
+1. `~/.claude/skills/` と `~/.claude/agents/` の、このリポジトリを指すリンクを外す（`ls -l` で指す先を見て、`tsukumo-plugins` を指すものだけ）
+2. `~/.local/bin/tw` の、このリポジトリを指すリンクを外し、上の 2 行に置き換える
+3. 上の 2 コマンドで plugin を入れ、`claude plugin list` に `tsukumo-workflow` が出ることと、`/reload-plugins` のあとにスキルが `tsukumo-workflow:<name>` で並ぶことを確かめる
+
+Claude Code 以外の環境（Codex など）へスキルを置く入口は、このリポジトリでは持たない。
+
+開発中は `claude --plugin-dir .` でも読ませられ（その 1 セッションだけ）、`claude plugin validate .` で検査する。
 
 ## `.git` が読み取り専用の sandbox で打つとき
 
@@ -130,16 +153,14 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
 ./check.sh --plan   # 段を流さず、流す段と飛ばす段だけを出す
 ```
 
-1. `install.sh`・`uninstall.sh`・`scripts/links.sh` の構文
-2. `install.sh`・`uninstall.sh` の自己テスト（`scripts/selftest_links.sh`）
-3. `task-model` のスクリプトの自己テスト（`scripts/tests/` の `selftest.py`・`selftest_review_needed.py`・`selftest_review_snapshot.py`・`selftest_task.py`・`selftest_beads.py`。
+1. `task-model` のスクリプトの自己テスト（`scripts/tests/` の `selftest.py`・`selftest_review_needed.py`・`selftest_review_snapshot.py`・`selftest_task.py`・`selftest_beads.py`。
    後ろの2つは入口で、テストの本体は `selftest_t_*.py`・`selftest_b_*.py` にある。
    `bd` が無ければ非0で終わる）
-4. `retrospect` の自己テスト
-5. `plan-tasks` の自己テスト
-6. `comment-audit` の自己テスト
-7. `task-workflow` の自己テスト
-8. リポジトリの整合（`scripts/check_repo.py`。frontmatter、この README の由来一覧と `skills/` の一致、
+2. `retrospect` の自己テスト
+3. `plan-tasks` の自己テスト
+4. `comment-audit` の自己テスト
+5. `task-workflow` の自己テスト
+6. リポジトリの整合（`scripts/check_repo.py`。frontmatter、この README の由来一覧と `skills/` の一致、
    参照先の実在、スキル間の依存の辺と `task-model` が役の名で書かれていること、
    プラグインの名前と `bin/tw`・`hooks/hooks.json`、エージェント定義）
 

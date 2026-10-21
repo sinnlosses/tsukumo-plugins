@@ -2,11 +2,9 @@
 
 ## 依存を確かめる
 
-`command -v tw` が何も返さなければ、`tw` が PATH に張られていないとして `MISSING` を報告して終了する。
-入れ方は次のとおり案内する。
-
-- plugin で入れるなら `/plugin install tsukumo-workflow@tsukumo-plugins`
-- リンクで入れるなら `task-model` を含めて `./install.sh` を打ち直す
+`command -v tw` が何も返さなければ、`tw` が PATH に無いとして `MISSING` を報告して終了する。
+入れ方は `/plugin install tsukumo-workflow@tsukumo-plugins` の 1 つだけを案内する（plugin が有効なあいだ、`bin/tw` が Bash ツールの PATH に入る）。
+端末で人が打つ `tw` は plugin では届かないので、README の「端末で `tw` を打つ」の wrapper を案内する。
 
 ## 設定が読めないとき
 

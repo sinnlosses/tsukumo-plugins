@@ -10,10 +10,9 @@ description: "タスク運用に要る .tw/ （.gitignore）をプロジェク�
 ## 手順
 
 0. **依存を確かめる**: `${CLAUDE_SKILL_DIR}/../task-model/scripts/tw/task.py` が無ければ、
-   `task-model` スキルが張られていないとして `MISSING` を報告して終了する（plugin で入れるなら
-   `/plugin install tsukumo-workflow@tsukumo-plugins`、リンクで入れるなら `install.sh` で
-   `task-model` も一緒に張るよう案内する。以下の手順で打つ `task-model` の各スクリプトは
-   これが前提）。`command -v tw` が何も返さないときも同じく `MISSING` として、同じ2つの入れ方を案内する。
+   `task-model` スキルが入っていないとして `MISSING` を報告して終了する（
+   `/plugin install tsukumo-workflow@tsukumo-plugins` を案内する。以下の手順で打つ `task-model` の各スクリプトは
+   これが前提）。`command -v tw` が何も返さないときも同じく `MISSING` として、同じ入れ方を案内する。
 
 1. **`.tw/` を用意する**。骨組みは決まりきっているので手で書かない（見出し以外の行が混ざると `/plan-tasks` が
    「未対応の指示がある」と誤判定する）:
@@ -79,4 +78,4 @@ description: "タスク運用に要る .tw/ （.gitignore）をプロジェク�
 - タスクの登録・実行（`/plan-tasks`・`/next-task`）
 - `.tw/` を `.gitignore` に足す（タスクの正典はコミットして共有する。`.tw/local/` だけは `.tw/.gitignore` が外す）
 - `AGENTS.md`・`CLAUDE.md` の書き換え。整形コマンド・ブランチを聞くこと
-- `~/.claude/skills/` へのリンク（スキル自体の導入は tsukumo-plugins の `install.sh`）
+- `~/.claude/skills/` へのリンク（スキル自体の導入は plugin の `/plugin install`）

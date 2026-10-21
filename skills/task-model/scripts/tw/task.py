@@ -5,7 +5,7 @@
 
 使い方: tw <status|new|claim|release|done|ship|finish|land|config|config-doctor|show|find|edit|plan-check|plan-phases|verify|verify-check|accept|brief|pause|step|lap|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|ask-guard|lap-hook|ref-guard> ...
 
-`install.sh` が PATH 上に張る `tw` と、plugin の `bin/tw` から呼ぶ。`commit-guard`・`handback-guard` の
+plugin の `bin/tw` から呼ぶ。`commit-guard`・`handback-guard` の
 `--agent-scoped` は plugin の `hooks/hooks.json` が付け、入力に `agent_id` があるとき（サブエージェント）だけ関門を掛ける（`commit-guard` は主のセッションの書き込みの `bd` だけ例外）。
 `ask-guard` は `--agent-scoped` を持たず、主のセッションにもサブエージェントにも掛かる。
 スキル側の呼び方の正典は task-model の tw-reference.md「`tw` コマンドの参照」。
@@ -257,7 +257,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     ),
     "ask-guard": (
         "Claude Code の PreToolUse hook から呼ばれ、`/loop` に載せたタスクの作業中の AskUserQuestion を拒む。",
-        r"""Claude Code の `PreToolUse` hook（plugin の `hooks/hooks.json` の matcher `AskUserQuestion`。`"${CLAUDE_PLUGIN_ROOT}/bin/tw"` の絶対パスで呼ぶ）から呼ばれる。`--agent-scoped` を持たず、名前（`agent_type`）を見ないので主のセッションにもサブエージェントにも掛かる。`install.sh` のリンクだけで入れたときは `hooks/hooks.json` が読まれないので掛からない。入力の `tool_name` が `AskUserQuestion` で、`cwd` の作業ツリーに `.tw/local/task-open-claims/` の控え（`commit-guard` と同じ読む順）があり、控えのタスクのどれかが `loopable: Y` で、作業の段の後でなければ拒む。作業の段の後とは、主のセッション（入力に `agent_id` が無い）で、台帳の `flow/` のそのタスクの最後の `claim` より後の最後の `lap` が `accept` の `end` か、段 `retro`・`land`・`sync` のとき（振り返りの lap を打たない流れでも受け入れの後は通す）。サブエージェント（`agent_id` がある）の質問は段によらず拒む。`tw` にも `bd` にも書かない（`bd` は読む）
+        r"""Claude Code の `PreToolUse` hook（plugin の `hooks/hooks.json` の matcher `AskUserQuestion`。`"${CLAUDE_PLUGIN_ROOT}/bin/tw"` の絶対パスで呼ぶ）から呼ばれる。`--agent-scoped` を持たず、名前（`agent_type`）を見ないので主のセッションにもサブエージェントにも掛かる。リンクで置いたときは `hooks/hooks.json` が読まれないので掛からない。入力の `tool_name` が `AskUserQuestion` で、`cwd` の作業ツリーに `.tw/local/task-open-claims/` の控え（`commit-guard` と同じ読む順）があり、控えのタスクのどれかが `loopable: Y` で、作業の段の後でなければ拒む。作業の段の後とは、主のセッション（入力に `agent_id` が無い）で、台帳の `flow/` のそのタスクの最後の `claim` より後の最後の `lap` が `accept` の `end` か、段 `retro`・`land`・`sync` のとき（振り返りの lap を打たない流れでも受け入れの後は通す）。サブエージェント（`agent_id` がある）の質問は段によらず拒む。`tw` にも `bd` にも書かない（`bd` は読む）
 
 出力: 拒むときだけ PreToolUse の deny の JSON 1行（理由はタスクIDと次の一手を打つ順に: `tw release T-xxx`（着手中は `--status` を直せない）・`tw edit T-xxx --status hold`・`## 注意` に論点を1行足す `tw edit T-xxx --section 注意 --body-file -`、作業ツリーに作業が残っていなければ `tw status` を取り直して `READY` かつ `loopable: Y` の行が残る限り `/loop` は次の1件へ、残っていれば人に預けて終える）。通すとき・ほかのツールには何も出さない
 
@@ -266,7 +266,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     ),
     "lap-hook": (
         "Claude Code の hook から呼ばれ、委譲と振り返りの段の頭の `lap` を台帳に書く。手で打たない。",
-        r"""Claude Code の hook（plugin の `hooks/hooks.json` の `SubagentStart` と、matcher `Skill` の `PreToolUse`。`"${CLAUDE_PLUGIN_ROOT}/bin/tw"` の絶対パスで呼ぶ）から呼ばれる。`install.sh` のリンクだけで入れたときは `hooks/hooks.json` が読まれないので呼ばれない。関門ではなく記録で、何も拒まない。入力の `cwd` の作業ツリーの `.tw/local/task-open-claims/` の控え（`commit-guard` と同じ読む順）がちょうど1件のとき、そのタスクの `flow/` に次の `lap` の `start` を1行足す: `SubagentStart` で `agent_type` の最後の `:` より後ろが `no-delegate`・`general-purpose` なら段 `delegate`（受け入れ役 `acceptor` などほかの名前は書かない。`accept` が開いているあいだ〔受け入れ中の差し戻しの再開〕も書かない）。主のセッション（入力に `agent_id` が無い）の `Skill` で `tool_input.skill` の最後の `:` より後ろが `retrospect` なら段 `retro`（最後の `claim` 以降の `accept` の最後の端が `end` のときだけ）。どちらも、最後の `claim` 以降でその段が開いていれば（`start` に `end` が続かない。手打ちの `lap` を含む）書かない。控えが0件か2件以上・ほかのイベントやツールは何もしない。end は `lap T-xxx accept start`（`delegate`。`tw accept` が打つ）・`finish`（`retro`）が書く。`bd` は記録の `difficulty` を引くために読む
+        r"""Claude Code の hook（plugin の `hooks/hooks.json` の `SubagentStart` と、matcher `Skill` の `PreToolUse`。`"${CLAUDE_PLUGIN_ROOT}/bin/tw"` の絶対パスで呼ぶ）から呼ばれる。リンクで置いたときは `hooks/hooks.json` が読まれないので呼ばれない。関門ではなく記録で、何も拒まない。入力の `cwd` の作業ツリーの `.tw/local/task-open-claims/` の控え（`commit-guard` と同じ読む順）がちょうど1件のとき、そのタスクの `flow/` に次の `lap` の `start` を1行足す: `SubagentStart` で `agent_type` の最後の `:` より後ろが `no-delegate`・`general-purpose` なら段 `delegate`（受け入れ役 `acceptor` などほかの名前は書かない。`accept` が開いているあいだ〔受け入れ中の差し戻しの再開〕も書かない）。主のセッション（入力に `agent_id` が無い）の `Skill` で `tool_input.skill` の最後の `:` より後ろが `retrospect` なら段 `retro`（最後の `claim` 以降の `accept` の最後の端が `end` のときだけ）。どちらも、最後の `claim` 以降でその段が開いていれば（`start` に `end` が続かない。手打ちの `lap` を含む）書かない。控えが0件か2件以上・ほかのイベントやツールは何もしない。end は `lap T-xxx accept start`（`delegate`。`tw accept` が打つ）・`finish`（`retro`）が書く。`bd` は記録の `difficulty` を引くために読む
 
 出力: 何も出さない（`SubagentStart` の stdout は委譲先の文脈に入りうる）。終了コードはいつも0。読めない入力も何もせずに通す""",
     ),
