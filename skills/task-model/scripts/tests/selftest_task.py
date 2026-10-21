@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """`task.py` の自己テスト。
 
-使い方: python3 selftest_task.py [テストの関数名 ...]（名前を渡すとそれだけを流す）
+使い方: python3 selftest_task.py [--module selftest_t_<名前> ...] [テストの関数名 ...]
+（関数名を渡すとそれだけを流す。`--module` は繰り返せて、指定のモジュールの分だけを流す。無い名前は非0）
 
 一時ディレクトリに git リポジトリと作業ツリー2本と `.beads` を作り（本物の `bd` を一時の HOME で打つ）、`task.py` を実際に
 子プロセスで（並行するテストは同時に）起こして検証する。テストは領域ごとに `selftest_t_*.py` へ分け、この入口がそれを並列に流す。
@@ -44,10 +45,29 @@ MODULES = (
 )
 
 
+def take_modules(argv: list[str]) -> tuple[tuple, list[str]]:
+    """`--module <名前>`（繰り返し可）を取り除き、指定のモジュール（無ければ全部）と残りの引数を返す。"""
+    names: list[str] = []
+    rest: list[str] = []
+    it = iter(argv)
+    for arg in it:
+        if arg == "--module":
+            names.append(next(it, ""))
+        else:
+            rest.append(arg)
+    known = {m.__name__: m for m in MODULES}
+    unknown = [n for n in names if n not in known]
+    if unknown:
+        print("該当するモジュールが無い: " + ", ".join(unknown))
+        raise SystemExit(1)
+    return (tuple(known[n] for n in dict.fromkeys(names)) if names else MODULES), rest
+
+
 def main() -> None:
-    tests = tuple(t for m in MODULES for t in m.TESTS)
+    modules, only = take_modules(sys.argv[1:])
+    tests = tuple(t for m in modules for t in m.TESTS)
     with beads_home((beads.PREFIX_LOCAL,)):
-        outputs = run_parallel(select(tests, sys.argv[1:]))
+        outputs = run_parallel(select(tests, only))
     finish([*outputs, local.lines])
 
 

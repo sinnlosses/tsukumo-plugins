@@ -168,9 +168,28 @@ def test_worker_count() -> None:
     check("TW_SELFTEST_WORKERS が数字でなければ既定", worker_count(100, {"TW_SELFTEST_WORKERS": "many"}, 10) == 5)
 
 
+def test_scope() -> None:
+    import selftest_scope as s
+
+    tw_files = {f for f in os.listdir(s.TW_DIR) if f.startswith("tw_") and f.endswith(".py")}
+    listed = set(s.SCOPED_TW) | set(s.FULL_TW)
+    check("scripts/tw の tw_*.py が対応の表か全件の一覧に載っている", tw_files <= listed, ", ".join(sorted(tw_files - listed)))
+    check("対応の表と全件の一覧に重なりも実在しないファイルも無い", not set(s.SCOPED_TW) & set(s.FULL_TW) and listed <= tw_files, ", ".join(sorted(listed - tw_files)))
+    check("対応先のモジュールが実在する", all(os.path.exists(os.path.join(s.HERE, m + ".py")) for m in s.SCOPED_TW.values()))
+    ship = s.TW_PREFIX + "tw_ship.py"
+    check("表の行は対応するモジュールだけを返す", s.scope([ship, s.TW_PREFIX + "tw_verify.py"]) == ["selftest_t_ship", "selftest_t_verify"])
+    check("自己テストのモジュール自身はそのモジュールを返す", s.scope([s.TESTS_PREFIX + "selftest_t_flow.py"]) == ["selftest_t_flow"])
+    check("全件の一覧のファイルは全件", s.scope([ship, s.TW_PREFIX + "tw_edit.py"]) == [s.ALL])
+    check("土台のファイルは全件", all(s.scope([p]) == [s.ALL] for p in (
+        "skills/task-model/scripts/core/beads.py", "skills/task-model/scripts/tw/task.py", s.TW_PREFIX + "tw_base.py",
+        s.TESTS_PREFIX + "selftest_support.py", s.TESTS_PREFIX + "selftest_fixtures.py", "check.sh", "hooks/x")))
+    check("一覧が空なら全件", s.scope([]) == [s.ALL] and s.scope([""]) == [s.ALL])
+
+
 def main() -> None:
     test_init()
     test_worker_count()
+    test_scope()
     print()
     if failures:
         print(f"FAILED {len(failures)}件: " + ", ".join(failures))
