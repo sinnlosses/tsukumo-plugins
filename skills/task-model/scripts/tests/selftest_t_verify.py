@@ -393,6 +393,7 @@ def test_readonly_commands_stay_out_of_git() -> None:
     say("task.py: 読むだけのサブコマンドは、未コミット・主ブランチが進んだ・衝突の各状態で、読み取り専用の .git でも落ちず object を足さない")
     args_of = {
         "status": ["status"],
+        "status --claims": ["status", "--claims"],
         "show": ["show", "T-120"],
         "find": ["find", "書く"],
         "plan-check": ["plan-check", "T-120"],

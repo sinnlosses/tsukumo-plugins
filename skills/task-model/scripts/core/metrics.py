@@ -202,6 +202,12 @@ def _since_last_claim(events: list[Event], task_id: str) -> list[Event]:
     return own[claims[-1] :] if claims else []
 
 
+def last_lap_stage(events: list[Event], task_id: str) -> str | None:
+    """そのタスクの最後の `claim` 以降の最後の `lap` の段。`lap` が無ければ `None`。"""
+    stages = [e.fields.get("stage") for e in _since_last_claim(events, task_id) if e.kind == "lap"]
+    return str(stages[-1]) if stages and stages[-1] else None
+
+
 def last_edge(events: list[Event], task_id: str, stage: str) -> str | None:
     """そのタスクの最後の `claim` 以降で、段 `stage` の `edge` 付きの最後の `lap` の `edge`。無ければ `None`。"""
     edges = [

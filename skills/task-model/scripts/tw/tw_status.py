@@ -11,7 +11,9 @@ from typing import Callable
 import beads
 import cross_review
 import layout
+import ledger
 import gitinfo
+import metrics
 import taskfile
 import tracker
 import tw_base
@@ -26,6 +28,19 @@ LONG_SUMMARY_WIDTH = 80
 def display_width(s: str) -> int:
     """端末に出したときの桁数。日本語（East Asian Wide/Fullwidth）は2桁。"""
     return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s)
+
+
+def cmd_status_claims(toplevel: str) -> None:
+    """この作業ツリーが着手の印を持つタスクを 1行の JSON で出す（読むだけ）。
+
+    `claim` は Beads の `started_at`（`claim` のたびに変わる）、`stage` は最後の `claim` 以降の最後の `lap` の段（無ければ `null`）。
+    """
+    events, _skipped = metrics.read_events(ledger.ledger_root(toplevel))
+    claims = []
+    for issue in tw_base.claimed_issues(toplevel):
+        shown = beads.to_task_id(issue.bd_id)
+        claims.append({"task": shown, "stage": metrics.last_lap_stage(events, shown), "claim": issue.started_at})
+    print(json.dumps({"claims": claims}, ensure_ascii=False))
 
 
 def cmd_status(toplevel: str, show_all: bool, check: bool) -> None:

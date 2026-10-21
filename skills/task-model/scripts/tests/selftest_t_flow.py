@@ -322,6 +322,40 @@ def test_lap_edge() -> None:
               [(e["stage"], e.get("edge")) for e in laps] == [("land", "start"), ("land", "end"), ("sync", None)], repr(laps))
 
 
+def test_status_claims() -> None:
+    say("task.py status --claims: 着手なしは空、1件は ID・段なし・鍵、lap の後は最後の段、claim し直すと鍵が変わる")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(tmp, branch="切らない")
+        commit_task(main_path, taskfile.Task("T-100", "口", "todo", "sonnet", "Y", (), BODY))
+        commit_task(main_path, taskfile.Task("T-101", "口2", "todo", "sonnet", "Y", (), BODY))
+
+        def claims(cwd: str) -> list[dict]:
+            r = run_task(cwd, "status", "--claims")
+            check("status --claims は終了コード0で 1行の JSON", r.returncode == 0 and len(r.stdout.splitlines()) == 1, r.stdout + r.stderr)
+            return json.loads(r.stdout)["claims"]
+
+        check("着手が無ければ空", claims(wt1) == [])
+
+        run_task(wt1, "claim", "T-100")
+        first = claims(wt1)
+        check("1件: ID・段は null・鍵は空でない",
+              len(first) == 1 and first[0]["task"] == "T-100" and first[0]["stage"] is None and bool(first[0]["claim"]), repr(first))
+        check("別の作業ツリーには出ない", claims(wt2) == [])
+
+        run_task(wt1, "lap", "T-100", "delegate", "start")
+        run_task(wt1, "lap", "T-100", "accept")
+        laid = claims(wt1)
+        check("lap の後は最後の lap の段で、鍵は変わらない",
+              laid[0]["stage"] == "accept" and laid[0]["claim"] == first[0]["claim"], repr(laid))
+
+        run_task(wt1, "release", "T-100")
+        check("release の後は空", claims(wt1) == [])
+        run_task(wt1, "claim", "T-100")
+        again = claims(wt1)
+        check("claim し直すと鍵が変わり、段は前の着手の lap を引かず null に戻る",
+              again[0]["claim"] != first[0]["claim"] and again[0]["stage"] is None, repr((first, again)))
+
+
 def test_relay() -> None:
     say("task.py relay: 鍵ごとに最後の申し送りを読み、空は消した扱い、書けるのは着手の持ち主だけで、release・done をまたいで残る")
     with tempfile.TemporaryDirectory() as tmp:
@@ -1203,6 +1237,7 @@ TESTS = (
     test_metrics_stages_parallel_steps,
     test_metrics_stages_edge,
     test_lap_edge,
+    test_status_claims,
     test_relay,
     test_record_normalizes_task_id,
     test_unregistered_tests_named,

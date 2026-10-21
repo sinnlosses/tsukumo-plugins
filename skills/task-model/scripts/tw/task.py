@@ -59,7 +59,7 @@ HOOK_NOTE = """commit-guard・handback-guard・ask-guard は Claude Code の hoo
 SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     "status": (
         "一覧（読むだけ。done/dropped は件数だけ。`--all` で行も）。",
-        r"""一覧（読むだけ。done/dropped は件数だけ。`--all` で行も）。`--check` は検証コマンド向けの判定で、Beads の課題がこの運用の形（状態・`difficulty`・`loopable`・`direct:` の label・題）に読めないものがあれば `INVALID`、無ければ `OK`（本文の枠は見ない。枠は `new`・`adopt`・`edit` が書くときに検査する）
+        r"""一覧（読むだけ。done/dropped は件数だけ。`--all` で行も）。`--check` は検証コマンド向けの判定で、Beads の課題がこの運用の形（状態・`difficulty`・`loopable`・`direct:` の label・題）に読めないものがあれば `INVALID`、無ければ `OK`（本文の枠は見ない。枠は `new`・`adopt`・`edit` が書くときに検査する）。`--claims` は一覧の代わりに、この作業ツリーが着手の印を持つタスクを 1行の JSON `{"claims": [{"task", "stage", "claim"}, …]}` で出す（`tw` の「stdout は先頭語の TSV」の例外。着手なしは `{"claims": []}`、2件以上なら全部）。`task` は表示のタスクID、`stage` は最後の `claim` 以降の最後の `lap` の段（無ければ `null`）、`claim` は Beads の `started_at`（`claim` し直すと変わる、着手の同一性の鍵）。`--all`・`--check` とは一緒に使わない（`--claims` が先）
 
 出力: 行 `id/status/difficulty/loopable/dependencies/着手可否/印/summary`（ドラフトは status が `draft`・着手可否が `DRAFT`。候補〔label `candidate` のドラフト〕は `--all` でも行に出さない）、`---` の後に `counts`（ドラフトの件数は `draft=` で、候補は数えない）・`ready`（ドラフトは数えない）・`todo_loopable`・`stale`・`invalid`・`triage\t<件数>\t<ID>`（振り分け前の課題。TRACKER.md の「サイクルの各段で Beads に起きること」）・`CANDIDATE\t<件数>\t<ID>`（候補。無ければ `-`）・（`jira` なら）`jira_close`・（横断の振り返りの時期なら）`retrospect_due`。`retrospect_due\t<最後の記録の日付>\t<経過日数>d` は `docs/history/retrospect.md` の見出しの日付（主ブランチの版と作業ツリーの版の遅いほう）から7日以上経ったときに出る。記録が無いあいだは台帳の `flow/` の最も古い出来事から7日以上で `retrospect_due\t-\t<経過日数>d`（`flow/` が無ければ出ない）""",
     ),
@@ -302,6 +302,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_status = sub.add_parser("status")
     p_status.add_argument("--all", dest="show_all", action="store_true")
     p_status.add_argument("--check", action="store_true")
+    p_status.add_argument("--claims", action="store_true")
 
     p_new = sub.add_parser("new")
     p_new.add_argument("--summary")
@@ -545,7 +546,9 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
         raise SystemExit(6)
     tracker.read_tracker(toplevel)  # 読めない設定はどのサブコマンドでも先に INVALID にする
     try:
-        if args.command == "status":
+        if args.command == "status" and args.claims:
+            tw_status.cmd_status_claims(toplevel)
+        elif args.command == "status":
             tw_status.cmd_status(toplevel, args.show_all, args.check)
         elif args.command == "new":
             if args.batch is not None:
