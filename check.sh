@@ -14,7 +14,7 @@
 # 自己テストは一時ディレクトリを RAM ディスクに置く（作れなければ今の場所）。
 #
 # 1. 構文: install.sh・uninstall.sh・scripts/links.sh（いつも）
-# 2. リポジトリ全体の整合（frontmatter・README の索引・参照先の実在）（いつも。1 秒未満なので自己テストより先に落とす）
+# 2. リポジトリ全体の整合（frontmatter・README の索引・参照先の実在）（いつも）
 # 3. install.sh・uninstall.sh の自己テスト
 # 4. task-model のスクリプトの自己テスト（review_needed.py・review_snapshot.py を含む。台帳と Beads 方式は並べて走らせ、出力は流し終えてから順に出す）
 # 5. task-model の WORKFLOW.md・tw-reference.md を読む検査（それだけが変わったときの軽い段）
