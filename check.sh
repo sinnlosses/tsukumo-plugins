@@ -17,8 +17,7 @@
 # 2. リポジトリ全体の整合（frontmatter・README の索引・参照先の実在）（いつも）
 # 3. install.sh・uninstall.sh の自己テスト
 # 4. task-model のスクリプトの自己テスト（review_needed.py・review_snapshot.py を含む。台帳と Beads 方式は並べて走らせ、出力は流し終えてから順に出す）
-#    絞れるとき（tests/selftest_scope.py が決める。tw_accept.py・tw_brief.py・tw_finish.py・tw_ship.py・tw_verify.py・tw_plan.py と
-#    selftest_t_*.py だけが変わったとき）は、selftest_task.py に当たる selftest_t_* だけを流す。それ以外のファイルは全件
+#    絞れるときは tests/selftest_scope.py の対応の表が決め、selftest_task.py に当たる selftest_t_* だけを流す。表に載らないファイルは全件
 # 5. task-model の WORKFLOW.md・tw-reference.md を読む検査（それだけが変わったときの軽い段）
 # 6. retrospect のスクリプトの自己テスト（4 の段と並べて走らせ、出力はこの段で出す）
 # 7. plan-tasks のスクリプトの自己テスト
