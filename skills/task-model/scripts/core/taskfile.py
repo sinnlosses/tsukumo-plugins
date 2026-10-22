@@ -270,6 +270,11 @@ def intervention_refusal(body: str, *, required: bool) -> str | None:
 _INTERVENTION_LINE = re.compile(r"^- ([^:：\n]+?):[ \t]*(.*?)[ \t]*$", re.MULTILINE)
 
 
+def section_content(body: str, heading: str) -> str:
+    """`heading` の節の中身（前後の空行を落とす）。節が無ければ空。"""
+    return dict(_frame_sections(body)[1]).get(heading, "")
+
+
 def section_changed(old_body: str, new_body: str, heading: str) -> bool:
     """`heading` の節の中身が `old_body` と違うか。行末の空白と連続する空行の数は無視する。"""
     old = dict(_frame_sections(old_body)[1]).get(heading, "")

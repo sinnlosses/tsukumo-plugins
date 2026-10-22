@@ -3,7 +3,7 @@
 # 宣言が無いと Python 3.9 が、長い日本語の行の読み込み位置によって「Non-UTF-8 code」で落ちる。
 """Beads に置いたタスクの運用を操作する入口コマンド。
 
-使い方: tw <status|new|claim|release|done|ship|finish|land|config|config-doctor|show|find|edit|plan-check|plan-phases|verify|verify-check|accept|brief|pause|step|lap|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|ask-guard|lap-hook|ref-guard> ...
+使い方: tw <status|new|claim|release|hold|done|ship|finish|land|config|config-doctor|show|find|edit|plan-check|plan-phases|verify|verify-check|accept|brief|pause|step|lap|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|ask-guard|lap-hook|ref-guard> ...
 
 plugin の `bin/tw` から呼ぶ。`commit-guard`・`handback-guard` の
 `--agent-scoped` は plugin の `hooks/hooks.json` が付け、入力に `agent_id` があるとき（サブエージェント）だけ関門を掛ける（`commit-guard` は主のセッションの書き込みの `bd` だけ例外）。
@@ -43,6 +43,7 @@ import tw_config
 import tw_edit
 import tw_finish
 import tw_handback
+import tw_hold
 import tw_maint
 import tw_new
 import tw_relay
@@ -80,6 +81,12 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
         r"""印（`bd unclaim`）と `task-open-claims/T-xxx` の控えを消すだけ（本文は戻さない）。`--force` は人が取り残しを片付けるときで、控えは印の持ち主の作業ツリーのものを消す（その作業ツリーが消えていれば何もしない）。担当者が無い `in_progress` の印も `--force` で外せる（status を `open` に戻す）。着手の印の控え（`bd kv` の `task-workflow.claim.<Beads ID>`。TRACKER.md の「GitHub との双方向」）も消すので、外した印は控えから戻らない
 
 出力: `RELEASED`・`NOT_CLAIMED`・`NOT_OWNER`""",
+    ),
+    "hold": (
+        "判断待ちのタスクを着手から外して `hold` にし、`## 注意` に論点を足して、`/loop` が続けられるかを出す。",
+        r"""判断待ちのタスクを1回で外す（WORKFLOW.md「loopable」の「`hold` との違い」）。この作業ツリーが着手の印を持つ `in_progress` なら、先に `release` と同じく印を外す（他の作業ツリーの印なら何も書かずに `NOT_OWNER`、終了コード4）。続けて status を `hold` にし（すでに `hold` ならそのまま）、`--reason-file`（`-` で標準入力）の論点を `## 注意` の最後に足す（いまの中身は残し、空か「なし」なら置き換える）。着手していない `todo` は印を外さずに同じく書く。論点が空・行頭の `## ` を含めば何も書かずに終了コード2。ドラフト・`done`・`dropped`・無い ID は何も書かずに `NOT_READY`（終了コード4）。書いたあと一覧を取り直し、`READY` かつ `loopable: Y` のタスク（自分は `hold` なので入らない）を数える
+
+出力: 外したときは先に `RELEASED`、続けて `HELD\tT-xxx` と `CONTINUE\tY\t<件数>`（1件以上）か `CONTINUE\tN\t0`。`NOT_OWNER`・`NOT_READY`""",
     ),
     "done": (
         "`## 結果` を comment に入れ、label `ship:done`／`ship:dropped` を立てる。",
@@ -325,6 +332,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_release.add_argument("task_id")
     p_release.add_argument("--force", action="store_true")
 
+    p_hold = sub.add_parser("hold")
+    p_hold.add_argument("task_id")
+    p_hold.add_argument("--reason-file", required=True)
+
     p_done = sub.add_parser("done")
     p_done.add_argument("task_id")
     p_done.add_argument("--dropped", action="store_true")
@@ -559,6 +570,8 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
             tw_claim.cmd_claim(toplevel, args.task_id)
         elif args.command == "release":
             tw_claim.cmd_release(toplevel, args.task_id, args.force)
+        elif args.command == "hold":
+            tw_hold.cmd_hold(toplevel, args.task_id, args.reason_file)
         elif args.command == "done":
             tw_claim.cmd_done(toplevel, args.task_id, args.dropped, args.result_file, args.reflection)
         elif args.command == "ship":
