@@ -14,7 +14,7 @@ import gitinfo  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import INTERVENTION, task_body  # noqa: E402
-from selftest_fixtures import BODY, PLANNED_BODY, body_file, commit_task, flow_rows, issue_count, issue_json, make_repo, metadata, run_task, shown, start_task, unset_metadata  # noqa: E402
+from selftest_fixtures import BODY, PLANNED_BODY, body_file, commit_task, flow_rows, issue_count, issue_json, make_repo, metadata, run_task, shown, shown_body, start_task, unset_metadata  # noqa: E402
 
 
 def test_taskfile_body() -> None:
@@ -463,6 +463,98 @@ def test_claim_and_release_single_worktree() -> None:
 
         r = run_task(wt1, "claim", "T-999")
         check("存在しないIDはNOT_READY", r.returncode == 4 and r.stdout.startswith("NOT_READY\t"), r.stdout)
+
+
+def _ready_loopable_rows(wt: str) -> list[str]:
+    """`tw status` の行のうち、着手可否が `READY` で `loopable` が `Y` の ID。"""
+    rows = [l.split("\t") for l in run_task(wt, "status").stdout.split("\n---\n")[0].splitlines()]
+    return [row[0] for row in rows if len(row) > 5 and row[3] == "Y" and row[5] == "READY"]
+
+
+def test_hold() -> None:
+    say("task.py hold（着手中・todo・すでに hold で HELD と CONTINUE を出し、## 注意 に論点を足す）")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(tmp)
+        body = task_body(caution="既存の注意")
+        for tid, status, loopable in (
+            ("T-100", "todo", "Y"), ("T-101", "todo", "Y"), ("T-102", "todo", "N"), ("T-103", "todo", "Y"), ("T-104", "done", "Y"),
+        ):
+            commit_task(main_path, taskfile.Task(tid, tid, status, "sonnet", loopable, (), body))
+
+        def hold(where: str, tid: str, reason: str) -> subprocess.CompletedProcess:
+            return run_task(where, "hold", tid, "--reason-file", "-", stdin=reason)
+
+        def caution(tid: str) -> str:
+            return taskfile.section_content(shown_body(wt1, tid), taskfile.CAUTION_HEADING)
+
+        run_task(wt1, "claim", "T-100")
+        r = hold(wt2, "T-100", "- 論点X\n")
+        check("他の作業ツリーの着手中は NOT_OWNER で書かない",
+              r.returncode == 4 and r.stdout.startswith("NOT_OWNER\tT-100") and caution("T-100") == "既存の注意",
+              r.stdout + r.stderr)
+
+        before = _ready_loopable_rows(wt1)
+        r = hold(wt1, "T-100", "- 論点A\n")
+        after = _ready_loopable_rows(wt1)
+        check("着手中は印を外してから HELD と CONTINUE を出す",
+              r.returncode == 0 and r.stdout.splitlines()[:3] == ["RELEASED\tT-100", "HELD\tT-100", f"CONTINUE\tY\t{len(after)}"]
+              and after == before == ["T-101", "T-103"], r.stdout + r.stderr + repr((before, after)))
+        check("着手中から hold にし、## 注意 の既存の中身の後ろに論点を足す",
+              "\nstatus: hold\n" in shown(wt1, "T-100") and caution("T-100") == "既存の注意\n- 論点A", caution("T-100"))
+        check("台帳に hold の出来事を1行足す",
+              [row["event"] for row in flow_rows(wt1) if row.get("task") == "T-100"] == ["claim", "release", "hold"],
+              repr(flow_rows(wt1)))
+
+        r = hold(wt1, "T-100", "- 論点B\n")
+        check("すでに hold なら印を外さず、論点を足して HELD と CONTINUE を出す",
+              r.returncode == 0 and r.stdout.splitlines() == ["HELD\tT-100", "CONTINUE\tY\t2"]
+              and caution("T-100") == "既存の注意\n- 論点A\n- 論点B", r.stdout + caution("T-100"))
+
+        before = _ready_loopable_rows(wt1)
+        r = hold(wt1, "T-101", "- 論点C\n")
+        after = _ready_loopable_rows(wt1)
+        check("todo は印を外さず、CONTINUE は tw status の READY かつ Y から自分を除いた数",
+              r.returncode == 0 and r.stdout.splitlines() == ["HELD\tT-101", f"CONTINUE\tY\t{len(after)}"]
+              and [t for t in before if t != "T-101"] == after == ["T-103"], r.stdout + repr((before, after)))
+
+        r = hold(wt1, "T-103", "- 論点D\n")
+        check("READY かつ Y が残らなければ CONTINUE N 0",
+              r.returncode == 0 and r.stdout.splitlines() == ["HELD\tT-103", "CONTINUE\tN\t0"] and _ready_loopable_rows(wt1) == [],
+              r.stdout)
+
+        r = run_task(wt1, "new", "--summary", "ドラフト", "--difficulty", "sonnet", "--loopable", "Y", "--draft",
+                     "--body-file", "-", stdin=DRAFT_BODY)
+        draft = r.stdout.split("\t")[1]
+        for tid, label in (("T-104", "閉じたタスク"), (draft, "ドラフト"), ("T-999", "無い ID")):
+            r = hold(wt1, tid, "- 論点\n")
+            check(f"{label}は NOT_READY で書かない", r.returncode == 4 and r.stdout.startswith(f"NOT_READY\t{tid}"), r.stdout + r.stderr)
+        r = hold(wt1, "T-102", " \n")
+        check("論点が空なら終了コード2で書かない",
+              r.returncode == 2 and r.stdout == "" and "\nstatus: todo\n" in shown(wt1, "T-102"), r.stdout + r.stderr)
+
+
+def test_edit_refuses_loopable_n_while_claimed() -> None:
+    say("task.py edit --loopable N（着手中の Y は拒んで tw hold を案内し、todo の Y は通す）")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(tmp)
+        for tid in ("T-200", "T-201"):
+            commit_task(main_path, taskfile.Task(tid, "元の題", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-200")
+
+        r = run_task(wt1, "edit", "T-200", "--loopable", "N", "--summary", "変えた題")
+        check("着手中の Y→N はほかの旗ごと書かずに終了コード2で、tw hold を案内する",
+              r.returncode == 2 and "tw hold T-200 --reason-file -" in r.stderr
+              and metadata(wt1, "T-200").get("loopable") == "Y" and "\nsummary: 元の題\n" in shown(wt1, "T-200"),
+              r.stdout + r.stderr)
+        r = run_task(wt1, "edit", "T-200", "--loopable", "Y")
+        check("着手中でも Y のままの --loopable Y は通る", r.returncode == 0 and r.stdout.startswith("EDITED\tT-200"), r.stdout + r.stderr)
+        r = run_task(wt2, "edit", "T-200", "--loopable", "N")
+        check("他の作業ツリーが持つ着手中への Y→N は通る（人が直す）",
+              r.returncode == 0 and metadata(wt1, "T-200").get("loopable") == "N", r.stdout + r.stderr)
+        r = run_task(wt1, "edit", "T-201", "--loopable", "N")
+        check("todo のままの Y→N は通る",
+              r.returncode == 0 and r.stdout.startswith("EDITED\tT-201") and metadata(wt1, "T-201").get("loopable") == "N",
+              r.stdout + r.stderr)
 
 
 #
@@ -1007,6 +1099,8 @@ TESTS = (
     test_done_single_worktree,
     test_done_required_lines,
     test_claim_and_release_single_worktree,
+    test_hold,
+    test_edit_refuses_loopable_n_while_claimed,
     test_new_and_status_single_worktree,
     test_new_fixes,
     test_new_batch,
