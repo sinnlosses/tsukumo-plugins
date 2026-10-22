@@ -47,9 +47,8 @@ metadata:
 
 ## 返すもの
 
-- 申し送り（`finished`・`skipped` で返す前に必ず書く。task-model の WORKFLOW.md「段の申し送り」）: `tw relay T-xxx 実装 --body-file -` に、
-  委譲先の段ごとの返却の friction log の行（段の番号を添える）と `- ドラフト:` の行、最後の段の返却の `- 規約:` の行を渡す。メインで走ったとき（近道・委譲しない流れ）は `- 規約: 委譲なし`、
-  `skipped` は飛ばしたわけの1行を渡す
+- 申し送り（`finished`・`skipped` で返す前に必ず書く）: `tw relay T-xxx 実装 --body-file -`。行の形と時機は task-model の WORKFLOW.md「段の申し送り」の
+  「鍵 `実装` の書き方と読み方」
 - **委譲先で走る段**（委譲する流れ）: 委譲先が段ごとに `phase_result` を呼ぶ（手順3）。メインは返却のたびに、オーケストレーターの
   「進み具合の帯（`work_plan`）」の表どおりに `work_plan` を呼ぶ（`phase_result` で済んだ段は `phaseSummary` を省けない）
 - **メインで走るとき**（近道・委譲しない流れ）: 段を終えるたびに `work_plan` で次の位置へ進め、`phaseSummary` に段のまとめを書く

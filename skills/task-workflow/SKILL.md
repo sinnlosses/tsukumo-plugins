@@ -78,6 +78,7 @@ lap は並びのスキルではなく、このスキル（オーケストレー�
 
 5b. **返りを見る**（委譲先の hand-back か、Agent ツールの完了の通知が届くたびに）:
    `${CLAUDE_SKILL_DIR}/parts/implementer/handback-read.md` を読んで従う（返却の種類で分ける表と、`plan-check` の行を読む表）。
+   `steps` が `[]` の経路（implement-step を呼ばない）では、`tw accept` の前に申し送り `実装` を書く（形は task-model の WORKFLOW.md「段の申し送り」の「鍵 `実装` の書き方と読み方」）。
 
 5c. **実装の依頼文**: 依頼文は `tw brief implementer T-xxx` が出し、場合分けは `${CLAUDE_SKILL_DIR}/parts/implementer/delegate.md` の手順5c にある。
 
