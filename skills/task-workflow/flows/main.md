@@ -16,3 +16,4 @@
    （`SKILL.md`「進み具合の帯（`work_plan`）」。`tw plan-phases T-xxx` が出す）。
    `## やること` の最初の段を始める直前に `tw lap T-xxx delegate start` を打つ（委譲先が起きないので、`tw lap-hook` は書かない）。
    `delegate` の end は手順6の `tw accept` が打つ `accept` の start で `tw` が書くので打たない（`accept`・`review`・`retro` は手順6・6aのとおり）。
+   手順6へ進む直前（`tw accept` の前）に申し送り `実装` を書く（task-model の WORKFLOW.md「段の申し送り」の「鍵 `実装` の書き方と読み方」）。
