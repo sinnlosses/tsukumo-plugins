@@ -81,7 +81,7 @@ INTERVENTION_FIELDS = (
 INTERVENTION_TARGETS = ("hook", "検査", "スクリプト", "スキル", "サブエージェント", "常設の文章")
 INTERVENTION_PROSE = "常設の文章"
 # `/` で終わるものはその下、ほかは同じパス。名指すファイルの相対パス（作業先があればその根から）と比べる。
-HARNESS_SURFACES = ("CLAUDE.md", ".claude/rules/", "docs/workflow.md", "skills/", ".tw/config.toml", "scripts/hook/")
+HARNESS_SURFACES = ("CLAUDE.md", "AGENTS.md", ".claude/rules/", "docs/workflow.md", "skills/", ".tw/config.toml", "scripts/hook/")
 
 
 @dataclass(frozen=True)

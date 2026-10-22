@@ -192,6 +192,7 @@ front matter（`id`・`summary`・`status`・`difficulty`・`loopable`・近道�
 | harness の面 |
 | --- |
 | `CLAUDE.md` |
+| `AGENTS.md` |
 | `.claude/rules/` |
 | `docs/workflow.md` |
 | `skills/` |

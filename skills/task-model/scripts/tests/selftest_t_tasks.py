@@ -679,11 +679,11 @@ def test_taskfile_intervention() -> None:
           taskfile.validate_new_body(task_body(purpose="- 観点: 黄 道案内"), hold=True, difficulty="sonnet") is not None
           and taskfile.validate_new_body(task_body(purpose="- 観点: 黄 道案内", intervention=INTERVENTION), hold=True,
                                          difficulty="sonnet") is None)
-    for path in ("skills/x.md", "CLAUDE.md", ".tw/config.toml", "scripts/hook/a.sh", ".claude/rules/a.md", "docs/workflow.md",
+    for path in ("skills/x.md", "CLAUDE.md", "AGENTS.md", ".tw/config.toml", "scripts/hook/a.sh", ".claude/rules/a.md", "docs/workflow.md",
                  "skills/", "scripts/hook"):
         check(f"{path} を名指す計画は ## 介入 が無ければ拒み、あれば通す",
               new(named(path)) is not None and new(named(path, INTERVENTION)) is None, repr(new(named(path))))
-    for path in ("docs/", "shared.txt", "skillsx/a.md", "src/CLAUDE.md", "scripts/"):
+    for path in ("docs/", "shared.txt", "skillsx/a.md", "src/CLAUDE.md", "src/AGENTS.md", "scripts/"):
         check(f"{path} は面に当たらず ## 介入 が無くても通す", new(named(path)) is None, repr(new(named(path))))
 
     def shaped(text: str) -> str | None:
