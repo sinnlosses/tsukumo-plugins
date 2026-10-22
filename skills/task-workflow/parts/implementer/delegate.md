@@ -41,7 +41,7 @@
    選ばれた節（tw が決めた場合分け）を読む。`NOT_OWNER`・`MISSING`・`INVALID` が出たら行を添えて人に預け `tw release T-xxx` する。
 
    `loopable: Y` で着手したあと利用者に聞く必要が出たら、`AskUserQuestion` は hook（`tw ask-guard`）に拒まれる。
-   理由の文に従って `tw release T-xxx` → `tw edit T-xxx --status hold` → `## 注意` に論点を書く、の順で外す。続行は `${CLAUDE_SKILL_DIR}/completion-report.md` の「`/loop` の続行判断」に従う。
+   論点を1行にして `tw hold T-xxx --reason-file -` に渡して外す。続行は `${CLAUDE_SKILL_DIR}/completion-report.md` の「`/loop` の続行判断」に従う。
 
    **(e) 並列の段**: `tw plan-check T-xxx` が `PARALLEL` の行を出したら、続く `STEP\tT-xxx\t<n>\t<待つ段,…|なし>` の
    行に従い、待つ段がすべて返った段から同時に起こす（並列にするかは計画の欄と `plan-check` の出力だけで決め、
