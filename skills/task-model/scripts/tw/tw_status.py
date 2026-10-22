@@ -192,12 +192,7 @@ def _find_hit(task: taskfile.Task, issue: beads.Issue, words: list[str], kind: s
         return False
     if not words:
         return own == kind
-    body = beads.compose_body(
-        str(issue.raw.get("description") or ""),
-        str(issue.raw.get("acceptance_criteria") or ""),
-        str(issue.raw.get("notes") or ""),
-        None,
-    )
+    body = beads.issue_body(issue)
     paths, _ = taskfile.plan_files(body)
     targets = [_fold(task.summary), *(_fold(p) for p in paths)]
     return any(w in t for w in words for t in targets)

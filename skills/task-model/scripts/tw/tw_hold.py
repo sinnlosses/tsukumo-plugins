@@ -49,12 +49,7 @@ def _write_hold(toplevel: str, bd_id: str, shown: str, reason: str) -> None:
     if issue is None:
         print(f"NOT_READY\t{shown}\t存在しない")
         raise SystemExit(4)
-    current = beads.compose_body(
-        str(issue.raw.get("description") or ""),
-        str(issue.raw.get("acceptance_criteria") or ""),
-        str(issue.raw.get("notes") or ""),
-        None,
-    )
+    current = beads.issue_body(issue)
     caution = taskfile.section_content(current, taskfile.CAUTION_HEADING)
     added = reason if taskfile.is_blank(caution) else f"{caution}\n{reason}"
     body = taskfile.replace_section(current, taskfile.CAUTION_HEADING, added)

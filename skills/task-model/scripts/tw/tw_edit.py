@@ -59,12 +59,7 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
     cmd = ["update", bd_id]
     stdin = None
     state = None
-    current = beads.compose_body(
-        str(issue.raw.get("description") or ""),
-        str(issue.raw.get("acceptance_criteria") or ""),
-        str(issue.raw.get("notes") or ""),
-        None,
-    )
+    current = beads.issue_body(issue)
     body = current
     difficulties = beads.attribute_values(issue, beads.DIFFICULTY_KEY)
     old_difficulty = difficulties[0] if difficulties else "?"

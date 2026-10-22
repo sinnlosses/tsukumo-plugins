@@ -590,6 +590,17 @@ def split_body(body: str) -> BodyParts:
     return BodyParts(f"{description}\n" if description else "", acceptance, notes, result)
 
 
+def issue_body(issue: Issue, result: str | None = None) -> str:
+    """課題の欄から組んだタスクの本文（`compose_body`）。"""
+    raw = issue.raw
+    return compose_body(
+        str(raw.get("description") or ""),
+        str(raw.get("acceptance_criteria") or ""),
+        str(raw.get("notes") or ""),
+        result,
+    )
+
+
 def compose_body(description: str, acceptance: str, notes: str, result: str | None) -> str:
     """`split_body` の逆。枠の7節（`taskfile.SECTION_HEADINGS`）を中身が空でもこの順に必ず出し、
     枠の外の見出しはそのあと、`## 結果` は最後。
@@ -624,14 +635,7 @@ def _sections(text: str) -> tuple[str, list[tuple[str, str]]]:
 
 def render_task(task: taskfile.Task, issue: Issue, result: str | None) -> str:
     """`tw show` の出力（front matter と本文。正典「タスクの本文」の形）。"""
-    raw = issue.raw
-    body = compose_body(
-        str(raw.get("description") or ""),
-        str(raw.get("acceptance_criteria") or ""),
-        str(raw.get("notes") or ""),
-        result,
-    )
-    return taskfile.render(dataclasses.replace(task, body=body))
+    return taskfile.render(dataclasses.replace(task, body=issue_body(issue, result)))
 
 
 # --- 採番 ------------------------------------------------------------------------
