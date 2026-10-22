@@ -28,7 +28,9 @@
 
 材料の2つの値（`material.py --gate` は値が外れると終了コード2で止まる）:
 
-- `friction`: 委譲先の段ごとの返却の friction log がすべて `なし` なら `none`、行が1つでもあれば `some`、friction log を書いていない返却があれば `missing`（委譲せずメインで進めた回は、渡された引っかかりで決める）
+- `friction`: 委譲先の段ごとの返却の friction log がすべて `なし` なら `none`、行が1つでもあれば `some`、friction log を書いていない返却があれば `missing`。
+  申し送り `実装` の `- 実装 計画:` の行は返却に数えない（計画だけの回の返却には friction log が無い）。
+  `- 規約: 委譲なし` の行があれば（委譲せずメインで進めた流れ）、friction log の行が無くても `missing` にせず、渡された引っかかりで決める（無ければ `none`）
 - `human`: 依頼に添えられた人の差し戻しの数をそのまま返す
 
 検証の打ち直し（`reverify`）・差し戻し（`fixes`）・レビューの指摘（`review`）は返さない。`material.py --gate` が台帳から数える

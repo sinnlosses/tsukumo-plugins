@@ -26,6 +26,7 @@ TASK_MODEL_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpat
 SNAPSHOT_SCRIPT = os.path.join(TASK_MODEL_DIR, "scripts", "core", "review_snapshot.py")
 RULE_FILES = ("AGENTS.md", "CLAUDE.md")
 RELAY_IMPLEMENT_KEY = "実装"
+NO_DELEGATION_LINE = "- 規約: 委譲なし"
 VERDICT_WORDS = ("REVIEW", "SKIP", "NOTHING", "NO_RANGE")
 _PLACEHOLDER = re.compile(r"\{\{(\w+)\}\}")
 
@@ -170,7 +171,8 @@ def _snapshot(tree: str) -> str:
 
 
 def _friction_lines(toplevel: str, shown: str) -> str:
-    """申し送り `実装` の本文から、`- ドラフト:`（子項目ごと）と `- 規約:` の行を除いたもの。"""
+    """申し送り `実装` の本文から、`- ドラフト:`（子項目ごと）と `- 規約:` の行を除いたもの。
+    `- 規約: 委譲なし` の行は残す（受け入れ役が委譲しない流れと見分ける）。"""
     body = beads.last_relay(beads.comments(toplevel, beads.to_bd_id(shown)), RELAY_IMPLEMENT_KEY)
     if body is None:
         return "（申し送り `実装` が無い。friction log を書いていない返却として扱う）"
@@ -183,7 +185,7 @@ def _friction_lines(toplevel: str, shown: str) -> str:
         if in_draft and line[:1] in (" ", "\t"):
             continue
         in_draft = False
-        if not line.startswith("- 規約:"):
+        if not line.startswith("- 規約:") or line.strip() == NO_DELEGATION_LINE:
             kept.append(line)
     return "\n".join(kept).strip("\n") or "（申し送り `実装` に friction log の行が無い）"
 

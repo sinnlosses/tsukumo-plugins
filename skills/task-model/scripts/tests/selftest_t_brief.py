@@ -244,6 +244,11 @@ def test_brief_acceptor_review() -> None:
               "- 黄: 段1でテストが1回落ちた（a.py）" in body and "ドラフト" not in body and "根拠: x" not in body
               and "- 規約: なし" not in body, body)
 
+        run_task(wt1, "relay", "T-100", "実装", "--body-file", "-", stdin="- 規約: 委譲なし\n")
+        body = _acceptor(wt1, "--accept-file", "-", stdin="SKIP\tdocs-only\n").stdout
+        check("委譲なしの規約の行は残し、friction log の行が無いとは書かない",
+              "- 規約: 委譲なし" in body and "friction log の行が無い" not in body, body)
+
 
 def test_brief_acceptor_other_repo() -> None:
     say("task.py brief acceptor: 作業先が別のリポジトリなら、作業先の作業ツリーと主ブランチからの範囲で差分を出し、木もそこで取る")
