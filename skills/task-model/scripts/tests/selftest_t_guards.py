@@ -185,10 +185,9 @@ def test_ask_guard() -> None:
         check("claim の前は通る", run_ask_guard(tmp, wt1) is None)
         run_task(wt1, "claim", "T-100")
         reason = run_ask_guard(tmp, wt1)
-        check("loopable: Y の控えの作業ツリーは理由つきで拒む",
-              reason is not None and "T-100" in reason and "tw edit T-100 --status hold" in reason
-              and "tw release T-100" in reason
-              and reason.index("tw release T-100") < reason.index("tw edit T-100 --status hold"),
+        check("loopable: Y の控えの作業ツリーは tw hold 1つを案内して拒む",
+              reason is not None and "tw hold T-100 --reason-file -" in reason and "CONTINUE" in reason
+              and "tw release" not in reason and "--status hold" not in reason and "--section 注意" not in reason,
               str(reason))
         subagent = {"agent_id": "a-implementer", "agent_type": "my-implementer"}
         check("サブエージェント（agent_id）は名前を問わず拒む", run_ask_guard(tmp, wt1, extra=subagent) is not None)

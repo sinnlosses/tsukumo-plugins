@@ -36,6 +36,18 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
     if issue is None:
         print(f"NOT_READY\t{shown}\t存在しない")
         raise SystemExit(4)
+    if (
+        args.loopable == "N"
+        and beads.attribute_values(issue, beads.LOOPABLE_KEY) == ["Y"]
+        and issue.status == "in_progress"
+        and issue.assignee == tw_base.actor(toplevel)
+    ):
+        print(
+            f"usage: 着手中の loopable: Y を N に直さない。書き換えない。"
+            f"判断待ちで外すなら tw hold {shown} --reason-file - に論点を渡す",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
     dep_edges: list[list[str]] = []
     if add or remove:
         snap = tw_base.beads_snapshot(toplevel)

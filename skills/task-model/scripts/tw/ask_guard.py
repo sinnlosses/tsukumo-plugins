@@ -67,13 +67,12 @@ def decide(payload: dict) -> str | None:
     if not refused:
         return None
     shown = ",".join(refused)
+    holds = "・".join(f"tw hold {task_id} --reason-file -" for task_id in refused)
     return (
         f"着手の印（{shown}）のタスクは loopable: Y（利用者に聞かずに進める約束）なので AskUserQuestion を拒む。"
-        f"質問せず、tw release {shown} で着手を戻し（着手中は --status を直せないので先に外す）、"
-        f"tw edit {shown} --status hold で hold にして、tw show {shown} の ## 注意 の最後に判断の論点を1行足して"
-        f" tw edit {shown} --section 注意 --body-file - で書く。"
-        "作業ツリーに作業が残っていなければ tw status を取り直し、READY かつ loopable: Y の行が残る限り /loop は次の1件へ進み、"
-        "残っていれば続けずに人に預けて終える"
+        f"質問せず、判断の論点を1行にして {holds} に渡す（着手を外し、hold にして ## 注意 に足す）。"
+        "作業ツリーに作業が残っておらず、出力が CONTINUE\\tY なら /loop は次の1件へ進み、"
+        "CONTINUE\\tN か作業が残っていれば続けずに人に預けて終える"
     )
 
 

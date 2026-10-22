@@ -37,6 +37,7 @@ def cmd_hold(toplevel: str, task_id: str, reason_path: str) -> None:
         tw_claim.cmd_release(toplevel, shown, False)
     _write_hold(toplevel, bd_id, shown, reason)
     print(f"HELD\t{shown}")
+    tw_base.record(toplevel, "hold", shown, issue)
     ready = _ready_loopable(toplevel, shown)
     print(f"CONTINUE\t{'Y' if ready else 'N'}\t{ready}")
 
