@@ -188,9 +188,26 @@ def test_new_batch_github() -> None:
               str([shown_deps(c) for c in created[:4]]))
         check("Status 欄が全件に書かれる", all(fake.status_of(int(c.split("-")[1])) == "Todo" for c in created),
               str([fake.status_of(int(c.split("-")[1])) for c in created]))
-        # 並列の自己テストの負荷で秒数がぶれるので、半分（単独で測ると 0.47）に余裕を足した 0.6 を上限にする。
-        check(f"10件の一括は1件ずつ10回より十分に速い（一括 {batch_seconds:.1f}秒・1件ずつ {single_seconds:.1f}秒）",
-              batch_seconds <= single_seconds * 0.6, f"{batch_seconds:.1f} {single_seconds:.1f}")
+        # 並列の自己テストの負荷で1回の秒数はぶれるので、上限（0.6）を満たすまで最大3回測り、それぞれの最小値どうしで比べる。
+        singles_seconds, batches_seconds = [single_seconds], [batch_seconds]
+        while len(batches_seconds) < 3 and min(batches_seconds) > min(singles_seconds) * 0.6:
+            round_no = len(batches_seconds)
+            started = time.monotonic()
+            for i in range(count):
+                new(main_path, f"単件{round_no}-{i}")
+            singles_seconds.append(time.monotonic() - started)
+            extra = []
+            for i in range(count):
+                name = f"body{round_no}-{i}.md"
+                write(os.path.join(tmp, name), PLANNED_BODY)
+                extra.append({"summary": f"一括{round_no}-{i}", "difficulty": "sonnet", "loopable": "Y", "body_file": name})
+            path = write(os.path.join(tmp, f"batch{round_no}.json"), json.dumps(extra))
+            started = time.monotonic()
+            run_task(main_path, "new", "--batch", path)
+            batches_seconds.append(time.monotonic() - started)
+        batch_min, single_min = min(batches_seconds), min(singles_seconds)
+        check(f"10件の一括は1件ずつ10回より十分に速い（最小値 一括 {batch_min:.1f}秒・1件ずつ {single_min:.1f}秒、{len(batches_seconds)}回測定）",
+              batch_min <= single_min * 0.6, f"{batches_seconds} {singles_seconds}")
 
 
 def test_tracker_pull_reports_duplicate() -> None:
