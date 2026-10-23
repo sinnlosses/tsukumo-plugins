@@ -20,22 +20,22 @@ TESTS_PREFIX = "skills/task-model/scripts/tests/"
 ALL = "ALL"
 
 SCOPED_TW = {
-    "tw_accept.py": "selftest_t_accept",
-    "tw_brief.py": "selftest_t_brief",
-    "tw_finish.py": "selftest_t_finish",
-    "tw_hold.py": "selftest_t_tasks",
-    "tw_ship.py": "selftest_t_ship",
-    "tw_verify.py": "selftest_t_verify",
-    "tw_plan.py": "selftest_t_plan",
+    "tw_accept.py": ("selftest_t_accept",),
+    "tw_brief.py": ("selftest_t_brief",),
+    "tw_finish.py": ("selftest_t_finish",),
+    "tw_handback.py": ("selftest_t_guards", "selftest_t_verify"),
+    "tw_hold.py": ("selftest_t_tasks",),
+    "tw_ship.py": ("selftest_t_ship",),
+    "tw_verify.py": ("selftest_t_verify",),
+    "tw_plan.py": ("selftest_t_plan",),
 }
 
-# 対応が複数のモジュールにまたがる・広く使われるため、全件に倒す
+# 自己テストが参照する先を言い切れない・広く使われるため、全件に倒す
 FULL_TW = (
     "tw_base.py",
     "tw_claim.py",
     "tw_config.py",
     "tw_edit.py",
-    "tw_handback.py",
     "tw_maint.py",
     "tw_new.py",
     "tw_relay.py",
@@ -43,14 +43,14 @@ FULL_TW = (
 )
 
 
-def module_for(path: str) -> str | None:
+def modules_for(path: str) -> tuple[str, ...] | None:
     if path.startswith(TW_PREFIX):
         return SCOPED_TW.get(path[len(TW_PREFIX):])
     if path.startswith(TESTS_PREFIX):
         name = path[len(TESTS_PREFIX):]
         stem, ext = os.path.splitext(name)
         if ext == ".py" and stem.startswith("selftest_t_") and os.path.exists(os.path.join(HERE, name)):
-            return stem
+            return (stem,)
     return None
 
 
@@ -58,11 +58,12 @@ def scope(paths: list[str]) -> list[str]:
     paths = [p for p in paths if p]
     modules: list[str] = []
     for path in paths:
-        module = module_for(path)
-        if module is None:
+        found = modules_for(path)
+        if found is None:
             return [ALL]
-        if module not in modules:
-            modules.append(module)
+        for module in found:
+            if module not in modules:
+                modules.append(module)
     return modules or [ALL]
 
 

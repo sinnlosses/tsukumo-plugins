@@ -175,11 +175,15 @@ def test_scope() -> None:
     listed = set(s.SCOPED_TW) | set(s.FULL_TW)
     check("scripts/tw の tw_*.py が対応の表か全件の一覧に載っている", tw_files <= listed, ", ".join(sorted(tw_files - listed)))
     check("対応の表と全件の一覧に重なりも実在しないファイルも無い", not set(s.SCOPED_TW) & set(s.FULL_TW) and listed <= tw_files, ", ".join(sorted(listed - tw_files)))
-    check("対応先のモジュールが実在する", all(os.path.exists(os.path.join(s.HERE, m + ".py")) for m in s.SCOPED_TW.values()))
+    check("対応先のモジュールが実在する", all(os.path.exists(os.path.join(s.HERE, m + ".py")) for ms in s.SCOPED_TW.values() for m in ms))
     ship = s.TW_PREFIX + "tw_ship.py"
     check("表の行は対応するモジュールだけを返す", s.scope([ship, s.TW_PREFIX + "tw_verify.py"]) == ["selftest_t_ship", "selftest_t_verify"])
     check("自己テストのモジュール自身はそのモジュールを返す", s.scope([s.TESTS_PREFIX + "selftest_t_flow.py"]) == ["selftest_t_flow"])
     check("全件の一覧のファイルは全件", s.scope([ship, s.TW_PREFIX + "tw_edit.py"]) == [s.ALL])
+    handback = s.TW_PREFIX + "tw_handback.py"
+    check("tw_handback.py だけなら guards と verify の2モジュール", s.scope([handback]) == ["selftest_t_guards", "selftest_t_verify"])
+    check("tw_handback.py と全件の一覧のファイルが混ざると全件", s.scope([handback, s.TW_PREFIX + "tw_edit.py"]) == [s.ALL])
+    check("tw_handback.py と tw_verify.py は重ならずに束ねる", s.scope([handback, s.TW_PREFIX + "tw_verify.py"]) == ["selftest_t_guards", "selftest_t_verify"])
     check("土台のファイルは全件", all(s.scope([p]) == [s.ALL] for p in (
         "skills/task-model/scripts/core/beads.py", "skills/task-model/scripts/tw/task.py", s.TW_PREFIX + "tw_base.py",
         s.TESTS_PREFIX + "selftest_support.py", s.TESTS_PREFIX + "selftest_fixtures.py", "check.sh", "hooks/x")))
