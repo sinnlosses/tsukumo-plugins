@@ -203,7 +203,7 @@ STRUCTURE_HEADING = "## 構造の変更"
 
 STRUCTURE_EDGE_LINE = re.compile(r"[+\-~] .+ -> .+")
 STRUCTURE_MARK = re.compile(r"[+\-~] ")
-STRUCTURE_NONE_LINE =re.compile(r"なし: .+")
+STRUCTURE_NONE_LINE = re.compile(r"なし: .+")
 
 
 def _structure_section_lines(body: str) -> list[str] | None:
