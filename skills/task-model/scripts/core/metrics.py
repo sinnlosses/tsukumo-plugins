@@ -32,7 +32,7 @@ HIGHER_IS_WORSE = (
 FIX_WINDOW = timedelta(days=7)
 LOWER_IS_WORSE = ("shipped", "reflection_none_ratio")
 STAGE_ORDER = ("計画", "直し", "委譲", "検証", "受け入れ", "レビュー", "振り返り", "合流", "送り出し", "反映")
-ROUTES = ("direct", "normal")
+ROUTES = ("direct", "normal", "split", "escalated")
 LAP_STAGE_NAMES = {"direct": "直し", "delegate": "委譲", "accept": "受け入れ", "review": "レビュー", "retro": "振り返り", "land": "合流", "sync": "反映"}
 KIND_STAGE_NAMES = {"claim": "計画", "step": "委譲", "verify": "検証", "done": "送り出し"}
 
@@ -158,7 +158,11 @@ def _stage_of(event: Event) -> str | None:
 
 
 def _route(run: list[Event]) -> str:
-    """`direct`（`lap direct` があり `lap delegate` が無い）か `normal`。"""
+    """`direct`（`lap direct` があり `lap delegate` が無い）・`split`（`model` 欄を持つ最初の `lap delegate` のモデルが
+    `difficulty` と違う）・`escalated`（`split` のあとに `model` が `difficulty` と同じ `lap delegate` がある）・`normal`。"""
+    modeled = [e for e in run if e.kind == "lap" and e.fields.get("stage") == "delegate" and "model" in e.fields]
+    if modeled and modeled[0].fields["model"] != modeled[0].fields.get("difficulty"):
+        return "escalated" if any(e.fields["model"] == e.fields.get("difficulty") for e in modeled[1:]) else "split"
     stages = {e.fields.get("stage") for e in run if e.kind == "lap"}
     return "direct" if "direct" in stages and "delegate" not in stages else "normal"
 

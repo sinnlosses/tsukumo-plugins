@@ -1,6 +1,6 @@
 ---
 name: implement-step
-description: "並びの段「実装」。着手の印が立ったタスク1件の `## やること` の段を、difficulty のモデルの委譲先に1段ずつ渡して済ませ、段ごとの結果を委譲先の `phase_result` で返させる。並びを読むオーケストレーター（task-workflow）がタスクの ID を渡して呼ぶ。印の無いタスクには使わない。"
+description: "並びの段「実装」。着手の印が立ったタスク1件の `## やること` の段を、difficulty に応じたモデルの委譲先に1段ずつ渡して済ませ、段ごとの結果を委譲先の `phase_result` で返させる。並びを読むオーケストレーター（task-workflow）がタスクの ID を渡して呼ぶ。印の無いタスクには使わない。"
 user-invocable: false
 metadata:
   workflow-step: "true"

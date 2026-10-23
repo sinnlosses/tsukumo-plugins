@@ -23,9 +23,13 @@
 
    どちらの形でも、途中で `difficulty` を上げるときは、段の返却を受けた切れ目で前の担当を `TaskStop` で
    止め、上のモデルで起こし直して、済んだ段（作業ツリーに残っている）の次の段から `tw brief implementer T-xxx --step <n>` の依頼文で渡す。
+   分業（下の (d)）の `sonnet` の委譲先が判断が要ると止めて返したときも同じ手で、`difficulty` は書き換えずに
+   `opus` で起こし直し、起こす直前に `tw lap T-xxx delegate start --model opus` を打つ。
 
-   **(d) 委譲先の選び方と依頼**: Agent ツールで `difficulty` と同じモデルのサブエージェントへ（メインのモデルは
-   判断材料にしない。一致していても委譲する。正典「difficulty とモデルの切り替え」）。
+   **(d) 委譲先の選び方と依頼**: Agent ツールで、正典「difficulty とモデルの切り替え」の対応表のモデル（分業に
+   当たれば `sonnet`）のサブエージェントへ（メインのモデルは判断材料にしない。一致していても委譲する）。
+   分業: (c) で `計画どおり` に決まり `difficulty: opus` なら、Agent を呼ぶ直前に
+   `tw lap T-xxx delegate start --model sonnet` を打ち、`model: sonnet` で起こす（範囲と理由は正典の「分業」）。
    `subagent_type` は、Agent ツールの説明に並ぶエージェント末尾が `no-delegate` の行
    （`no-delegate`（リンクで入れたとき）か `tsukumo-workflow:no-delegate`（plugin で入れたとき）。`Agent` を
    外したエージェント定義で、tsukumo-plugins の `agents/no-delegate.md`）があれば、一覧に出ている名前のまま使う。

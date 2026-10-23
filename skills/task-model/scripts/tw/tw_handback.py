@@ -129,12 +129,15 @@ LAP_STAGES = ("direct", "delegate", "accept", "review", "retro", "land", "sync")
 LAP_EDGES = ("start", "end")
 
 
-def cmd_lap(toplevel: str, task_id: str, stage: str, edge: str | None = None) -> None:
+def cmd_lap(toplevel: str, task_id: str, stage: str, edge: str | None = None, model: str | None = None) -> None:
     if stage not in LAP_STAGES:
         print(f"usage: 段 {stage!r} が {'・'.join(LAP_STAGES)} のどれでもない", file=sys.stderr)
         raise SystemExit(2)
     if edge is not None and edge not in LAP_EDGES:
         print(f"usage: 端 {edge!r} が {'・'.join(LAP_EDGES)} のどちらでもない", file=sys.stderr)
+        raise SystemExit(2)
+    if model is not None and (stage, edge) != ("delegate", "start"):
+        print("usage: --model は delegate start にだけ付けられる", file=sys.stderr)
         raise SystemExit(2)
     shown = beads.to_task_id(beads.to_bd_id(task_id))
     if shown not in tw_base.claimed_here(toplevel):
@@ -148,7 +151,8 @@ def cmd_lap(toplevel: str, task_id: str, stage: str, edge: str | None = None) ->
         close_open_lap(toplevel, shown, stage)
         print(f"LAPPED\t{shown}\t{stage}\t{edge}")
         return
-    tw_base.record(toplevel, "lap", shown, stage=stage, edge=edge)
+    extra = {"model": model} if model is not None else {}
+    tw_base.record(toplevel, "lap", shown, stage=stage, edge=edge, **extra)
     if stage == "accept":
         close_open_lap(toplevel, shown, "delegate")
     print(f"LAPPED\t{shown}\t{stage}\t{edge}")

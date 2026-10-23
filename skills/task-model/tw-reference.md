@@ -40,7 +40,7 @@ PATH に無ければ plugin を入れる。どのディレクトリから打っ�
 | `commit-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ deny の JSON 1行。通すときは何も出さない |
 | `pause [T-xxx [<n>]]` | 判断が要って止める・目視待ち・計画を作業の後に書いた返却の直前に打つ（委譲先。並列の段の担当は ID と段の番号を付ける） | `PAUSED`・`NOT_OWNER` |
 | `step T-xxx <n>` | 最後でない段を済ませて返す直前に打つ（委譲先。着手した作業ツリーで打つ。別のリポジトリのタスクでは、出力の鍵は着手側のもの。作業先の作業ツリーの控えは作業先の中身の鍵で別に書かれる）。設定に `step_check` があれば、控えを書く前にタスクの各作業ツリー（着手した木と、作業先の別のリポジトリの木）でその木の設定の `step_check` を打ち、落ちたら控えを書かない。控えを書いたあと、`merge-base HEAD <主ブランチ>` から主ブランチの先端までに変わったファイルのうち、計画の名指すファイルか着手のあとにその作業ツリー（別のリポジトリなら作業先の枝の作業ツリー、その主ブランチ）が変えたファイルに当たるものを、`STEPPED` の前に1ファイル1行で知らせる（パスは生の文字列。名前の変更は元と先を別のファイルとして数え、名指した側かこの作業ツリーが変えた側が出る。知らせだけで終了コードは変えず、取り込みもしない） | `MAIN_TOUCHED\tT-xxx\t<ファイル>`・`STEPPED`・`LAST_STEP`（終了コード4。最後の段は `tw verify` を通して返す）・`STEP_CHECK_FAILED`（終了コード4。続けて出力の末尾20行。直してから打ち直す）・`NOT_OWNER` |
-| `lap T-xxx <段> [start\|end]` | オーケストレーターの段の頭と終わりを記録するとき（メイン。段は `direct`・`delegate`・`accept`・`review`・`retro`・`land`・`sync`。`end` は段が開いているときだけ記録する） | `LAPPED`・`NOT_CLAIMED` |
+| `lap T-xxx <段> [start\|end] [--model <モデル>]` | オーケストレーターの段の頭と終わりを記録するとき（メイン。段は `direct`・`delegate`・`accept`・`review`・`retro`・`land`・`sync`。`end` は段が開いているときだけ記録する。`--model` は `delegate start` にだけ付け、分業と引き上げの委譲の直前に打つ） | `LAPPED`・`NOT_CLAIMED` |
 | `relay T-xxx <鍵> [--body-file <path\|->]` | 段の結果を後の段へ申し送りとして書くとき（`--body-file` 付き。着手の印の持ち主だけ）と、前の段の申し送りを鍵で引くとき（欄と鍵は WORKFLOW.md「段の申し送り」） | `RELAYED`・`RELAY`（次の行から本文）・`NONE`・`NOT_OWNER`・`NOT_READY` |
 | `handback-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ JSON 1行（`SubagentStop` は `block`、`PreToolUse` は deny）。通すときは何も出さない |
 | `ask-guard` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ deny の JSON 1行（理由はタスクIDと次の一手）。通すときは何も出さない |
@@ -102,7 +102,7 @@ Bash のコマンド文字列に `git` が出ないコミット（`sh -c`・ス�
 | 段 | start を書くもの | end を書くもの |
 | --- | --- | --- |
 | `direct` | メイン（`tw lap`。端なし） | — |
-| `delegate` | plugin で入れたときは `lap-hook`（委譲先の起動）。リンクだけで入れたとき・委譲しないメインの流れはメイン | `accept` の start（`tw accept` が打つものも手で打つものも） |
+| `delegate` | plugin で入れたときは `lap-hook`（委譲先の起動）。リンクだけで入れたとき・委譲しないメインの流れはメイン。委譲先のモデルが `difficulty` と違う分業と、そこから戻す引き上げでは、メインが委譲の直前に `--model` 付きで打つ（hook はモデルを知らず、開いた段には書かない） | `accept` の start（`tw accept` が打つものも手で打つものも） |
 | `accept` | `tw accept`（作業先が別のリポジトリのタスクも） | `tw accept`（開いているときだけ書くので、`--after-review` を打ち直しても1つ） |
 | `review` | 1回目は `tw accept`、2回目からはメイン | メイン |
 | `retro` | plugin で入れたときは `lap-hook`（振り返りのスキルの呼び出し）。リンクだけで入れたときはメイン | `tw finish`（`done` の前） |

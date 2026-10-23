@@ -322,6 +322,62 @@ def test_lap_edge() -> None:
               [(e["stage"], e.get("edge")) for e in laps] == [("land", "start"), ("land", "end"), ("sync", None)], repr(laps))
 
 
+def test_lap_model() -> None:
+    say("task.py lap --model: delegate start にだけ model 欄を足し、ほかは終了コード2。手で打ったあとの hook は delegate を重ねない")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
+        commit_task(main_path, taskfile.Task("T-100", "分業", "todo", "opus", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        r = run_task(wt1, "lap", "T-100", "delegate", "start", "--model", "sonnet")
+        check("delegate start --model は LAPPED", r.returncode == 0 and r.stdout.strip() == "LAPPED\tT-100\tdelegate\tstart", r.stdout + r.stderr)
+        for args in (("accept", "start"), ("delegate", "end"), ("delegate",)):
+            r = run_task(wt1, "lap", "T-100", *args, "--model", "sonnet")
+            check(f"{' '.join(args)} に --model は終了コード2", r.returncode == 2, r.stdout + r.stderr)
+        r = run_task(wt1, "lap", "T-100", "delegate", "start", "--model", "fable")
+        check("語彙の外のモデルは終了コード2", r.returncode == 2, r.stdout + r.stderr)
+        r = run_task(tmp, "lap-hook", stdin=json.dumps(
+            {"cwd": wt1, "hook_event_name": "SubagentStart", "session_id": "s-1", "agent_id": "a-start", "agent_type": "no-delegate"}
+        ))
+        check("lap-hook は終了コード0", r.returncode == 0, r.stdout + r.stderr)
+        run_task(wt1, "lap", "T-100", "delegate", "start", "--model", "opus")
+        run_task(wt1, "lap", "T-100", "review", "start")
+        laps = [e for e in flow_rows(wt1) if e["event"] == "lap"]
+        check("手で打った delegate start のあとの hook は書かず、model は与えた行だけに残り、拒んだ呼び出しは記録しない",
+              [(e["stage"], e.get("edge"), e.get("model")) for e in laps]
+              == [("delegate", "start", "sonnet"), ("delegate", "start", "opus"), ("review", "start", None)], repr(laps))
+        check("model の行も difficulty を持つ", all(e.get("difficulty") == "opus" for e in laps), repr(laps))
+
+
+def test_metrics_stages_split() -> None:
+    say("task.py metrics --stages: model 欄の delegate の lap から道 split・escalated を分け、model の無い記録は今までどおり")
+    base = datetime.now(timezone.utc) - timedelta(hours=2)
+
+    def run(task: str, difficulty: str, *laps: tuple[str, str | None]) -> list[metrics.Event]:
+        row = lambda sec, ev, **kw: metrics.Event(base + timedelta(seconds=sec), ev, task, {"difficulty": difficulty, **kw})
+        events = [row(0, "claim")]
+        for i, (stage, model) in enumerate(laps):
+            events.append(row(10 + i * 10, "lap", stage=stage, edge="start", **({"model": model} if model else {})))
+        if any(stage == "delegate" for stage, _model in laps):
+            events.append(row(300, "lap", stage="delegate", edge="end"))
+        return events + [row(400, "done"), row(410, "ship", result="SHIPPED")]
+
+    events = sorted(
+        run("T-090", "opus", ("delegate", None))
+        + run("T-091", "opus", ("delegate", "sonnet"))
+        + run("T-092", "opus", ("delegate", "sonnet"))
+        + run("T-093", "opus", ("delegate", "sonnet"), ("delegate", "opus"))
+        + run("T-094", "opus", ("delegate", "opus"))
+        + run("T-095", "sonnet", ("direct", None)),
+        key=lambda e: e.at,
+    )
+    lines = [l.split("\t") for l in metrics.stage_lines(events, 1)]
+    got = [tuple(l[:5]) for l in lines if l[1] == "委譲"]
+    check("委譲の行は opus の normal 2件（model 無し・model が difficulty と同じ）・split 2件・escalated 1件で、道は normal・split・escalated の順",
+          got == [("STAGE", "委譲", "opus", "normal", "2"), ("STAGE", "委譲", "opus", "split", "2"), ("STAGE", "委譲", "opus", "escalated", "1")],
+          repr(got))
+    check("model の無い direct の記録は direct のまま", ["STAGE", "計画", "sonnet", "direct"] in [l[:4] for l in lines], repr(lines))
+
+
 def test_status_claims() -> None:
     say("task.py status --claims: 着手なしは空、1件は ID・段なし・鍵、lap の後は最後の段、claim し直すと鍵が変わる")
     with tempfile.TemporaryDirectory() as tmp:
@@ -1237,6 +1293,8 @@ TESTS = (
     test_metrics_stages_parallel_steps,
     test_metrics_stages_edge,
     test_lap_edge,
+    test_lap_model,
+    test_metrics_stages_split,
     test_status_claims,
     test_relay,
     test_record_normalizes_task_id,
