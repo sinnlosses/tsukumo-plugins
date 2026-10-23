@@ -150,7 +150,7 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
 ```sh
 ./check.sh          # 変えたファイルに当たる段だけ
 ./check.sh --full   # 全段
-./check.sh --plan   # 段を流さず、流す段と飛ばす段だけを出す
+./check.sh --plan   # 段を流さず、流す段と飛ばす段、task コマンドの節では絞りの先（`-- 絞り:` の行）だけを出す
 ```
 
 1. `task-model` のスクリプトの自己テスト（`scripts/tests/` の `selftest.py`・`selftest_review_needed.py`・`selftest_review_snapshot.py`・`selftest_task.py`・`selftest_beads.py`。
