@@ -130,13 +130,17 @@ if [ "$mode" != plan ] && touched 'skills/retrospect/*' 'skills/task-model/scrip
   pid_retro=$!
 fi
 
+task_scope() {
+  scope=ALL
+  [ "$scoped" = yes ] || return 0
+  scope=$(task_stage_patterns matching | python3 "$here/skills/task-model/scripts/tests/selftest_scope.py") || scope=ALL
+  [ -n "$scope" ] || scope=ALL
+}
+
 if task_stage_patterns stage "task-model: scripts・task コマンドの自己テスト"; then
   task_modules=
-  if [ "$scoped" = yes ]; then
-    scope=$(task_stage_patterns matching | python3 "$here/skills/task-model/scripts/tests/selftest_scope.py") || scope=ALL
-    [ -n "$scope" ] || scope=ALL
-    [ "$scope" = ALL ] || for m in $scope; do task_modules="$task_modules --module $m"; done
-  fi
+  task_scope
+  [ "$scope" = ALL ] || for m in $scope; do task_modules="$task_modules --module $m"; done
   $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest.py"
   $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_review_needed.py"
   $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_review_snapshot.py"
@@ -158,6 +162,9 @@ if task_stage_patterns stage "task-model: scripts・task コマンドの自己�
   echo "-- task コマンド（Beads 方式。bd が無ければ飛ばす） --"
   cat "$out_beads"
   [ "$rc" -eq 0 ] || exit 1
+elif [ "$mode" = plan ] && task_stage_patterns touched; then
+  task_scope
+  echo "-- 絞り: $(printf '%s' "$scope" | tr '\n' ' ')"
 fi
 
 if stage "task-model: WORKFLOW.md・tw-reference.md を読む検査" skills/task-model/WORKFLOW.md skills/task-model/tw-reference.md; then
