@@ -1861,9 +1861,20 @@ def test_guard_denial_record() -> None:
         out = run_handback_guard(tmp, wt1, *handback, body="段 1/1 | 済\n")
         reason = (out or {}).get("hookSpecificOutput", {}).get("permissionDecisionReason", "")
         check("構造の節が無い返却を拒む", r.returncode == 0 and "構造の変更" in reason, r.stdout + reason)
-        recorded("handback-guard の構造の節", "tw-handback-guard", "STRUCTURE_SECTION", "main", n)
+        recorded("handback-guard の構造の節", "tw-handback-guard", "STRUCTURE_SECTION_MISSING", "main", n)
         n += 1
-        for rule, text in (("PLAN_OR_VERIFY_MISSING", "構造の節の言い回し"), ("STRUCTURE_SECTION", "着手の印（言い回し")):
+        for label, section, rule in (
+            ("空の節", "## 構造の変更\n", "STRUCTURE_SECTION_EMPTY"),
+            ("なし: だけの文", "## 構造の変更\n構造は変わらない\n", "STRUCTURE_SECTION_NO_MARK"),
+            ("辺のあとの説明", "## 構造の変更\n+ A -> B\n説明\n", "STRUCTURE_SECTION_NO_MARK"),
+            ("節点だけの行", "## 構造の変更\n+ A\n", "STRUCTURE_SECTION_NO_ARROW"),
+            ("印なしの辺", "## 構造の変更\nA -> B\n", "STRUCTURE_SECTION_NO_MARK"),
+            ("片側が空の辺", "## 構造の変更\n+ A ->\n", "STRUCTURE_SECTION_OTHER"),
+        ):
+            run_handback_guard(tmp, wt1, *handback, body=f"段 1/1 | 済\n\n{section}")
+            recorded(f"構造の節: {label}", "tw-handback-guard", rule, "main", n)
+            n += 1
+        for rule, text in (("PLAN_OR_VERIFY_MISSING", "構造の節の言い回し"), ("STRUCTURE_SECTION_NO_MARK", "着手の印（言い回し")):
             handback_guard.decide({"hook_event_name": "SubagentStop", "cwd": wt1}, lambda _where, _body: (rule, text))
             recorded(f"拒否文の言い回しを変えても {rule} のまま", "tw-handback-guard", rule, "main", n)
             n += 1

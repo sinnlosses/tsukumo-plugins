@@ -202,7 +202,8 @@ STRUCTURE_HEADING = "## 構造の変更"
 
 
 STRUCTURE_EDGE_LINE = re.compile(r"[+\-~] .+ -> .+")
-STRUCTURE_NONE_LINE = re.compile(r"なし: .+")
+STRUCTURE_MARK = re.compile(r"[+\-~] ")
+STRUCTURE_NONE_LINE =re.compile(r"なし: .+")
 
 
 def _structure_section_lines(body: str) -> list[str] | None:
@@ -220,25 +221,34 @@ def _structure_section_lines(body: str) -> list[str] | None:
     return section
 
 
-def _structure_section_problem(body: str) -> str | None:
-    """`## 構造の変更` の節が無い・中身の形が違うときの、拒む理由の前半。正しければ `None`。"""
+def _structure_section_problem(body: str) -> tuple[str, str] | None:
+    """`## 構造の変更` の節が無い・中身の形が違うときの `(規則のキー, 拒む理由の前半)`。正しければ `None`。"""
     section = _structure_section_lines(body)
     if section is None:
-        return f"最後の段の返却の本文に {STRUCTURE_HEADING} の節が無い"
+        return "STRUCTURE_SECTION_MISSING", f"最後の段の返却の本文に {STRUCTURE_HEADING} の節が無い"
     if not section:
-        return f"{STRUCTURE_HEADING} の節が空"
+        return "STRUCTURE_SECTION_EMPTY", f"{STRUCTURE_HEADING} の節が空"
     if len(section) == 1 and STRUCTURE_NONE_LINE.fullmatch(section[0]):
         return None
     bad = next((n for n, line in enumerate(section, 1) if not STRUCTURE_EDGE_LINE.fullmatch(line)), None)
     if bad is None:
         return None
-    return f"{STRUCTURE_HEADING} の節の{bad}行目が形に合わない"
+    line = section[bad - 1]
+    if not STRUCTURE_MARK.match(line):
+        rule = "STRUCTURE_SECTION_NO_MARK"
+    elif "->" not in line:
+        rule = "STRUCTURE_SECTION_NO_ARROW"
+    else:
+        rule = "STRUCTURE_SECTION_OTHER"
+    return rule, f"{STRUCTURE_HEADING} の節の{bad}行目が形に合わない"
 
 
 def handback_refusal(where: str, body: str | None = None) -> tuple[str, str] | None:
     """`where` の作業ツリーから委譲先が返すのを拒む `(規則のキー, 理由)`。通すなら `None`。
 
-    規則のキーは `PLAN_OR_VERIFY_MISSING`（計画か検証が欠けた）と `STRUCTURE_SECTION`（構造の節が合わない）。
+    規則のキーは `PLAN_OR_VERIFY_MISSING`（計画か検証が欠けた）と、構造の節が合わない次の5つ。
+    `STRUCTURE_SECTION_MISSING`（節が無い）・`_EMPTY`（空）・`_NO_MARK`（形に合わない最初の行の頭が `+ `・`- `・`~ ` でない）・
+    `_NO_ARROW`（印はあるが `->` が無い）・`_OTHER`（印も `->` もあるが辺の形に合わない）。
 
     `body`（返却の本文。読める経路でだけ渡る）があり、計画・検証が揃った最後の段の返却（`tw step` の印も
     `tw pause` の控えも使わず `verify-check` が `VERIFIED_SAME`）で、本文に `## 構造の変更` の節が無いか、中身が形（各行が `+|-|~ A -> B` か、全体が `なし: <理由>` の1行）に合わなければ拒む。
@@ -260,9 +270,10 @@ def handback_refusal(where: str, body: str | None = None) -> tuple[str, str] | N
     last_stage: list[str] = []
     gaps = [line for task_id in claims for line in _handback_gaps(toplevel, task_id, last_stage)]
     if not gaps:
-        problem = _structure_section_problem(body) if body is not None and last_stage else None
-        if problem is not None:
-            return "STRUCTURE_SECTION", (
+        found = _structure_section_problem(body) if body is not None and last_stage else None
+        if found is not None:
+            rule, problem = found
+            return rule, (
                 f"{problem}（着手の印 {','.join(claims)}）。"
                 f"{STRUCTURE_HEADING} に、各行が tsukumo の graph の記法（例: + A -> B: 語）の行か、"
                 f"全体が なし: <理由> の1行の節を書いてから返す"
