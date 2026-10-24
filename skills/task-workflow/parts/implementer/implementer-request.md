@@ -5,7 +5,7 @@
 
 ## 常に
 
-シェルでファイルを書かない。`python3` の heredoc・`-c` の書き込みと、書き先が `$F`・`$(…)` で決まらない `>` は hook が拒む。`Edit`・`Write` で書く。
+`sed -i`・`perl -i`・`>`・`>>`・`tee`・python の書き込みは hook が拒む。`Edit`・`Write` で書く。
 タスク {{task_id}} を進める。まず `tw show {{task_id}}` で読み、次に {{here}}/implementer-brief.md を読んで従う。
 `tw verify`・`tw pause` は引数なしで打つのが基本。ID を付けるなら着手中の {{task_id}} だけ（違う ID は `NOT_OWNER` で拒まれる）。
 

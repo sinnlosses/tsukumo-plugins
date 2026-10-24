@@ -225,12 +225,9 @@ def decide(payload: dict, acceptor: bool = False) -> tuple[str, str] | None:
     if bd_verdict is not None:
         return bd_verdict
     work_claims = _WorkTreeClaims(start)
-    shell_writes = _shell_writes(command, start)
-    if shell_writes and _project_owns_shell_write(start):
-        shell_writes = []
-    for path, how in shell_writes:
+    for path, how in _shell_writes(command, start):
         where, claims = _claims_for_write(path, work_claims)
-        if claims:
+        if claims and not _project_owns_shell_write(where):
             return "SHELL_WRITE", (
                 f"着手の印（{','.join(claims)}）が立っていて tw done の前の作業ツリー（{where}）では "
                 f"{how} でファイルを書き換えない。Edit・Write で書く（作業ツリーの外のログへの出力は通る）"
@@ -250,12 +247,12 @@ def decide(payload: dict, acceptor: bool = False) -> tuple[str, str] | None:
     return None
 
 
-def _project_owns_shell_write(start: str) -> bool:
-    """`start` の作業ツリーの設定が `shell_write_guard = "project"` か。根が引けない・設定が読めないときは `False`（tw が見る側）。"""
-    if not os.path.isdir(start):
+def _project_owns_shell_write(where: str) -> bool:
+    """書き先の作業ツリー `where` の設定が `shell_write_guard = "project"` か。根が引けない・設定が読めないときは `False`（tw が見る側）。"""
+    if not os.path.isdir(where):
         return False
     try:
-        config = layout.read_config(gitinfo.git_toplevel(start))
+        config = layout.read_config(gitinfo.git_toplevel(where))
     except (gitinfo.GitCommandError, layout.ConfigError, OSError):
         return False
     return config.shell_write_guard == layout.SHELL_WRITE_GUARD_PROJECT

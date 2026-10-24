@@ -240,7 +240,7 @@ def test_ask_guard() -> None:
 def test_commit_guard_shell_write_project() -> None:
     say("task.py commit-guard: 設定 shell_write_guard = \"project\" の木ではシェルの書き換えを見ない。設定なし・tw・壊れた値は拒み、ほかの規則は残る")
     with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _ = make_repo(tmp)
+        main_path, wt1, wt2 = make_repo(tmp)
         disarm_ref_guard(main_path)
         commit_task(main_path, taskfile.Task("T-100", "拒む", "todo", "sonnet", "Y", (), BODY))
         run_task(wt1, "claim", "T-100")
@@ -256,6 +256,13 @@ def test_commit_guard_shell_write_project() -> None:
         check("project なら sed -i を通す", run_guard(tmp, wt1, sed) is None)
         check("project でもリダイレクトを通す", run_guard(tmp, wt1, "echo x > f.txt") is None)
         check("project でも git commit は拒む", run_guard(tmp, wt1, "git commit -m x") is not None)
+
+        commit_task(main_path, taskfile.Task("T-101", "別の木", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt2, "claim", "T-101")
+        reason = run_guard(tmp, wt1, f"sed -i s/a/b/ {wt2}/f.txt")
+        check("cwd が project でも、書き先が設定の無い別の作業ツリーなら拒む",
+              reason is not None and "T-101" in reason, str(reason))
+        check("書き先が project の木なら、cwd が別の木でも通す", run_guard(tmp, wt2, f"sed -i s/a/b/ {wt1}/f.txt") is None)
 
 
 @weight(6)
