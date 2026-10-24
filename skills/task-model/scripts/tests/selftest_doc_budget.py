@@ -36,6 +36,7 @@ LIMITS: dict[str, int] = {
     "task-model/SKILL.md": 2000,
     "task-workflow/SKILL.md": 18600,
     "task-workflow/completion-report.md": 5800,
+    "task-workflow/review-criteria.md": 1800,
     "task-workflow/parts/implementer/delegate.md": 11500,
     "task-workflow/parts/implementer/handback-read.md": 4500,
     "task-workflow/parts/implementer/implementer-brief.md": 21800,
@@ -74,7 +75,6 @@ UNLIMITED: frozenset[str] = frozenset(
         "task-workflow/parts/implementer/unresponsive.md",
         "task-workflow/parts/ship/commits-since-claim.md",
         "task-workflow/parts/ship/ship-stopped.md",
-        "task-workflow/review-criteria.md",
     }
 )
 
