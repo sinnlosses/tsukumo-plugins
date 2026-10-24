@@ -38,9 +38,9 @@ class ShipOutcome:
 
 
 def read_stamp_command(toplevel: str) -> str | None:
-    """`tw verify` が打ち、控えの鍵に入れるコマンド。送る前の検証コマンドがあればそれ、無ければ検証コマンド。"""
+    """`tw verify` が打ち、控えの鍵に入れるコマンド。検証コマンド（`verify`）。無いときだけ送る前の検証コマンド。"""
     config = layout.read_config(toplevel)
-    return config.verify_before_ship or config.verify
+    return config.verify or config.verify_before_ship
 
 
 def find_base_worktree(
@@ -85,9 +85,9 @@ def attempt(
     立っていれば、1回目の試行で付け替えが起きなくても検証を打つ——付け替え済みのまま次の
     `ship` を打つと、そのままでは検証を素通りして送ってしまうため（T-777）。
 
-    `preship_command` があれば、上の検証の代わりにこれを送る直前に打つ（検証コマンドは打たない）。
-    打つのは付け替えた回・借りの1回目・`preship_stamped`（控えの木とコマンドが今の中身と同じ）が
-    偽のとき。落ちたら `VERIFY_FAILED`（`verify_command` はこのコマンド）。
+    `preship_command` があれば、付け替えた回は上の検証（`verify_command`。無ければこれ）を打ち、
+    付け替えの無い回は借りの1回目・`preship_stamped`（控えの木とコマンドが今の中身と同じ）が
+    偽のときにこれを送る直前に打つ。落ちたら `VERIFY_FAILED`（打ったほうのコマンド）。
     """
     rebased_any = False
     preship_ran = False
@@ -106,8 +106,13 @@ def attempt(
             rebased_any = True
 
         owed_this_round = tries == 1 and verify_owed
-        if (rebased_this_round or owed_this_round) and verify_command is not None and preship_command is None:
-            vrc, vlog, tail = _run_logged(toplevel, verify_command)
+        round_verify = verify_command if verify_command is not None else preship_command
+        if preship_command is None:
+            run_verify = rebased_this_round or owed_this_round
+        else:
+            run_verify = rebased_this_round
+        if run_verify and round_verify is not None:
+            vrc, vlog, tail = _run_logged(toplevel, round_verify)
             verify_state = "ran"
             if vrc != 0:
                 return ShipOutcome(
@@ -115,12 +120,12 @@ def attempt(
                     rebased=rebased_any,
                     verify_state=verify_state,
                     tries=tries,
-                    verify_command=verify_command,
+                    verify_command=round_verify,
                     verify_tail=tail,
                     verify_log=vlog,
                 )
 
-        if preship_command is not None and (rebased_this_round or owed_this_round or not preship_stamped):
+        if preship_command is not None and not rebased_this_round and (owed_this_round or not preship_stamped):
             preship_ran = True
             prc, plog, tail = _run_logged(toplevel, preship_command)
             if prc != 0:

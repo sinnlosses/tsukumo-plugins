@@ -448,15 +448,15 @@ def test_readonly_commands_stay_out_of_git() -> None:
 
 
 def test_verify_uses_preship_command_for_stamp() -> None:
-    say("task.py verify: 送る前の検証コマンドの行があれば、検証コマンドではなくそれを打ち、その控えで verify-check が判定する")
+    say("task.py verify: 送る前の検証コマンドの行があっても、検証コマンド（verify）を打ち、その控えで verify-check が判定する")
     with tempfile.TemporaryDirectory() as tmp:
         write(os.path.join(tmp, "preship.sh"), "echo x >> ../preship-count.log\n")
         _main, wt1 = _fold_repo(tmp, preship="`sh ../preship.sh`")
         write(os.path.join(wt1, "work.txt"), "x\n")
         r = run_task(wt1, "verify")
         check("verify が通る", r.returncode == 0 and r.stdout.startswith("VERIFIED\t"), r.stdout + r.stderr)
-        check("送る前の検証コマンドが1回", _count_lines(os.path.join(tmp, "preship-count.log")) == 1)
-        check("検証コマンドは打たれない", _verify_count(tmp) == 0, str(_verify_count(tmp)))
+        check("検証コマンドが1回", _verify_count(tmp) == 1, str(_verify_count(tmp)))
+        check("送る前の検証コマンドは打たれない", _count_lines(os.path.join(tmp, "preship-count.log")) == 0)
         r = run_task(wt1, "verify-check")
         check("verify-check は VERIFIED_SAME", r.stdout.startswith("VERIFIED_SAME\t"), r.stdout)
         write(os.path.join(wt1, "work.txt"), "y\n")
@@ -476,7 +476,7 @@ def _commit_work_and_ship(wt: str, *paths: str) -> subprocess.CompletedProcess:
 
 @weight(24)
 def test_ship_skips_preship_verify_when_stamp_matches() -> None:
-    say("task.py ship: 控えの中身をそのままコミットして送れば送る前の検証を飛ばし、中身が違う・付け替えた・借りがある・控えが無ければ打つ")
+    say("task.py ship: 付け替えの無い回は送る前の検証を打ち（控えが verify なので飛ばない）、付け替えた回は verify を打って送る前の検証を打たない")
 
     def prepare(tmp: str) -> tuple[str, str]:
         write(os.path.join(tmp, "preship.sh"), "echo x >> ../preship-count.log\n")
@@ -487,20 +487,21 @@ def test_ship_skips_preship_verify_when_stamp_matches() -> None:
         write(os.path.join(wt1, "work.txt"), "x\n")
         run_task(wt1, "verify")
         r = _commit_work_and_ship(wt1, "work.txt")
-        check("同じ中身のコミットは preship=skipped で送る",
-              r.returncode == 0 and r.stdout.startswith("SHIPPED\t") and "preship=skipped" in r.stdout
-              and "rebased=no" in r.stdout, r.stdout + r.stderr)
-        check("送る前の検証コマンドは verify の1回だけ", _preship_count(tmp) == 1, str(_preship_count(tmp)))
-        check("検証コマンドは打たれない", _verify_count(tmp) == 0, str(_verify_count(tmp)))
+        check("verify の控えがあっても付け替えの無い回は preship=ran で送る",
+              r.returncode == 0 and r.stdout.startswith("SHIPPED\t") and "preship=ran" in r.stdout
+              and "rebased=no" in r.stdout and "verify=skipped" in r.stdout, r.stdout + r.stderr)
+        check("送る前の検証コマンドは ship の1回", _preship_count(tmp) == 1, str(_preship_count(tmp)))
+        check("検証コマンドは verify の1回だけ", _verify_count(tmp) == 1, str(_verify_count(tmp)))
 
     with tempfile.TemporaryDirectory() as tmp:
         _main, wt1 = prepare(tmp)
         write(os.path.join(wt1, "work.txt"), "x\n")
-        run_task(wt1, "verify")
-        write(os.path.join(wt1, "work.txt"), "y\n")
+        git(wt1, "add", "work.txt")
+        stamps.write_verify_stamp(stamps.content_key("sh ../preship.sh", cwd=wt1), cwd=wt1)
         r = _commit_work_and_ship(wt1, "work.txt")
-        check("控えのあとに中身を変えたら preship=ran", "preship=ran" in r.stdout, r.stdout + r.stderr)
-        check("送る前の検証コマンドが ship でもう1回", _preship_count(tmp) == 2, str(_preship_count(tmp)))
+        check("送る前の検証コマンドで控えた同じ中身は preship=skipped で送る",
+              r.returncode == 0 and "preship=skipped" in r.stdout and "rebased=no" in r.stdout, r.stdout + r.stderr)
+        check("どちらのコマンドも打たれない", _preship_count(tmp) == 0 and _verify_count(tmp) == 0)
 
     with tempfile.TemporaryDirectory() as tmp:
         _main, wt1 = prepare(tmp)
@@ -508,6 +509,7 @@ def test_ship_skips_preship_verify_when_stamp_matches() -> None:
         r = _commit_work_and_ship(wt1, "work.txt")
         check("控えが無ければ preship=ran", "preship=ran" in r.stdout, r.stdout + r.stderr)
         check("送る前の検証コマンドは1回", _preship_count(tmp) == 1, str(_preship_count(tmp)))
+        check("検証コマンドは打たれない", _verify_count(tmp) == 0, str(_verify_count(tmp)))
 
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1 = prepare(tmp)
@@ -515,10 +517,11 @@ def test_ship_skips_preship_verify_when_stamp_matches() -> None:
         run_task(wt1, "verify")
         _advance_main(main_path, NOTES, extra="other.txt")
         r = _commit_work_and_ship(wt1, "work.txt")
-        check("付け替えた回は rebased=yes・preship=ran",
-              "rebased=yes" in r.stdout and "preship=ran" in r.stdout, r.stdout + r.stderr)
-        check("送る前の検証コマンドだけが ship で1回（合計2回）", _preship_count(tmp) == 2, str(_preship_count(tmp)))
-        check("検証コマンドは重ねて打たれない", _verify_count(tmp) == 0, str(_verify_count(tmp)))
+        check("付け替えた回は rebased=yes・verify=ran・preship=skipped",
+              "rebased=yes" in r.stdout and "verify=ran" in r.stdout and "preship=skipped" in r.stdout,
+              r.stdout + r.stderr)
+        check("送る前の検証コマンドは打たれない", _preship_count(tmp) == 0, str(_preship_count(tmp)))
+        check("検証コマンドは ship でもう1回（合計2回）", _verify_count(tmp) == 2, str(_verify_count(tmp)))
 
     with tempfile.TemporaryDirectory() as tmp:
         _main, wt1 = prepare(tmp)
@@ -526,8 +529,8 @@ def test_ship_skips_preship_verify_when_stamp_matches() -> None:
         run_task(wt1, "verify")
         stamps.mark_verify_owed("sh ../preship.sh", cwd=wt1)
         r = _commit_work_and_ship(wt1, "work.txt")
-        check("借りがあれば控えが同じでも preship=ran", "preship=ran" in r.stdout, r.stdout + r.stderr)
-        check("借りの回の送る前の検証コマンドは1回（合計2回）", _preship_count(tmp) == 2, str(_preship_count(tmp)))
+        check("借りがあれば付け替えが無くても preship=ran", "preship=ran" in r.stdout, r.stdout + r.stderr)
+        check("借りの回の送る前の検証コマンドは1回", _preship_count(tmp) == 1, str(_preship_count(tmp)))
         check("借りの印は消える", not stamps.is_verify_owed(cwd=wt1))
 
 
@@ -541,7 +544,8 @@ def test_ship_runs_preship_verify_when_work_changes_tree() -> None:
             write(os.path.join(wt1, "work.txt"), "x\n")
             r = run_task(wt1, "verify")
             check("verify は VERIFIED（控えた）", r.returncode == 0 and "VERIFIED\t" in r.stdout, r.stdout + r.stderr)
-            check("verify は送る前の検証コマンドを1回打つ", _count_lines(os.path.join(tmp, "preship-count.log")) == 1)
+            check("verify は検証コマンドを1回打つ", _verify_count(tmp) == 1, str(_verify_count(tmp)))
+            check("verify は送る前の検証コマンドを打たない", _preship_count(tmp) == 0)
             r = run_task(wt1, "verify-check")
             check("控えは VERIFIED_SAME", r.stdout.startswith("VERIFIED_SAME\t"), r.stdout)
 
@@ -551,8 +555,8 @@ def test_ship_runs_preship_verify_when_work_changes_tree() -> None:
             head_before = git(main_path, "rev-parse", "HEAD").stdout.strip()
             r = _commit_and_ship(wt1, tmp, "work.txt")
             preship_count = _count_lines(os.path.join(tmp, "preship-count.log"))
-            check("送る前の検証コマンドは ship でもう1回打たれる", preship_count == 2, str(preship_count))
-            check("通常の検証コマンドは打たれない", _verify_count(tmp) == 0, str(_verify_count(tmp)))
+            check("送る前の検証コマンドは ship で1回打たれる", preship_count == 1, str(preship_count))
+            check("検証コマンドは ship で重ねて打たれない", _verify_count(tmp) == 1, str(_verify_count(tmp)))
             head_after = git(main_path, "rev-parse", "HEAD").stdout.strip()
             if passes:
                 check("通れば verify=skipped のまま preship=ran で送る",
