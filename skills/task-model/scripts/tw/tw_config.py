@@ -20,23 +20,22 @@ def steps_default(toplevel: str) -> list[str]:
     return layout.default_steps(step_candidates(toplevel))
 
 
+def _toplevel_or_none() -> str | None:
+    try:
+        return gitinfo.git_toplevel()
+    except gitinfo.GitCommandError:
+        return None
+
+
 def cmd_config_schema() -> None:
     """欄の形（schema 2。並びの欄）を1行の JSON で出す（読むだけ。設定にはよらない）。候補は作業ツリー・`~`・`tw` と同じ plugin から走査する。"""
-    try:
-        project_root = gitinfo.git_toplevel()
-    except gitinfo.GitCommandError:
-        project_root = None
-    schema = layout.config_schema(project_root, os.path.expanduser("~"), layout.own_plugin_root())
+    schema = layout.config_schema(_toplevel_or_none(), os.path.expanduser("~"), layout.own_plugin_root())
     print(json.dumps(schema, ensure_ascii=False))
 
 
 def cmd_config_entries() -> None:
     """入口にできるスキルを `{"entries": [...]}` の1行の JSON で出す（読むだけ。設定にはよらない）。"""
-    try:
-        project_root = gitinfo.git_toplevel()
-    except gitinfo.GitCommandError:
-        project_root = None
-    entries = layout.config_entries(project_root, os.path.expanduser("~"), layout.own_plugin_root())
+    entries = layout.config_entries(_toplevel_or_none(), os.path.expanduser("~"), layout.own_plugin_root())
     print(json.dumps(entries, ensure_ascii=False))
 
 
