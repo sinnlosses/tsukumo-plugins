@@ -225,7 +225,9 @@ def decide(payload: dict, acceptor: bool = False) -> tuple[str, str] | None:
     if bd_verdict is not None:
         return bd_verdict
     work_claims = _WorkTreeClaims(start)
-    shell_writes = [] if _project_owns_shell_write(start) else _shell_writes(command, start)
+    shell_writes = _shell_writes(command, start)
+    if shell_writes and _project_owns_shell_write(start):
+        shell_writes = []
     for path, how in shell_writes:
         where, claims = _claims_for_write(path, work_claims)
         if claims:
