@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 
 # 設定・作業ツリーごとの控えの置き場
@@ -389,10 +390,20 @@ def _skill_dirs(skills_root: str) -> list[str]:
     return [os.path.join(skills_root, n) for n in names if os.path.isfile(os.path.join(skills_root, n, "SKILL.md"))]
 
 
-def _read_skill(
-    skill_dir: str,
-) -> tuple[str, str, bool, int | None, str | None, tuple[tuple[str, str], ...], bool, str | None] | None:
-    """`(name, description, 印があるか, 既定の並びでの位置, 段の名前, 依頼文の型, 入口の印があるか, 入口の名前)`。読めなければ `None`。位置は整数でなければ `None`、名前は無ければ `None`。"""
+@dataclass(frozen=True)
+class _Skill:
+    name: str
+    description: str
+    step_marked: bool
+    order: int | None  # 既定の並びでの位置。整数でなければ `None`
+    step_title: str | None
+    briefs: tuple[tuple[str, str], ...]  # 依頼文の型
+    entry_marked: bool
+    entry_title: str | None
+
+
+def _read_skill(skill_dir: str) -> _Skill | None:
+    """SKILL.md を読んだ `_Skill`。読めなければ `None`。"""
     try:
         with open(os.path.join(skill_dir, "SKILL.md"), encoding="utf-8") as f:
             front = parse_skill_frontmatter(f.read())
@@ -412,15 +423,15 @@ def _read_skill(
             briefs.append((role, os.path.realpath(os.path.join(os.path.realpath(skill_dir), rel))))
     entry_marked = isinstance(metadata, dict) and metadata.get(ENTRY_MARK_KEY) == "true"
     entry_title = metadata.get(ENTRY_TITLE_KEY) if isinstance(metadata, dict) else None
-    return (
-        name if isinstance(name, str) and name else os.path.basename(skill_dir),
-        description if isinstance(description, str) else "",
-        marked,
-        order,
-        title_text if isinstance(title_text, str) and title_text else None,
-        tuple(briefs),
-        entry_marked,
-        entry_title if isinstance(entry_title, str) and entry_title else None,
+    return _Skill(
+        name=name if isinstance(name, str) and name else os.path.basename(skill_dir),
+        description=description if isinstance(description, str) else "",
+        step_marked=marked,
+        order=order,
+        step_title=title_text if isinstance(title_text, str) and title_text else None,
+        briefs=tuple(briefs),
+        entry_marked=entry_marked,
+        entry_title=entry_title if isinstance(entry_title, str) and entry_title else None,
     )
 
 
@@ -446,9 +457,9 @@ def _marked_skills(
     project_root: str | None,
     home: str | None,
     plugin: tuple[str, str] | None,
-    mark_index: int,
-) -> list[tuple[str, bool, tuple]]:
-    """走査先（作業ツリー・`home` の `.claude/skills/` と plugin の `skills/` の順）から、`_read_skill` の `mark_index` の位置が真のスキルを `(全名, own, _read_skill の結果)` で返す。
+    wanted: Callable[[_Skill], bool],
+) -> list[tuple[str, bool, _Skill]]:
+    """走査先（作業ツリー・`home` の `.claude/skills/` と plugin の `skills/` の順）から、`wanted` が真のスキルを `(全名, own, _Skill)` で返す。
 
     同じスキル（実体が同じ）は先に見つけた1つにする。リンクで入れたものは `.claude/skills/` で先に当たるので `<名前>`、
     入っていなければ plugin の `<プラグイン>:<名前>`。全名が同じで実体が違うものも先の1つだけ。
@@ -460,7 +471,7 @@ def _marked_skills(
         roots.append((os.path.join(home, ".claude", "skills"), None))
     if plugin is not None:
         roots.append((os.path.join(plugin[0], "skills"), plugin[1]))
-    found: list[tuple[str, bool, tuple]] = []
+    found: list[tuple[str, bool, _Skill]] = []
     real_seen: set[str] = set()
     value_seen: set[str] = set()
     for skills_root, prefix in roots:
@@ -469,9 +480,9 @@ def _marked_skills(
             if real in real_seen:
                 continue
             skill = _read_skill(skill_dir)
-            if skill is None or not skill[mark_index]:
+            if skill is None or not wanted(skill):
                 continue
-            value = f"{prefix}:{skill[0]}" if prefix else skill[0]
+            value = f"{prefix}:{skill.name}" if prefix else skill.name
             if value in value_seen:
                 continue
             real_seen.add(real)
@@ -488,8 +499,8 @@ def step_candidates(
 ) -> list[StepCandidate]:
     """並びに置ける候補（`workflow-step` の印のあるスキル）。走査の決まりは `_marked_skills`。"""
     return [
-        StepCandidate(value, skill[0], skill[1], own, skill[3], skill[4] or skill[0], skill[5])
-        for value, own, skill in _marked_skills(project_root, home, plugin, 2)
+        StepCandidate(value, skill.name, skill.description, own, skill.order, skill.step_title or skill.name, skill.briefs)
+        for value, own, skill in _marked_skills(project_root, home, plugin, lambda s: s.step_marked)
     ]
 
 
@@ -500,8 +511,8 @@ def entry_candidates(
 ) -> list[StepCandidate]:
     """タスクの実行の入口にできるスキル（`workflow-entry` の印）。走査の決まりは `_marked_skills`、名前は `workflow-entry-title`。"""
     return [
-        StepCandidate(value, skill[0], skill[1], own, title=skill[7] or skill[0])
-        for value, own, skill in _marked_skills(project_root, home, plugin, 6)
+        StepCandidate(value, skill.name, skill.description, own, title=skill.entry_title or skill.name)
+        for value, own, skill in _marked_skills(project_root, home, plugin, lambda s: s.entry_marked)
     ]
 
 
