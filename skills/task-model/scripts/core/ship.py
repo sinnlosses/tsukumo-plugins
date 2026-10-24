@@ -85,9 +85,9 @@ def attempt(
     立っていれば、1回目の試行で付け替えが起きなくても検証を打つ——付け替え済みのまま次の
     `ship` を打つと、そのままでは検証を素通りして送ってしまうため（T-777）。
 
-    `preship_command` があれば、付け替えた回は上の検証（`verify_command`。無ければこれ）を打ち、
-    付け替えの無い回は借りの1回目・`preship_stamped`（控えの木とコマンドが今の中身と同じ）が
-    偽のときにこれを送る直前に打つ。落ちたら `VERIFY_FAILED`（打ったほうのコマンド）。
+    `preship_command` があれば、借りの1回目は付け替えの有無によらずこれを送る直前に打つ。
+    借りが無いときは、付け替えた回は上の検証（`verify_command`。無ければこれ）を打ち、
+    付け替えの無い回は `preship_stamped`（控えの木とコマンドが今の中身と同じ）が偽のときにこれを打つ。落ちたら `VERIFY_FAILED`（打ったほうのコマンド）。
     """
     rebased_any = False
     preship_ran = False
@@ -110,7 +110,7 @@ def attempt(
         if preship_command is None:
             run_verify = rebased_this_round or owed_this_round
         else:
-            run_verify = rebased_this_round
+            run_verify = rebased_this_round and not owed_this_round
         if run_verify and round_verify is not None:
             vrc, vlog, tail = _run_logged(toplevel, round_verify)
             verify_state = "ran"
@@ -125,7 +125,7 @@ def attempt(
                     verify_log=vlog,
                 )
 
-        if preship_command is not None and not rebased_this_round and (owed_this_round or not preship_stamped):
+        if preship_command is not None and (owed_this_round or (not rebased_this_round and not preship_stamped)):
             preship_ran = True
             prc, plog, tail = _run_logged(toplevel, preship_command)
             if prc != 0:

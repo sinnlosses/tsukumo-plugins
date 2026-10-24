@@ -533,6 +533,19 @@ def test_ship_skips_preship_verify_when_stamp_matches() -> None:
         check("借りの回の送る前の検証コマンドは1回", _preship_count(tmp) == 1, str(_preship_count(tmp)))
         check("借りの印は消える", not stamps.is_verify_owed(cwd=wt1))
 
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1 = prepare(tmp)
+        write(os.path.join(wt1, "work.txt"), "x\n")
+        run_task(wt1, "verify")
+        stamps.mark_verify_owed("sh ../preship.sh", cwd=wt1)
+        _advance_main(main_path, NOTES, extra="other.txt")
+        r = _commit_work_and_ship(wt1, "work.txt")
+        check("借りと付け替えが重なっても rebased=yes・preship=ran",
+              "rebased=yes" in r.stdout and "preship=ran" in r.stdout, r.stdout + r.stderr)
+        check("送る前の検証コマンドが1回、検証コマンドは verify の1回だけ",
+              _preship_count(tmp) == 1 and _verify_count(tmp) == 1, f"{_preship_count(tmp)} {_verify_count(tmp)}")
+        check("借りの印は消える（重なる回）", not stamps.is_verify_owed(cwd=wt1))
+
 
 @weight(5)
 def test_ship_runs_preship_verify_when_work_changes_tree() -> None:
