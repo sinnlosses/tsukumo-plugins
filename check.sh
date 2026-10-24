@@ -21,6 +21,7 @@
 # 5. plan-tasks のスクリプトの自己テスト
 # 6. comment-audit のスクリプトの自己テスト
 # 7. task-workflow のスクリプトの自己テスト
+# 8. 毎回読まれるスキルの文書のバイト数の上限の自己テスト（skills/ の .md が変わったとき）
 #
 # 当たる段は `./check.sh --plan` で見る。
 set -e
@@ -190,4 +191,8 @@ fi
 
 if stage "task-workflow scripts の自己テスト" 'skills/task-workflow/scripts/*' 'skills/task-model/scripts/core/gitcmd.py' 'skills/comment-audit/*'; then
   $LOWPRI python3 "$here/skills/task-workflow/scripts/selftest_self_review.py"
+fi
+
+if stage "文書の字数の自己テスト" 'skills/*.md' 'skills/task-model/scripts/tests/selftest_doc_budget.py'; then
+  $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_doc_budget.py"
 fi
