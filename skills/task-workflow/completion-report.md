@@ -44,6 +44,6 @@
 
 判断待ちで外すのは、`tw ask-guard` に拒まれたときと、実装役が人の判断を要すると止めて返したとき（frame が実装と合わない等）。
 論点を `tw hold T-xxx --reason-file -` に渡して外し、`loopable: N` には直さない（着手中の Y→N は `tw edit` が拒む）。
-`report` の outcome は `stopped` でよいが、判断待ちで `report` の `favor` に判断のお願いを書く。
+`report` の outcome は `stopped` でよいが、判断待ちで `report` の `favor` に判断のお願いを書いてターンを終えることはしない（そこで `/loop` が切れる）。
 
 続行するときは、止めずに次の1件へ進む（文脈は Claude Code の自動の要約に任せる）。
