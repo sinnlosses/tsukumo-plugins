@@ -62,8 +62,6 @@
 ```toml
 # タスク運用の設定（tw が読む）
 verify = "pnpm check"        # 受け入れ判定に使う。打つものが無ければ "なし"
-# format = "pnpm format"     # あれば tw verify が検証の前に打つ
-# branch = "既定"            # 既定 / 作業ブランチを切る / 切らない
 ```
 
 形式は TOML の部分集合。書き間違いは行番号付きの `INVALID`（終了コード3）。
@@ -82,9 +80,10 @@ verify = "pnpm check"        # 受け入れ判定に使う。打つものが無�
 | `backup` | Beads のバックアップの置き場（git の外） |
 | `hook_tally` | 直近30日の hook ごとの拒否の回数を出すコマンド。読むのは `tw` ではなく週ごとの横断の振り返りで、無ければその観点を飛ばす |
 | `review_code_globs` | 文書の拡張子（`.md` など）でもコード扱いにして、受け入れの新しい文脈のレビューを掛けるパスの glob の配列。最上位に `review_code_globs = ["skills/**", "agents/**"]` の形で書く。`**` は `/` を越え、`*`・`?` は越えない。空の配列でも書かなくてもよく、無ければ文書の拡張子だけの差分は `SKIP\tdocs-only`。`review_needed.py` が読む |
-| `steps` | スキルの並び。最上位に `steps = ["<全名>", …]`（文字列の配列）で書く。1つ以上・重複なし。並びの順が呼ぶ順。無ければ `tw config --schema` の `default`（`tw` と同じ plugin の候補を、`metadata` の `workflow-step-order` の小さい順に並べたもの）。名前は同じ `values`（SKILL.md の frontmatter の `metadata` に `workflow-step: "true"` を持つスキル）の全名。各候補の `title`（日本語の段の名前）は `metadata` の `workflow-step-title` で、無ければ `name` と同じ。`metadata` の `workflow-brief-<役>`（役の語は `tw brief --help`。SKILL.md のディレクトリからの相対パス）は実装役・受け入れ役への依頼文の型で、`tw brief` が並びの順で最初に持つスキルのものを読む。書くのは `tw config set steps '<1行の JSON の配列>'` |
+| `shell_write_guard` | `tw`（既定）・`project`。`project` なら `tw commit-guard` は `SHELL_WRITE` を見ない（プロジェクトが自前のシェル書き込みの hook で止める印。ほかの規則は変わらない）。欄の形は `tw config --schema` |
+| `steps` | スキルの並び。最上位に `steps = ["<全名>", …]`（文字列の配列）で書く。1つ以上・重複なし。並びの順が呼ぶ順。無ければ `tw config --schema` の `default`（`tw` と同じ plugin の候補を、`metadata` の `workflow-step-order` の小さい順に並べたもの）。名前は同じ `values`（SKILL.md の frontmatter の `metadata` に `workflow-step: "true"` を持つスキル）の全名。`metadata` の `workflow-brief-<役>`（役の語は `tw brief --help`。SKILL.md のディレクトリからの相対パス）は実装役・受け入れ役への依頼文の型で、`tw brief` が並びの順で最初に持つスキルのものを読む。書くのは `tw config set steps '<1行の JSON の配列>'` |
 
-欄の形（`steps` の既定と候補）は、ここに書き写さず `tw config --schema` が出す。廃止した `flow` の行と `[parts]` の表は、設定に残っていれば `INVALID`（終了コード3）で止まる。
+欄の形（各欄の既定と候補）は、ここに書き写さず `tw config --schema` が出す。廃止した `flow` の行と `[parts]` の表は、設定に残っていれば `INVALID`（終了コード3）で止まる。
 
 - `tw verify`・`tw verify-check`・`tw pause`・`tw step` の鍵は、`verify_before_ship` があっても `verify` のコマンドで取る
   （`verify` が無い設定だけ `verify_before_ship` に落ちる）。`tw ship` は付け替えの無い回に、主ブランチへ入れる直前に
