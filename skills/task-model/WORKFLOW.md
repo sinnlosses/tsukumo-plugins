@@ -86,10 +86,11 @@ verify = "pnpm check"        # 受け入れ判定に使う。打つものが無�
 
 欄の形（`steps` の既定と候補）は、ここに書き写さず `tw config --schema` が出す。廃止した `flow` の行と `[parts]` の表は、設定に残っていれば `INVALID`（終了コード3）で止まる。
 
-- `verify_before_ship` があれば、`tw verify` は `verify` の代わりにそれを打ち、`tw verify-check`・`tw pause`・`tw step`
-  の鍵もそのコマンドで取る。`tw ship` は主ブランチへ入れる直前に同じコマンドを打つ。ただし控えの木とコマンドが
-  今の中身と同じで、付け替えが無く、借りも無いときは飛ばす。付け替えた回は `verify` を打たず、これだけを1回打つ。
-  落ちれば `VERIFY_FAILED`（終了コード8）で送らない。全件の E2E のように重い検証を、1件の中で1回に済ませたいときに使う
+- `tw verify`・`tw verify-check`・`tw pause`・`tw step` の鍵は、`verify_before_ship` があっても `verify` のコマンドで取る
+  （`verify` が無い設定だけ `verify_before_ship` に落ちる）。`tw ship` は付け替えの無い回に、主ブランチへ入れる直前に
+  `verify_before_ship` を打つ。ただし控えの木とコマンドが今の中身と同じで、借りも無いときは飛ばす（控えは `verify` で
+  取るので、通常は飛ばない）。付け替えた回は `verify_before_ship` ではなく `verify` を1回打つ。
+  落ちれば `VERIFY_FAILED`（終了コード8）で送らない。全件の E2E のように重い検証を、受け入れのたびではなく送る直前の1回に済ませたいときに使う
 - `branch` の語彙:
 
 | 値 | 意味 |
@@ -566,11 +567,11 @@ frame が実装と合わず人が決め直すまで進められないタスク�
 | --- | --- | --- |
 | 受け入れ（`tw done` の前） | スキル | 作業の合否そのもの。主ブランチを取り込んだあとの中身で打つ。整形（設定の `format`）もここ。委譲先が `tw verify` で控えた中身と同じなら省く（`tw verify-check`。控えは cwd の作業ツリーごとなので、別のリポジトリが作業先ならそのリポジトリの作業ツリーで打つ） |
 | `ship` の中で rebase が実際に付け替えたとき | `tw` | 両側の変更が初めて同じ木に乗る |
-| 主ブランチへ入れる直前（設定に `verify_before_ship` があるときだけ） | `tw` | 付け替えた回・借りがある回・控えの木とコマンドが今の中身と違う回に打ち、`SHIPPED` の行に `preship=ran` が付く。同じなら飛ばして `preship=skipped`。控えの木は `.tw/local/` を外す |
+| 主ブランチへ入れる直前（設定に `verify_before_ship` があるときだけ） | `tw` | 付け替えの無い回で、借りがある回・控えの木とコマンドが今の中身と違う回に打ち、`SHIPPED` の行に `preship=ran` が付く。同じなら飛ばして `preship=skipped`。付け替えた回は代わりに `verify` を打つ（`verify=ran`・`preship=skipped`）。控えの木は `.tw/local/` を外す |
 | 主ブランチへ送ったあと | 打たない | fast-forward なので、主ブランチの木は直前に検証した木と同じ |
 
 検証コマンドについて `ship` は `tw verify` の控えを読まない（付け替えで中身が変わるので、付け替えた回は控えがあっても検証する）。
-`verify_before_ship` があれば、`ship` は控えの `tree` と `verify_command` だけを今の中身と照らし（`head` は比べない。コミットで変わる）、同じなら打たない。付け替えた回は検証コマンドの代わりにこれを打つ（落ちたときの借りの扱いも `VERIFY_FAILED` と同じ）。
+`verify_before_ship` があれば、`ship` は控えの `tree` と `verify_command` だけを今の中身と照らし（`head` は比べない。コミットで変わる）、同じなら打たない。付け替えた回はこれの代わりに検証コマンドを打つ（落ちたときの借りの扱いも `VERIFY_FAILED` と同じ）。
 
 `VERIFY_FAILED` で終わったあとは、枝は付け替え済みのまま検証の借りが残る（作業ツリー固有の印。
 `git worktree` を消すと一緒に消える）。次に打った `ship` は、その回で付け替えが起きなくても

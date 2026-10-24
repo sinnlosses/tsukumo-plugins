@@ -9,7 +9,7 @@
 設定は `.tw/config.toml`（検証コマンドは `./check.sh`）。このリポジトリはタスクの台帳（`.beads`）を持たないので、
 `tw` は `verify`・`verify-check` だけが打てる。`./check.sh` は構文とリポジトリの整合はいつも、
 各スキルの自己テストは変えたファイルに当たるものだけを流し、`./check.sh --full` で全段を流す。
-main へ送る前に `./check.sh --full` を流す（設定に `verify_before_ship` を置くと毎回の `tw verify` が `--full` になるので置かない）。
+main へ送る前に `./check.sh --full` を流す（設定の `verify_before_ship` に `./check.sh --full` を置くと `tw ship` の直前の1回だけ全段になる。`tw verify` は `verify` のまま）。
 
 ## 書き方
 
