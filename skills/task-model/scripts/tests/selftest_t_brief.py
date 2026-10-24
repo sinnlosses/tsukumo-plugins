@@ -56,6 +56,7 @@ def test_brief_implementer_planned() -> None:
         check("段1を渡し、ID が埋まり、{{ が残らない",
               "段1（`### 1.`）" in body and "tw show T-100" in body and "{{" not in body, body)
         check("本文の .md のパスはどれも実在する", _paths_exist(body), body)
+        check("本文の先頭の行がシェルで書かない案内", body.startswith("シェルでファイルを書かない。") and "`Edit`・`Write`" in body.splitlines()[0], body)
         r = _brief(wt1, "--step", "2")
         check("--step 2 なら段2", r.returncode == 0 and "段2（`### 2.`）" in r.stdout, r.stdout + r.stderr)
         r = _brief(wt1, "--step", "3")
