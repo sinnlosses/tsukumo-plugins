@@ -30,6 +30,16 @@ def cmd_config_schema() -> None:
     print(json.dumps(schema, ensure_ascii=False))
 
 
+def cmd_config_entries() -> None:
+    """入口にできるスキルを `{"entries": [...]}` の1行の JSON で出す（読むだけ。設定にはよらない）。"""
+    try:
+        project_root = gitinfo.git_toplevel()
+    except gitinfo.GitCommandError:
+        project_root = None
+    entries = layout.config_entries(project_root, os.path.expanduser("~"), layout.own_plugin_root())
+    print(json.dumps(entries, ensure_ascii=False))
+
+
 def cmd_config_set(toplevel: str, key: str, value: str) -> None:
     """`key` を `value` にして書く。書けないキー・値は stderr に理由を出して終了コード2（ファイルは変えない）。"""
     config = layout.read_config(toplevel)

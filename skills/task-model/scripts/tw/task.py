@@ -197,12 +197,14 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
 出力: `VERIFIED_SAME\t<木の SHA>`（検証を省いてよい）、そうでなければ `NOT_VERIFIED\t<理由>`（`none`＝控えが無い／`base`＝主ブランチが進んでいて `verify` が取り込める。`verify_before_ship` があり取り込みが衝突しないときは、この理由にせず鍵で照らす／`head`／`scheme`＝別の版の `tw` が控えた。第3列にこの `tw` のチェックアウトの `tw_verify.py` の実パス／`content`／`command`）。どちらも終了コード0。検証コマンドが無ければ `NOTHING`""",
     ),
     "config": (
-        "解けた設定を出す（読むだけ）。`--json` で JSON、`--schema` で欄の形、`set <キー> <値>` で書く。",
+        "解けた設定を出す（読むだけ）。`--json` で JSON、`--schema` で欄の形、`--entries` で入口のスキル、`set <キー> <値>` で書く。",
         r"""解けた設定を出す（読むだけ）。`--json` は同じ値を 1行の JSON で出し、`--schema` は欄の形を出し（読むだけ）、`set <キー> <値>` は検査してから `.tw/config.toml` に書く
 
 `--json`: 下の出力と同じキー・値・出どころを、1行の JSON `{"config": "<設定ファイルのパス>", "keys": [{"key", "value", "source"}, …]}` で出す（`tw` の「stdout は先頭語の TSV」の例外）。`keys` は TSV の行の順。`value` は文字列で、`steps` と `review_code_globs` だけ文字列の配列。`source` は `config` か `default`。設定が無いとき（`MISSING`、終了コード6）と読めないとき（`INVALID`、終了コード3）は JSON にせず、TSV と同じ先頭語の行を出す。`--schema`・`set` とは一緒に打てない。
 
 `--schema`: 設定にはよらず（候補の走査だけ、いまの git の作業ツリーの `.claude/skills/` を見る。git の外なら飛ばす）、1行の JSON を出す（`tw` の「stdout は先頭語の TSV」の、hook の口に続く例外）。形は `{"schema": 2, "keys": [...]}`（並びの欄 `steps`＝`kind: steps`・`default`＝スキルの全名の配列で、この `tw` と同じチェックアウトの plugin の候補を `metadata` の `workflow-step-order`（整数）の小さい順に、無いものはその後ろに走査順で並べたもの・`values`＝候補 `{"value","label","title","description"}`（`title` は `metadata` の `workflow-step-title`、無ければ `label` と同じ）。候補は SKILL.md の frontmatter の `metadata` に `workflow-step: "true"` を持つスキルだけで、作業ツリーの `.claude/skills/`・`~/.claude/skills/`・この `tw` と同じチェックアウトの plugin の `skills/` から拾う）。`--version` は知らない引数として終了コード2。
+
+`--entries`: タスクの実行の入口にできるスキルを、設定にはよらず（走査先は `--schema` と同じ）、1行の JSON `{"entries": [{"value","label","title","description"}]}` で出す（読むだけ）。候補は SKILL.md の frontmatter の `metadata` に `workflow-entry: "true"` を持つスキルだけで、`title` は `workflow-entry-title`（無ければ `label` と同じ）。`--schema`・`--json`・`set` とは一緒に打てない（終了コード2）。`--schema` の出力は変えない。
 
 `set <キー> <値>`: 書けるキーは `steps` と `step_check` だけ。`steps` の値は1行の JSON の文字列の配列（例 `'["a","b"]'`）で、1つ以上・重複なし・`--schema` の `values` か今の値にある名前だけ（外れると終了コード2）。`.tw/config.toml` には最上位の `steps = ["a", "b"]` として書き、`SET` の値は詰めた JSON。`step_check` の値は空でない1行のコマンドか `なし`（空・タブや改行などの制御文字を含む値は終了コード2。`SET` の TSV を壊すため）で、`step_check = "…"` として書く。キーの行があれば値だけを差し替え（行末のコメントは残す）、無ければ最後のキーの行の次へ足す。ほかの行と並びは変えない。出力 `SET\t<キー>\t<値>`。知らないキー・語彙の外の値は stderr に理由を出して終了コード2（ファイルは変えない）。設定が無ければ `MISSING`（終了コード6）、読めなければ `INVALID`（終了コード3）
 
@@ -359,6 +361,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_config = sub.add_parser("config")
     p_config.add_argument("--schema", action="store_true")
     p_config.add_argument("--json", action="store_true")
+    p_config.add_argument("--entries", action="store_true")
     p_config.add_argument("action", nargs="?", choices=("set",))
     p_config.add_argument("key", nargs="?")
     p_config.add_argument("value", nargs="?")
@@ -465,12 +468,17 @@ def main(argv: list[str] | None = None) -> None:
             parser.error("config: --schema と set は一緒に打てない")
         if args.json and (args.schema or args.action is not None):
             parser.error("config: --json は --schema・set と一緒に打てない")
+        if args.entries and (args.schema or args.json or args.action is not None):
+            parser.error("config: --entries は --schema・--json・set と一緒に打てない")
         if args.action == "set" and (args.key is None or args.value is None):
             parser.error("config set: <キー> と <値> が要る")
         if args.action is None and args.key is not None:
             parser.error("config: 引数は set <キー> <値> だけ")
         if args.schema:
             tw_config.cmd_config_schema()
+            return
+        if args.entries:
+            tw_config.cmd_config_entries()
             return
 
     if args.command == "new":

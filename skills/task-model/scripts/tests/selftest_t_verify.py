@@ -402,6 +402,7 @@ def test_readonly_commands_stay_out_of_git() -> None:
         "metrics": ["metrics"],
         "config": ["config"],
         "config --schema": ["config", "--schema"],
+        "config --entries": ["config", "--entries"],
         "config-doctor": ["config-doctor"],
     }
     names = readonly_subcommands()

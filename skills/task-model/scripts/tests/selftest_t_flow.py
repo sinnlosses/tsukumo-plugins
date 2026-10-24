@@ -984,6 +984,72 @@ def test_config_schema_version() -> None:
               r.stdout + r.stderr)
 
 
+def _entry_skill(root: str, name: str, mark: str, title: str | None = None, step: bool = False) -> str:
+    meta = f'  workflow-entry: "{mark}"\n'
+    if title is not None:
+        meta += f'  workflow-entry-title: "{title}"\n'
+    if step:
+        meta += '  workflow-step: "true"\n'
+    return write(
+        os.path.join(root, name, "SKILL.md"),
+        f"---\nname: {name}\ndescription: 入口の説明\nmetadata:\n{meta}---\n本文\n",
+    )
+
+
+def test_config_entries() -> None:
+    say("task.py config --entries: workflow-entry の印のあるスキルだけを返し、--schema の出力は変えず、他の口とは一緒に打てない")
+    import layout
+
+    with tempfile.TemporaryDirectory() as tmp:
+        project = os.path.join(tmp, "project")
+        home = os.path.join(tmp, "home")
+        plugin_root = os.path.join(tmp, "plugin")
+        plugin_skills = os.path.join(plugin_root, "skills")
+        _entry_skill(plugin_skills, "enter-a", "true", title="入口A")
+        _entry_skill(plugin_skills, "enter-b", "true")
+        _entry_skill(plugin_skills, "enter-off", "false")
+        _skill(plugin_skills, "plain", None)
+        _skill(plugin_skills, "step-only", "true")
+        before = layout.config_schema(project, home, (plugin_root, "p"))
+        got = layout.config_entries(project, home, (plugin_root, "p"))
+        check("印のあるスキルだけが {value,label,title,description} で返る",
+              got == {"entries": [
+                  {"value": "p:enter-a", "label": "enter-a", "title": "入口A", "description": "入口の説明"},
+                  {"value": "p:enter-b", "label": "enter-b", "title": "enter-b", "description": "入口の説明"},
+              ]}, repr(got))
+        check("workflow-step だけのスキルは entries に入らない",
+              all("step-only" not in e["value"] for e in got["entries"]))
+        _entry_skill(plugin_skills, "enter-c", "true", title="入口C")
+        after = layout.config_schema(project, home, (plugin_root, "p"))
+        check("入口のスキルを足しても --schema の出力は変わらない", before == after, repr(after))
+        check("--schema の values に入口のスキルは出ない",
+              all("enter-" not in v["value"] for v in after["keys"][0]["values"]))
+        check("走査先が無ければ空", layout.config_entries(None, None, None) == {"entries": []})
+
+    with tempfile.TemporaryDirectory() as tmp:
+        home = os.path.join(tmp, "home")
+        repo = os.path.join(tmp, "repo")
+        os.makedirs(repo)
+        git(repo, "init", "-q")
+        _entry_skill(os.path.join(home, ".claude", "skills"), "home-entry", "true", title="ホームの入口")
+        _skill(os.path.join(home, ".claude", "skills"), "home-plain", None)
+        env = {"HOME": home}
+        r = run_task(repo, "config", "--entries", env=env)
+        check("終了コード0で1行", r.returncode == 0 and len(r.stdout.splitlines()) == 1, r.stdout + r.stderr)
+        values = {e["value"]: e for e in json.loads(r.stdout)["entries"]}
+        check("ホームの入口が返り、印の無いスキルは返らない",
+              values["home-entry"]["title"] == "ホームの入口" and "home-plain" not in values, repr(values))
+        check("同梱の next-task が「タスクの実行」で返り、plan-tasks・list-tasks・各段は返らない",
+              any(e["label"] == "next-task" and e["title"] == "タスクの実行" for e in values.values())
+              and not any(e["label"] in ("plan-tasks", "list-tasks", "implement-step", "accept-step",
+                                         "retrospect-step", "ship-step", "task-workflow") for e in values.values()),
+              repr(sorted(values)))
+        for args in (("--schema",), ("--json",), ("set", "steps", '["a"]')):
+            r = run_task(repo, "config", "--entries", *args, env=env)
+            check(f"--entries は {args[0]} と一緒に打てない（終了コード2）",
+                  r.returncode == 2 and r.stdout == "", r.stdout + r.stderr)
+
+
 def test_config_set() -> None:
     say("task.py config set: 検査してから .tw/config.toml に書き、ほかの行・並び・コメントを変えない")
     with tempfile.TemporaryDirectory() as tmp:
@@ -1287,6 +1353,7 @@ TESTS = (
     test_step_candidates,
     test_default_steps_order,
     test_config_schema_version,
+    test_config_entries,
     test_config_set,
     test_config_steps,
     test_metrics_stages,
