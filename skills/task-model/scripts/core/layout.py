@@ -52,6 +52,10 @@ FEATURE_BRANCH_PATTERN = re.compile(rf"{FEATURE_BRANCH_PREFIX}({ANY_ID_FRAGMENT}
 CONFIG_PATH = ".tw/config.toml"
 STEPS_KEY = "steps"
 REVIEW_CODE_GLOBS_KEY = "review_code_globs"
+SHELL_WRITE_GUARD_KEY = "shell_write_guard"
+SHELL_WRITE_GUARD_TW = "tw"
+SHELL_WRITE_GUARD_PROJECT = "project"
+SHELL_WRITE_GUARD_VALUES = (SHELL_WRITE_GUARD_TW, SHELL_WRITE_GUARD_PROJECT)
 
 STORE_BEADS = "beads"
 STORE_VALUES = (STORE_BEADS,)
@@ -74,6 +78,7 @@ CONFIG_KEYS = (
     "hook_tally",
     "steps",
     "review_code_globs",
+    "shell_write_guard",
 )
 
 # 廃止したキーと表。設定に残っていれば `ConfigError` で知らせる。
@@ -110,6 +115,7 @@ class Config:
     hook_tally: str | None = None
     steps: tuple[str, ...] | None = None
     review_code_globs: tuple[str, ...] = ()
+    shell_write_guard: str = SHELL_WRITE_GUARD_TW
     written: frozenset = frozenset()
 
     @property
@@ -287,8 +293,13 @@ def build_config(source: str | None, values: dict[str, str | None]) -> Config:
         hook_tally=values.get("hook_tally"),
         steps=tuple(json.loads(values["steps"])) if values.get("steps") else None,
         review_code_globs=tuple(json.loads(values.get(REVIEW_CODE_GLOBS_KEY) or "[]")),
+        shell_write_guard=values.get(SHELL_WRITE_GUARD_KEY) or defaults.shell_write_guard,
         written=frozenset(values),
     )
+    if config.shell_write_guard not in SHELL_WRITE_GUARD_VALUES:
+        raise ConfigError(
+            f"{source}: {SHELL_WRITE_GUARD_KEY} の値 {config.shell_write_guard!r} は {' / '.join(SHELL_WRITE_GUARD_VALUES)} のどちらか"
+        )
     if config.github_project is not None and config.project_owner_number is None:
         raise ConfigError(f"{source}: github_project の値 {config.github_project!r} が \"<owner>/<番号>\" の形でない")
     if config.tracker == "github" and config.github_project is None:
@@ -548,7 +559,22 @@ def config_schema(project_root: str | None, home: str | None = None, plugin: tup
                     {"value": c.value, "label": c.label, "title": c.title, "description": c.description}
                     for c in candidates
                 ],
-            }
+            },
+            {
+                "key": SHELL_WRITE_GUARD_KEY,
+                "label": "シェル書き込みの判定",
+                "description": "着手中の作業ツリーのシェルでの書き換えを、tw の hook が止めるか、プロジェクトの hook に任せるか",
+                "kind": "choice",
+                "default": SHELL_WRITE_GUARD_TW,
+                "values": [
+                    {"value": SHELL_WRITE_GUARD_TW, "label": "tw が止める", "description": "tw commit-guard が SHELL_WRITE で拒む"},
+                    {
+                        "value": SHELL_WRITE_GUARD_PROJECT,
+                        "label": "プロジェクトが止める",
+                        "description": "プロジェクト自前の hook に任せ、tw は SHELL_WRITE を見ない",
+                    },
+                ],
+            },
         ],
     }
 

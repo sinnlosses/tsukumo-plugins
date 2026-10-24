@@ -236,6 +236,28 @@ def test_ask_guard() -> None:
         check("loopable: N の控えは通す", run_ask_guard(tmp, wt2) is None)
 
 
+@weight(3)
+def test_commit_guard_shell_write_project() -> None:
+    say("task.py commit-guard: 設定 shell_write_guard = \"project\" の木ではシェルの書き換えを見ない。設定なし・tw・壊れた値は拒み、ほかの規則は残る")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _ = make_repo(tmp)
+        disarm_ref_guard(main_path)
+        commit_task(main_path, taskfile.Task("T-100", "拒む", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        config = os.path.join(wt1, ".tw", "config.toml")
+        sed = "sed -i s/a/b/ f.txt"
+
+        check("設定が無ければ拒む", run_guard(tmp, wt1, sed) is not None)
+        for label, text in (("tw", 'verify = "なし"\nshell_write_guard = "tw"\n'), ("壊れた値", 'verify = "なし"\nshell_write_guard = "x"\n')):
+            write(config, text)
+            reason = run_guard(tmp, wt1, sed)
+            check(f"{label}の設定は拒む", reason is not None and "T-100" in reason and "Edit" in reason, str(reason))
+        write(config, 'verify = "なし"\nshell_write_guard = "project"\n')
+        check("project なら sed -i を通す", run_guard(tmp, wt1, sed) is None)
+        check("project でもリダイレクトを通す", run_guard(tmp, wt1, "echo x > f.txt") is None)
+        check("project でも git commit は拒む", run_guard(tmp, wt1, "git commit -m x") is not None)
+
+
 @weight(6)
 def test_commit_guard_shell_edit() -> None:
     say("task.py commit-guard: 印が立って done 前の作業ツリーで、シェルからのファイルの書き換えを拒む")
@@ -2207,6 +2229,7 @@ TESTS = (
     test_ask_guard,
     test_lap_hook,
     test_commit_guard_shell_edit,
+    test_commit_guard_shell_write_project,
     test_commit_guard_verify,
     test_commit_guard_other_repo,
     test_agent_scoped_guard,

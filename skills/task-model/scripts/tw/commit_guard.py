@@ -225,7 +225,8 @@ def decide(payload: dict, acceptor: bool = False) -> tuple[str, str] | None:
     if bd_verdict is not None:
         return bd_verdict
     work_claims = _WorkTreeClaims(start)
-    for path, how in _shell_writes(command, start):
+    shell_writes = [] if _project_owns_shell_write(start) else _shell_writes(command, start)
+    for path, how in shell_writes:
         where, claims = _claims_for_write(path, work_claims)
         if claims:
             return "SHELL_WRITE", (
@@ -245,6 +246,17 @@ def decide(payload: dict, acceptor: bool = False) -> tuple[str, str] | None:
                 f"検証コマンド（{configured}）を直に打たない。{next_step}"
             )
     return None
+
+
+def _project_owns_shell_write(start: str) -> bool:
+    """`start` の作業ツリーの設定が `shell_write_guard = "project"` か。根が引けない・設定が読めないときは `False`（tw が見る側）。"""
+    if not os.path.isdir(start):
+        return False
+    try:
+        config = layout.read_config(gitinfo.git_toplevel(start))
+    except (gitinfo.GitCommandError, layout.ConfigError, OSError):
+        return False
+    return config.shell_write_guard == layout.SHELL_WRITE_GUARD_PROJECT
 
 
 def _is_acceptor(payload: dict) -> bool:

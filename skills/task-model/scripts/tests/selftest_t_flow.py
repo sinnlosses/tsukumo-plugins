@@ -835,6 +835,16 @@ def test_config_json() -> None:
         check("review_code_globs は配列で、書いた値と出どころ config",
               by_key["review_code_globs"] == {"key": "review_code_globs", "value": ["a/**"], "source": "config"},
               repr(by_key["review_code_globs"]))
+        check("shell_write_guard は書かなければ tw で default",
+              by_key["shell_write_guard"] == {"key": "shell_write_guard", "value": "tw", "source": "default"},
+              repr(by_key["shell_write_guard"]))
+        write(os.path.join(repo, ".tw", "config.toml"), 'verify = "x"\nshell_write_guard = "project"\n')
+        written = {k["key"]: k for k in json.loads(run_task(repo, "config", "--json").stdout)["keys"]}
+        check("書いた shell_write_guard は project で config",
+              written["shell_write_guard"] == {"key": "shell_write_guard", "value": "project", "source": "config"},
+              repr(written["shell_write_guard"]))
+        write(os.path.join(repo, ".tw", "config.toml"),
+              'verify = "./check.sh"  # 説明\nbranch = "切らない"\nreview_code_globs = ["a/**"]\n')
         check("書いた値は文字列で config、書いていない値は default",
               by_key["verify"] == {"key": "verify", "value": "./check.sh", "source": "config"}
               and by_key["format"] == {"key": "format", "value": "なし", "source": "default"}, repr(by_key))
@@ -965,8 +975,13 @@ def test_config_schema_version() -> None:
         schema = json.loads(r.stdout)
         steps = schema["keys"][0]
         values = [v["value"] for v in steps["values"]]
-        check("schema 2 は steps の1欄だけ", schema["schema"] == 2 and [k["key"] for k in schema["keys"]] == ["steps"]
+        check("schema 2 は steps に続けて shell_write_guard の欄",
+              schema["schema"] == 2 and [k["key"] for k in schema["keys"]] == ["steps", "shell_write_guard"]
               and steps["kind"] == "steps" and steps["label"] and steps["description"], repr(schema))
+        guard = schema["keys"][1]
+        check("shell_write_guard は choice で、既定 tw、値は tw・project",
+              guard["kind"] == "choice" and guard["default"] == "tw"
+              and [v["value"] for v in guard["values"]] == ["tw", "project"], repr(guard))
         check("作業ツリーとホームの印つきスキルが候補になり、全名が同じものは先の1つ",
               values[:2] == ["my-step", "other"]
               and steps["values"][0]["description"] == "作業ツリーのスキル 続き" and values.count("my-step") == 1, repr(values))
