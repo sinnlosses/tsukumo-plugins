@@ -919,7 +919,7 @@ def test_handback_guard_structure() -> None:
         check("点線の辺と色印を通す", shaped("+ A -.> B: 語 @b\n"))
         check("群の囲みと閉じを通す", shaped("[層]\n+ A -> B\n[]\n"))
         check("色印つきの囲みを通す", shaped("[層] @a\n+ A -> B\n[]\n"))
-        check("閉じない囲みは数えず通す",shaped("[層]\n+ A -> B\n"))
+        check("閉じない囲みは数えず通す", shaped("[層]\n+ A -> B\n"))
         check("印だけの行は拒む", not shaped("+\n"))
         check("印の無い節点の文は拒む", not shaped("説明の文\n"))
         check("点線の片側が空なら拒む", not shaped("+ A -.>\n"))
