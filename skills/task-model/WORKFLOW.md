@@ -201,11 +201,12 @@ front matter（`id`・`summary`・`status`・`difficulty`・`loopable`・近道�
 | `scripts/hook/` |
 
 検査するのは `tw new`（`--draft` では観点の行だけで要否を決める）・`tw adopt`・ドラフトを `todo`・`hold` へ進める
-`tw edit --status` のとき。既存の課題は拒まない: ほかの `tw edit` は `## 介入` を変えた編集で形だけを見て、節の有無は求めない
-（ドラフトでない `hold` を `todo` に戻すときも見ない）。必須でない本文でも、節に中身があれば形を見る。
-節が無い課題には `tw edit T-xxx --section '介入' --body-file -` で足せる（`## 参考情報` の後ろに入る）。
-この表と語彙は `taskfile.py` の `HARNESS_SURFACES`・`INTERVENTION_TARGETS` が写し、食い違いは自己テストが落とす。値を変えるときは同じコミットで両方を直す。
-節が正で、metadata には写さない。効いたかの判定は `taskfile.intervention`（節を `{行の名前: 値}` に読む）で節を読む。
+`tw edit --status` のとき。既存の課題は拒まない: ほかの `tw edit` は `## 介入` を変えた編集で形だけを見て、節の有無は求めない。
+必須でない本文でも、節に中身があれば形を見る。
+節が無い課題には `tw edit T-xxx --section '介入' --body-file -` で足せる。
+任意の行 `- 再演の差:`（再演集の前後の通過率の差）。面を名指す計画でこれが無いか空だと `tw done` が `REPLAY_DIFF_MISSING` で知らせる（拒まない）。
+この表と語彙は `taskfile.py` の `HARNESS_SURFACES`・`INTERVENTION_TARGETS` が写し、食い違いは自己テストが落とす。
+節が正で、metadata には写さない。判定は `taskfile.intervention` が節を `{行の名前: 値}` に読む。
 週ごとの振り返りが、期日（送り出しに `- 判定の期日:` の日数を足した日。日数が無ければ14日。件数の側は機械で読まない）を過ぎた介入を数で判定する。
 測るのは `- 狙う兆候:` の行のバッククォートで囲んだ語のうち、判定の表の名前（`tw metrics` の数・判定の口の SIGNAL の種類・hook の規則のキー）に当たる最初の語で、
 無ければ行頭の名前。どれにも当たらない行は判定保留になる（判定の語と窓は振り返りの手順の「週ごとに振り返る」）。
