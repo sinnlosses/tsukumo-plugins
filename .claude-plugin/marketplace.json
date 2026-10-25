@@ -4,12 +4,17 @@
     "name": "sinnlosses",
     "url": "https://github.com/sinnlosses"
   },
-  "description": "タスクを段に分けて委譲し、受け入れて送り出すワークフローのプラグイン",
+  "description": "tsukumo と一緒に使うプラグイン（タスク運用のワークフロー、図を撮るスキル）",
   "plugins": [
     {
       "name": "tsukumo-workflow",
       "source": "./",
       "description": "タスク運用（tw）のスキル・hook と、委譲先のエージェント定義"
+    },
+    {
+      "name": "tsukumo-figure",
+      "source": "./plugins/tsukumo-figure",
+      "description": "図の構造を JSON で書くと、配色と配置を決めて HTML にし、図の部分を PNG に撮るスキル"
     }
   ]
 }

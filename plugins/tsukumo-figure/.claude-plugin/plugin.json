@@ -1,0 +1,9 @@
+{
+  "name": "tsukumo-figure",
+  "description": "図の構造を JSON で書くと、配色と配置を決めて HTML にし、図の部分を PNG に撮るスキル",
+  "author": {
+    "name": "sinnlosses",
+    "url": "https://github.com/sinnlosses"
+  },
+  "repository": "https://github.com/sinnlosses/tsukumo-plugins"
+}

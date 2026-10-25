@@ -61,6 +61,19 @@ Claude Code 以外の環境（Codex など）へスキルを置く入口は、�
 
 開発中は `claude --plugin-dir .` でも読ませられ（その 1 セッションだけ）、`claude plugin validate .` で検査する。
 
+## もう1つのプラグイン `tsukumo-figure`
+
+タスク運用とは関係なく、図を載せるためのプラグイン（`plugins/tsukumo-figure/`）。同じマーケットプレイスから入れる。
+
+```
+/plugin install tsukumo-figure@tsukumo-plugins
+```
+
+スキルは `tsukumo-figure:figure-capture` で、図の構造（JSON）を検査して配色と配置を決め、HTML にして図の部分を PNG に撮る。
+いまの型はサンキーで、型は `scripts/figure/` に足せる（手順はスキルの `SKILL.md`）。標準ライブラリの Python だけで動き、
+撮る段だけ playwright と chromium が要る（無ければ HTML までで止まる）。タスク運用の `tw`・Beads・hook には触らない。
+`tsukumo-workflow` とは別の名前空間で、`vendor/tsukumo-plugins` として tsukumo に取り込まれるのは `tsukumo-workflow` だけ。
+
 ## `.git` が読み取り専用の sandbox で打つとき
 
 Codex のように、書けるのが作業ツリーと一時ディレクトリだけの環境:

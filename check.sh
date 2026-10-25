@@ -21,6 +21,7 @@
 # 5. plan-tasks のスクリプトの自己テスト
 # 6. comment-audit のスクリプトの自己テスト
 # 7. task-workflow のスクリプトの自己テスト
+# 8. tsukumo-figure（plugins/tsukumo-figure/）の自己テスト（撮る段は playwright と chromium が無ければ飛ばす）
 # 8. 毎回読まれるスキルの文書のバイト数の上限の自己テスト（skills/ の .md が変わったとき）
 #
 # 当たる段は `./check.sh --plan` で見る。
@@ -187,6 +188,10 @@ fi
 
 if stage "comment-audit scripts の自己テスト" 'skills/comment-audit/*'; then
   $LOWPRI python3 "$here/skills/comment-audit/scripts/selftest_diff_added_comment_lines.py"
+fi
+
+if stage "tsukumo-figure scripts の自己テスト" 'plugins/tsukumo-figure/*'; then
+  $LOWPRI python3 "$here/plugins/tsukumo-figure/skills/figure-capture/scripts/selftest_figure.py"
 fi
 
 if stage "task-workflow scripts の自己テスト" 'skills/task-workflow/scripts/*' 'skills/task-model/scripts/core/gitcmd.py' 'skills/comment-audit/*'; then

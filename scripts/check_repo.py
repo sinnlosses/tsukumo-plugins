@@ -17,6 +17,7 @@
 - 同梱スクリプトが構文として読めること
 - `.claude-plugin/plugin.json` の `name` が `tsukumo-workflow` であること、`bin/tw` が実行でき `task.py` を
   呼ぶこと、`hooks/hooks.json` が `${CLAUDE_PLUGIN_ROOT}/bin/tw` を呼ぶ `commit-guard`・`handback-guard` の `--agent-scoped` 付きの hook と `ask-guard` の hook を持ち、`SubagentStart` と matcher `Skill` の `PreToolUse` に `lap-hook` の hook を持つこと
+- `.claude-plugin/marketplace.json` の `./` 以外のプラグイン（`plugins/<名>/`）に、同じ名前の `plugin.json` と、名前がディレクトリ名と合う `SKILL.md` があること
 - `tw` の指す `task.py` が実行でき、スキルの Markdown が `task.py` を `python3` で呼ぶ形や `` `task …` `` の略記で書いていないこと
 - 兄弟スキルの `scripts/` を `sys.path` に足して `import` しているなら、`REQUIRES` にその
   兄弟スキル名があること
@@ -271,6 +272,34 @@ def check_tw_entry(names: list[str]) -> None:
                     fail(f"{rel}:{i}: task.py を python3 で呼んでいる（tw で書く）")
                 if old_abbrev.search(line):
                     fail(f"{rel}:{i}: `task …` の略記が残っている（tw で書く）")
+
+
+def check_marketplace() -> None:
+    """マーケットプレイスの各プラグインの置き場に、同じ名前の plugin.json と、名前の合う SKILL.md があるか。"""
+    try:
+        entries = json.loads(read(os.path.join(ROOT, ".claude-plugin", "marketplace.json")))["plugins"]
+    except (OSError, ValueError, KeyError):
+        fail(".claude-plugin/marketplace.json を読めない（plugins の配列）")
+        return
+    for entry in entries:
+        name, source = entry.get("name"), entry.get("source", "")
+        base = os.path.normpath(os.path.join(ROOT, source))
+        if base == ROOT:
+            continue
+        try:
+            manifest_name = json.loads(read(os.path.join(base, ".claude-plugin", "plugin.json"))).get("name")
+        except (OSError, ValueError):
+            fail(f"{source}/.claude-plugin/plugin.json を JSON として読めない")
+            continue
+        if manifest_name != name:
+            fail(f"{source} の plugin.json の name が {manifest_name!r} で、マーケットプレイスの {name!r} と違う")
+        skills = os.path.join(base, "skills")
+        for d in sorted(os.listdir(skills)) if os.path.isdir(skills) else []:
+            path = os.path.join(skills, d, "SKILL.md")
+            if not os.path.isfile(path):
+                fail(f"{source}/skills/{d}/SKILL.md が無い")
+            elif frontmatter(read(path)).get("name") != d:
+                fail(f"{source}/skills/{d}/SKILL.md の name がディレクトリ名と違う")
 
 
 def check_plugin() -> None:
@@ -815,6 +844,7 @@ def main() -> None:
     check_shell_embeds(names)
     check_tw_entry(names)
     check_plugin()
+    check_marketplace()
     check_cross_references(names)
     check_requires(names)
     check_sibling_references(names)
