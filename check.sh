@@ -102,14 +102,41 @@ stage() {
   echo
   if touched "$@"; then
     echo "== $title =="
+    [ "$mode" != plan ] && ran_stages="$ran_stages$title
+"
     [ "$mode" != plan ]
   else
     echo "== $title: 変更に当たらないので飛ばす =="
+    [ "$mode" = plan ] || printf 'STAGE\t%s\tunobserved\n' "$title"
     return 1
   fi
 }
 
+# 走らせた段を、終わるときに STAGE 行（tw verify が台帳の stages に読む）で出す。
+# 段は順に走るので、失敗で終わるなら最後に走らせた段が fail、それ以前は pass
+ran_stages=
+emit_stages() {
+  rc_exit=$?
+  [ -n "$ran_stages" ] || return 0
+  printf '%s' "$ran_stages" | {
+    prev=
+    while IFS= read -r title; do
+      [ -z "$prev" ] || printf 'STAGE\t%s\tpass\n' "$prev"
+      prev=$title
+    done
+    if [ "$rc_exit" -eq 0 ]; then
+      printf 'STAGE\t%s\tpass\n' "$prev"
+    else
+      printf 'STAGE\t%s\tfail\n' "$prev"
+    fi
+  }
+  ran_stages=
+}
+trap emit_stages EXIT
+
 echo "== リポジトリの整合 =="
+[ "$mode" = plan ] || ran_stages="リポジトリの整合
+"
 if [ "$mode" != plan ]; then
   $LOWPRI python3 "$here/scripts/selftest_check_repo.py"
   python3 "$here/scripts/check_repo.py"
@@ -122,6 +149,7 @@ out_retro=
 out_task=
 out_beads=
 stop_background() {
+  emit_stages
   for pid in $pid_retro $pid_task $pid_beads; do
     kill "$pid" 2>/dev/null || true
   done
