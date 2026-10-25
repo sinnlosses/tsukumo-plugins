@@ -12,6 +12,7 @@
 # テストが hook 行を読むので、当てる。
 # `--plan` は段を流さず、流す段（== 見出し ==）と飛ばす段、task コマンドの節では絞りの先（`-- 絞り: <モジュール>` か `ALL`）だけを出す。`--full` と並べても段を流さない。
 # 自己テストは一時ディレクトリを RAM ディスクに置く（作れなければ今の場所）。
+# 低優先度（taskpolicy -c utility / nice）で流すのは `CHECK_LOWPRI=1` のときだけ。
 #
 # 1. リポジトリ全体の整合（frontmatter・README の索引・参照先の実在）（いつも）
 # 2. task-model のスクリプトの自己テスト（review_needed.py・review_snapshot.py を含む。台帳と Beads 方式は並べて走らせ、出力は流し終えてから順に出す）
@@ -28,10 +29,12 @@
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
 LOWPRI=
-if command -v taskpolicy >/dev/null 2>&1; then
-  LOWPRI="taskpolicy -c utility"
-elif command -v nice >/dev/null 2>&1; then
-  LOWPRI="nice -n 10"
+if [ "${CHECK_LOWPRI:-}" = 1 ]; then
+  if command -v taskpolicy >/dev/null 2>&1; then
+    LOWPRI="taskpolicy -c utility"
+  elif command -v nice >/dev/null 2>&1; then
+    LOWPRI="nice -n 10"
+  fi
 fi
 
 mode=scoped
