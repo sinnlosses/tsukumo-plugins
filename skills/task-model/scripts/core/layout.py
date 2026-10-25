@@ -310,7 +310,7 @@ def build_config(source: str | None, values: dict[str, str | None]) -> Config:
 # --- 設定の欄の形（`tw config --schema`）と書く口（`tw config set`） -----------------
 
 COMMAND_SETTABLE_KEY = "step_check"
-SETTABLE_KEYS = (STEPS_KEY, COMMAND_SETTABLE_KEY)
+SETTABLE_KEYS = (STEPS_KEY, COMMAND_SETTABLE_KEY, SHELL_WRITE_GUARD_KEY)
 
 
 class ConfigValueError(ValueError):
@@ -614,6 +614,10 @@ def config_text_with(text: str, key: str, value: str, label: str = CONFIG_PATH) 
         if not value.strip() or not value.isprintable():
             raise ConfigValueError(f"{key} の値は空でない1行（タブ・改行などの制御文字なし）のコマンドか {NO_COMMAND}: {value!r}")
         quoted = '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    elif key == SHELL_WRITE_GUARD_KEY:
+        if value not in SHELL_WRITE_GUARD_VALUES:
+            raise ConfigValueError(f"{key} の値は {' / '.join(SHELL_WRITE_GUARD_VALUES)} のどちらか: {value!r}")
+        quoted = json.dumps(value)
     else:
         try:
             items = json.loads(value)

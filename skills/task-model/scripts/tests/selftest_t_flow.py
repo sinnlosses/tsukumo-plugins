@@ -1123,6 +1123,28 @@ def test_config_set() -> None:
             check(f"step_check の値が{label}なら終了コード2でファイルを変えない",
                   r.returncode == 2 and r.stdout == "" and read_config_file() == before, r.stdout + r.stderr)
 
+        write(path, original)
+
+        def guard_row() -> str:
+            rows = [l for l in run_task(repo, "config").stdout.splitlines() if l.startswith("shell_write_guard\t")]
+            return rows[0] if rows else ""
+
+        r = run_task(repo, "config", "set", "shell_write_guard", "project")
+        check("shell_write_guard が無ければ最後のキーの次に足され、tw config が config で出す",
+              r.returncode == 0 and r.stdout == "SET\tshell_write_guard\tproject\n"
+              and read_config_file() == original + 'shell_write_guard = "project"\n'
+              and guard_row() == "shell_write_guard\tproject\tconfig", r.stdout + r.stderr + read_config_file())
+        write(path, original.replace('branch = "切らない"\n', 'branch = "切らない"\nshell_write_guard = "project"  # 止め方\n'))
+        r = run_task(repo, "config", "set", "shell_write_guard", "tw")
+        check("shell_write_guard がある設定は値だけ変わり、ほかの行・コメントはそのまま",
+              r.returncode == 0 and read_config_file() == original.replace('branch = "切らない"\n', 'branch = "切らない"\nshell_write_guard = "tw"  # 止め方\n'),
+              read_config_file())
+        before = read_config_file()
+        for label, value in (("x", "x"), ("空", ""), ("大文字違い", "Project")):
+            r = run_task(repo, "config", "set", "shell_write_guard", value)
+            check(f"shell_write_guard の値が{label}なら終了コード2でファイルを変えない",
+                  r.returncode == 2 and r.stdout == "" and read_config_file() == before, r.stdout + r.stderr)
+
     with tempfile.TemporaryDirectory() as tmp:
         repo = _make_config_doctor_repo(tmp, "no-config", with_config=False)
         r = run_task(repo, "config", "set", "steps", '["a"]')
