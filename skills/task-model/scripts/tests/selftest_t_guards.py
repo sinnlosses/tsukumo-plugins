@@ -914,6 +914,14 @@ def test_handback_guard_structure() -> None:
         check("なし: の理由が空なら拒む", not shaped("なし: \n"))
         check("なし: と辺の行の混在は拒む", not shaped("なし: 変わらない\n+ A -> B\n"))
         check("なし: が2行あれば拒む", not shaped("なし: 一\nなし: 二\n"))
+        check("印つきの節点だけの行を通す", shaped("+ A\n"))
+        check("行末の色印のある節点を通す", shaped("+ A @a\n"))
+        check("点線の辺と色印を通す", shaped("+ A -.> B: 語 @b\n"))
+        check("群の囲みと閉じを通す", shaped("[層]\n+ A -> B\n[]\n"))
+        check("閉じない囲みは数えず通す", shaped("[層]\n+ A -> B\n"))
+        check("印だけの行は拒む", not shaped("+\n"))
+        check("印の無い節点の文は拒む", not shaped("説明の文\n"))
+        check("点線の片側が空なら拒む", not shaped("+ A -.>\n"))
 
         run_task(wt2, "claim", "T-101")
         check("作業の無い返却は節が無くても通す",
@@ -1896,7 +1904,6 @@ def test_guard_denial_record() -> None:
             ("空の節", "## 構造の変更\n", "STRUCTURE_SECTION_EMPTY"),
             ("なし: だけの文", "## 構造の変更\n構造は変わらない\n", "STRUCTURE_SECTION_NO_MARK"),
             ("辺のあとの説明", "## 構造の変更\n+ A -> B\n説明\n", "STRUCTURE_SECTION_NO_MARK"),
-            ("節点だけの行", "## 構造の変更\n+ A\n", "STRUCTURE_SECTION_NO_ARROW"),
             ("印なしの辺", "## 構造の変更\nA -> B\n", "STRUCTURE_SECTION_NO_MARK"),
             ("片側が空の辺", "## 構造の変更\n+ A ->\n", "STRUCTURE_SECTION_OTHER"),
         ):

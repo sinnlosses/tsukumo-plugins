@@ -201,7 +201,10 @@ def _claimed_plan_body(toplevel: str, task_id: str) -> str:
 STRUCTURE_HEADING = "## 構造の変更"
 
 
-STRUCTURE_EDGE_LINE = re.compile(r"[+\-~] .+ -> .+")
+STRUCTURE_ARROW = re.compile(r"->|-\.>")
+STRUCTURE_EDGE_LINE = re.compile(r"[+\-~] .+ (?:->|-\.>) .+")
+STRUCTURE_NODE_LINE = re.compile(r"[+\-~] \S.*")
+STRUCTURE_GROUP_LINE = re.compile(r"\[[^\]]*\]")
 STRUCTURE_MARK = re.compile(r"[+\-~] ")
 STRUCTURE_NONE_LINE = re.compile(r"なし: .+")
 
@@ -221,6 +224,15 @@ def _structure_section_lines(body: str) -> list[str] | None:
     return section
 
 
+def _structure_line_ok(line: str) -> bool:
+    """graph の記法の1行か。囲み（`[群の名]`・`[]`）、印つきの辺（`->`・`-.>`）、矢印の無い印つきの節点。行末の色印 ` @a` は行の中身として見る。"""
+    if STRUCTURE_GROUP_LINE.fullmatch(line):
+        return True
+    if STRUCTURE_ARROW.search(line):
+        return STRUCTURE_EDGE_LINE.fullmatch(line) is not None
+    return STRUCTURE_NODE_LINE.fullmatch(line) is not None
+
+
 def _structure_section_problem(body: str) -> tuple[str, str] | None:
     """`## 構造の変更` の節が無い・中身の形が違うときの `(規則のキー, 拒む理由の前半)`。正しければ `None`。"""
     section = _structure_section_lines(body)
@@ -230,16 +242,10 @@ def _structure_section_problem(body: str) -> tuple[str, str] | None:
         return "STRUCTURE_SECTION_EMPTY", f"{STRUCTURE_HEADING} の節が空"
     if len(section) == 1 and STRUCTURE_NONE_LINE.fullmatch(section[0]):
         return None
-    bad = next((n for n, line in enumerate(section, 1) if not STRUCTURE_EDGE_LINE.fullmatch(line)), None)
+    bad = next((n for n, line in enumerate(section, 1) if not _structure_line_ok(line)), None)
     if bad is None:
         return None
-    line = section[bad - 1]
-    if not STRUCTURE_MARK.match(line):
-        rule = "STRUCTURE_SECTION_NO_MARK"
-    elif "->" not in line:
-        rule = "STRUCTURE_SECTION_NO_ARROW"
-    else:
-        rule = "STRUCTURE_SECTION_OTHER"
+    rule = "STRUCTURE_SECTION_OTHER" if STRUCTURE_MARK.match(section[bad - 1]) else "STRUCTURE_SECTION_NO_MARK"
     return rule, f"{STRUCTURE_HEADING} の節の{bad}行目が形に合わない"
 
 
@@ -248,10 +254,10 @@ def handback_refusal(where: str, body: str | None = None) -> tuple[str, str] | N
 
     規則のキーは `PLAN_OR_VERIFY_MISSING`（計画か検証が欠けた）と、構造の節が合わない次の5つ。
     `STRUCTURE_SECTION_MISSING`（節が無い）・`_EMPTY`（空）・`_NO_MARK`（形に合わない最初の行の頭が `+ `・`- `・`~ ` でない）・
-    `_NO_ARROW`（印はあるが `->` が無い）・`_OTHER`（印も `->` もあるが辺の形に合わない）。
+    `_NO_ARROW`（節点だけの行を通すようにしたので、いまは出さない）・`_OTHER`（印はあるが、矢印の片側が空など辺の形に合わない）。
 
     `body`（返却の本文。読める経路でだけ渡る）があり、計画・検証が揃った最後の段の返却（`tw step` の印も
-    `tw pause` の控えも使わず `verify-check` が `VERIFIED_SAME`）で、本文に `## 構造の変更` の節が無いか、中身が形（各行が `+|-|~ A -> B` か、全体が `なし: <理由>` の1行）に合わなければ拒む。
+    `tw pause` の控えも使わず `verify-check` が `VERIFIED_SAME`）で、本文に `## 構造の変更` の節が無いか、中身が形（各行が `+|-|~ A -> B`・`+|-|~ A -.> B`・`+|-|~ A`〔節点だけ〕・`[群の名]`/`[]`〔囲み〕のどれかか、全体が `なし: <理由>` の1行）に合わなければ拒む。
 
     控えのタスクごとに、その作業ツリー（`task_trees`）を1つずつ見る。作業ツリーを通すのは、作業が無い
     （着手した作業ツリーでは `claim` 時の `HEAD` より後のコミットも、変更も無い。
