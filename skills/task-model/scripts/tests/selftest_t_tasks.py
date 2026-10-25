@@ -881,6 +881,28 @@ def test_done_required_lines() -> None:
               r.returncode == 0 and beads.SHIP_LABELS["dropped"] in labels(wt1), r.stdout + r.stderr)
 
 
+def test_done_replay_diff_notice() -> None:
+    say("task.py done: harness の面を名指す計画で - 再演の差: が無ければ REPLAY_DIFF_MISSING を出す（拒まない）")
+    replayed = INTERVENTION + "\n- 再演の差: 5件 × k=2 で通過率 +1ポイント（no observed effect）"
+    cases = (
+        ("面を名指し、行が無い", "skills/x.md", INTERVENTION, "", True),
+        ("面を名指し、行が空", "skills/x.md", INTERVENTION + "\n- 再演の差:", "", True),
+        ("面を名指し、行がある", "skills/x.md", replayed, "", False),
+        ("面を名指さない", "src/x.py", INTERVENTION, "", False),
+        ("面を名指し、--dropped", "skills/x.md", INTERVENTION, "--dropped", False),
+    )
+    for label, path, intervention, flag, want in cases:
+        with tempfile.TemporaryDirectory() as tmp:
+            main_path, wt1, _wt2 = make_repo(tmp)
+            body = task_body([("書く", "x")], [path], intervention=intervention)
+            commit_task(main_path, taskfile.Task("T-100", "再演の差", "todo", "sonnet", "Y", (), body))
+            run_task(wt1, "claim", "T-100")
+            args = ["done", "T-100", *([flag] if flag else []), "--result-file", "-"]
+            r = run_task(wt1, *args, stdin="- 却下: 要らない\n" if flag else RESULT_FULL)
+            check(f"{label}: 知らせは {'出る' if want else '出ない'}、done は通る",
+                  r.returncode == 0 and ("REPLAY_DIFF_MISSING\tT-100\t" in r.stdout) is want, r.stdout + r.stderr)
+
+
 def test_done_commits_since_claim() -> None:
     say("task.py done: claim 後のコミットを COMMITS_SINCE_CLAIM で知らせる（控えの無い印は出さない）")
     with tempfile.TemporaryDirectory() as tmp:
@@ -1098,6 +1120,7 @@ TESTS = (
     test_done_commits_since_claim,
     test_done_single_worktree,
     test_done_required_lines,
+    test_done_replay_diff_notice,
     test_claim_and_release_single_worktree,
     test_hold,
     test_edit_refuses_loopable_n_while_claimed,

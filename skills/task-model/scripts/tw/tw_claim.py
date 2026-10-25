@@ -170,6 +170,9 @@ def cmd_done(
     )
     beads.clear_claim_snapshot(toplevel, bd_id)
     print(f"DONE\t{shown}\tbeads:{bd_id}\tship で閉じる")
+    notice = None if dropped else taskfile.replay_diff_notice(beads.issue_body(issue))
+    if notice is not None:
+        print(f"REPLAY_DIFF_MISSING\t{shown}\t{notice}")
     tw_base.record(
         toplevel, "done", shown, issue, dropped=dropped, reflection=reflection or _reflection_of(result)
     )
