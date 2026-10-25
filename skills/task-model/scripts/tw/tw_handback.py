@@ -204,7 +204,7 @@ STRUCTURE_HEADING = "## 構造の変更"
 STRUCTURE_ARROW = re.compile(r"->|-\.>")
 STRUCTURE_EDGE_LINE = re.compile(r"[+\-~] .+ (?:->|-\.>) .+")
 STRUCTURE_NODE_LINE = re.compile(r"[+\-~] \S.*")
-STRUCTURE_GROUP_LINE = re.compile(r"\[[^\]]*\]")
+STRUCTURE_GROUP_LINE = re.compile(r"\[[^\]]*\](?: @[a-e])?")
 STRUCTURE_MARK = re.compile(r"[+\-~] ")
 STRUCTURE_NONE_LINE = re.compile(r"なし: .+")
 
@@ -252,9 +252,9 @@ def _structure_section_problem(body: str) -> tuple[str, str] | None:
 def handback_refusal(where: str, body: str | None = None) -> tuple[str, str] | None:
     """`where` の作業ツリーから委譲先が返すのを拒む `(規則のキー, 理由)`。通すなら `None`。
 
-    規則のキーは `PLAN_OR_VERIFY_MISSING`（計画か検証が欠けた）と、構造の節が合わない次の5つ。
+    規則のキーは `PLAN_OR_VERIFY_MISSING`（計画か検証が欠けた）と、構造の節が合わない次の4つ。
     `STRUCTURE_SECTION_MISSING`（節が無い）・`_EMPTY`（空）・`_NO_MARK`（形に合わない最初の行の頭が `+ `・`- `・`~ ` でない）・
-    `_NO_ARROW`（節点だけの行を通すようにしたので、いまは出さない）・`_OTHER`（印はあるが、矢印の片側が空など辺の形に合わない）。
+    `_OTHER`（印はあるが、矢印の片側が空など辺の形に合わない）。
 
     `body`（返却の本文。読める経路でだけ渡る）があり、計画・検証が揃った最後の段の返却（`tw step` の印も
     `tw pause` の控えも使わず `verify-check` が `VERIFIED_SAME`）で、本文に `## 構造の変更` の節が無いか、中身が形（各行が `+|-|~ A -> B`・`+|-|~ A -.> B`・`+|-|~ A`〔節点だけ〕・`[群の名]`/`[]`〔囲み〕のどれかか、全体が `なし: <理由>` の1行）に合わなければ拒む。
