@@ -98,7 +98,7 @@ def _task_difficulty(toplevel: str, task_id: str, issue: beads.Issue | None = No
 
 
 def record(
-    toplevel: str, event: str, task_id: str, issue: beads.Issue | None = None, **fields: str | int | bool
+    toplevel: str, event: str, task_id: str, issue: beads.Issue | None = None, **fields: str | int | bool | dict[str, str]
 ) -> None:
     shown = beads.to_task_id(beads.to_bd_id(task_id))
     ledger.record_event(toplevel, event, shown, _task_difficulty(toplevel, task_id, issue), **fields)
@@ -143,7 +143,7 @@ def require_claimed(toplevel: str, task_id: str) -> None:
         raise SystemExit(4)
 
 
-def record_claimed(toplevel: str, event: str, **fields: str | int | bool) -> None:
+def record_claimed(toplevel: str, event: str, **fields: str | int | bool | dict[str, str]) -> None:
     for issue in claimed_issues(toplevel):
         record(toplevel, event, beads.to_task_id(issue.bd_id), issue, **fields)
 

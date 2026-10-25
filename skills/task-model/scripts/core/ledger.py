@@ -57,7 +57,7 @@ def flow_dir(root: str) -> str:
 
 
 def record_event(
-    cwd: str | None, event: str, task_id: str, difficulty: str, **fields: str | int | bool
+    cwd: str | None, event: str, task_id: str, difficulty: str, **fields: str | int | bool | dict[str, str]
 ) -> None:
     """1出来事を `flow/<YYYY-MM>.jsonl` に1行足す。会話・コマンド・パスは入れない。
 

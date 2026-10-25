@@ -1243,6 +1243,50 @@ def test_verify_failure_cause() -> None:
         )
 
 
+def test_verify_stages() -> None:
+    say("tw verify: 出力の STAGE 行を stages に記録し、metrics が unobserved・blocked の回を数える。読めない出力と旧い行は欄なしで壊れない")
+    with tempfile.TemporaryDirectory() as tmp:
+        out_file = os.path.join(tmp, "out")
+        verify_script = write(os.path.join(tmp, "verify.sh"), f'cat "{out_file}"\n')
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない", verify=f"`sh {verify_script}`")
+        commit_task(main_path, taskfile.Task("T-100", "段", "todo", "sonnet", "Y", (), PLANNED_BODY))
+        run_task(wt1, "claim", "T-100")
+        outputs = (
+            "STAGE\ttest\tpass\nSTAGE\ttest:e2e\tunobserved\nSTAGE\tlint\tblocked\n",
+            "ok\nSTAGE\ttest\tpass\n",
+            "STAGE\ttest\tmaybe\nSTAGE\tonly-two\nSTAGE\t\tpass\n何もない\n",
+        )
+        for i, content in enumerate(outputs):
+            write(out_file, content)
+            write(os.path.join(wt1, "work.txt"), str(i))
+            r = run_task(wt1, "verify")
+            check(f"出力 {i} で通る", r.returncode == 0, r.stdout + r.stderr)
+        rows = [e for e in flow_rows(wt1) if e["event"] == "verify"]
+        check(
+            "読めた段は stages に4値で入り、読めない出力は stages の欄を足さない",
+            rows[0].get("stages") == {"test": "pass", "test:e2e": "unobserved", "lint": "blocked"}
+            and rows[1].get("stages") == {"test": "pass"}
+            and "stages" not in rows[2],
+            repr(rows),
+        )
+        r = run_task(wt1, "metrics")
+        table = {l.split("\t")[0]: l.split("\t")[1] for l in r.stdout.splitlines()}
+        check(
+            "metrics が unobserved の回1・blocked の回1を出す",
+            table["verify_unobserved"] == "1" and table["verify_blocked"] == "1",
+            r.stdout,
+        )
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    old = metrics.Event(t0, "verify", "T-100", {"event": "verify", "result": "VERIFIED"})
+    odd = metrics.Event(t0, "verify", "T-100", {"event": "verify", "result": "VERIFIED", "stages": "unobserved"})
+    column = metrics.column_between([old, odd], t0, t0 + timedelta(days=1))
+    check(
+        "欄の無い旧い行と形の違う欄は数えず、壊れない",
+        column["verify_unobserved"] == "0" and column["verify_blocked"] == "0",
+        repr(column),
+    )
+
+
 def test_verify_cause_derivation() -> None:
     say("metrics.verify_cause: 同じ鍵で次の着手までに通れば flaky、cause=infra はそのまま、ほかと旧い行は real")
     t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -1374,6 +1418,7 @@ def test_all_tests_registered() -> None:
 
 TESTS = (
     test_verify_failure_cause,
+    test_verify_stages,
     test_verify_cause_derivation,
     test_open_stages,
     test_task_stage_spans,

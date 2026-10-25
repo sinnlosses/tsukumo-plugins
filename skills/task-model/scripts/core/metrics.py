@@ -25,6 +25,8 @@ HIGHER_IS_WORSE = (
     "verify_real",
     "verify_flaky",
     "verify_infra",
+    "verify_unobserved",
+    "verify_blocked",
     "ship_verify_failed",
     "reclaim",
     "fix_within_7d",
@@ -110,6 +112,12 @@ def verify_cause(events: list[Event], failed: Event) -> str:
     return "real"
 
 
+def _has_stage_value(verify: Event, value: str) -> bool:
+    """`verify` の記録の `stages`（段名→4値）に `value` の段があるか。欄の無い旧い行・形の違う欄は偽。"""
+    stages = verify.fields.get("stages")
+    return isinstance(stages, dict) and value in stages.values()
+
+
 def column_between(events: list[Event], start: datetime, end: datetime) -> dict[str, str]:
     """`[start, end)` の流れの数（`tw metrics` の1列）。"""
     inside = [e for e in events if start <= e.at < end]
@@ -144,6 +152,8 @@ def column_between(events: list[Event], start: datetime, end: datetime) -> dict[
         "verify_real": str(causes.count("real")),
         "verify_flaky": str(causes.count("flaky")),
         "verify_infra": str(causes.count("infra")),
+        "verify_unobserved": str(sum(1 for e in verifies if _has_stage_value(e, "unobserved"))),
+        "verify_blocked": str(sum(1 for e in verifies if _has_stage_value(e, "blocked"))),
         "ship_verify_failed": str(sum(1 for e in inside if e.kind == "ship" and e.fields.get("result") == "VERIFY_FAILED")),
         "reclaim": str(len(reclaims)),
         "reflection_none_ratio": f"{round(100 * len(clean) / len(dones))}% ({len(clean)}/{len(dones)})" if dones else "-",

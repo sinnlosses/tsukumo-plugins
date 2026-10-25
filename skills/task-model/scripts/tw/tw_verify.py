@@ -19,6 +19,29 @@ import tw_plan
 
 VERIFY_TAIL_LINES = 40
 VERIFY_INFRA_EXIT_CODES = (2,)
+STAGE_LINE_PREFIX = "STAGE\t"
+STAGE_VALUES = ("pass", "fail", "unobserved", "blocked")
+
+
+def read_stages(log_text: str) -> dict[str, str]:
+    """検証コマンドの出力の `STAGE\\t<段名>\\t<pass|fail|unobserved|blocked>` の行から、段名と4値を読む。
+
+    形の違う行は読み飛ばす。同じ段名が複数あれば後の行が勝つ。1行も読めなければ空。
+    """
+    stages: dict[str, str] = {}
+    for line in log_text.splitlines():
+        if not line.startswith(STAGE_LINE_PREFIX):
+            continue
+        parts = line.split("\t")
+        if len(parts) == 3 and parts[1] and parts[2] in STAGE_VALUES:
+            stages[parts[1]] = parts[2]
+    return stages
+
+
+def _stage_fields(log_path: str) -> dict[str, dict[str, str]]:
+    with open(log_path, encoding="utf-8", errors="replace") as f:
+        stages = read_stages(f.read())
+    return {"stages": stages} if stages else {}
 
 
 def cmd_verify(toplevel: str, task_id: str | None = None) -> None:
@@ -80,6 +103,7 @@ def cmd_verify(toplevel: str, task_id: str | None = None) -> None:
             seconds=round(time.monotonic() - started),
             cause="infra" if r.returncode in VERIFY_INFRA_EXIT_CODES else "real",
             key=before.tree,
+            **_stage_fields(log_path),
         )
         _print_verify_end(folded_line, f"VERIFY_NOT_PASSED\t{stamps.keep_failed_log(log_path)}", tail)
         raise SystemExit(10)
@@ -90,7 +114,12 @@ def cmd_verify(toplevel: str, task_id: str | None = None) -> None:
         stamps.write_verify_stamp(before, cwd=toplevel)
         verdict = f"VERIFIED\t{before.tree}\t{log_path}"
     tw_base.record_claimed(
-        toplevel, "verify", result=verdict.split("\t")[0], seconds=round(time.monotonic() - started), key=before.tree
+        toplevel,
+        "verify",
+        result=verdict.split("\t")[0],
+        seconds=round(time.monotonic() - started),
+        key=before.tree,
+        **_stage_fields(log_path),
     )
     _print_verify_end(folded_line, verdict, tail)
 
