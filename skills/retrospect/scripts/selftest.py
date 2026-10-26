@@ -1110,6 +1110,7 @@ def test_intervention_effect() -> None:
         "ship_verify_failed": lambda at, n: [event(at, "ship", result="VERIFY_FAILED") for _ in range(n)],
         "reclaim": reclaims,
         "long_delegation": lambda at, n: [event(at, "long-delegation", steps=101) for _ in range(n)],
+        "long_handback": lambda at, n: [event(at, "long-handback", tokens=2001) for _ in range(n)],
         "escalate_suggest": lambda at, n: [event(at, "escalate-suggest", trigger="edit-churn") for _ in range(n)],
     }
     check("件数の数の表は、tw metrics の数のうち割合・秒・1件あたりでも shipped でもないものと同じ",
