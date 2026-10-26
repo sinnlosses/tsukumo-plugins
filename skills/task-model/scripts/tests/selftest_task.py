@@ -29,7 +29,7 @@ import selftest_t_ship  # noqa: E402
 import selftest_t_tasks  # noqa: E402
 import selftest_t_verify  # noqa: E402
 import beads  # noqa: E402
-from selftest_support import beads_home, finish, local, run_parallel, select  # noqa: E402
+from selftest_support import beads_home, finish, local, require_all_listed, run_parallel, select  # noqa: E402
 
 MODULES = (
     selftest_t_verify,
@@ -64,6 +64,7 @@ def take_modules(argv: list[str]) -> tuple[tuple, list[str]]:
 
 
 def main() -> None:
+    require_all_listed(MODULES)
     modules, only = take_modules(sys.argv[1:])
     tests = tuple(t for m in modules for t in m.TESTS)
     with beads_home((beads.PREFIX_LOCAL,)):

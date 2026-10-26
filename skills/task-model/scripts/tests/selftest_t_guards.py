@@ -2435,7 +2435,52 @@ def test_commit_guard_bd_writes() -> None:
         check("done のあとの bd close は通る", run_guard(tmp, wt1, "bd close x") is None)
 
 
+def _exit_with_output(fn, *args) -> tuple[int | None, str]:
+    import contextlib
+    import io
+
+    out = io.StringIO()
+    code = None
+    with contextlib.redirect_stdout(out):
+        try:
+            fn(*args)
+        except SystemExit as e:
+            code = e.code
+    return code, out.getvalue()
+
+
+def test_selftest_requires_listed_and_matching_names() -> None:
+    import types
+
+    import selftest_support
+
+    def test_listed() -> None: ...
+
+    def test_forgotten() -> None: ...
+
+    fake = types.ModuleType("fake_selftest_module")
+    for fn in (test_listed, test_forgotten):
+        fn.__module__ = fake.__name__
+        setattr(fake, fn.__name__, fn)
+    fake.TESTS = (test_listed,)
+    code, out = _exit_with_output(selftest_support.require_all_listed, (fake,))
+    check("TESTS に載っていない test_ 関数があると非0で落ち、名前が出る",
+          code == 1 and "test_forgotten" in out and "test_listed" not in out, f"{code} {out}")
+    fake.TESTS = (test_listed, test_forgotten)
+    code, out = _exit_with_output(selftest_support.require_all_listed, (fake,))
+    check("全部載っていれば通る", code is None and out == "", f"{code} {out}")
+
+    tests = (test_listed, test_forgotten)
+    code, out = _exit_with_output(selftest_support.select, tests, ["test_listed", "test_nowhere"])
+    check("一部だけ当たらない名前の組は非0で落ち、当たらない名前が出る",
+          code == 1 and "test_nowhere" in out and "test_listed" not in out, f"{code} {out}")
+    code, out = _exit_with_output(selftest_support.select, tests, ["test_nowhere"])
+    check("1つも当たらないときも非0で落ちる", code == 1 and "test_nowhere" in out, f"{code} {out}")
+    check("全部当たれば選べる", len(selftest_support.select(tests, ["test_listed"])) == 1)
+
+
 TESTS = (
+    test_selftest_requires_listed_and_matching_names,
     test_commit_guard_acceptor,
     test_commit_guard_bd_writes,
     test_commit_guard_git_operations,

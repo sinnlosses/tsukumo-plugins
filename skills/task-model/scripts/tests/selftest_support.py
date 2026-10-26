@@ -198,8 +198,32 @@ def run_one(test) -> list[str]:
     return local.lines
 
 
+def unlisted_tests(module) -> list[str]:
+    """`module` が定義する `test_` 関数のうち、`module.TESTS` に載っていないものの名前。"""
+    listed = {t.__name__ for t in module.TESTS}
+    return [
+        name for name, obj in vars(module).items()
+        if name.startswith("test_") and callable(obj)
+        and getattr(obj, "__module__", None) == module.__name__ and name not in listed
+    ]
+
+
+def require_all_listed(modules: tuple) -> None:
+    """載せ忘れの `test_` 関数が1つでもあれば、モジュールごとに名前を並べて非0で落とす。"""
+    missing = {m.__name__: names for m in modules if (names := unlisted_tests(m))}
+    if missing:
+        for module_name, names in missing.items():
+            print(f"TESTS に載っていない test_ 関数: {module_name}: " + ", ".join(names))
+        raise SystemExit(1)
+
+
 def select(tests: tuple, only: list[str]) -> tuple:
-    chosen = tuple(t for t in tests if not only or t.__name__ in only)
+    known = {t.__name__ for t in tests}
+    unknown = [n for n in dict.fromkeys(only) if n not in known]
+    if unknown:
+        print("該当するテストが無い: " + ", ".join(unknown))
+        raise SystemExit(1)
+    chosen =tuple(t for t in tests if not only or t.__name__ in only)
     chosen = tuple(sorted(chosen, key=lambda t: -getattr(t, "weight", 0)))
     if not chosen:
         print("該当するテストが無い: " + ", ".join(only))
