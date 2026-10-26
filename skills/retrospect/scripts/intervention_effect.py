@@ -217,9 +217,11 @@ def judge(
 
 
 def read_denials(root: str) -> list[Denial]:
-    """共有の git dir の hook の拒否の記録のうち、時刻と `rule` の読める行。"""
+    """共有の git dir の hook の拒否の記録のうち、時刻と `rule` の読める行。拒まず通した行（`mode` が `log-only`）は除く。"""
     found: list[Denial] = []
     for row in material.denial_rows(root):
+        if row.get(ledger.DENIAL_MODE_KEY) == ledger.DENIAL_LOG_ONLY:
+            continue
         at = beads.parse_time(row.get("at"))
         if at is not None and at.tzinfo is not None and isinstance(row.get("rule"), str):
             found.append(Denial(at, row["rule"]))

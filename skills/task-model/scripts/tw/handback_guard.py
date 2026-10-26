@@ -1,8 +1,9 @@
 """`tw handback-guard`: Claude Code の hook の入力（stdin の JSON）を読み、委譲先の返却
 （`SubagentStop`・`SubagentHandback` の `PreToolUse`）を、入力の `cwd` について渡された判定が
-理由を返したときに拒む。
+理由を返したときに拒む。ただし規則のキーが `STRUCTURE_SECTION` で始まる判定（`## 構造の変更` の節の欠け）は拒まず、
+`PreToolUse` の `additionalContext` で知らせ、`hook-denials/` へ `mode: "log-only"` の行を残す。
 
-拒むときだけ stdout に JSON を1行出す（`SubagentStop` は `decision: block`、`PreToolUse` は deny）。
+拒むときと節の欠けを知らせるときだけ stdout に JSON を1行出す（`SubagentStop` は `decision: block`、`PreToolUse` は deny か `additionalContext`）。
 通すときは何も出さない。終了コードはいつも0（hook の取り決め。`tw` の「stdout は先頭語の TSV」の例外）。
 
 `--agent-scoped` では、サブエージェントが `Edit`・`Write`・`NotebookEdit` を使う `PreToolUse` で、`cwd` の作業ツリーに
@@ -192,6 +193,12 @@ def decide(payload: dict, refusal: Callable[[str, str | None], tuple[str, str] |
             _record_long_handback(payload, body, cwd)
         return None
     rule, reason = verdict
+    if rule.startswith(tw_handback.STRUCTURE_RULE_PREFIX):
+        if not is_handback:
+            return None
+        agent_scope.record_denial(payload, "tw-handback-guard", rule, ledger.DENIAL_LOG_ONLY)
+        _record_long_handback(payload, body, cwd)
+        return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": reason}}
     agent_scope.record_denial(payload, "tw-handback-guard", rule)
     if is_stop:
         return {"decision": "block", "reason": reason}

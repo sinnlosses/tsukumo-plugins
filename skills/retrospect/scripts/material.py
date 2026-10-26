@@ -355,11 +355,11 @@ def read_denials(root: str) -> Counter[str]:
     """共有の git dir の hook の拒否の記録を、拒まれた委譲先の `agent_id` ごとに数える。
 
     数えるのは `actor` が `subagent` で `agent` のある行だけ（`agent` の無い古い記録と `main` の行は、どのトランスクリプトのものか決まらない）。
-    読めなければ空。
+    拒まずに通した行（`mode` が `log-only`）は数えない。読めなければ空。
     """
     found: Counter[str] = Counter()
     for row in denial_rows(root):
-        if row.get("actor") != "subagent":
+        if row.get("actor") != "subagent" or row.get(ledger.DENIAL_MODE_KEY) == ledger.DENIAL_LOG_ONLY:
             continue
         agent = row.get(ledger.DENIAL_AGENT_KEY)
         if isinstance(agent, str) and agent:

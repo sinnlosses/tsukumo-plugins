@@ -460,6 +460,14 @@ def test_hook_denials() -> None:
         check("手数の行に引いた後のエラーと除いた拒否の数",
               "ツール呼び出し\t3件\tエラー\t2件\thook の拒否（エラーから除いた）\t1件" in r.stdout.splitlines(), r.stdout + r.stderr)
 
+        log_only = {"at": "2026-10-01T00:00:03+00:00", "hook": "tw-handback-guard",
+                    "rule": "STRUCTURE_SECTION_MISSING", "actor": "subagent", "agent": "a1", "mode": "log-only"}
+        with open(denials, "a", encoding="utf-8") as f:
+            f.write(json.dumps(log_only) + "\n")
+        r = material("GH-5", "--signals")
+        check("拒まずに通した行（mode: log-only）は拒否の数に入れない",
+              "ツール呼び出し\t3件\tエラー\t2件\thook の拒否（エラーから除いた）\t1件" in r.stdout.splitlines(), r.stdout + r.stderr)
+
 
 def test_gate_ledger() -> None:
     print("material.py --gate が reverify・fixes・review を台帳から数える")
@@ -1171,6 +1179,7 @@ def test_intervention_effect() -> None:
         write(os.path.join(d, ".git", "hook-denials", "2026-10.jsonl"),
               "".join(json.dumps({"at": at, "hook": "h", "rule": "r", "actor": "main"}) + "\n"
                       for at in ("2026-10-03T19:53:14.58175Z", "2026-10-03T20:33:38.942169922Z", "2026-10-03T20:33:38+09:00"))
+              + json.dumps({"at": "2026-10-03T20:00:00Z", "hook": "h", "rule": "r", "actor": "main", "mode": "log-only"}) + "\n"
               + json.dumps({"at": "壊れた時刻", "rule": "r"}) + "\n" + "壊れた行\n")
         got = ie.read_denials(d)
         check("拒否の記録の時刻は小数の桁によらず読み、読めない行は飛ばす", [x.rule for x in got] == ["r", "r", "r"], repr(got))
