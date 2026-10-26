@@ -34,10 +34,10 @@
 
 | 会話に残った結果 | 続行 |
 | --- | --- |
-| `tw loop-check` が `STOP\tmax_ships`（今日の件数が `loop_max_ships`） | 続けず終える。報告に理由・残りの `READY` 数・`SHIPPED_TODAY` の送った一覧を書く |
+| `tw loop-check`（`tw ship`・`tw hold` のあとに打つ）が `STOP\tmax_ships`（`loop_max_ships` 件） | 続けず終える。報告に理由・残りの `READY` 数・`SHIPPED_TODAY` の一覧を書く |
 | `STOP\thold_streak`（`hold` が3件連続） | 同上 |
 | `STOP\tverify_failed`（直近3件の `ship` で2件が `VERIFY_FAILED`） | 同上 |
-| `tw loop-check` が `CONTINUE` で、`tw ship` が `SHIPPED`・`NOTHING` で、取り直した `tw status` に `着手可否` が `READY` かつ `loopable` が `Y` の行がある | 続ける |
+| `CONTINUE` で、`tw ship` が `SHIPPED`・`NOTHING` で、取り直した `tw status` に `着手可否` が `READY` かつ `loopable` が `Y` の行がある | 続ける |
 | `tw ship` が `SHIPPED`・`NOTHING` で、その行が無い | 続けない |
 | `tw ship` がほかの先頭語か、判断待ちで外したとき以外で手順8より前で終わった | 続けない |
 | 判断待ちで外し、`tw loop-check` が `CONTINUE` で、`tw hold` が `CONTINUE\tY` を出し、作業ツリーに作業（`claim` した時点より後のコミットか変更）が無い | 続ける |

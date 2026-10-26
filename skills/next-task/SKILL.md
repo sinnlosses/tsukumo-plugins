@@ -31,7 +31,7 @@ metadata:
 1a. **週ごとの振り返り**: `retrospect_due` の行（`tw status` の `---` の後ろ）があれば、
    `${CLAUDE_SKILL_DIR}/weekly-retrospect.md` を読んで従う
 
-1b. **停止規則**: `/loop` から呼ばれたときだけ `tw loop-check` を打ち、`STOP` なら着手せず理由・残りの `READY` 数・`SHIPPED_TODAY` を報告して終える。
+1b. **停止規則**: `/loop` から呼ばれたときだけ、前のサイクルの `ship`・`hold` のあとに `tw loop-check` を打ち、`STOP` なら着手せず理由・残りの `READY` 数・`SHIPPED_TODAY` を報告して終える。
 
 2. **取り残しを見る**: 行の `着手可否` が `CLAIMED` で、印の列の作業ツリー名が自分
    （`basename "$(git rev-parse --show-toplevel)"`）なら、`${CLAUDE_SKILL_DIR}/leftover-claim.md` を読んで従う。
@@ -69,7 +69,7 @@ metadata:
    | `DIRTY`・`UNSHIPPED`・`INVALID`・`GIT_READ_ONLY` | `${CLAUDE_SKILL_DIR}/start-stopped.md` の「手順4の表の残り」に従って終了する |
 
 5. **`task-workflow` を呼ぶ**: Skill ツールの一覧で末尾が `task-workflow` の行（リンクで入れたとき `task-workflow`、
-   plugin で入れたとき `tsukumo-workflow:task-workflow`。一覧に出ている名前のまま使う）を呼び、次を渡す:
+   plugin で入れたとき `tsukumo-workflow:task-workflow`）を呼び、次を渡す:
    タスクID、手順4の `CLAIMED` の行（`HOLD` を選んだときは `HOLD`）、呼ばれ方（`/loop` か直接）、
    `/loop` ならその依頼文。ここから先（送り出し・完了報告・続行判断）は `task-workflow` に従う。
 
