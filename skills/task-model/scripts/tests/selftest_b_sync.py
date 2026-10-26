@@ -153,13 +153,12 @@ def test_tracker_register_timeout_no_duplicate() -> None:
 
 
 def test_new_batch_github() -> None:
-    say("トラッカー github・new --batch（Issue を一度にまとめて立て、依存を最終の ID で結び、反映は1回。10件の所要は1件ずつの半分以下）")
+    say("トラッカー github・new --batch（Issue を一度にまとめて立て、依存を最終の ID で結び、反映は1回。10件の要求数は1件ずつ10回より少ない）")
     count = 10
     with github() as (fake, tmp, main_path, _wt1):
-        fake.delay = 0.1
-        started = time.monotonic()
         singles = [new(main_path, f"単件{i}") for i in range(count)]
-        single_seconds = time.monotonic() - started
+        single_requests = dict(fake.requests)
+        fake.requests.clear()
 
         entries = []
         for i in range(count):
@@ -170,9 +169,8 @@ def test_new_batch_github() -> None:
                 entry["deps"] = ["@1"] if i == 1 else [singles[0], f"@{i}"]
             entries.append(entry)
         path = write(os.path.join(tmp, "batch.json"), json.dumps(entries))
-        started = time.monotonic()
         r = run_task(main_path, "new", "--batch", path)
-        batch_seconds = time.monotonic() - started
+        batch_requests = dict(fake.requests)
         created = [l.split("\t")[1] for l in r.stdout.splitlines() if l.startswith("CREATED\t")]
         tracker_lines = [l for l in r.stdout.splitlines() if l.startswith("TRACKER")]
         check("10件が gh-<Issue 番号> の ID で返る", r.returncode == 0 and len(created) == count
@@ -188,26 +186,10 @@ def test_new_batch_github() -> None:
               str([shown_deps(c) for c in created[:4]]))
         check("Status 欄が全件に書かれる", all(fake.status_of(int(c.split("-")[1])) == "Todo" for c in created),
               str([fake.status_of(int(c.split("-")[1])) for c in created]))
-        # 並列の自己テストの負荷で1回の秒数はぶれるので、上限（0.6）を満たすまで最大3回測り、それぞれの最小値どうしで比べる。
-        singles_seconds, batches_seconds = [single_seconds], [batch_seconds]
-        while len(batches_seconds) < 3 and min(batches_seconds) > min(singles_seconds) * 0.6:
-            round_no = len(batches_seconds)
-            started = time.monotonic()
-            for i in range(count):
-                new(main_path, f"単件{round_no}-{i}")
-            singles_seconds.append(time.monotonic() - started)
-            extra = []
-            for i in range(count):
-                name = f"body{round_no}-{i}.md"
-                write(os.path.join(tmp, name), PLANNED_BODY)
-                extra.append({"summary": f"一括{round_no}-{i}", "difficulty": "sonnet", "loopable": "Y", "body_file": name})
-            path = write(os.path.join(tmp, f"batch{round_no}.json"), json.dumps(extra))
-            started = time.monotonic()
-            run_task(main_path, "new", "--batch", path)
-            batches_seconds.append(time.monotonic() - started)
-        batch_min, single_min = min(batches_seconds), min(singles_seconds)
-        check(f"10件の一括は1件ずつ10回より十分に速い（最小値 一括 {batch_min:.1f}秒・1件ずつ {single_min:.1f}秒、{len(batches_seconds)}回測定）",
-              batch_min <= single_min * 0.6, f"{batches_seconds} {singles_seconds}")
+        for kind in ("GET /repos/o/r/issues", "POST /graphql"):
+            single_n, batch_n = single_requests.get(kind, 0), batch_requests.get(kind, 0)
+            check(f"10件の一括は1件ずつ10回より要求が少ない（{kind}: 一括 {batch_n} 回・1件ずつ {single_n} 回）",
+                  0 < batch_n < single_n, f"{single_requests} {batch_requests}")
 
 
 def test_tracker_pull_reports_duplicate() -> None:

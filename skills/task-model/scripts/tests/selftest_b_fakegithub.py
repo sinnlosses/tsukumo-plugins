@@ -42,6 +42,7 @@ class FakeGitHub:
         self.issue_patches: list[int] = []  # Issue を PATCH で更新した番号（順に）
         self.fetched: list[int] = []  # Issue を1件ずつ GET で取った番号（`bd github pull` が取りに来た分）
         self.listed: list[list[int]] = []  # Issue の一覧 GET が返した番号（呼び出しごと）
+        self.requests: dict[str, int] = {}  # 受けた要求の数。キーは「メソッド パス（クエリを除く）」
         self.clock_offset = 0  # 秒。GitHub 側の編集を後の時刻にする
         self.delay = 0.0  # 秒。応答を遅らせる
         self.delay_post_only = False  # 立てる POST の応答だけ遅らせる
@@ -65,6 +66,8 @@ class FakeGitHub:
                 n = int(self.headers.get("Content-Length") or 0)
                 body = json.loads(self.rfile.read(n).decode() or "null") if n else None
                 with fake.lock:
+                    key = f"{self.command} {self.path.split('?')[0]}"
+                    fake.requests[key] = fake.requests.get(key, 0) + 1
                     code, obj = fake.route(self.command, self.path, body)
                 if not fake.delay_post_only or self.command == "POST":
                     fake.closing.wait(fake.delay)
