@@ -882,12 +882,15 @@ def test_done_required_lines() -> None:
 
 
 def test_done_replay_diff_notice() -> None:
-    say("task.py done: harness の面を名指す計画で - 再演の差: が無ければ REPLAY_DIFF_MISSING を出す（拒まない）")
-    replayed = INTERVENTION + "\n- 再演の差: 5件 × k=2 で通過率 +1ポイント（no observed effect）"
+    say("task.py done: harness の面を名指す計画で - 再演の差: が無ければ REPLAY_DIFF_MISSING を出す（拒まない）。古い - 再演の差: の行も読む")
+    replayed = INTERVENTION + "\n- タスクの再試の差: 5件 × k=2 で通過率 +1ポイント（no observed effect）"
+    legacy = INTERVENTION + "\n- 再演の差: 5件 × k=2 で通過率 +1ポイント（no observed effect）"
     cases = (
         ("面を名指し、行が無い", "skills/x.md", INTERVENTION, "", True),
-        ("面を名指し、行が空", "skills/x.md", INTERVENTION + "\n- 再演の差:", "", True),
+        ("面を名指し、行が空", "skills/x.md", INTERVENTION + "\n- タスクの再試の差:", "", True),
+        ("面を名指し、古い名前の行が空", "skills/x.md", INTERVENTION + "\n- 再演の差:", "", True),
         ("面を名指し、行がある", "skills/x.md", replayed, "", False),
+        ("面を名指し、古い名前の行がある", "skills/x.md", legacy, "", False),
         ("面を名指さない", "src/x.py", INTERVENTION, "", False),
         ("面を名指し、--dropped", "skills/x.md", INTERVENTION, "--dropped", False),
     )
@@ -895,7 +898,7 @@ def test_done_replay_diff_notice() -> None:
         with tempfile.TemporaryDirectory() as tmp:
             main_path, wt1, _wt2 = make_repo(tmp)
             body = task_body([("書く", "x")], [path], intervention=intervention)
-            commit_task(main_path, taskfile.Task("T-100", "再演の差", "todo", "sonnet", "Y", (), body))
+            commit_task(main_path, taskfile.Task("T-100", "タスクの再試の差", "todo", "sonnet", "Y", (), body))
             run_task(wt1, "claim", "T-100")
             args = ["done", "T-100", *([flag] if flag else []), "--result-file", "-"]
             r = run_task(wt1, *args, stdin="- 却下: 要らない\n" if flag else RESULT_FULL)

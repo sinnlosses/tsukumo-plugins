@@ -70,7 +70,8 @@ INTERVENTION_TARGET = "出し先の種類"
 INTERVENTION_DUE = "判定の期日"
 INTERVENTION_STOP = "やめる条件"
 INTERVENTION_CUT = "削るもの"
-INTERVENTION_REPLAY = "再演の差"
+INTERVENTION_REPLAY = "タスクの再試の差"
+INTERVENTION_REPLAY_LEGACY = "再演の差"
 INTERVENTION_FIELDS = (
     INTERVENTION_SIGNAL,
     INTERVENTION_BASELINE,
@@ -242,9 +243,11 @@ def harness_paths(paths: tuple[str, ...]) -> tuple[str, ...]:
 
 
 def replay_diff_notice(body: str) -> str | None:
-    """harness の面を名指す計画で、`## 介入` に `- 再演の差:` の行が無いか空のときの知らせの理由。面を名指さない・行があれば `None`。"""
+    """harness の面を名指す計画で、`## 介入` に `- タスクの再試の差:` の行が無いか空のときの知らせの理由。面を名指さない・行があれば `None`。
+    古い名前 `- 再演の差:` の行も同じに読む。"""
     named = harness_paths(plan_files(body)[0])
-    if not named or (intervention(body) or {}).get(INTERVENTION_REPLAY):
+    fields = intervention(body) or {}
+    if not named or fields.get(INTERVENTION_REPLAY) or fields.get(INTERVENTION_REPLAY_LEGACY):
         return None
     return (
         f"harness の面（{'・'.join(named)}）を名指す計画なのに、{INTERVENTION_HEADING} に "
