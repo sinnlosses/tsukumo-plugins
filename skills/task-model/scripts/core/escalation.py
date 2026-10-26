@@ -66,7 +66,7 @@ def triggers(
         return []
     after = run[run.index(start) + 1 :]
     done = {str(e.fields.get("trigger")) for e in after if e.kind == "escalate-suggest"}
-    next_model = NEXT_MODEL.get(str(start.fields.get("difficulty")), "-")
+    next_model = NEXT_MODEL.get(str(start.fields.get("model") or start.fields.get("difficulty")), "-")
     found: list[tuple[str, str]] = []
     churn = [e for e in after if e.kind == "edit-churn"]
     if churn:

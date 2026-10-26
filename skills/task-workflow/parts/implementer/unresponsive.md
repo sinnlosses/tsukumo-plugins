@@ -23,7 +23,7 @@
       捨てるのは差分が使えないときだけ。
    6. **見張りに `ESCALATE_SUGGEST\tT-xxx\t<引き金>\t<詳細>\t<次のモデル>` が出たら、止めずに、上のモデルへ引き上げるか待つかを決める**。
       引き金は `edit-churn`（同じファイルを5回書き換えた）・`verify-failed-streak`（`verify` が2回続けて落ちた）・
-      `slow-delegation`（経過が同じ difficulty の委譲の中央値の3倍を超えた。基準は `tw metrics --stages` と同じ直近28日の元から毎回引く）。
+      `slow-delegation`（経過が同じ difficulty の委譲の中央値の3倍を超えた。基準は `tw metrics --stages` と同じ元〔直近28日〕を、打つたびに引く）。次のモデルは、分業の委譲なら `--model` で渡したモデルの上。
       引き上げるなら、委譲先が段を返した切れ目で `delegate.md` の (c) の手（`TaskStop`、次のモデルで起こし直し、済んだ段の次から
       `tw brief implementer T-xxx --step <n>`）を使う。次のモデルが `-` のときや、段がほぼ終わっているときは待つ。
       提案は強制ではなく、出ても委譲先は止まらない。同じ引き金は同じ委譲で1回しか出ない。
