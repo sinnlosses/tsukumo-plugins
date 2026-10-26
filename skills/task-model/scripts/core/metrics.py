@@ -30,6 +30,7 @@ HIGHER_IS_WORSE = (
     "ship_verify_failed",
     "reclaim",
     "fix_within_7d",
+    "long_delegation",
 )
 FIX_WINDOW = timedelta(days=7)
 LOWER_IS_WORSE = ("shipped", "reflection_none_ratio")
@@ -185,6 +186,7 @@ def column_between(events: list[Event], start: datetime, end: datetime) -> dict[
         "reclaim": str(len(reclaims)),
         "reflection_none_ratio": f"{round(100 * len(clean) / len(dones))}% ({len(clean)}/{len(dones)})" if dones else "-",
         "fix_within_7d": f"{round(100 * len(fixes) / len(shipped))}% ({len(fixes)}/{len(shipped)})" if shipped else "-",
+        "long_delegation": str(sum(1 for e in inside if e.kind == "long-delegation")),
     }
 
 

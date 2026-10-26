@@ -871,6 +871,46 @@ def test_handback_guard() -> None:
         check("読めない入力は何も出さずに通す", r.returncode == 0 and r.stdout == "", r.stdout + r.stderr)
 
 
+@weight(6)
+def test_handback_guard_long_delegation_and_length() -> None:
+    say("task.py handback-guard: 歩数が100を超えた委譲は件数で残し、長い返却は警告するだけで拒まない")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, verify="`true`")
+        commit_task(main_path, taskfile.Task("T-100", "長い委譲", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+
+        def transcript(name: str, steps: int) -> str:
+            path = os.path.join(tmp, name)
+            rows = [{"type": "assistant", "message": {"id": f"m{i}", "usage": {"input_tokens": 1}}} for i in range(steps)]
+            rows += [{"type": "assistant", "message": {"id": "m0", "usage": {"input_tokens": 1}}}, {"type": "user", "message": {}}]
+            write(path, "".join(json.dumps(row) + "\n" for row in rows) + "not json\n")
+            return path
+
+        def stop(path: str) -> subprocess.CompletedProcess:
+            payload = {"hook_event_name": "SubagentStop", "cwd": wt1, "agent_id": "a1", "agent_transcript_path": path}
+            return run_task(tmp, "handback-guard", stdin=json.dumps(payload))
+
+        r = stop(transcript("short.jsonl", 100))
+        check("100歩ちょうどは記録せず通す", r.returncode == 0 and r.stdout == ""
+              and not [row for row in flow_rows(wt1) if row["event"] == "long-delegation"], r.stdout + r.stderr)
+        r = stop(transcript("long.jsonl", 101))
+        rows = [row for row in flow_rows(wt1) if row["event"] == "long-delegation"]
+        check("101歩は long-delegation を steps つきで1行残し、通す（同じ id の重複は数えない）",
+              r.returncode == 0 and r.stdout == "" and len(rows) == 1 and rows[0]["steps"] == 101 and rows[0]["task"] == "T-100",
+              r.stdout + r.stderr + str(rows))
+        table = {line.split("\t")[0]: line.split("\t")[1:] for line in run_task(wt1, "metrics").stdout.splitlines()}
+        check("tw metrics の long_delegation に件数が出る", table.get("long_delegation") == ["1", "0"], str(table))
+        r = stop(os.path.join(tmp, "missing.jsonl"))
+        check("transcript が読めなくても通す", r.returncode == 0 and r.stdout == "", r.stdout + r.stderr)
+
+        out = run_handback_guard(tmp, wt1, "PreToolUse", "SubagentHandback", body="あ" * 2001)
+        check("2,000トークン相当を超えた返却は拒まず additionalContext で警告する",
+              out is not None and "permissionDecision" not in out["hookSpecificOutput"]
+              and "2000" in out["hookSpecificOutput"]["additionalContext"], str(out))
+        check("2,000トークン相当ちょうどは何も出さない", run_handback_guard(tmp, wt1, "PreToolUse", "SubagentHandback", body="あ" * 2000) is None)
+        check("ASCII は4文字を1トークンと数える", handback_guard.estimated_tokens("a" * 8000) == 2000)
+
+
 def test_lap() -> None:
     say("task.py lap: 5つの段が flow に1行ずつ書かれ、知らない段は拒み、印が無ければ記録しない")
     with tempfile.TemporaryDirectory() as tmp:
@@ -2289,6 +2329,7 @@ TESTS = (
     test_commit_guard_with_ref_guard,
     test_commit_guard_covers_inactive_ref_guard,
     test_handback_guard,
+    test_handback_guard_long_delegation_and_length,
     test_agent_scoped_outside_write,
     test_handback_guard_other_repo,
     test_step_stamps_other_repo,

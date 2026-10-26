@@ -26,6 +26,8 @@ import tw_handback
 HANDBACK_TOOL = "SubagentHandback"
 STOP_EVENTS = ("SubagentStop", "Stop")
 WRITE_TOOLS = ("Edit", "Write", "NotebookEdit")
+LONG_DELEGATION_STEPS = 100
+HANDBACK_TOKEN_LIMIT = 2000
 
 
 def run(
@@ -94,6 +96,63 @@ def _handback_body(payload: dict) -> str | None:
     return message if isinstance(message, str) else None
 
 
+def _step_count(transcript_path: str) -> int:
+    """委譲先の transcript の歩数（`usage` を持つ assistant メッセージの id の種類数）。中身は読み取らず数だけ返す。読めなければ 0。"""
+    ids: set[str] = set()
+    try:
+        with open(transcript_path, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    entry = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(entry, dict) or entry.get("type") != "assistant":
+                    continue
+                message = entry.get("message")
+                if not isinstance(message, dict) or not isinstance(message.get("usage"), dict):
+                    continue
+                step_id = message.get("id") or entry.get("uuid")
+                if isinstance(step_id, str):
+                    ids.add(step_id)
+    except OSError:
+        return 0
+    return len(ids)
+
+
+def _record_long_delegation(payload: dict, cwd: str) -> None:
+    """返却を通した委譲の歩数が `LONG_DELEGATION_STEPS` を超えていたら、`long-delegation` を台帳へ件数として残す（記録だけ。落ちても返却を変えない）。"""
+    path = payload.get("agent_transcript_path")
+    if not isinstance(path, str) or not os.path.isdir(cwd):
+        return
+    steps = _step_count(path)
+    if steps <= LONG_DELEGATION_STEPS:
+        return
+    try:
+        claims = ledger.open_claims(cwd=cwd)
+        if len(claims) == 1:
+            agent = agent_scope.agent_id(payload)
+            ledger.record_event(cwd, "long-delegation", claims[0], "", steps=steps, **({"agent": agent} if agent else {}))
+    except (gitinfo.GitCommandError, OSError):
+        return
+
+
+def estimated_tokens(text: str) -> int:
+    """ASCII 4文字を1トークン、それ以外の1文字を1トークンとみなした近似（トークナイザは使わない）。"""
+    ascii_chars = sum(1 for c in text if ord(c) < 128)
+    return (len(text) - ascii_chars) + ascii_chars // 4
+
+
+def _length_warning(body: str | None) -> dict | None:
+    """返却の本文が `HANDBACK_TOKEN_LIMIT` 相当を超えたときの警告（拒まない。`additionalContext` を足すだけ）。"""
+    if body is None or estimated_tokens(body) <= HANDBACK_TOKEN_LIMIT:
+        return None
+    note = (
+        f"返却の本文が約 {estimated_tokens(body)} トークン相当で、目安の {HANDBACK_TOKEN_LIMIT} を超えている"
+        "（警告だけで拒まない）。長い材料は `tw relay` に書き、本文は結果と参照に絞る。"
+    )
+    return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": note}}
+
+
 def decide(payload: dict, refusal: Callable[[str, str | None], tuple[str, str] | None]) -> dict | None:
     """出す JSON。通すなら `None`。"""
     event = payload.get("hook_event_name")
@@ -102,9 +161,12 @@ def decide(payload: dict, refusal: Callable[[str, str | None], tuple[str, str] |
     cwd = payload.get("cwd")
     if not (is_stop or is_handback) or not isinstance(cwd, str):
         return None
-    verdict = refusal(cwd, _handback_body(payload) if is_handback else None)
+    body = _handback_body(payload) if is_handback else None
+    verdict = refusal(cwd, body)
     if verdict is None:
-        return None
+        if is_stop:
+            _record_long_delegation(payload, cwd)
+        return _length_warning(body)
     rule, reason = verdict
     agent_scope.record_denial(payload, "tw-handback-guard", rule)
     if is_stop:
