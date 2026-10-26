@@ -160,15 +160,20 @@ def estimated_tokens(text: str) -> int:
     return (len(text) - ascii_chars) + ascii_chars // 4
 
 
-def _length_warning(body: str | None) -> dict | None:
-    """返却の本文が `HANDBACK_TOKEN_LIMIT` 相当を超えたときの警告（拒まない。`additionalContext` を足すだけ）。"""
-    if body is None or estimated_tokens(body) <= HANDBACK_TOKEN_LIMIT:
-        return None
-    note = (
-        f"返却の本文が約 {estimated_tokens(body)} トークン相当で、目安の {HANDBACK_TOKEN_LIMIT} を超えている"
-        "（警告だけで拒まない）。長い材料は `tw relay` に書き、本文は結果と参照に絞る。"
-    )
-    return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": note}}
+def _record_long_handback(payload: dict, body: str | None, cwd: str) -> None:
+    """返却の本文が `HANDBACK_TOKEN_LIMIT` 相当を超えていたら、`long-handback` を台帳へ件数として残す（記録だけ。落ちても返却を変えない）。"""
+    if body is None or not os.path.isdir(cwd):
+        return
+    tokens = estimated_tokens(body)
+    if tokens <= HANDBACK_TOKEN_LIMIT:
+        return
+    try:
+        claims = ledger.open_claims(cwd=cwd)
+        if len(claims) == 1:
+            agent = agent_scope.agent_id(payload)
+            ledger.record_event(cwd, "long-handback", claims[0], "", tokens=tokens, **({"agent": agent} if agent else {}))
+    except (gitinfo.GitCommandError, OSError):
+        return
 
 
 def decide(payload: dict, refusal: Callable[[str, str | None], tuple[str, str] | None]) -> dict | None:
@@ -184,7 +189,9 @@ def decide(payload: dict, refusal: Callable[[str, str | None], tuple[str, str] |
     if verdict is None:
         if is_stop:
             _record_long_delegation(payload, cwd)
-        return _length_warning(body)
+        if is_handback:
+            _record_long_handback(payload, body, cwd)
+        return None
     rule, reason = verdict
     agent_scope.record_denial(payload, "tw-handback-guard", rule)
     if is_stop:

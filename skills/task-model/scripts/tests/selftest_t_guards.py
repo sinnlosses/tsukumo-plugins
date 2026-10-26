@@ -875,7 +875,7 @@ def test_handback_guard() -> None:
 
 @weight(6)
 def test_handback_guard_long_delegation_and_length() -> None:
-    say("task.py handback-guard: 歩数が100を超えた委譲は件数で残し、長い返却は警告するだけで拒まない")
+    say("task.py handback-guard: 歩数が100を超えた委譲は件数で残し、長い返却は件数で残して拒まない")
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, _wt2 = make_repo(tmp, verify="`true`")
         commit_task(main_path, taskfile.Task("T-100", "長い委譲", "todo", "sonnet", "Y", (), BODY))
@@ -905,11 +905,15 @@ def test_handback_guard_long_delegation_and_length() -> None:
         r = stop(os.path.join(tmp, "missing.jsonl"))
         check("transcript が読めなくても通す", r.returncode == 0 and r.stdout == "", r.stdout + r.stderr)
 
+        long_rows = lambda: [row for row in flow_rows(wt1) if row["event"] == "long-handback"]
+        check("2,000トークン相当ちょうどは何も出さず、記録もしない",
+              run_handback_guard(tmp, wt1, "PreToolUse", "SubagentHandback", body="あ" * 2000) is None and long_rows() == [])
         out = run_handback_guard(tmp, wt1, "PreToolUse", "SubagentHandback", body="あ" * 2001)
-        check("2,000トークン相当を超えた返却は拒まず additionalContext で警告する",
-              out is not None and "permissionDecision" not in out["hookSpecificOutput"]
-              and "2000" in out["hookSpecificOutput"]["additionalContext"], str(out))
-        check("2,000トークン相当ちょうどは何も出さない", run_handback_guard(tmp, wt1, "PreToolUse", "SubagentHandback", body="あ" * 2000) is None)
+        check("2,000トークン相当を超えた返却は拒まず、出力なしで通し、long-handback を tokens つきで1行残す",
+              out is None and len(long_rows()) == 1 and long_rows()[0]["tokens"] == 2001 and long_rows()[0]["task"] == "T-100",
+              str(out) + str(long_rows()))
+        table = {line.split("\t")[0]: line.split("\t")[1:] for line in run_task(wt1, "metrics").stdout.splitlines()}
+        check("tw metrics の long_handback に件数が出る", table.get("long_handback") == ["1", "0"], str(table))
         check("ASCII は4文字を1トークンと数える", handback_guard.estimated_tokens("a" * 8000) == 2000)
 
 

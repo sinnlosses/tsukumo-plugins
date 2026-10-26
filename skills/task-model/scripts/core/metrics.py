@@ -31,6 +31,7 @@ HIGHER_IS_WORSE = (
     "reclaim",
     "fix_within_7d",
     "long_delegation",
+    "long_handback",
     "escalate_suggest",
 )
 FIX_WINDOW = timedelta(days=7)
@@ -188,6 +189,7 @@ def column_between(events: list[Event], start: datetime, end: datetime) -> dict[
         "reflection_none_ratio": f"{round(100 * len(clean) / len(dones))}% ({len(clean)}/{len(dones)})" if dones else "-",
         "fix_within_7d": f"{round(100 * len(fixes) / len(shipped))}% ({len(fixes)}/{len(shipped)})" if shipped else "-",
         "long_delegation": str(sum(1 for e in inside if e.kind == "long-delegation")),
+        "long_handback": str(sum(1 for e in inside if e.kind == "long-handback")),
         "escalate_suggest": str(sum(1 for e in inside if e.kind == "escalate-suggest")),
     }
 
