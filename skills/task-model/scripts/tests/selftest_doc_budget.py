@@ -17,6 +17,7 @@ SKILLS = os.path.normpath(os.path.join(HERE, "..", "..", ".."))
 
 REMEDY = (
     "足すなら何かを削る（上限は上げない）。出し先の梯子は 検査に移す → スクリプトに → 削る。"
+    "既存の言い直しで縮めて意味が欠けるなら縮めず、条件つきで読む文書（UNLIMITED）へ節を移すか、tw hold で上限を上げる判断を人に預ける。"
     "直しの確かめは検証全体でなく単体で: python3 skills/task-model/scripts/tests/selftest_doc_budget.py"
 )
 
@@ -137,6 +138,8 @@ def test_one_more_line_fails() -> None:
         check("1行足すと落ちる", message != "")
         check("足すなら削ると言う", "足すなら何かを削る" in message, message)
         check("梯子を出す", "検査に移す → スクリプトに → 削る" in message, message)
+        check("意味が欠けるなら縮めないと言う", "意味が欠け" in message, message)
+        check("上限は人に預けると言う", "tw hold" in message, message)
         check("単体のコマンドを出す", "selftest_doc_budget.py" in message, message)
         check("超えたバイト数を出す", f"{len(grown)}B" in message, message)
 
