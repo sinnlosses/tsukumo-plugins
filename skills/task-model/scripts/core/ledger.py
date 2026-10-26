@@ -82,7 +82,6 @@ DENIALS_DIR_NAME = "hook-denials"
 DENIAL_RECORD_ENV = "TSUKUMO_HOOK_DENIAL_RECORD"
 # 拒まれた委譲先の `agent_id`（トランスクリプト `agent-<agent_id>.jsonl` の名前と同じ）。委譲先の行にだけ置く。
 DENIAL_AGENT_KEY = "agent"
-# 拒まずに通した返却の行の印（tsukumo の `hook-denial-record.ts` の `mode` と同じ）。
 DENIAL_MODE_KEY = "mode"
 DENIAL_LOG_ONLY = "log-only"
 
