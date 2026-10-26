@@ -7,17 +7,20 @@
 
 `--agent-scoped` では、サブエージェントが `Edit`・`Write`・`NotebookEdit` を使う `PreToolUse` で、`cwd` の作業ツリーに
 着手の控えがあれば `agent_id` ごとの書いた印を残し、返却はその印のあるサブエージェントのものだけを判定する。
+書き先が作業ツリーとタスクの作業先の外（`/tmp` など）なら印は残さない。
 """
 
 from __future__ import annotations
 
 import json
 import os
+import pathlib
 from typing import IO, Callable
 
 import agent_scope
 import gitinfo
 import ledger
+import tw_handback
 
 HANDBACK_TOOL = "SubagentHandback"
 STOP_EVENTS = ("SubagentStop", "Stop")
@@ -48,12 +51,36 @@ def _is_writer(payload: dict) -> bool:
         return False
     try:
         if payload.get("hook_event_name") == "PreToolUse" and payload.get("tool_name") in WRITE_TOOLS:
-            if ledger.open_claims(cwd=cwd):
+            if ledger.open_claims(cwd=cwd) and not _writes_outside_work(payload, cwd):
                 ledger.mark_agent_writer(agent_id, cwd=cwd)
             return False
         return ledger.is_agent_writer(agent_id, cwd=cwd)
     except (gitinfo.GitCommandError, OSError):
         return False
+
+
+def _writes_outside_work(payload: dict, cwd: str) -> bool:
+    """書き先が、作業ツリーと着手中のタスクの作業先のどれの中でもなければ `True`。
+
+    書き先が読めない・作業先が引けないときは `False`（印を残す側）。
+    """
+    tool_input = payload.get("tool_input")
+    if not isinstance(tool_input, dict):
+        return False
+    path = tool_input.get("notebook_path" if payload.get("tool_name") == "NotebookEdit" else "file_path")
+    if not isinstance(path, str) or not path:
+        return False
+    try:
+        target = (pathlib.Path(cwd) / path).resolve()
+        toplevel = gitinfo.git_toplevel(cwd)
+        roots = {pathlib.Path(toplevel).resolve()}
+        if target.is_relative_to(next(iter(roots))):
+            return False
+        for task_id in ledger.open_claims(cwd=cwd):
+            roots.update(pathlib.Path(root).resolve() for root in tw_handback.work_roots(toplevel, task_id))
+    except (gitinfo.GitCommandError, OSError, RuntimeError, ValueError):
+        return False
+    return not any(target.is_relative_to(root) for root in roots)
 
 
 def _handback_body(payload: dict) -> str | None:

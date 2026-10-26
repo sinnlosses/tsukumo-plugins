@@ -603,9 +603,14 @@ def test_agent_scoped_guard() -> None:
                       ok, r.stdout + r.stderr)
 
 
-def _send_edit(tmp: str, where: str, agent_id: str) -> None:
-    """サブエージェントの `Edit` の `PreToolUse` を `handback-guard --agent-scoped` に渡す（書いた印を残させる）。"""
-    payload = {"hook_event_name": "PreToolUse", "tool_name": "Edit", "tool_input": {}, "cwd": where, "agent_id": agent_id}
+def _send_edit(tmp: str, where: str, agent_id: str, file_path: str | None = None, tool_input: dict | None = None) -> None:
+    """サブエージェントの `Edit` の `PreToolUse` を `handback-guard --agent-scoped` に渡す（書いた印を残させる）。
+
+    書き先 `file_path` の既定は `where` の中。`tool_input` を渡すとそのまま使う。
+    """
+    if tool_input is None:
+        tool_input = {"file_path": file_path or os.path.join(where, "work.txt")}
+    payload = {"hook_event_name": "PreToolUse", "tool_name": "Edit", "tool_input": tool_input, "cwd": where, "agent_id": agent_id}
     r = run_task(tmp, "handback-guard", "--agent-scoped", stdin=json.dumps(payload))
     if r.returncode != 0 or r.stdout != "":
         raise RuntimeError(f"handback-guard の Edit が {r.returncode} で {r.stdout!r} を出した: {r.stderr}")
@@ -655,6 +660,44 @@ def test_agent_scoped_reader_handback() -> None:
         run_task(wt1, "release", "T-100")
         check("控えが無くなると印も消える",
               not os.path.exists(os.path.join(wt1, ".tw", "local", ledger.AGENT_WRITERS_DIR_NAME)))
+
+
+@weight(8)
+def test_agent_scoped_outside_write() -> None:
+    say("task.py handback-guard --agent-scoped: 作業ツリーとタスクの作業先の外への書き込みには印を残さず、中・書き先不明には残す")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(os.path.join(tmp, "own"), verify="`true`")
+        work_repo, _, _ = make_repo(os.path.join(tmp, "work"), verify="`true`")
+        commit_task(main_path, taskfile.Task("T-100", "作業先で直す", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-",
+                 stdin=f"### 1. 書く\n\n### 作業先\n- `{work_repo}`\n")
+        work_tree = os.path.join(tmp, "work-t-100")
+        git(work_repo, "worktree", "add", "-q", "-b", "t-100", work_tree, "main")
+        outside = os.path.join(tmp, "scratch")
+        os.makedirs(outside)
+        write(os.path.join(wt1, "work.txt"), "x\n")
+        os.symlink(outside, os.path.join(wt1, "link"))
+
+        _send_edit(tmp, wt1, "a-aux", os.path.join(outside, "diagram.svg"))
+        check("作業ツリーの外への書き込みだけのサブエージェントには印を残さない", not ledger.is_agent_writer("a-aux", cwd=wt1))
+        check("印の無いサブエージェントの返却は検証が欠けていても通す", _scoped_handback(tmp, wt1, "a-aux") == "")
+        _send_edit(tmp, wt1, "a-dotdot", "../escape.txt")
+        check("相対パスの .. で外へ出る書き先は外と数える", not ledger.is_agent_writer("a-dotdot", cwd=wt1))
+        _send_edit(tmp, wt1, "a-link", os.path.join(wt1, "link", "x.svg"))
+        check("symlink で外へ出る書き先は外と数える", not ledger.is_agent_writer("a-link", cwd=wt1))
+
+        _send_edit(tmp, wt1, "a-in", os.path.join(wt1, "work.txt"))
+        check("作業ツリーの中への書き込みは印を残す", ledger.is_agent_writer("a-in", cwd=wt1))
+        _send_edit(tmp, wt1, "a-rel", "sub/new.txt")
+        check("相対パスで中を指す書き込みも印を残す", ledger.is_agent_writer("a-rel", cwd=wt1))
+        _send_edit(tmp, wt1, "a-work", os.path.join(work_tree, "f.txt"))
+        check("別のリポジトリのタスクの作業先の作業ツリーへの書き込みは印を残す", ledger.is_agent_writer("a-work", cwd=wt1))
+        _send_edit(tmp, wt1, "a-root", os.path.join(work_repo, "f.txt"))
+        check("作業先の根への書き込みも印を残す", ledger.is_agent_writer("a-root", cwd=wt1))
+        _send_edit(tmp, wt1, "a-none", tool_input={})
+        check("書き先の無い入力は今までどおり印を残す", ledger.is_agent_writer("a-none", cwd=wt1))
+        check("印のあるサブエージェントの返却は検証の欠けで拒む", '"block"' in _scoped_handback(tmp, wt1, "a-in"))
 
 
 def _send_bash(tmp: str, where: str, **ids: str) -> None:
@@ -2226,6 +2269,7 @@ TESTS = (
     test_commit_guard_with_ref_guard,
     test_commit_guard_covers_inactive_ref_guard,
     test_handback_guard,
+    test_agent_scoped_outside_write,
     test_handback_guard_other_repo,
     test_step_stamps_other_repo,
     test_handback_guard_step_before_work_tree,

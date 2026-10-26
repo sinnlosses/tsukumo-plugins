@@ -187,6 +187,12 @@ def task_trees(toplevel: str, task_id: str) -> list[str]:
     return [toplevel, *(w.path for w in worktrees if w.branch == task_id.lower())]
 
 
+def work_roots(toplevel: str, task_id: str) -> list[str]:
+    """タスクの書き先として数えるディレクトリ: `task_trees` と、`### 作業先` が名指すリポジトリの根。"""
+    work_repo, _ = taskfile.plan_work_repo(_claimed_plan_body(toplevel, task_id))
+    return [*task_trees(toplevel, task_id), *([work_repo] if work_repo is not None else [])]
+
+
 def _current_key(tree: str, excluded: tuple[str, ...] = ()) -> stamps.ContentKey:
     """`tree` のいまの中身の鍵（検証コマンドは `tree` の設定ファイルのもの）。`excluded` のパスを木から外す。"""
     return stamps.content_key(ship.read_stamp_command(tree) or "", cwd=tree, excluded=excluded)
