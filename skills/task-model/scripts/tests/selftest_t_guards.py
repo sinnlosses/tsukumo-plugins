@@ -19,6 +19,7 @@ import metrics  # noqa: E402
 import ref_guard  # noqa: E402
 import stamps  # noqa: E402
 import taskfile  # noqa: E402
+import tw_handback  # noqa: E402
 import tw_plan  # noqa: E402
 from selftest_fixtures import BODY, TASK_PY, commit_task, disarm_ref_guard, flow_rows, hook_env, make_repo, metadata, readonly_git, run_guard, run_handback_guard, run_task, snapshot  # noqa: E402
 
@@ -698,6 +699,25 @@ def test_agent_scoped_outside_write() -> None:
         _send_edit(tmp, wt1, "a-none", tool_input={})
         check("書き先の無い入力は今までどおり印を残す", ledger.is_agent_writer("a-none", cwd=wt1))
         check("印のあるサブエージェントの返却は検証の欠けで拒む", '"block"' in _scoped_handback(tmp, wt1, "a-in"))
+
+        check("タスクが読めないとき work_roots は縮めず None を返す", tw_handback.work_roots(wt1, "T-999") is None)
+        original = tw_handback.work_roots
+        tw_handback.work_roots = lambda toplevel, task_id: None
+        try:
+            unreadable = handback_guard._writes_outside_work(
+                {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(work_tree, "f.txt")}}, wt1)
+        finally:
+            tw_handback.work_roots = original
+        check("タスクが読めないときは外と数えない（印を残す側）", unreadable is False)
+
+        broken = os.path.join(tmp, "broken")
+        git(tmp, "init", "-q", "-b", "main", broken)
+        run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-",
+                 stdin=f"### 1. 書く\n\n### 作業先\n- `{broken}`\n")
+        os.rename(os.path.join(broken, ".git"), os.path.join(tmp, "broken-git"))
+        check("作業ツリーが引けないとき work_roots は縮めず None を返す", tw_handback.work_roots(wt1, "T-100") is None)
+        _send_edit(tmp, wt1, "a-unlisted", os.path.join(tmp, "broken-t-100", "f.txt"))
+        check("作業ツリーが引けないときは作業先の作業ツリーへの書き込みにも印を残す", ledger.is_agent_writer("a-unlisted", cwd=wt1))
 
 
 def _send_bash(tmp: str, where: str, **ids: str) -> None:

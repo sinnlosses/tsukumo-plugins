@@ -176,21 +176,36 @@ def task_trees(toplevel: str, task_id: str) -> list[str]:
     枝の名前がタスクIDを小文字にしたものを続ける。
     """
     work_repo, _ = taskfile.plan_work_repo(_claimed_plan_body(toplevel, task_id))
-    if work_repo is None or not os.path.isdir(work_repo):
-        return [toplevel]
     try:
-        if gitinfo.git_common_dir(work_repo) == gitinfo.git_common_dir(toplevel):
-            return [toplevel]
-        worktrees = gitinfo.list_worktrees(cwd=work_repo)
+        return _trees_of(toplevel, task_id, work_repo)
     except gitinfo.GitCommandError:
         return [toplevel]
+
+
+def _trees_of(toplevel: str, task_id: str, work_repo: str | None) -> list[str]:
+    """`task_trees` の本体。作業ツリーの一覧を引けなければ `GitCommandError`。"""
+    if work_repo is None or not os.path.isdir(work_repo):
+        return [toplevel]
+    if gitinfo.git_common_dir(work_repo) == gitinfo.git_common_dir(toplevel):
+        return [toplevel]
+    worktrees = gitinfo.list_worktrees(cwd=work_repo)
     return [toplevel, *(w.path for w in worktrees if w.branch == task_id.lower())]
 
 
-def work_roots(toplevel: str, task_id: str) -> list[str]:
-    """タスクの書き先として数えるディレクトリ: `task_trees` と、`### 作業先` が名指すリポジトリの根。"""
-    work_repo, _ = taskfile.plan_work_repo(_claimed_plan_body(toplevel, task_id))
-    return [*task_trees(toplevel, task_id), *([work_repo] if work_repo is not None else [])]
+def work_roots(toplevel: str, task_id: str) -> list[str] | None:
+    """タスクの書き先として数えるディレクトリ: `task_trees` と、`### 作業先` が名指すリポジトリの根。
+
+    タスクが読めない・作業ツリーが引けないときは `None`（`task_trees` のように着手側だけには縮めない）。
+    """
+    issue = beads.show(toplevel, beads.to_bd_id(task_id))
+    if issue is None:
+        return None
+    work_repo, _ = taskfile.plan_work_repo(f"{taskfile.PLAN_HEADING}\n{issue.raw.get('notes') or ''}\n")
+    try:
+        trees = _trees_of(toplevel, task_id, work_repo)
+    except gitinfo.GitCommandError:
+        return None
+    return [*trees, *([work_repo] if work_repo is not None else [])]
 
 
 def _current_key(tree: str, excluded: tuple[str, ...] = ()) -> stamps.ContentKey:

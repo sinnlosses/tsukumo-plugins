@@ -18,6 +18,7 @@ import pathlib
 from typing import IO, Callable
 
 import agent_scope
+import beads
 import gitinfo
 import ledger
 import tw_handback
@@ -77,8 +78,11 @@ def _writes_outside_work(payload: dict, cwd: str) -> bool:
         if target.is_relative_to(next(iter(roots))):
             return False
         for task_id in ledger.open_claims(cwd=cwd):
-            roots.update(pathlib.Path(root).resolve() for root in tw_handback.work_roots(toplevel, task_id))
-    except (gitinfo.GitCommandError, OSError, RuntimeError, ValueError):
+            task_roots = tw_handback.work_roots(toplevel, task_id)
+            if task_roots is None:
+                return False
+            roots.update(pathlib.Path(root).resolve() for root in task_roots)
+    except (beads.BeadsError, gitinfo.GitCommandError, OSError, RuntimeError, ValueError):
         return False
     return not any(target.is_relative_to(root) for root in roots)
 
