@@ -156,6 +156,7 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
         _record_fixes(toplevel, checked, bd_id)
         print(f"CREATED\t{beads.to_task_id(bd_id)}\tbeads:{bd_id}")
         tw_plan.warn_report_names(body)
+        tw_plan.warn_large_plan(beads.to_task_id(bd_id), body)
         tw_base.print_lines(lines)
         return
 
@@ -168,6 +169,7 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
     _record_fixes(toplevel, checked, bd_id)
     print(f"CREATED\t{beads.to_task_id(bd_id)}\tbeads:{bd_id}")
     tw_plan.warn_report_names(body)
+    tw_plan.warn_large_plan(beads.to_task_id(bd_id), body)
     tw_base.print_lines(trk.after([bd_id]))
 
 
@@ -308,6 +310,7 @@ def cmd_new_batch(toplevel: str, path: str) -> None:
         _record_fixes(toplevel, checked, final)
         print(f"CREATED\t{beads.to_task_id(final)}\tbeads:{final}")
         tw_plan.warn_report_names(checked.body)
+        tw_plan.warn_large_plan(beads.to_task_id(final), checked.body)
     tw_base.print_lines(lines)
     if failure is not None:
         for n, (_, checked, _refs) in enumerate(prepared[len(created):], len(created) + 1):
@@ -413,4 +416,5 @@ def cmd_adopt(toplevel: str, args: argparse.Namespace) -> None:
     beads.run_ok(toplevel, cmd, actor, parts.description)
     print(f"ADOPTED\t{args.bd_id}\t{beads.to_task_id(new_id)}")
     tw_plan.warn_report_names(body)
+    tw_plan.warn_large_plan(beads.to_task_id(new_id), body)
     tw_base.print_lines(pulled + trk.after([new_id]))

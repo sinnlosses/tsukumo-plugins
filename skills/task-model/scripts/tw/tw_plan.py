@@ -25,6 +25,13 @@ def warn_report_names(body: str) -> None:
         )
 
 
+def warn_large_plan(task_id: str, body: str) -> None:
+    """計画が大きければ、標準エラーに `WARN_LARGE_PLAN` を1行出す（拒まない）。"""
+    reason = taskfile.large_plan_reason(body)
+    if reason is not None:
+        print(f"WARN_LARGE_PLAN\t{task_id}\t{reason}", file=sys.stderr)
+
+
 def refuse_direct(difficulty: str, body: str) -> None:
     reason = taskfile.direct_refusal(difficulty, body)
     if reason is not None:

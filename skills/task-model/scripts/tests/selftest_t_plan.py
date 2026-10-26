@@ -1080,7 +1080,47 @@ def test_report_name_warning() -> None:
               r.returncode == 0 and "WARN_REPORT_NAME" not in r.stderr, r.stdout + r.stderr)
 
 
+def test_large_plan_warning() -> None:
+    say("task.py new・adopt: 名指すファイルが8件超か段が4超なら標準エラーに WARN_LARGE_PLAN を出し、書き込みと終了コードは変えない")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, _wt1, _wt2 = make_repo(tmp)
+        names = [f"f{i}.txt" for i in range(9)]
+        for name in names:
+            write(os.path.join(main_path, name), "x\n")
+        git(main_path, "add", "-A")
+        git(main_path, "commit", "-q", "-m", "files")
+
+        def body(n_files: int, n_steps: int) -> str:
+            return task_body([(f"段{i}", "x") for i in range(n_steps)], names[:n_files])
+
+        new = ("new", "--summary", "大きい", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", "-")
+        r = run_task(main_path, *new, stdin=body(9, 5))
+        check("new: 9ファイル・5段なら WARN_LARGE_PLAN を1行出し、CREATED で終わる",
+              r.returncode == 0 and r.stdout.startswith("CREATED\t")
+              and r.stderr.count("WARN_LARGE_PLAN\tT-") == 1
+              and "名指すファイル 9 件" in r.stderr and "段 5" in r.stderr, r.stdout + r.stderr)
+        r = run_task(main_path, *new, stdin=body(9, 2))
+        check("new: ファイルだけ超えれば理由はファイルだけ",
+              r.returncode == 0 and "名指すファイル 9 件" in r.stderr and "段 " not in r.stderr, r.stdout + r.stderr)
+        r = run_task(main_path, *new, stdin=body(5, 5))
+        check("new: 段だけ超えれば理由は段だけ",
+              r.returncode == 0 and "段 5" in r.stderr and "名指すファイル" not in r.stderr, r.stdout + r.stderr)
+        r = run_task(main_path, *new, stdin=body(8, 4))
+        check("new: ちょうど8ファイル・4段なら出さない", r.returncode == 0 and "WARN_LARGE_PLAN" not in r.stderr,
+              r.stdout + r.stderr)
+        r = run_task(main_path, *new, "--hold", stdin=task_body())
+        check("new --hold: 空の ## やること なら出さない",
+              r.returncode == 0 and r.stdout.startswith("CREATED\t") and "WARN_LARGE_PLAN" not in r.stderr, r.stdout + r.stderr)
+        subprocess.run(["bd", "create", "--id", "t-large", "--title", "取り込み", "--silent"], cwd=main_path,
+                       capture_output=True, text=True)
+        adopt = ("adopt", "T-LARGE", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", "-")
+        r = run_task(main_path, *adopt, stdin=body(9, 5))
+        check("adopt: 出す", r.returncode == 0 and r.stdout.startswith("ADOPTED\t") and "WARN_LARGE_PLAN\tT-" in r.stderr,
+              r.stdout + r.stderr)
+
+
 TESTS = (
+    test_large_plan_warning,
     test_report_name_warning,
     test_plan_coverage,
     test_opus_question_and_viewpoint,

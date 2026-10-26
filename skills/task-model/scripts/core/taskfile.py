@@ -737,6 +737,27 @@ def plan_files(body: str) -> tuple[tuple[str, ...], str | None]:
     return tuple(paths), None
 
 
+LARGE_PLAN_FILES = 8
+LARGE_PLAN_STEPS = 4
+
+
+def large_plan_reason(body: str) -> str | None:
+    """名指すファイルが `LARGE_PLAN_FILES` 件を超える、または段が `LARGE_PLAN_STEPS` を超える計画の理由。
+
+    当たった側だけ書く。どちらかの読みが失敗する本文（空の `--hold` など）は数えられないので `None`。
+    """
+    files, files_error = plan_files(body)
+    steps, steps_error = plan_steps(body)
+    if files_error or steps_error:
+        return None
+    reasons = []
+    if len(files) > LARGE_PLAN_FILES:
+        reasons.append(f"名指すファイル {len(files)} 件（{LARGE_PLAN_FILES} まで）")
+    if len(steps) > LARGE_PLAN_STEPS:
+        reasons.append(f"段 {len(steps)}（{LARGE_PLAN_STEPS} まで）")
+    return "、".join(reasons) or None
+
+
 PLAN_IDENTIFIER_MIN = 4
 _PLAN_IDENTIFIER = re.compile(r"`([^`\n]+)`")
 
