@@ -116,8 +116,9 @@ def test_weekly() -> None:
         check("記録が無ければ期間は7日で last=-", lines_of("期間", out) == [f"PERIOD\t7d\t{(today - timedelta(days=7)).isoformat()}\t{today.isoformat()}\tlast=-"], out)
         headings = [l for l in out.splitlines() if l.startswith("===== ")]
         check(
-            "節は期間・流れの数・段の所要時間・規則の棚卸し・期日を過ぎた介入・再発しなかった候補・ドラフトの行方の7つだけ",
-            headings == ["===== 期間 =====", "===== 流れの数 =====", "===== 段の所要時間 =====", "===== 規則の棚卸し =====",
+            "節は期間・流れの数・段の所要時間・近道と通常の比較・規則の棚卸し・期日を過ぎた介入・再発しなかった候補・ドラフトの行方の8つだけ",
+            headings == ["===== 期間 =====", "===== 流れの数 =====", "===== 段の所要時間 =====", "===== 近道と通常の比較 =====",
+                         "===== 規則の棚卸し =====",
                          "===== 期日を過ぎた介入（期間の中に期日が来たもの） =====",
                          "===== 再発しなかった候補（28日より前） =====", "===== ドラフトの行方（直近28日） ====="],
             "\n".join(headings),
@@ -131,6 +132,12 @@ def test_weekly() -> None:
         check("WORSE があれば期間内のやり方の変更を CHANGE で並べる", any(l.startswith("CHANGE\tproject\t") and l.endswith("\tやり方を変える") for l in flow), "\n".join(flow))
         check("設定の規則の発火の集計のコマンドの出力をそのまま出す", lines_of("規則の棚卸し", out) == ["直近 30 日の拒否の回数", "deny-a: 0", "deny-b: 12"], out)
 
+        check(
+            "近道と通常の比較は道ごとの件数・所要の中央値・fix_within_7d と、20件に届いたかを出す",
+            lines_of("近道と通常の比較", out)
+            == ["ROUTE\tdirect\t0\t-\t-", "ROUTE\tnormal\t1\t518400\t0% (0/1)", "DIRECT_GATE\t0\t20\tnot_reached"],
+            out,
+        )
         check("期間内に送り出した段が無ければ段の所要時間は EMPTY", lines_of("段の所要時間", out) == ["EMPTY"], out)
         r = weekly(d, "--days", "30")
         check("--days で期間を変えられる", lines_of("期間", r.stdout)[0].startswith("PERIOD\t30d\t"), r.stdout)
