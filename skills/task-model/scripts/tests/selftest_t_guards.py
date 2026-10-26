@@ -122,6 +122,11 @@ def _subagent_start(agent_type: str) -> dict:
     return {"hook_event_name": "SubagentStart", "session_id": "s-1", "agent_id": "a-start", "agent_type": agent_type}
 
 
+def _subagent_stop(agent_type: object) -> dict:
+    stop = {"hook_event_name": "SubagentStop", "session_id": "s-1", "agent_id": "a-stop", "stop_hook_active": False}
+    return stop if agent_type is None else {**stop, "agent_type": agent_type}
+
+
 def _skill_call(skill: str, **extra: str) -> dict:
     return {"hook_event_name": "PreToolUse", "session_id": "s-1", "tool_name": "Skill", "tool_input": {"skill": skill}, **extra}
 
@@ -168,11 +173,34 @@ def test_lap_hook() -> None:
               r.returncode == 0 and r.stdout == "" and laps()[-1] == ("T-100", "retro", "start"), r.stdout + r.stderr)
         run_lap_hook(tmp, os.path.join(tmp, "missing"), _subagent_start("no-delegate"))
 
+        def review_laps() -> list[tuple]:
+            return [l for l in laps() if l[1] == "review"]
+
+        run_lap_hook(tmp, wt1, _subagent_stop("acceptor"))
+        check("review が開いていない受け入れ役の停止は書かない", review_laps() == [], repr(laps()))
+        run_task(wt1, "lap", "T-100", "review", "start")
+        for agent_type in ("no-delegate", "Explore", None, 7):
+            run_lap_hook(tmp, wt1, _subagent_stop(agent_type))
+        check("受け入れ役でない名前・agent_type が無い／文字列でない停止は review を閉じない",
+              review_laps() == [("T-100", "review", "start")], repr(laps()))
+        run_lap_hook(tmp, wt1, _subagent_start("acceptor"))
+        check("受け入れ役の SubagentStart は review を閉じない", review_laps() == [("T-100", "review", "start")], repr(laps()))
+        run_lap_hook(tmp, wt1, _subagent_stop("tsukumo-workflow:acceptor"))
+        check("受け入れ役の停止で開いている review の end を書く",
+              review_laps() == [("T-100", "review", "start"), ("T-100", "review", "end")], repr(laps()))
+        run_lap_hook(tmp, wt1, _subagent_stop("acceptor"))
+        run_task(wt1, "lap", "T-100", "review", "end")
+        check("閉じたあとの停止も手打ちの end も重ねない（end は1つ）",
+              review_laps().count(("T-100", "review", "end")) == 1, repr(laps()))
+
         run_task(wt1, "lap", "T-100", "retro", "end")
         before = laps()
         run_task(wt1, "claim", "T-101")
         run_lap_hook(tmp, wt1, _subagent_start("no-delegate"))
         check("控えが2件で決められないときは書かない", laps() == before, repr(laps()))
+        run_task(wt1, "lap", "T-100", "review", "start")
+        run_lap_hook(tmp, wt1, _subagent_stop("acceptor"))
+        check("控えが2件のときは受け入れ役の停止でも review を閉じない", laps() == before + [("T-100", "review", "start")], repr(laps()))
         run_task(wt1, "release", "T-101")
         run_task(wt1, "release", "T-100")
 
@@ -545,8 +573,8 @@ def test_agent_scoped_guard() -> None:
             (event, g.get("matcher")): [h["command"] for h in g["hooks"]]
             for event, groups in by_event.items() for g in groups if any(" lap-hook" in h["command"] for h in g["hooks"])
         }
-        check("hooks/hooks.json は SubagentStart と Skill の PreToolUse で --agent-scoped なしの lap-hook を1つずつ呼ぶ",
-              sorted(lap_hooks) == [("PreToolUse", "Skill"), ("SubagentStart", None)]
+        check("hooks/hooks.json は SubagentStart・SubagentStop と Skill の PreToolUse で --agent-scoped なしの lap-hook を1つずつ呼ぶ",
+              sorted(lap_hooks) == [("PreToolUse", "Skill"), ("SubagentStart", None), ("SubagentStop", None)]
               and all(len(cs) == 1 and cs[0].startswith('"${CLAUDE_PLUGIN_ROOT}/bin/tw" lap-hook ')
                       and "--agent-scoped" not in cs[0] for cs in lap_hooks.values()),
               str(lap_hooks))
@@ -587,6 +615,14 @@ def test_agent_scoped_guard() -> None:
         check("hooks.json の SubagentStart の lap-hook は控え1件の作業ツリーに delegate の start を書き、stdout は空",
               r.returncode == 0 and r.stdout == "" and [(e["task"], e.get("edge")) for e in delegate_laps] == [("T-100", "start")],
               repr(delegate_laps) + r.stdout + r.stderr)
+        run_task(wt1, "lap", "T-100", "review", "start")
+        stop_hook = lap_hooks.get(("SubagentStop", None), [""])[0]
+        payload = {"hook_event_name": "SubagentStop", "cwd": wt1, "agent_id": "a-acc", "agent_type": "tsukumo-workflow:acceptor"}
+        r = subprocess.run(["sh", "-c", stop_hook], input=json.dumps(payload), capture_output=True, text=True, env=env)
+        review_laps = [e for e in flow_rows(wt1) if e["event"] == "lap" and e.get("stage") == "review"]
+        check("hooks.json の SubagentStop の lap-hook は開いている review の end を書き、stdout は空",
+              r.returncode == 0 and r.stdout == "" and [(e["task"], e.get("edge")) for e in review_laps] == [("T-100", "start"), ("T-100", "end")],
+              repr(review_laps) + r.stdout + r.stderr)
         for code, expected_exit in ((1, 1), (78, 0), (127, 0)):
             fake_root = tempfile.mkdtemp(dir=tmp)
             os.makedirs(os.path.join(fake_root, "bin"))

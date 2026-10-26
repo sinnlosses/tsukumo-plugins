@@ -47,7 +47,7 @@ PATH に無ければ plugin を入れる。どのディレクトリから打っ�
 | `loop-check` | `/loop` の入口の段と、続行判断（`tw ship`・`tw hold` のあと）で打つ。今日の台帳から停止規則（送った件数が `loop_max_ships` に達した・`hold` が3件連続・直近3件の `ship` で `VERIFY_FAILED` が2件）を見る | `CONTINUE`／`STOP`（`max_ships`・`hold_streak`・`verify_failed`）、続けて `SHIPPED_TODAY`（件数・ID）。終了コード0 |
 | `handback-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ JSON 1行（`SubagentStop` は `block`、`PreToolUse` は deny）。通すときは何も出さない。ただし同じファイルの5回目の書き換えで `edit-churn` を残し、通す返却で、委譲の歩数が100超なら `flow/` に `long-delegation`、本文が約2,000トークン超なら `long-handback`（`tw metrics` の `long_delegation`・`long_handback`） |
 | `ask-guard` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ deny の JSON 1行（理由はタスクIDと次の一手）。通すときは何も出さない |
-| `lap-hook` | hook が呼ぶ（手で打たない）。委譲と振り返りの段の頭の lap を書く記録で、何も拒まない（下の「hook の関門」節の lap の段落） | 何も出さない |
+| `lap-hook` | hook が呼ぶ（手で打たない）。委譲・振り返りの start と受け入れ役の停止の `review` end を書く記録。拒まない（下の「hook の関門」節の lap の段落） | 何も出さない |
 | `ref-guard <state>` | git の `reference-transaction` hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ標準エラーに理由の1行と終了コード1（git の hook の取り決め）。通すときは何も出さず0 |
 
 | 終了コード | 先頭語 | 意味 | スキルがすること |
@@ -106,12 +106,12 @@ hook 4種（Claude Code の hook 3種と git の hook `ref-guard`）の仕様の
 | `direct` | メイン（`tw lap`。端なし） | — |
 | `delegate` | plugin で入れたときは `lap-hook`（委譲先の起動）。リンクだけで入れたとき・委譲しないメインの流れはメイン。委譲先のモデルが `difficulty` と違う分業と、そこから戻す引き上げでは、メインが委譲の直前に `--model` 付きで打つ（hook はモデルを知らず、開いた段には書かない） | `accept` の start（`tw accept` が打つものも手で打つものも） |
 | `accept` | `tw accept`（作業先が別のリポジトリのタスクも） | `tw accept`（開いているときだけ書くので、`--after-review` を打ち直しても1つ） |
-| `review` | 1回目は `tw accept`、2回目からはメイン | メイン |
+| `review` | 1回目は `tw accept`、2回目からはメイン | `lap-hook`（受け入れ役の停止。開いているときだけ）。リンクだけで入れたときはメイン |
 | `retro` | plugin で入れたときは `lap-hook`（振り返りのスキルの呼び出し）。リンクだけで入れたときはメイン | `tw finish`（`done` の前） |
 | `land`・`sync` | メイン | メイン |
 
-`lap-hook` は関門ではなく記録で、何も拒まず stdout に何も出さない。書くのは控えがちょうど1件の作業ツリーで、その段が開いていないときだけ（判定の細部は `tw lap-hook --help`）。
-end は手で打つものも `tw` が書くものも、最後の `claim` 以降でその段が開いているときだけ書く（手打ちの `tw lap … end` は開いていなくても `LAPPED` を出すが記録しない）ので、`tw` が閉じた段に手で end を重ねても end は1つ。
+`lap-hook` は関門ではなく記録で、何も拒まず何も出さない。書くのは控えがちょうど1件の作業ツリーだけで、start は段が閉じているとき（細部は `tw lap-hook --help`）。
+end は手打ちも `tw`・hook も、最後の `claim` 以降でその段が開いているときだけ記録する（手打ちは開いていなくても `LAPPED` を出すが記録しない）ので、閉じた段に重ねても end は1つ。
 メインの手打ちと hook が重なって同じ段の start が続いても、所要の集計（`tw metrics --stages`・振り返りの段の所要時間）は閉じていない同じ段の2つ目の start を数えない。
 
 **`commit-guard`・`handback-guard`・`ask-guard` は Claude Code の hook の取り決めに従う**: 出力は TSV でなく JSON で、終了コードはいつも0（`ref-guard` は git の hook の取り決めに従い、拒むときだけ終了コード1）。
