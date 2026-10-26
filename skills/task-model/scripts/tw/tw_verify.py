@@ -21,7 +21,7 @@ VERIFY_TAIL_LINES = 40
 VERIFY_INFRA_EXIT_CODES = (2,)
 STAGE_LINE_PREFIX = "STAGE\t"
 STAGE_VALUES = ("pass", "fail", "unobserved", "blocked")
-FAILED_TEST_LINE_PREFIX = "test: "
+FAILED_TEST_LINE_PREFIXES = ("test: ", "test:e2e: ")
 FAILED_TEST_MAX = 20
 FAILED_TEST_NAME_MAX = 200
 
@@ -42,31 +42,36 @@ def read_stages(log_text: str) -> dict[str, str]:
 
 
 def read_failed_tests(log_text: str) -> dict[str, str]:
-    """検証コマンドの出力の行頭 `test: <ファイル> > <題>` の行から、落ちたテストの名前を読む。
+    """検証コマンドの出力の行頭 `test: <ファイル> > <題>`・`test:e2e: <ファイル> > <題>` の行から、落ちたテストの名前を読む。
 
-    この形の行が無ければ（テスト名を出さない検証コマンド）空。名前だけを返し、
-    出力のほかの行は読まない。多すぎる・長すぎるものは切る。
+    名前は段名つきの行そのまま（`test:` と `test:e2e:` は別の名前）。この形の行が無ければ
+    （テスト名を出さない検証コマンド）空。出力のほかの行は読まない。多すぎる・長すぎるものは切る。
     """
     names: dict[str, str] = {}
     for line in log_text.splitlines():
-        if not line.startswith(FAILED_TEST_LINE_PREFIX):
+        prefix = next((p for p in FAILED_TEST_LINE_PREFIXES if line.startswith(p)), None)
+        if prefix is None:
             continue
-        name = line[len(FAILED_TEST_LINE_PREFIX) :].strip()[:FAILED_TEST_NAME_MAX]
-        if name and len(names) < FAILED_TEST_MAX:
+        name = line.strip()[:FAILED_TEST_NAME_MAX]
+        if line[len(prefix) :].strip() and len(names) < FAILED_TEST_MAX:
             names[name] = "fail"
     return names
 
 
-def _stage_fields(log_path: str) -> dict[str, dict[str, str]]:
-    with open(log_path, encoding="utf-8", errors="replace") as f:
-        stages = read_stages(f.read())
+def _stage_fields(log_text: str) -> dict[str, dict[str, str]]:
+    stages = read_stages(log_text)
     return {"stages": stages} if stages else {}
 
 
-def _failed_fields(log_path: str) -> dict[str, dict[str, str]]:
+def _read_log(log_path: str) -> str:
     with open(log_path, encoding="utf-8", errors="replace") as f:
-        tests = read_failed_tests(f.read())
-    return {**_stage_fields(log_path), **({"tests": tests} if tests else {})}
+        return f.read()
+
+
+def _failed_fields(log_path: str) -> dict[str, dict[str, str]]:
+    log_text = _read_log(log_path)
+    tests = read_failed_tests(log_text)
+    return {**_stage_fields(log_text), **({"tests": tests} if tests else {})}
 
 
 def cmd_verify(toplevel: str, task_id: str | None = None) -> None:
@@ -144,7 +149,7 @@ def cmd_verify(toplevel: str, task_id: str | None = None) -> None:
         result=verdict.split("\t")[0],
         seconds=round(time.monotonic() - started),
         key=before.tree,
-        **_stage_fields(log_path),
+        **_stage_fields(_read_log(log_path)),
     )
     _print_verify_end(folded_line, verdict, tail)
 

@@ -1288,7 +1288,7 @@ def test_verify_stages() -> None:
 
 
 def test_verify_failed_tests() -> None:
-    say("tw verify: 落ちた回の行頭 `test: ` の行を tests に名前だけ記録し、揺れた回だけ metrics.flaky_tests が数える。形の無い出力は欄なし")
+    say("tw verify: 落ちた回の行頭 `test: `・`test:e2e: ` の行を tests に名前だけ記録し、揺れた回だけ metrics.flaky_tests が数える。形の無い出力は欄なし")
     with tempfile.TemporaryDirectory() as tmp:
         out_file = os.path.join(tmp, "out")
         verify_script = write(os.path.join(tmp, "verify.sh"), f'cat "{out_file}"\n[ ! -e "{tmp}/fail" ]\n')
@@ -1296,7 +1296,8 @@ def test_verify_failed_tests() -> None:
         commit_task(main_path, taskfile.Task("T-100", "段", "todo", "sonnet", "Y", (), PLANNED_BODY))
         run_task(wt1, "claim", "T-100")
         outputs = (
-            "x\ntest: a.test.ts > 題 1\n  test: indented\ntest: a.test.ts > 題 1\ntest:\n",
+            "x\ntest: a.test.ts > 題 1\n  test: indented\ntest: a.test.ts > 題 1\ntest:\n"
+            "test:e2e: e2e/c.test.ts > 題 1\ntypecheck: src/x.ts\ntest:e2e:\n",
             "ログだけ\nFAIL something\n",
         )
         for i, content in enumerate(outputs):
@@ -1307,8 +1308,9 @@ def test_verify_failed_tests() -> None:
             check(f"出力 {i} で落ちる", r.returncode == 10, r.stdout + r.stderr)
         rows = [e for e in flow_rows(wt1) if e["event"] == "verify"]
         check(
-            "行頭の test: の行だけが名前で入り（重複は1つ）、形の無い出力は tests の欄を足さない",
-            rows[0].get("tests") == {"a.test.ts > 題 1": "fail"} and "tests" not in rows[1],
+            "行頭の test:・test:e2e: の行だけが段名つきの別の名前で入り（重複は1つ・typecheck: は拾わない）、形の無い出力は tests の欄を足さない",
+            rows[0].get("tests") == {"test: a.test.ts > 題 1": "fail", "test:e2e: e2e/c.test.ts > 題 1": "fail"}
+            and "tests" not in rows[1],
             repr(rows),
         )
     t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
