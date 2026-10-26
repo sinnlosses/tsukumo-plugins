@@ -31,8 +31,11 @@ def applies(payload: dict, agent_scoped: bool) -> bool:
     return not agent_scoped or agent_id(payload) is not None
 
 
-def record_denial(payload: dict, hook: str, rule: str) -> None:
-    """入力の `cwd` の共有の git dir へ拒否を残す。呼び手は `agent_id` があれば `subagent`（その `agent_id` も残す）、無ければ `main`。"""
+def record_denial(payload: dict, hook: str, rule: str, mode: str | None = None) -> None:
+    """入力の `cwd` の共有の git dir へ拒否を残す。呼び手は `agent_id` があれば `subagent`（その `agent_id` も残す）、無ければ `main`。
+    `mode` は拒まず通した行の印（`ledger.DENIAL_LOG_ONLY`）。"""
     cwd = payload.get("cwd")
     agent = agent_id(payload)
-    ledger.record_denial(cwd if isinstance(cwd, str) else None, hook, rule, "subagent" if agent is not None else "main", agent)
+    ledger.record_denial(
+        cwd if isinstance(cwd, str) else None, hook, rule, "subagent" if agent is not None else "main", agent, mode
+    )

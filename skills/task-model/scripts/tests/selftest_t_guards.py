@@ -652,8 +652,9 @@ def test_agent_scoped_reader_handback() -> None:
         check("Edit を使ったサブエージェントの SubagentStop は検証の欠けで拒む",
               '"block"' in _scoped_handback(tmp, wt1, "a-writer"))
         run_task(wt1, "verify")
-        check("Edit を使ったサブエージェントの最後の段の返却は ## 構造の変更 の欠けで拒む",
-              "構造の変更" in _scoped_handback(tmp, wt1, "a-writer", verdict))
+        scoped = _scoped_handback(tmp, wt1, "a-writer", verdict)
+        check("Edit を使ったサブエージェントの最後の段の返却は ## 構造の変更 の欠けでも拒まず additionalContext で知らせる",
+              "構造の変更" in scoped and "additionalContext" in scoped and "permissionDecision" not in scoped, scoped)
         check("同じ agent_id の再開（SendMessage）でも印は残る",
               ledger.is_agent_writer("a-writer", cwd=wt1) and not ledger.is_agent_writer("a-reader", cwd=wt1))
 
@@ -1098,7 +1099,7 @@ def test_done_reflection_flag() -> None:
 
 @weight(11)
 def test_handback_guard_structure() -> None:
-    say("task.py handback-guard: 最後の段の返却の本文に ## 構造の変更 が無ければ拒む")
+    say("task.py handback-guard: 最後の段の返却の本文に ## 構造の変更 が無くても拒まず、additionalContext で知らせる")
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, wt2 = make_repo(tmp, verify="`true`")
         commit_task(main_path, taskfile.Task("T-100", "段ごと", "todo", "sonnet", "Y", (), BODY))
@@ -1115,9 +1116,12 @@ def test_handback_guard_structure() -> None:
         write(os.path.join(wt1, "work.txt"), "y\n")
         run_task(wt1, "step", "T-100", "2")
         r = run_task(wt1, "verify")
-        check("最後の段で節が無ければ deny し、理由は本文を写さない", r.returncode == 0 and "構造の変更" in (
-            reason := (run_handback_guard(tmp, wt1, *handback, body="段 2/2 | 秘密の本文\n") or {})
-            .get("hookSpecificOutput", {}).get("permissionDecisionReason", "")) and "秘密" not in reason, reason)
+        out = run_handback_guard(tmp, wt1, *handback, body="段 2/2 | 秘密の本文\n") or {}
+        specific = out.get("hookSpecificOutput", {})
+        notice = specific.get("additionalContext", "")
+        check("最後の段で節が無ければ拒まず additionalContext で知らせ、本文を写さない",
+              r.returncode == 0 and "構造の変更" in notice and "秘密" not in notice
+              and "permissionDecision" not in specific and set(out) == {"hookSpecificOutput"}, str(out))
         check("最後の段で節があれば通す", run_handback_guard(tmp, wt1, *handback, body=with_section) is None)
         check("なし: <理由> の節でも通す",
               run_handback_guard(tmp, wt1, *handback, body="段 2/2 | 済\n\n## 構造の変更\nなし: 構造は変わらない\n") is None)
@@ -1129,23 +1133,28 @@ def test_handback_guard_structure() -> None:
         check("辺の行が複数あり、- と ~ の印と空行があっても通す", shaped("+ A -> B\n\n- C -> D: 語\n~ E -> F\n"))
         check("節のあとに別の見出しが続いても、節の中だけを見る",
               run_handback_guard(tmp, wt1, *handback, body=with_section + "\n## 次\n形の違う行\n") is None)
-        check("中身が空の節は拒む", not shaped(""))
-        check("空行だけの節は拒む", not shaped("\n\n"))
-        check("形の違う行は拒む", not shaped("構造は変わらない\n"))
-        check("印の無い辺の行は拒む", not shaped("A -> B\n"))
-        check("辺の行のあとに形の違う行があれば拒む", not shaped("+ A -> B\n説明\n"))
-        check("なし: の理由が空なら拒む", not shaped("なし: \n"))
-        check("なし: と辺の行の混在は拒む", not shaped("なし: 変わらない\n+ A -> B\n"))
-        check("なし: が2行あれば拒む", not shaped("なし: 一\nなし: 二\n"))
+        def warned(section: str) -> bool:
+            out = run_handback_guard(tmp, wt1, *handback, body=f"段 2/2 | 済\n\n## 構造の変更\n{section}") or {}
+            specific = out.get("hookSpecificOutput", {})
+            return bool(specific.get("additionalContext")) and "permissionDecision" not in specific
+
+        check("中身が空の節は拒まず知らせる", warned(""))
+        check("空行だけの節は拒まず知らせる", warned("\n\n"))
+        check("形の違う行は拒まず知らせる", warned("構造は変わらない\n"))
+        check("印の無い辺の行は拒まず知らせる", warned("A -> B\n"))
+        check("辺の行のあとに形の違う行があれば拒まず知らせる", warned("+ A -> B\n説明\n"))
+        check("なし: の理由が空なら拒まず知らせる", warned("なし: \n"))
+        check("なし: と辺の行の混在は拒まず知らせる", warned("なし: 変わらない\n+ A -> B\n"))
+        check("なし: が2行あれば拒まず知らせる", warned("なし: 一\nなし: 二\n"))
         check("印つきの節点だけの行を通す", shaped("+ A\n"))
         check("行末の色印のある節点を通す", shaped("+ A @a\n"))
         check("点線の辺と色印を通す", shaped("+ A -.> B: 語 @b\n"))
         check("群の囲みと閉じを通す", shaped("[層]\n+ A -> B\n[]\n"))
         check("色印つきの囲みを通す", shaped("[層] @a\n+ A -> B\n[]\n"))
         check("閉じない囲みは数えず通す", shaped("[層]\n+ A -> B\n"))
-        check("印だけの行は拒む", not shaped("+\n"))
-        check("印の無い節点の文は拒む", not shaped("説明の文\n"))
-        check("点線の片側が空なら拒む", not shaped("+ A -.>\n"))
+        check("印だけの行は拒まず知らせる", warned("+\n"))
+        check("印の無い節点の文は拒まず知らせる", warned("説明の文\n"))
+        check("点線の片側が空なら拒まず知らせる", warned("+ A -.>\n"))
 
         run_task(wt2, "claim", "T-101")
         check("作業の無い返却は節が無くても通す",
@@ -2079,12 +2088,13 @@ def test_guard_denial_record() -> None:
             rows = _denial_rows(main_path)
             return rows[-1] if rows else {}
 
-        def recorded(label: str, hook: str, rule: str, actor: str, before: int) -> None:
+        def recorded(label: str, hook: str, rule: str, actor: str, before: int, mode: str | None = None) -> None:
             rows = _denial_rows(main_path)
             row = last()
-            check(f"{label}: 1行足り、hook・rule・actor が合う",
+            keys = {"at", "hook", "rule", "actor"} | ({"mode"} if mode else set())
+            check(f"{label}: 1行足り、hook・rule・actor{'・mode' if mode else ''} が合う",
                   len(rows) == before + 1 and (row.get("hook"), row.get("rule"), row.get("actor")) == (hook, rule, actor)
-                  and set(row) == {"at", "hook", "rule", "actor"},
+                  and row.get("mode") == mode and set(row) == keys,
                   str(rows))
 
         n = len(_denial_rows(main_path))
@@ -2120,9 +2130,9 @@ def test_guard_denial_record() -> None:
         r = run_task(wt1, "verify")
         handback = ("PreToolUse", "SubagentHandback")
         out = run_handback_guard(tmp, wt1, *handback, body="段 1/1 | 済\n")
-        reason = (out or {}).get("hookSpecificOutput", {}).get("permissionDecisionReason", "")
-        check("構造の節が無い返却を拒む", r.returncode == 0 and "構造の変更" in reason, r.stdout + reason)
-        recorded("handback-guard の構造の節", "tw-handback-guard", "STRUCTURE_SECTION_MISSING", "main", n)
+        notice = (out or {}).get("hookSpecificOutput", {}).get("additionalContext", "")
+        check("構造の節が無い返却を拒まず知らせる", r.returncode == 0 and "構造の変更" in notice, r.stdout + notice)
+        recorded("handback-guard の構造の節", "tw-handback-guard", "STRUCTURE_SECTION_MISSING", "main", n, "log-only")
         n += 1
         for label, section, rule in (
             ("空の節", "## 構造の変更\n", "STRUCTURE_SECTION_EMPTY"),
@@ -2132,12 +2142,19 @@ def test_guard_denial_record() -> None:
             ("片側が空の辺", "## 構造の変更\n+ A ->\n", "STRUCTURE_SECTION_OTHER"),
         ):
             run_handback_guard(tmp, wt1, *handback, body=f"段 1/1 | 済\n\n{section}")
-            recorded(f"構造の節: {label}", "tw-handback-guard", rule, "main", n)
+            recorded(f"構造の節: {label}", "tw-handback-guard", rule, "main", n, "log-only")
             n += 1
-        for rule, text in (("PLAN_OR_VERIFY_MISSING", "構造の節の言い回し"), ("STRUCTURE_SECTION_NO_MARK", "着手の印（言い回し")):
+        check("構造の節を通した行は拒否の行（mode なし）に数えない",
+              all(row.get("rule") != "PLAN_OR_VERIFY_MISSING" or "mode" not in row for row in _denial_rows(main_path))
+              and sum(1 for row in _denial_rows(main_path) if "mode" not in row) == n - 6)
+        for rule, text in (("PLAN_OR_VERIFY_MISSING", "構造の節の言い回し"),):
             handback_guard.decide({"hook_event_name": "SubagentStop", "cwd": wt1}, lambda _where, _body: (rule, text))
             recorded(f"拒否文の言い回しを変えても {rule} のまま", "tw-handback-guard", rule, "main", n)
             n += 1
+        out = handback_guard.decide({"hook_event_name": "SubagentStop", "cwd": wt1},
+                                    lambda _where, _body: ("STRUCTURE_SECTION_NO_MARK", "着手の印（言い回し"))
+        check("本文が読めない SubagentStop には構造の規則を出さず記録もしない",
+              out is None and len(_denial_rows(main_path)) == n)
 
         check("loopable: Y の AskUserQuestion を拒む", run_ask_guard(tmp, wt1) is not None)
         recorded("ask-guard", "tw-ask-guard", "LOOPABLE_ASK", "main", n)

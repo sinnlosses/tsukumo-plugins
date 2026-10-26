@@ -82,10 +82,15 @@ DENIALS_DIR_NAME = "hook-denials"
 DENIAL_RECORD_ENV = "TSUKUMO_HOOK_DENIAL_RECORD"
 # 拒まれた委譲先の `agent_id`（トランスクリプト `agent-<agent_id>.jsonl` の名前と同じ）。委譲先の行にだけ置く。
 DENIAL_AGENT_KEY = "agent"
+# 拒まずに通した返却の行の印（tsukumo の `hook-denial-record.ts` の `mode` と同じ）。
+DENIAL_MODE_KEY = "mode"
+DENIAL_LOG_ONLY = "log-only"
 
 
-def record_denial(cwd: str | None, hook: str, rule: str, actor: str, agent: str | None = None) -> None:
-    """関門の拒否を1行足す（`at`・`hook`・`rule`・`actor`、`agent` を渡せば `agent`）。コマンド・パス・会話は入れない。
+def record_denial(
+    cwd: str | None, hook: str, rule: str, actor: str, agent: str | None = None, mode: str | None = None
+) -> None:
+    """関門の拒否を1行足す（`at`・`hook`・`rule`・`actor`、渡せば `agent`・`mode`）。コマンド・パス・会話は入れない。
 
     失敗しても例外を外へ出さず、何も出さない（関門の出力と終了コードを変えない）。
     """
@@ -98,6 +103,8 @@ def record_denial(cwd: str | None, hook: str, rule: str, actor: str, agent: str 
         row = {"at": at, "hook": hook, "rule": rule, "actor": actor}
         if agent:
             row[DENIAL_AGENT_KEY] = agent
+        if mode:
+            row[DENIAL_MODE_KEY] = mode
         line = json.dumps(row, ensure_ascii=False) + "\n"
         with open(os.path.join(d, f"{at[:7]}.jsonl"), "a", encoding="utf-8") as f:
             f.write(line)
