@@ -146,6 +146,7 @@ def test_weekly() -> None:
             "段の所要時間に STAGE の行が出て、合流・反映の段と OPEN の行も落とさない",
             lines_of("段の所要時間", r.stdout)
             == [
+                "OPEN_TOTAL\t1",
                 "STAGE\t計画\topus\tnormal\t1\t43200\t43200",
                 "STAGE\t計画\tsonnet\tnormal\t2\t15\t20",
                 "STAGE\t委譲\topus\tnormal\t1\t43200\t43200",

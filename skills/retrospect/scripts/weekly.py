@@ -12,7 +12,7 @@
   `CHANGE\t<project|skills>\t<短い SHA>\t<件名>`（プロジェクトは設定ファイル・`.claude/`・`docs/`
   （`docs/history/` を除く）を触ったコミット、skills はこのスクリプトのあるリポジトリ。各20件まで）
 - **段の所要時間**: `STAGE\t<段>\t<difficulty>\t<道>\t<件数>\t<中央値秒>\t<最大秒>`（道は `direct`・`normal`。`tw metrics --stages --days N` と同じ行）。
-  終わりの無い段は `OPEN\t<段>\t<件数>`
+  終わりの無い段は `OPEN\t<段>\t<件数>`、先頭に合計 `OPEN_TOTAL\t<件数>`（5を超えると `INTEGRITY\tWARN\t<段>=<件数>,…`）
 - **近道と通常の比較**: 期間によらず直近28日に送り出した件の道ごとの行
   `ROUTE\t<direct|normal>\t<件数>\t<着手から送り出しまでの中央値秒|->\t<fix_within_7d|->`（`fix_within_7d` は `tw metrics` と同じ形・同じ数え方で、`metrics.fix_tasks` を共有する）と、
   `DIRECT_GATE\t<direct の件数>\t20\t<reached|not_reached>`、

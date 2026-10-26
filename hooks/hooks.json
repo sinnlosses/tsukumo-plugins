@@ -37,6 +37,11 @@
         "hooks": [
           { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/tw\" handback-guard --agent-scoped || { c=$?; case $c in 78|127) echo 'tsukumo-workflow: 前提が欠けている（tw config-doctor で確かめる）' >&2; exit 0;; *) echo \"tsukumo-workflow: handback-guard が終了コード $c で落ちた（関門が掛かっていない）\" >&2; exit 1;; esac; }" }
         ]
+      },
+      {
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/tw\" lap-hook || { c=$?; case $c in 78|127) echo 'tsukumo-workflow: 前提が欠けている（tw config-doctor で確かめる）' >&2; exit 0;; *) echo \"tsukumo-workflow: lap-hook が終了コード $c で落ちた（関門が掛かっていない）\" >&2; exit 1;; esac; }" }
+        ]
       }
     ],
     "SubagentStart": [

@@ -34,6 +34,7 @@ HIGHER_IS_WORSE = (
     "long_handback",
     "escalate_suggest",
 )
+OPEN_LIMIT = 5
 FIX_WINDOW = timedelta(days=7)
 LOWER_IS_WORSE = ("shipped", "reflection_none_ratio")
 STAGE_ORDER = ("計画", "直し", "委譲", "検証", "受け入れ", "レビュー", "振り返り", "合流", "送り出し", "反映")
@@ -393,7 +394,18 @@ def stage_lines(events: list[Event], days: int) -> list[str]:
         )
     ]
     open_rows = [f"OPEN\t{stage}\t{opens[stage]}" for stage in STAGE_ORDER if stage in opens]
-    return stage_rows + open_rows
+    if not stage_rows and not open_rows:
+        return []
+    return open_total_lines(opens) + stage_rows + open_rows
+
+
+def open_total_lines(opens: dict[str, int]) -> list[str]:
+    """`OPEN_TOTAL` の行と、合計が `OPEN_LIMIT` を超えたときの `INTEGRITY\tWARN\t<段>=<件数>,…` の行。"""
+    total = sum(opens.values())
+    lines = [f"OPEN_TOTAL\t{total}"]
+    if total > OPEN_LIMIT:
+        lines.append("INTEGRITY\tWARN\t" + ",".join(f"{s}={opens[s]}" for s in STAGE_ORDER if s in opens))
+    return lines
 
 
 def columns(events: list[Event], days: int) -> tuple[dict[str, str], dict[str, str]]:

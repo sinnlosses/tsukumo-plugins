@@ -31,7 +31,7 @@ PATH に無ければ plugin を入れる。どのディレクトリから打っ�
 | `accept T-xxx [--after-review]` | 受け入れの機械的な並び（機械的な判定と `verify-check`）を打つとき。判定の `REVIEW\tcode` は、差分に文書の拡張子でないパス、または設定 `review_code_globs`（WORKFLOW.md の設定の表）の glob に当たるパスがあるとき。全部文書なら `SKIP\tdocs-only`。段が2つ以上の計画で途中の段の控えが欠ければ、lap の前に `NOT_LAST_STEP` で止まる（`loopable: N` は見ない）。作業先が別のリポジトリなら、判定（主ブランチから枝までの範囲つき）・木の控え・`verify-check` を作業先の作業ツリーで打ち、整形は打たず、作業先の本体の汚れを `claim` の控えと比べて `MAIN_DIRTY_*` の行で出す（読み方はオーケストレーターの、作業先が別のリポジトリのときの手順） | `REVIEW`・`SKIP`・`NOTHING`・`NO_RANGE`・`SNAPSHOT`・`FORMATTED`・`FORMAT_FAILED`・`NOT_LAST_STEP`・`MAIN_DIRTY_FROM_DELEGATE`・`MAIN_DIRTY_UNKNOWN`・`MAIN_DIRTY_BEFORE`・`MISSING`・`INVALID`・`NOT_CLAIMED`・`NOT_OWNER` |
 | `brief implementer T-xxx [--step <n>] [--rewrite] [--visual]`（実装役）・`brief acceptor T-xxx [--accept-file <path\|->] [--image <パス>]… [--visual] [--visual-wait] [--round <n> --since <前の木>]`（受け入れ役） | 実装役・受け入れ役への依頼文を手で組まずに出すとき（メインが打ち、出力の2行目以降をそのまま渡す）。文面は並びのスキルの `metadata` の `workflow-brief-<役>` が指す型にあり、tw は場合（計画どおり・書き直し・別のリポジトリ・並列の段・目視、受け入れ役は判定・目視待ち・2回目以降）に当たる節を選んで、パス・枝・作業ツリーの道を埋める（節と値は `tw brief --help`）。目視はタスクの本文の語では決めず、`--visual`・`--image` の旗だけで決める | `BRIEF\tT-xxx\t<役>\t<節,…>`（受け入れ役の `--round` は末尾にいまの木）に続けて依頼文。実装役は計画に basename が `report` で始まるパスがあれば、標準エラーに `WARN_REPORT_NAME`（標準出力は変えない）。`NOT_OWNER`・`MISSING`（終了コード6）・`INVALID`（終了コード3） |
 | `finish T-xxx [--dropped] [--reflection none\|some\|skipped] --result-file <path\|-> --message <本文> [--add <ファイル>]… [--resume]` | 結果・コミット・送りを一度に打つとき（`done` → `git add` → コミット → `ship`）。件名の `T-xxx:` は tw が一度だけ付ける（`--message` は本文のみ。旧形式も二重にならない）。`--add` を省くと、作業ツリーの変更のうち通常のファイル（`.tw/local`・symlink・サブモジュール〔索引に載った分は戻す〕と、その `.gitmodules` は除く。入れたいときは `--add`）を個別に `git add` する（`git add -A` は打たない）。`--resume` は `done` 済みの自分の着手のタスクで `done` を飛ばし、`RESUMED` を出してコミット→`ship` だけ行う（`--result-file` は省ける） | `done` の行、`RESUMED`、`SKIPPED\t<パス>\t<symlink|submodule>`（省略時に除いたもの）、`COMMITTED`・`NO_COMMIT`、`WARN_FIX_LINK\t<ID>`（件名・本文が直近7日に送った ID を含むか、「戻す」「撤去」「revert」の件名の戻し先がその ID。警告のみ）、`UNADDED\t<パス>`（残った変更。残れば `ship` が `DIRTY`）、`ship` の行。`COMMITS_SINCE_CLAIM` が出れば終了コード12で止まる。`done` 済みに `--resume` なしで打てば `ALREADY_DONE`（終了コード4） |
-| `metrics [--days N] [--stages]` | 流れの数と段ごとの所要時間を読むだけで見るとき（振り返り） | `PERIOD`、続けて `shipped`・`lead_median_seconds`・`verify_per_task` など。落ちた `verify` の内訳は `verify_real`・`verify_flaky`（同じタスクの次の着手までに同じ鍵〔作業ツリーの木〕で通った落ち）・`verify_infra`（検証コマンドの終了コードが 2。E2E の回数の上限）で、和が `verify_failed`。`verify_unobserved`・`_blocked`も。`fix_within_7d` は、期間内の `SHIPPED` の件数に対する、送り出しから7日以内に `tw new --fixes` で結ばれた直しのタスクの数（`NN% (n/m)`。1本の直しが複数の元を指しても1本、1本の元に直しが複数付けばその数で、100% を超えうる）。`--stages` は `STAGE`・`OPEN`。`SKIPPED`・`EMPTY` |
+| `metrics [--days N] [--stages]` | 流れの数と段ごとの所要時間を読むだけで見るとき（振り返り） | `PERIOD`、続けて `shipped`・`lead_median_seconds`・`verify_per_task` など。落ちた `verify` の内訳は `verify_real`・`verify_flaky`（次の着手までに同じ木で通った落ち）・`verify_infra`（検証コマンドの終了コードが 2。E2E の回数の上限）で、和が `verify_failed`。`verify_unobserved`・`_blocked`も。`fix_within_7d` は、期間内の `SHIPPED` の件数に対する、送り出しから7日以内に `tw new --fixes` で結ばれた直しのタスクの数（`NN% (n/m)`。100% 超えもある）。`--stages` は先頭に `OPEN_TOTAL`（5超で `INTEGRITY\tWARN\t<内訳>`）、続けて `STAGE`・`OPEN`。`SKIPPED`・`EMPTY` |
 | `config` | 解けた設定を読むだけで見るとき | `CONFIG`、続けて `<キー>\t<値>\t<config\|default>`（`steps` の値は詰めた JSON の配列）。設定が無ければ `MISSING`（終了コード6） |
 | `config --json` | 解けた設定を JSON で読むとき（`config` と同じキー・値・出どころ。呼び手が表の文字列を割らずに読む口） | 1行の JSON（TSV の例外）`{"config": "<パス>", "keys": [{"key", "value", "source"}, …]}`。`steps`・`review_code_globs` の `value` は配列。`MISSING`（終了コード6）・`INVALID`（終了コード3）は JSON にせず `config` と同じ行。`--schema`・`set` とは一緒に打てない（終了コード2）。欄の中身は `task.py config --help` |
 | `config --schema` | 設定の欄の形（並び `steps` の既定と候補、`shell_write_guard` の選択肢）を読むだけで見るとき（設定画面が欄を描く口。設定にはよらない） | 1行の JSON（TSV の例外）`{"schema": 2, "keys": [...]}`。`--version` は知らない引数として終了コード2。`values[]` は `{value, label, title, description}` で、`title` は日本語の段の名前（SKILL.md の `metadata` の `workflow-step-title`。無ければ `label` と同じ）。欄の中身は `task.py config --help` |
@@ -47,7 +47,7 @@ PATH に無ければ plugin を入れる。どのディレクトリから打っ�
 | `loop-check` | `/loop` の入口の段と、続行判断（`tw ship`・`tw hold` のあと）で打つ。今日の台帳から停止規則（送った件数が `loop_max_ships` に達した・`hold` が3件連続・直近3件の `ship` で `VERIFY_FAILED` が2件）を見る | `CONTINUE`／`STOP`（`max_ships`・`hold_streak`・`verify_failed`）、続けて `SHIPPED_TODAY`（件数・ID）。終了コード0 |
 | `handback-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むとき（と構造の節の欠けを知らせるとき）だけ JSON 1行（`SubagentStop` は `block`、`PreToolUse` は deny か `additionalContext`）。ただし同じファイルの5回目の書き換えで `edit-churn` を残し、通す返却で、委譲の歩数が100超なら `flow/` に `long-delegation`、本文が約2,000トークン超なら `long-handback`（`tw metrics` の `long_delegation`・`long_handback`） |
 | `ask-guard` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ deny の JSON 1行（理由はタスクIDと次の一手）。通すときは何も出さない |
-| `lap-hook` | hook が呼ぶ（手で打たない）。委譲と振り返りの段の頭の lap を書く記録で、何も拒まない（下の「hook の関門」節の lap の段落） | 何も出さない |
+| `lap-hook` | hook が呼ぶ（手で打たない）。委譲・振り返りの start と受け入れ役の停止の `review` end を書く記録。拒まない（下の「hook の関門」節の lap の段落） | 何も出さない |
 | `ref-guard <state>` | git の `reference-transaction` hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ標準エラーに理由の1行と終了コード1（git の hook の取り決め）。通すときは何も出さず0 |
 
 | 終了コード | 先頭語 | 意味 | スキルがすること |
@@ -106,12 +106,12 @@ hook 4種（Claude Code の hook 3種と git の hook `ref-guard`）の仕様の
 | `direct` | メイン（`tw lap`。端なし） | — |
 | `delegate` | plugin で入れたときは `lap-hook`（委譲先の起動）。リンクだけで入れたとき・委譲しないメインの流れはメイン。委譲先のモデルが `difficulty` と違う分業と、そこから戻す引き上げでは、メインが委譲の直前に `--model` 付きで打つ（hook はモデルを知らず、開いた段には書かない） | `accept` の start（`tw accept` が打つものも手で打つものも） |
 | `accept` | `tw accept`（作業先が別のリポジトリのタスクも） | `tw accept`（開いているときだけ書くので、`--after-review` を打ち直しても1つ） |
-| `review` | 1回目は `tw accept`、2回目からはメイン | メイン |
+| `review` | 1回目は `tw accept`、2回目からはメイン | `lap-hook`（受け入れ役の停止。開いているときだけ）。リンクだけで入れたときはメイン |
 | `retro` | plugin で入れたときは `lap-hook`（振り返りのスキルの呼び出し）。リンクだけで入れたときはメイン | `tw finish`（`done` の前） |
 | `land`・`sync` | メイン | メイン |
 
-`lap-hook` は関門ではなく記録で、何も拒まず stdout に何も出さない。書くのは控えがちょうど1件の作業ツリーで、その段が開いていないときだけ（判定の細部は `tw lap-hook --help`）。
-end は手で打つものも `tw` が書くものも、最後の `claim` 以降でその段が開いているときだけ書く（手打ちの `tw lap … end` は開いていなくても `LAPPED` を出すが記録しない）ので、`tw` が閉じた段に手で end を重ねても end は1つ。
+`lap-hook` は関門ではなく記録で、何も拒まず何も出さない。書くのは控えがちょうど1件の作業ツリーだけで、start は段が閉じているとき（細部は `tw lap-hook --help`）。
+end は手打ちも `tw`・hook も、最後の `claim` 以降でその段が開いているときだけ記録する（手打ちは開いていなくても `LAPPED` を出すが記録しない）ので、閉じた段に重ねても end は1つ。
 メインの手打ちと hook が重なって同じ段の start が続いても、所要の集計（`tw metrics --stages`・振り返りの段の所要時間）は閉じていない同じ段の2つ目の start を数えない。
 
 **`commit-guard`・`handback-guard`・`ask-guard` は Claude Code の hook の取り決めに従う**: 出力は TSV でなく JSON で、終了コードはいつも0（`ref-guard` は git の hook の取り決めに従い、拒むときだけ終了コード1）。

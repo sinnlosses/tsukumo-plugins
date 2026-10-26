@@ -16,7 +16,7 @@
 - 各 SKILL.md の `!` 埋め込み（インラインとフェンス）が `|| true`・`|| :`・`; true` で終わること
 - 同梱スクリプトが構文として読めること
 - `.claude-plugin/plugin.json` の `name` が `tsukumo-workflow` であること、`bin/tw` が実行でき `task.py` を
-  呼ぶこと、`hooks/hooks.json` が `${CLAUDE_PLUGIN_ROOT}/bin/tw` を呼ぶ `commit-guard`・`handback-guard` の `--agent-scoped` 付きの hook と `ask-guard` の hook を持ち、`SubagentStart` と matcher `Skill` の `PreToolUse` に `lap-hook` の hook を持つこと
+  呼ぶこと、`hooks/hooks.json` が `${CLAUDE_PLUGIN_ROOT}/bin/tw` を呼ぶ `commit-guard`・`handback-guard` の `--agent-scoped` 付きの hook と `ask-guard` の hook を持ち、`SubagentStart`・`SubagentStop` と matcher `Skill` の `PreToolUse` に `lap-hook` の hook を持つこと
 - `.claude-plugin/marketplace.json` の `./` 以外のプラグイン（`plugins/<名>/`）に、同じ名前の `plugin.json` と、名前がディレクトリ名と合う `SKILL.md` があること
 - `tw` の指す `task.py` が実行でき、スキルの Markdown が `task.py` を `python3` で呼ぶ形や `` `task …` `` の略記で書いていないこと
 - 兄弟スキルの `scripts/` を `sys.path` に足して `import` しているなら、`REQUIRES` にその
@@ -334,7 +334,7 @@ def check_plugin() -> None:
     if want not in commands:
         fail(f"hooks/hooks.json に hook {want!r} が無い")
     want = f'"${{CLAUDE_PLUGIN_ROOT}}/bin/tw" lap-hook {hook_tail("lap-hook")}'
-    for event, matcher in (("SubagentStart", None), ("PreToolUse", "Skill")):
+    for event, matcher in (("SubagentStart", None), ("SubagentStop", None), ("PreToolUse", "Skill")):
         groups = [g for g in hooks.get(event, []) if g.get("matcher") == matcher]
         if not any(h["command"] == want for g in groups for h in g["hooks"]):
             fail(f"hooks/hooks.json の {event}{'' if matcher is None else f'（matcher {matcher}）'} に hook {want!r} が無い")
