@@ -56,6 +56,7 @@ SHELL_WRITE_GUARD_KEY = "shell_write_guard"
 SHELL_WRITE_GUARD_TW = "tw"
 SHELL_WRITE_GUARD_PROJECT = "project"
 SHELL_WRITE_GUARD_VALUES = (SHELL_WRITE_GUARD_TW, SHELL_WRITE_GUARD_PROJECT)
+DEFAULT_LOOP_MAX_SHIPS = 12
 
 STORE_BEADS = "beads"
 STORE_VALUES = (STORE_BEADS,)
@@ -79,6 +80,7 @@ CONFIG_KEYS = (
     "steps",
     "review_code_globs",
     "shell_write_guard",
+    "loop_max_ships",
 )
 
 # 廃止したキーと表。設定に残っていれば `ConfigError` で知らせる。
@@ -116,6 +118,7 @@ class Config:
     steps: tuple[str, ...] | None = None
     review_code_globs: tuple[str, ...] = ()
     shell_write_guard: str = SHELL_WRITE_GUARD_TW
+    loop_max_ships: int = DEFAULT_LOOP_MAX_SHIPS
     written: frozenset = frozenset()
 
     @property
@@ -276,6 +279,14 @@ def _config_from_values(source: str, entries: list[tuple[int, str, str]]) -> Con
     return build_config(source, values)
 
 
+def _loop_max_ships(source: str | None, text: str | None, default: int) -> int:
+    if text is None:
+        return default
+    if not re.fullmatch(r"[0-9]+", text) or int(text) < 1:
+        raise ConfigError(f"{source}: loop_max_ships の値 {text!r} が 1 以上の整数の文字列でない")
+    return int(text)
+
+
 def build_config(source: str | None, values: dict[str, str | None]) -> Config:
     defaults = Config(source=source)
     config = Config(
@@ -294,6 +305,7 @@ def build_config(source: str | None, values: dict[str, str | None]) -> Config:
         steps=tuple(json.loads(values["steps"])) if values.get("steps") else None,
         review_code_globs=tuple(json.loads(values.get(REVIEW_CODE_GLOBS_KEY) or "[]")),
         shell_write_guard=values.get(SHELL_WRITE_GUARD_KEY) or defaults.shell_write_guard,
+        loop_max_ships=_loop_max_ships(source, values.get("loop_max_ships"), defaults.loop_max_ships),
         written=frozenset(values),
     )
     if config.shell_write_guard not in SHELL_WRITE_GUARD_VALUES:

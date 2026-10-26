@@ -4,6 +4,7 @@ import functools
 import glob
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -1102,6 +1103,68 @@ def test_part_direct_run_refused() -> None:
             )
 
 
+def test_loop_check() -> None:
+    say("task.py loop-check: 今日の出来事から停止規則（件数の上限・hold 連続・直近の VERIFY_FAILED）を順に見る")
+    from datetime import datetime, timedelta, timezone
+
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _ = make_repo(tmp)
+        config = os.path.join(wt1, ".tw", "config.toml")
+        with open(config, encoding="utf-8") as f:
+            original = f.read()
+        flow = ledger.flow_dir(ledger.ledger_root(cwd=wt1))
+        now = datetime.now(timezone.utc)
+
+        def seed(*events: tuple[str, str], days_ago: float = 0) -> None:
+            """`(出来事, 結果 か "")` を、今から数秒ずつ前に時刻順で並べて台帳に書く。"""
+            shutil.rmtree(flow, ignore_errors=True)
+            os.makedirs(flow)
+            for i, (kind, result) in enumerate(events):
+                at = (now - timedelta(days=days_ago, seconds=len(events) - i)).isoformat(timespec="seconds")
+                row = {"t": at, "event": kind, "task": f"T-{100 + i}", "difficulty": "sonnet"}
+                if result:
+                    row["result"] = result
+                with open(os.path.join(flow, f"{at[:7]}.jsonl"), "a", encoding="utf-8") as f:
+                    f.write(json.dumps(row) + "\n")
+
+        def verdict(**kw) -> str:
+            seed(*kw.pop("events"), **kw)
+            r = run_task(wt1, "loop-check")
+            return f"{r.returncode}|{r.stdout.splitlines()[0]}|{r.stdout.splitlines()[1] if r.stdout.count(chr(10)) > 1 else ''}"
+
+        def head(**kw) -> str:
+            return verdict(**kw).split("|")[1]
+
+        shipped = lambda n: [("ship", "SHIPPED")] * n  # noqa: E731
+        check("記録なしは CONTINUE と空の一覧", verdict(events=[]) == "0|CONTINUE|SHIPPED_TODAY\t0\t-", verdict(events=[]))
+        check("今日の SHIPPED が上限-1 件なら CONTINUE", head(events=shipped(11)) == "CONTINUE")
+        check("上限件で STOP max_ships と送った一覧", verdict(events=shipped(12)).startswith("0|STOP\tmax_ships\t12|SHIPPED_TODAY\t12\tT-100,T-101"),
+              verdict(events=shipped(12)))
+        check("昨日の SHIPPED は数えない", head(events=shipped(12), days_ago=2) == "CONTINUE")
+        check("hold が連続 2 件なら CONTINUE", head(events=[("hold", "")] * 2) == "CONTINUE")
+        check("hold が連続 3 件で STOP hold_streak", head(events=[("hold", "")] * 3) == "STOP\thold_streak\t3")
+        check("SHIPPED を挟むと hold の連続は途切れる",
+              head(events=[("hold", "")] * 2 + shipped(1) + [("hold", "")] * 2) == "CONTINUE")
+        check("直近 3 件の ship に VERIFY_FAILED が 2 件で STOP verify_failed",
+              head(events=[("ship", "VERIFY_FAILED"), ("ship", "SHIPPED"), ("ship", "VERIFY_FAILED")]) == "STOP\tverify_failed\t2")
+        check("VERIFY_FAILED が直近 3 件の外なら CONTINUE",
+              head(events=[("ship", "VERIFY_FAILED")] * 2 + shipped(3)) == "CONTINUE")
+        three = [("hold", "")] * 3 + [("ship", "VERIFY_FAILED")] * 2
+        check("複数当たれば max_ships が先", head(events=shipped(12) + three) == "STOP\tmax_ships\t12")
+        check("複数当たれば hold_streak が verify_failed より先", head(events=[("ship", "VERIFY_FAILED")] * 2 + [("hold", "")] * 3) == "STOP\thold_streak\t3")
+
+        write(config, original + 'loop_max_ships = "2"\n')
+        check("設定 loop_max_ships = 2 で上限が変わる", head(events=shipped(2)) == "STOP\tmax_ships\t2")
+        for bad in ('"0"', '"abc"'):
+            write(config, original + f"loop_max_ships = {bad}\n")
+            r = run_task(wt1, "loop-check")
+            check(f"loop_max_ships = {bad} は INVALID（終了コード3）", r.returncode == 3 and r.stdout.startswith("INVALID\t"),
+                  r.stdout + r.stderr)
+        write(config, original)
+        rows = run_task(wt1, "config").stdout.splitlines()
+        check("tw config は書かなければ loop_max_ships の既定 12 を default で出す", "loop_max_ships\t12\tdefault" in rows, repr(rows))
+
+
 def test_subcommand_help_complete() -> None:
     import argparse
 
@@ -1126,6 +1189,7 @@ TESTS = (
     test_done_replay_diff_notice,
     test_claim_and_release_single_worktree,
     test_hold,
+    test_loop_check,
     test_edit_refuses_loopable_n_while_claimed,
     test_new_and_status_single_worktree,
     test_new_fixes,

@@ -3,7 +3,7 @@
 # 宣言が無いと Python 3.9 が、長い日本語の行の読み込み位置によって「Non-UTF-8 code」で落ちる。
 """Beads に置いたタスクの運用を操作する入口コマンド。
 
-使い方: tw <status|new|claim|release|hold|done|ship|finish|land|config|config-doctor|show|find|edit|plan-check|plan-phases|verify|verify-check|accept|brief|pause|step|lap|escalate-check|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|ask-guard|lap-hook|ref-guard> ...
+使い方: tw <status|new|claim|release|hold|done|ship|finish|land|config|config-doctor|show|find|edit|plan-check|plan-phases|verify|verify-check|accept|brief|pause|step|lap|escalate-check|loop-check|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|ask-guard|lap-hook|ref-guard> ...
 
 plugin の `bin/tw` から呼ぶ。`commit-guard`・`handback-guard` の
 `--agent-scoped` は plugin の `hooks/hooks.json` が付け、入力に `agent_id` があるとき（サブエージェント）だけ関門を掛ける（`commit-guard` は主のセッションの書き込みの `bd` だけ例外）。
@@ -45,6 +45,7 @@ import tw_escalate
 import tw_finish
 import tw_handback
 import tw_hold
+import tw_loop
 import tw_maint
 import tw_new
 import tw_relay
@@ -166,6 +167,12 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
         r"""台帳の `flow/` から、最後の `claim` 以降で開いている `delegate` の引き金を読む: `edit-churn`（同じファイルを5回書き換えた。`handback-guard` が残す）・`verify-failed-streak`（`verify` が2回続けて落ちた。`infra` の落ちは数えない）・`slow-delegation`（経過が直近28日の 委譲・同じ difficulty・normal の中央値〔`tw metrics --stages` と同じ元。標本5件未満なら見ない〕の3倍を超えた）。新しく立った引き金だけを出し、`escalate-suggest` を台帳へ残す（同じ委譲で同じ引き金は1回）。見張りの shell が定期的に打つ。着手の印が無い・読めないときは何も出さない
 
 出力: 引き金ごとに `ESCALATE_SUGGEST\tT-xxx\t<引き金>\t<詳細>\t<次のモデル>`（次のモデルは `haiku`→`sonnet`、`sonnet`→`opus`、`opus` は `-`）。終了コードはいつも0""",
+    ),
+    "loop-check": (
+        "`/loop` を続けてよいかを、台帳の今日の出来事から数えて返す（読むだけ）。",
+        r"""台帳の `flow/` のうちローカル日付の今日の出来事から、停止規則を順に見る: `max_ships`（`ship` が `SHIPPED` の件数が設定 `loop_max_ships`〔既定12〕に達した）・`hold_streak`（`SHIPPED`・`NOTHING` を挟まずに `hold` が3件続いた）・`verify_failed`（直近3件の `ship` のうち `VERIFY_FAILED` が2件以上）。複数当たればこの順の最初の理由を返す
+
+出力: `CONTINUE` か `STOP\t<理由>\t<数>`、続けて `SHIPPED_TODAY\t<件数>\t<ID,… か ->`。終了コードはいつも0""",
     ),
     "relay": (
         "段の結果を、後の段が読む申し送り（Beads の comment）として鍵ごとに書く・読む。",
@@ -413,6 +420,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_lap.add_argument("edge", nargs="?", default=None)
     p_lap.add_argument("--model", choices=taskfile.DIFFICULTY_VALUES, default=None)
     sub.add_parser("escalate-check").add_argument("task_id")
+    sub.add_parser("loop-check")
     p_relay = sub.add_parser("relay")
     p_relay.add_argument("task_id")
     p_relay.add_argument("key")
@@ -625,6 +633,8 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
             tw_handback.cmd_lap(toplevel, args.task_id, args.stage, args.edge, args.model)
         elif args.command == "escalate-check":
             tw_escalate.cmd_escalate_check(toplevel, args.task_id)
+        elif args.command == "loop-check":
+            tw_loop.cmd_loop_check(toplevel)
         elif args.command == "relay":
             tw_relay.cmd_relay(toplevel, args.task_id, args.key, args.body_file)
         elif args.command == "metrics":

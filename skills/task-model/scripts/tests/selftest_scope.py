@@ -26,6 +26,7 @@ SCOPED_TW = {
     "tw_finish.py": ("selftest_t_finish",),
     "tw_handback.py": ("selftest_t_guards", "selftest_t_verify"),
     "tw_hold.py": ("selftest_t_tasks",),
+    "tw_loop.py": ("selftest_t_tasks",),
     "tw_ship.py": ("selftest_t_ship",),
     "tw_verify.py": ("selftest_t_verify",),
     "tw_plan.py": ("selftest_t_plan",),

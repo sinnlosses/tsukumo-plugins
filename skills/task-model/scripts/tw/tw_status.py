@@ -106,6 +106,8 @@ def config_rows(toplevel: str, config: layout.Config) -> list[tuple[str, str | l
                 value = None
         elif key == "backup" and value is None:
             value = beads.backup_dir(toplevel)
+        elif key == "loop_max_ships":
+            value = str(value)
         if value is None:
             value = layout.NO_COMMAND if key in CONFIG_COMMAND_KEYS else "-"
         rows.append((key, value, "config" if key in config.written else "default"))
