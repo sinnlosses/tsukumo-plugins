@@ -15,7 +15,8 @@
   終わりの無い段は `OPEN\t<段>\t<件数>`
 - **近道と通常の比較**: 期間によらず直近28日に送り出した件の道ごとの行
   `ROUTE\t<direct|normal>\t<件数>\t<着手から送り出しまでの中央値秒|->\t<fix_within_7d|->`（`fix_within_7d` は `tw metrics` と同じ形・同じ数え方で、`metrics.fix_tasks` を共有する）と、
-  `DIRECT_GATE\t<direct の件数>\t20\t<reached|not_reached>`
+  `DIRECT_GATE\t<direct の件数>\t20\t<reached|not_reached>`、
+  `DIRECT_SHARE\t<direct の件数>\t<送り出しの件数>\t<割合>\t<below|ok>`（5%未満が below。送り出しが0件なら出ない）
 - **揺れたテスト**: 直近28日に落ちて、同じ鍵で次に通った（`verify_flaky` と同じ判定）`verify` の `tests` を名前で数えた
   `FLAKY\t<名前>\t<回数>`（上位5件）と、3回以上の `候補\t<名前>\t<回数>`。無ければ `EMPTY`
 - **規則の棚卸し**: 設定の `hook_tally` のコマンドをリポジトリの根で `sh -c` で打った標準出力を
@@ -62,6 +63,7 @@ HOOK_TALLY_TIMEOUT_SECONDS = 60
 CHANGE_LIMIT = 20
 COMPARED_ROUTES = ("direct", "normal")
 DIRECT_THRESHOLD = 20
+DIRECT_SHARE_FLOOR = 0.05
 FLAKY_TOP = 5
 FLAKY_THRESHOLD = 3
 PROJECT_CHANGE_PATHS = ("CLAUDE.md", "AGENTS.md", ".claude", "docs", ":(exclude)docs/history")
@@ -169,6 +171,9 @@ def route_rows(events: list[metrics.Event], days: int) -> list[str]:
         rows.append(f"ROUTE\t{route}\t{len(ships)}\t{median}\t{fix}")
     direct = len(by_route["direct"])
     rows.append(f"DIRECT_GATE\t{direct}\t{DIRECT_THRESHOLD}\t{'reached' if direct >= DIRECT_THRESHOLD else 'not_reached'}")
+    if shipped:
+        share = direct / len(shipped)
+        rows.append(f"DIRECT_SHARE\t{direct}\t{len(shipped)}\t{100 * share:.1f}%\t{'below' if share < DIRECT_SHARE_FLOOR else 'ok'}")
     return rows
 
 
