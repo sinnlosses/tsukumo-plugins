@@ -7,7 +7,7 @@
    （`dropped` なら「`T-xxx <summary>` を見送って（dropped）main へ送りました。」と理由を1文）。
    `SHIPPED` の範囲・`branch=`・コミットのハッシュは書かない。手順8より前で止まったとき
    （`VERIFY_FAILED`・`CONFLICT`・`DIRTY`・取り残し・進められるタスクが無い、など）は、止まったことと先頭語を結論にし、
-   各手順の表が「添える」としたものを続ける
+   各手順の表が「添える」としたもの（パス・衝突したファイル・出力の末尾）を続ける
 2. **何をしたか**を3項目程度の箇条書きで。変えたものと、何ができるようになったか・何が直ったかを1項目ずつ（ファイルの一覧やコマンドの経過ではなく中身を言う）
 3. **人に知らせること**があるときだけ: 受け入れで直したこと、残した判断や気になった点（手順6aでドラフトに積んだ ID は、`report` の口があれば `retrospective.drafts` に渡し〔手順4〕、無ければここに添える）、
    手順3でタスク化したなら登録したタスクID、`kept=` で枝を消せなかったこと
@@ -23,26 +23,25 @@
 **構造の変更**: 委譲先の最後の段の返却にある `## 構造の変更` の行を、最終レポートの `graph` の `source` にそのまま写す
 （記法は返却のとおり。`graph` の正典は tsukumo の `docs/architecture/display.md`）。`なし: <理由>` のときは `graph` を置かず、理由をレポートに添える。
 辺が名前を渡すだけで判定・分岐・新しい名前の出どころが無いときは図1に写さず（迷えば写す）、`sections` に畳んだ（`fold`）`graph` か `code` で置く。図1は判断に効く別の図（分岐は `graph`、数は `chart`）で、無ければ `figure` は `none` の理由で言う。
-`tw handback-guard` が拒むのは本文を読める経路だけなので、読めない経路で通った返却に節が無い・形が違うときは、受け入れの前に `SendMessage` で書き直させる。
+節の中身は、各行が `+|-|~ A -> B` の形か、全体が `なし: <理由>` の1行で、`tw handback-guard` が本文を読める経路では、節が無い・空・形の違う返却を拒む。
+読めない経路で通った返却に節が無い・形が違うときは、受け入れの前に `SendMessage` で書き直させる。
 
-同じ場面を撮った2枚（前と後・差し色違い・幅違いなど）は `image` を2つ並べず `beforeAfter` にする（左に前、右に後）。画像は受け入れ役の `- 目視:` の行と、実装役の返却の変更前の画のパス。
+同じ場面を撮った2枚（変更の前と後・差し色やキャラクター違い・幅違い）は `image` を2つ並べず `beforeAfter` にする（左に前、右に後）。画像は受け入れ役の `- 目視:` の行と、実装役の返却の変更前の画のパス。
 
 書かないもの: 結論と重なる「完了したタスク」の行、`tw status` の件数、`stale` の行。
 
-**`/loop` の続行判断**（報告ではなく、会話に残ったツールの結果で決める）:
+**`/loop` の続行判断**:
 
 | 会話に残った結果 | 続行 |
 | --- | --- |
-| `tw loop-check`（`tw ship`・`tw hold` のあとに打つ）が `STOP\tmax_ships`（今日送った件数が `loop_max_ships`） | 続けず終える |
-| `STOP\thold_streak`（`hold` が3件連続） | 続けず終える |
-| `STOP\tverify_failed`（直近3件の `ship` で `VERIFY_FAILED` が2件） | 続けず終える |
+| `tw loop-check` が `STOP\tmax_ships`（今日の件数が `loop_max_ships`） | 続けず終える。報告に理由・残りの `READY` 数・`SHIPPED_TODAY` の送った一覧を書く |
+| `STOP\thold_streak`（`hold` が3件連続） | 同上 |
+| `STOP\tverify_failed`（直近3件の `ship` で2件が `VERIFY_FAILED`） | 同上 |
 | `tw loop-check` が `CONTINUE` で、`tw ship` が `SHIPPED`・`NOTHING` で、取り直した `tw status` に `着手可否` が `READY` かつ `loopable` が `Y` の行がある | 続ける |
 | `tw ship` が `SHIPPED`・`NOTHING` で、その行が無い | 続けない |
 | `tw ship` がほかの先頭語か、判断待ちで外したとき以外で手順8より前で終わった | 続けない |
 | 判断待ちで外し、`tw loop-check` が `CONTINUE` で、`tw hold` が `CONTINUE\tY` を出し、作業ツリーに作業（`claim` した時点より後のコミットか変更）が無い | 続ける |
 | `tw hold` が `CONTINUE\tN` を出したか、作業が残っている（次の `claim` が `DIRTY` で止まる） | 続けず、人の判断待ちを添えて終える |
-
-`STOP` で終える報告には、理由・残りの `READY` の数（取り直した `tw status`）・`SHIPPED_TODAY` の送った一覧を書く。
 
 判断待ちで外すのは、`tw ask-guard` に拒まれたときと、実装役が人の判断を要すると止めて返したとき（frame が実装と合わない等）。
 論点を `tw hold T-xxx --reason-file -` に渡して外し、`loopable: N` には直さない（着手中の Y→N は `tw edit` が拒む）。
