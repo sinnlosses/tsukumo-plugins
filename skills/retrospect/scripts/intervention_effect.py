@@ -60,7 +60,7 @@ UNMEASURABLE = "測れない兆候"
 TOO_FEW = f"分母<{MIN_DENOMINATOR}"
 
 METRIC_NAMES = metrics.HIGHER_IS_WORSE + metrics.LOWER_IS_WORSE
-COUNT_METRICS = ("verify_failed", "verify_real", "verify_flaky", "verify_infra", "ship_verify_failed", "reclaim", "long_delegation")
+COUNT_METRICS = ("verify_failed", "verify_real", "verify_flaky", "verify_infra", "ship_verify_failed", "reclaim", "long_delegation", "escalate_suggest")
 
 
 @dataclass(frozen=True)
