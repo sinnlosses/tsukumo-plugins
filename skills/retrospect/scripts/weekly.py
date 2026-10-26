@@ -16,6 +16,8 @@
 - **近道と通常の比較**: 期間によらず直近28日に送り出した件の道ごとの行
   `ROUTE\t<direct|normal>\t<件数>\t<着手から送り出しまでの中央値秒|->\t<fix_within_7d|->`（`fix_within_7d` は `tw metrics` と同じ形・同じ数え方で、`metrics.fix_tasks` を共有する）と、
   `DIRECT_GATE\t<direct の件数>\t20\t<reached|not_reached>`
+- **揺れたテスト**: 直近28日に落ちて、同じ鍵で次に通った（`verify_flaky` と同じ判定）`verify` の `tests` を名前で数えた
+  `FLAKY\t<名前>\t<回数>`（上位5件）と、3回以上の `候補\t<名前>\t<回数>`。無ければ `EMPTY`
 - **規則の棚卸し**: 設定の `hook_tally` のコマンドをリポジトリの根で `sh -c` で打った標準出力を
   そのまま。無い・落ちた・60秒で終わらないときは `-\t<理由>`
 - **期日を過ぎた介入**: 期日が期間の中に来た介入ごとに
@@ -60,6 +62,8 @@ HOOK_TALLY_TIMEOUT_SECONDS = 60
 CHANGE_LIMIT = 20
 COMPARED_ROUTES = ("direct", "normal")
 DIRECT_THRESHOLD = 20
+FLAKY_TOP = 5
+FLAKY_THRESHOLD = 3
 PROJECT_CHANGE_PATHS = ("CLAUDE.md", "AGENTS.md", ".claude", "docs", ":(exclude)docs/history")
 
 
@@ -83,6 +87,9 @@ def main() -> None:
 
     section("近道と通常の比較")
     print_routes(root)
+
+    section("揺れたテスト（直近28日）")
+    print_flaky_tests(root, now)
 
     section("規則の棚卸し")
     print_hook_tally(root)
@@ -172,6 +179,23 @@ def print_routes(root: str) -> None:
         print("-\t台帳が読めない（git のリポジトリでない）")
         return
     print("\n".join(route_rows(events, MAX_DAYS)) if events else "EMPTY")
+
+
+def flaky_rows(events: list[metrics.Event], now: datetime) -> list[str]:
+    """揺れたテストの上位 `FLAKY\t<名前>\t<回数>` と、`FLAKY_THRESHOLD` 回以上の `候補\t<名前>\t<回数>`。"""
+    counts = metrics.flaky_tests(events, now - timedelta(days=MAX_DAYS), now + timedelta(seconds=1))
+    rows = [f"FLAKY\t{name}\t{n}" for name, n in list(counts.items())[:FLAKY_TOP]]
+    rows += [f"候補\t{name}\t{n}" for name, n in counts.items() if n >= FLAKY_THRESHOLD]
+    return rows
+
+
+def print_flaky_tests(root: str, now: datetime) -> None:
+    try:
+        events, _ = metrics.read_events(ledger.ledger_root(cwd=root))
+    except (gitinfo.GitCommandError, OSError):
+        print("-\t台帳が読めない（git のリポジトリでない）")
+        return
+    print("\n".join(flaky_rows(events, now)) or "EMPTY")
 
 
 def print_changes(root: str, start: datetime) -> None:

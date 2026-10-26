@@ -1287,6 +1287,47 @@ def test_verify_stages() -> None:
     )
 
 
+def test_verify_failed_tests() -> None:
+    say("tw verify: 落ちた回の行頭 `test: ` の行を tests に名前だけ記録し、揺れた回だけ metrics.flaky_tests が数える。形の無い出力は欄なし")
+    with tempfile.TemporaryDirectory() as tmp:
+        out_file = os.path.join(tmp, "out")
+        verify_script = write(os.path.join(tmp, "verify.sh"), f'cat "{out_file}"\n[ ! -e "{tmp}/fail" ]\n')
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない", verify=f"`sh {verify_script}`")
+        commit_task(main_path, taskfile.Task("T-100", "段", "todo", "sonnet", "Y", (), PLANNED_BODY))
+        run_task(wt1, "claim", "T-100")
+        outputs = (
+            "x\ntest: a.test.ts > 題 1\n  test: indented\ntest: a.test.ts > 題 1\ntest:\n",
+            "ログだけ\nFAIL something\n",
+        )
+        for i, content in enumerate(outputs):
+            write(out_file, content)
+            write(os.path.join(tmp, "fail"), "")
+            write(os.path.join(wt1, "work.txt"), str(i))
+            r = run_task(wt1, "verify")
+            check(f"出力 {i} で落ちる", r.returncode == 10, r.stdout + r.stderr)
+        rows = [e for e in flow_rows(wt1) if e["event"] == "verify"]
+        check(
+            "行頭の test: の行だけが名前で入り（重複は1つ）、形の無い出力は tests の欄を足さない",
+            rows[0].get("tests") == {"a.test.ts > 題 1": "fail"} and "tests" not in rows[1],
+            repr(rows),
+        )
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+    def verify(minutes: int, result: str, key: str, tests: dict | None = None) -> "metrics.Event":
+        fields = {"event": "verify", "task": "T-1", "result": result, "key": key, **({"tests": tests} if tests else {})}
+        return metrics.Event(t0 + timedelta(minutes=minutes), "verify", "T-1", fields)
+
+    events = [
+        verify(0, "VERIFY_NOT_PASSED", "k1", {"a": "fail", "b": "fail"}),
+        verify(1, "VERIFIED", "k1"),
+        verify(2, "VERIFY_NOT_PASSED", "k2", {"a": "fail"}),
+        verify(3, "VERIFY_NOT_PASSED", "k3", {"c": "fail"}),
+        verify(4, "VERIFIED", "k4"),
+    ]
+    got = metrics.flaky_tests(events, t0, t0 + timedelta(days=1))
+    check("同じ鍵で通った落ちのテスト名だけを多い順に数える（通らなかった落ちは real）", got == {"a": 1, "b": 1}, repr(got))
+
+
 def test_verify_cause_derivation() -> None:
     say("metrics.verify_cause: 同じ鍵で次の着手までに通れば flaky、cause=infra はそのまま、ほかと旧い行は real")
     t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -1419,6 +1460,7 @@ def test_all_tests_registered() -> None:
 TESTS = (
     test_verify_failure_cause,
     test_verify_stages,
+    test_verify_failed_tests,
     test_verify_cause_derivation,
     test_open_stages,
     test_task_stage_spans,

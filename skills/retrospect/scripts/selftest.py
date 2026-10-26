@@ -116,9 +116,9 @@ def test_weekly() -> None:
         check("記録が無ければ期間は7日で last=-", lines_of("期間", out) == [f"PERIOD\t7d\t{(today - timedelta(days=7)).isoformat()}\t{today.isoformat()}\tlast=-"], out)
         headings = [l for l in out.splitlines() if l.startswith("===== ")]
         check(
-            "節は期間・流れの数・段の所要時間・近道と通常の比較・規則の棚卸し・期日を過ぎた介入・再発しなかった候補・ドラフトの行方の8つだけ",
+            "節は期間・流れの数・段の所要時間・近道と通常の比較・揺れたテスト・規則の棚卸し・期日を過ぎた介入・再発しなかった候補・ドラフトの行方の9つだけ",
             headings == ["===== 期間 =====", "===== 流れの数 =====", "===== 段の所要時間 =====", "===== 近道と通常の比較 =====",
-                         "===== 規則の棚卸し =====",
+                         "===== 揺れたテスト（直近28日） =====", "===== 規則の棚卸し =====",
                          "===== 期日を過ぎた介入（期間の中に期日が来たもの） =====",
                          "===== 再発しなかった候補（28日より前） =====", "===== ドラフトの行方（直近28日） ====="],
             "\n".join(headings),
@@ -1198,7 +1198,32 @@ def test_route_comparison() -> None:
           "ROUTE\tdirect\t2\t150\t50% (1/2)" in rows and column_fix == "33% (1/3)", f"{rows} {column_fix}")
 
 
+def test_flaky_tests() -> None:
+    print("weekly.py 揺れたテスト")
+    sys.path.insert(0, HERE)
+    import weekly as wk
+
+    metrics = wk.metrics
+    now = datetime.now(timezone.utc)
+
+    def ev(days_ago: float, minute: int, kind: str, **fields: object) -> "metrics.Event":
+        at = now - timedelta(days=days_ago) + timedelta(minutes=minute)
+        return metrics.Event(at, kind, "GH-1", {"t": at.isoformat(), "event": kind, "task": "GH-1", **fields})
+
+    def flaky_pair(days_ago: float, key: str, *names: str) -> list["metrics.Event"]:
+        return [ev(days_ago, 0, "verify", result="VERIFY_NOT_PASSED", key=key, tests={n: "fail" for n in names}),
+                ev(days_ago, 1, "verify", result="VERIFIED", key=key)]
+
+    events = (flaky_pair(5, "k1", "a > x", "b > y") + flaky_pair(4, "k2", "a > x") + flaky_pair(3, "k3", "a > x")
+              + flaky_pair(40, "k4", "old > z") + [ev(2, 0, "verify", result="VERIFY_NOT_PASSED", key="k5", tests={"real > r": "fail"})])
+    events.sort(key=lambda e: e.at)
+    check("揺れたテストは回数の多い順に FLAKY で出し、3回以上だけ 候補 に挙げる（28日より前と通らなかった落ちは数えない）",
+          wk.flaky_rows(events, now) == ["FLAKY\ta > x\t3", "FLAKY\tb > y\t1", "候補\ta > x\t3"], repr(wk.flaky_rows(events, now)))
+    check("揺れた落ちが無ければ空（出力は EMPTY）", wk.flaky_rows([], now) == [])
+
+
 def main() -> None:
+    test_flaky_tests()
     test_route_comparison()
     test_viewpoint_vocabulary()
     test_weekly()

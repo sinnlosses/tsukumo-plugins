@@ -132,6 +132,19 @@ def verify_cause(events: list[Event], failed: Event) -> str:
     return "real"
 
 
+def flaky_tests(events: list[Event], start: datetime, end: datetime) -> dict[str, int]:
+    """`[start, end)` に `flaky` と数えた落ちた `verify` の `tests` に載るテスト名ごとの回数（多い順）。"""
+    counts: dict[str, int] = {}
+    for e in events:
+        if e.kind != "verify" or not start <= e.at < end or e.fields.get("result") not in VERIFY_FAILED_RESULTS:
+            continue
+        tests = e.fields.get("tests")
+        if isinstance(tests, dict) and verify_cause(events, e) == "flaky":
+            for name in tests:
+                counts[str(name)] = counts.get(str(name), 0) + 1
+    return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+
+
 def _has_stage_value(verify: Event, value: str) -> bool:
     """`verify` の記録の `stages`（段名→4値）に `value` の段があるか。欄の無い旧い行・形の違う欄は偽。"""
     stages = verify.fields.get("stages")

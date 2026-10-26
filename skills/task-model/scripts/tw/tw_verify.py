@@ -21,6 +21,9 @@ VERIFY_TAIL_LINES = 40
 VERIFY_INFRA_EXIT_CODES = (2,)
 STAGE_LINE_PREFIX = "STAGE\t"
 STAGE_VALUES = ("pass", "fail", "unobserved", "blocked")
+FAILED_TEST_LINE_PREFIX = "test: "
+FAILED_TEST_MAX = 20
+FAILED_TEST_NAME_MAX = 200
 
 
 def read_stages(log_text: str) -> dict[str, str]:
@@ -38,10 +41,32 @@ def read_stages(log_text: str) -> dict[str, str]:
     return stages
 
 
+def read_failed_tests(log_text: str) -> dict[str, str]:
+    """検証コマンドの出力の行頭 `test: <ファイル> > <題>` の行から、落ちたテストの名前を読む。
+
+    この形の行が無ければ（テスト名を出さない検証コマンド）空。名前だけを返し、
+    出力のほかの行は読まない。多すぎる・長すぎるものは切る。
+    """
+    names: dict[str, str] = {}
+    for line in log_text.splitlines():
+        if not line.startswith(FAILED_TEST_LINE_PREFIX):
+            continue
+        name = line[len(FAILED_TEST_LINE_PREFIX) :].strip()[:FAILED_TEST_NAME_MAX]
+        if name and len(names) < FAILED_TEST_MAX:
+            names[name] = "fail"
+    return names
+
+
 def _stage_fields(log_path: str) -> dict[str, dict[str, str]]:
     with open(log_path, encoding="utf-8", errors="replace") as f:
         stages = read_stages(f.read())
     return {"stages": stages} if stages else {}
+
+
+def _failed_fields(log_path: str) -> dict[str, dict[str, str]]:
+    with open(log_path, encoding="utf-8", errors="replace") as f:
+        tests = read_failed_tests(f.read())
+    return {**_stage_fields(log_path), **({"tests": tests} if tests else {})}
 
 
 def cmd_verify(toplevel: str, task_id: str | None = None) -> None:
@@ -103,7 +128,7 @@ def cmd_verify(toplevel: str, task_id: str | None = None) -> None:
             seconds=round(time.monotonic() - started),
             cause="infra" if r.returncode in VERIFY_INFRA_EXIT_CODES else "real",
             key=before.tree,
-            **_stage_fields(log_path),
+            **_failed_fields(log_path),
         )
         _print_verify_end(folded_line, f"VERIFY_NOT_PASSED\t{stamps.keep_failed_log(log_path)}", tail)
         raise SystemExit(10)
