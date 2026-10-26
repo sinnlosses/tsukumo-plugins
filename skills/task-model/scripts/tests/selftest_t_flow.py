@@ -191,6 +191,7 @@ def test_metrics_stages() -> None:
             r.returncode == 0
             and got
             == [
+                ("OPEN_TOTAL", "0"),
                 ("STAGE", "計画", "haiku", "direct", "1", "20", "20"),
                 ("STAGE", "計画", "haiku", "normal", "1", "10", "10"),
                 ("STAGE", "計画", "opus", "normal", "1", "10", "10"),
