@@ -300,9 +300,19 @@ def test_metrics_stages_edge() -> None:
         check("end の無い start は STAGE に入れず OPEN の行で数え、STAGE の行のあとに出る",
               ("OPEN", "レビュー", "1") in got and not any(t[:2] == ("STAGE", "レビュー") for t in got)
               and r.stdout.splitlines()[-1] == "OPEN\tレビュー\t1", r.stdout)
+        check("OPEN の合計が先頭に出て、5以下なので INTEGRITY は出ない",
+              r.stdout.splitlines()[0] == "OPEN_TOTAL\t1" and "INTEGRITY" not in r.stdout, r.stdout)
         r = run_task(wt1, "metrics")
         check("shipped の数は SHIPPED だけ（NOTHING を入れない）",
               any(l.split("\t")[:2] == ["shipped", "1"] for l in r.stdout.splitlines()), r.stdout)
+        check("OPEN の合計が5なら INTEGRITY は出ない", metrics.open_total_lines({"レビュー": 3, "委譲": 2}) == ["OPEN_TOTAL\t5"],
+              repr(metrics.open_total_lines({"レビュー": 3, "委譲": 2})))
+        check("OPEN の合計が6なら INTEGRITY\\tWARN に STAGE_ORDER の順の内訳が付く",
+              metrics.open_total_lines({"レビュー": 3, "委譲": 2, "受け入れ": 1})
+              == ["OPEN_TOTAL\t6", "INTEGRITY\tWARN\t委譲=2,受け入れ=1,レビュー=3"],
+              repr(metrics.open_total_lines({"レビュー": 3, "委譲": 2, "受け入れ": 1})))
+        check("OPEN が無くても STAGE があれば OPEN_TOTAL\\t0、何も無ければ行なし",
+              metrics.open_total_lines({}) == ["OPEN_TOTAL\t0"] and metrics.stage_lines([], 1) == [], "")
 
 
 def test_lap_edge() -> None:
