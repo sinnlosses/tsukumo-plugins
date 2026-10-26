@@ -14,7 +14,7 @@
 - **段の所要時間**: `STAGE\t<段>\t<difficulty>\t<道>\t<件数>\t<中央値秒>\t<最大秒>`（道は `direct`・`normal`。`tw metrics --stages --days N` と同じ行）。
   終わりの無い段は `OPEN\t<段>\t<件数>`
 - **近道と通常の比較**: 期間によらず直近28日に送り出した件の道ごとの行
-  `ROUTE\t<direct|normal>\t<件数>\t<着手から送り出しまでの中央値秒|->\t<fix_within_7d|->`（`fix_within_7d` は `tw metrics` と同じ形）と、
+  `ROUTE\t<direct|normal>\t<件数>\t<着手から送り出しまでの中央値秒|->\t<fix_within_7d|->`（`fix_within_7d` は `tw metrics` と同じ形・同じ数え方で、`metrics.fix_tasks` を共有する）と、
   `DIRECT_GATE\t<direct の件数>\t20\t<reached|not_reached>`
 - **規則の棚卸し**: 設定の `hook_tally` のコマンドをリポジトリの根で `sh -c` で打った標準出力を
   そのまま。無い・落ちた・60秒で終わらないときは `-\t<理由>`
@@ -148,35 +148,20 @@ def route_rows(events: list[metrics.Event], days: int) -> list[str]:
     shipped = [
         e for e in events if e.kind == "ship" and e.fields.get("result") == "SHIPPED" and now - timedelta(days=days) <= e.at <= now
     ]
-    leads: dict[str, list[float]] = {route: [] for route in COMPARED_ROUTES}
-    fixed: dict[str, int] = {route: 0 for route in COMPARED_ROUTES}
-    counts: dict[str, int] = {route: 0 for route in COMPARED_ROUTES}
+    by_route: dict[str, list[metrics.Event]] = {route: [] for route in COMPARED_ROUTES}
     for ship in shipped:
-        own = [e for e in events if e.task == ship.task and e.at <= ship.at]
-        claims = [i for i, e in enumerate(own) if e.kind == "claim"]
-        if not claims:
-            continue
-        route = metrics._route([e for e in own[claims[-1] :] if e.kind != "ship" or e is ship])
-        if route not in COMPARED_ROUTES:
-            continue
-        counts[route] += 1
-        lead = metrics._lead_seconds(events, ship)
-        if lead is not None:
-            leads[route].append(lead)
-        fixed[route] += sum(
-            1
-            for n in events
-            if n.kind == "new"
-            and ship.task in str(n.fields.get("fixes", "")).split(",")
-            and ship.at <= n.at <= ship.at + metrics.FIX_WINDOW
-        )
+        run = metrics.shipped_run(events, ship)
+        if run is not None and metrics.route_of(run) in COMPARED_ROUTES:
+            by_route[metrics.route_of(run)].append(ship)
     rows = []
-    for route in COMPARED_ROUTES:
-        median = str(round(statistics.median(leads[route]))) if leads[route] else "-"
-        fix = f"{round(100 * fixed[route] / counts[route])}% ({fixed[route]}/{counts[route]})" if counts[route] else "-"
-        rows.append(f"ROUTE\t{route}\t{counts[route]}\t{median}\t{fix}")
-    reached = "reached" if counts["direct"] >= DIRECT_THRESHOLD else "not_reached"
-    rows.append(f"DIRECT_GATE\t{counts['direct']}\t{DIRECT_THRESHOLD}\t{reached}")
+    for route, ships in by_route.items():
+        leads = [s for s in (metrics.lead_seconds(events, e) for e in ships) if s is not None]
+        median = str(round(statistics.median(leads))) if leads else "-"
+        fixed = len(metrics.fix_tasks(events, ships))
+        fix = f"{round(100 * fixed / len(ships))}% ({fixed}/{len(ships)})" if ships else "-"
+        rows.append(f"ROUTE\t{route}\t{len(ships)}\t{median}\t{fix}")
+    direct = len(by_route["direct"])
+    rows.append(f"DIRECT_GATE\t{direct}\t{DIRECT_THRESHOLD}\t{'reached' if direct >= DIRECT_THRESHOLD else 'not_reached'}")
     return rows
 
 

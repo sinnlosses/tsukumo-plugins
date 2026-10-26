@@ -1171,7 +1171,35 @@ def test_intervention_effect() -> None:
         check("拒否の記録の時刻は小数の桁によらず読み、読めない行は飛ばす", [x.rule for x in got] == ["r", "r", "r"], repr(got))
 
 
+def test_route_comparison() -> None:
+    print("weekly.py 近道と通常の比較")
+    sys.path.insert(0, HERE)
+    import weekly as wk
+
+    metrics = wk.metrics
+
+    def ev(at: str, kind: str, task: str, **fields: object) -> "metrics.Event":
+        return metrics.Event(datetime.fromisoformat(at), kind, task, {"t": at, "event": kind, "task": task, "difficulty": "sonnet", **fields})
+
+    events = [
+        ev(after(3, 0), "claim", "A"), ev(after(3, 10), "lap", "A", stage="direct"), ev(after(3, 100), "ship", "A", result="SHIPPED"),
+        ev(after(3, 0), "claim", "B"), ev(after(3, 10), "lap", "B", stage="direct"), ev(after(3, 200), "ship", "B", result="SHIPPED"),
+        ev(after(2, 0), "claim", "C"), ev(after(2, 10), "lap", "C", stage="delegate"), ev(after(2, 300), "ship", "C", result="SHIPPED"),
+        ev(after(1, 0), "new", "F", fixes="A,B"),
+    ]
+    events.sort(key=lambda e: e.at)
+    rows = wk.route_rows(events, 28)
+    durations, _ = metrics.stage_durations(events, 28)
+    stage_routes = {route: len(v) for (stage, _d, route), v in durations.items() if stage == "計画"}
+    counts = {r.split("\t")[1]: int(r.split("\t")[2]) for r in rows if r.startswith("ROUTE")}
+    check("ROUTE の件数は STAGE の道と同じ run の選び方・道の判定で出る", counts == stage_routes, f"{counts} {stage_routes}")
+    column_fix = metrics.column_between(events, datetime.now(timezone.utc) - timedelta(days=28), datetime.now(timezone.utc) + timedelta(seconds=1))["fix_within_7d"]
+    check("1本の直しが direct の2件を直しても fix_within_7d は tw metrics と同じく1と数える",
+          "ROUTE\tdirect\t2\t150\t50% (1/2)" in rows and column_fix == "33% (1/3)", f"{rows} {column_fix}")
+
+
 def main() -> None:
+    test_route_comparison()
     test_viewpoint_vocabulary()
     test_weekly()
     test_slow_calls()

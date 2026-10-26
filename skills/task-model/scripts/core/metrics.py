@@ -89,9 +89,29 @@ def leading_number(value: str) -> float | None:
         return None
 
 
-def _lead_seconds(events: list[Event], shipped: Event) -> float | None:
+def lead_seconds(events: list[Event], shipped: Event) -> float | None:
     claims = [e for e in events if e.kind == "claim" and e.task == shipped.task and e.at <= shipped.at]
     return (shipped.at - claims[-1].at).total_seconds() if claims else None
+
+
+def shipped_run(events: list[Event], ship: Event) -> list[Event] | None:
+    """`ship` までの、そのタスクの最後の `claim` 以降の出来事（`ship` を含む）。`claim` が無ければ `None`。"""
+    own = [e for e in events if e.task == ship.task and e.at <= ship.at]
+    claims = [i for i, e in enumerate(own) if e.kind == "claim"]
+    if not claims:
+        return None
+    return [e for e in own[claims[-1] :] if e.kind != "ship" or e is ship]
+
+
+def fix_tasks(events: list[Event], shipped: list[Event]) -> set[str]:
+    """`shipped` のどれかを、送り出しから7日以内に `fixes` で結んだ直しのタスク。1本の直しは複数の元を指しても1本。"""
+    return {
+        n.task
+        for n in events
+        if n.kind == "new"
+        for s in shipped
+        if s.task in str(n.fields.get("fixes", "")).split(",") and s.at <= n.at <= s.at + FIX_WINDOW
+    }
 
 
 def verify_cause(events: list[Event], failed: Event) -> str:
@@ -122,7 +142,7 @@ def column_between(events: list[Event], start: datetime, end: datetime) -> dict[
     """`[start, end)` の流れの数（`tw metrics` の1列）。"""
     inside = [e for e in events if start <= e.at < end]
     shipped = [e for e in inside if e.kind == "ship" and e.fields.get("result") == "SHIPPED"]
-    leads = [s for s in (_lead_seconds(events, e) for e in shipped) if s is not None]
+    leads = [s for s in (lead_seconds(events, e) for e in shipped) if s is not None]
     verifies = [e for e in inside if e.kind == "verify"]
     verify_tasks = {e.task for e in verifies}
     reclaims = [
@@ -135,13 +155,7 @@ def column_between(events: list[Event], start: datetime, end: datetime) -> dict[
         e for e in inside if e.kind == "done" and not e.fields.get("dropped") and e.fields.get("reflection") != "skipped"
     ]
     clean = [e for e in dones if e.fields.get("reflection") == "none"]
-    fixes = {
-        n.task
-        for n in events
-        if n.kind == "new"
-        for s in shipped
-        if s.task in str(n.fields.get("fixes", "")).split(",") and s.at <= n.at <= s.at + FIX_WINDOW
-    }
+    fixes = fix_tasks(events, shipped)
     causes = [verify_cause(events, e) for e in verifies if e.fields.get("result") in VERIFY_FAILED_RESULTS]
     return {
         "shipped": str(len(shipped)),
@@ -167,7 +181,7 @@ def _stage_of(event: Event) -> str | None:
     return KIND_STAGE_NAMES.get(event.kind)
 
 
-def _route(run: list[Event]) -> str:
+def route_of(run: list[Event]) -> str:
     """`direct`（`lap direct` があり `lap delegate` が無い）・`split`（`model` 欄を持つ最初の `lap delegate` のモデルが
     `difficulty` と違う）・`escalated`（`split` のあとに `model` が `difficulty` と同じ `lap delegate` がある）・`normal`。"""
     modeled = [e for e in run if e.kind == "lap" and e.fields.get("stage") == "delegate" and "model" in e.fields]
@@ -339,12 +353,10 @@ def stage_durations(
         if e.kind == "ship" and e.fields.get("result") in ("SHIPPED", "NOTHING") and start <= e.at <= now
     ]
     for ship in shipped:
-        own = [e for e in events if e.task == ship.task and e.at <= ship.at]
-        claims = [i for i, e in enumerate(own) if e.kind == "claim"]
-        if not claims:
+        run = shipped_run(events, ship)
+        if run is None:
             continue
-        run = [e for e in own[claims[-1] :] if e.kind != "ship" or e is ship]
-        route = _route(run)
+        route = route_of(run)
         spans, run_opens = _run_spans(run)
         for stage, difficulty, _begin, _end, seconds in spans:
             durations.setdefault((stage, difficulty, route), []).append(seconds)
