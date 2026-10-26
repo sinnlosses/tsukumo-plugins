@@ -978,6 +978,9 @@ def test_escalation_triggers() -> None:
     check("起点より前の edit-churn は数えない", at([ev(0, "claim"), ev(1, "edit-churn"), ev(2, "lap", stage="delegate", edge="start")]) == [])
     opus = [metrics.Event(e.at, e.kind, e.task, {**e.fields, "difficulty": "opus"}) for e in base + [ev(5, "edit-churn")]]
     check("opus は次のモデルが -", at(opus)[0][2] == "-")
+    split = [ev(0, "claim", difficulty="opus"), ev(1, "lap", stage="delegate", edge="start", difficulty="opus", model="sonnet"),
+             ev(5, "edit-churn", difficulty="opus")]
+    check("分業（difficulty が opus で model が sonnet の委譲）は次のモデルが opus", at(split)[0][2] == "opus", str(at(split)))
 
     anchor = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(days=1)
 
