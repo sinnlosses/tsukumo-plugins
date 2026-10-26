@@ -145,11 +145,16 @@ def _record_long_delegation(payload: dict, cwd: str) -> None:
     steps = _step_count(path)
     if steps <= LONG_DELEGATION_STEPS:
         return
+    _record_count(payload, cwd, "long-delegation", steps=steps)
+
+
+def _record_count(payload: dict, cwd: str, kind: str, **fields: int) -> None:
+    """着手の控えがちょうど1件なら、件数として数える出来事を台帳へ残す（落ちても返却を変えない）。"""
     try:
         claims = ledger.open_claims(cwd=cwd)
         if len(claims) == 1:
             agent = agent_scope.agent_id(payload)
-            ledger.record_event(cwd, "long-delegation", claims[0], "", steps=steps, **({"agent": agent} if agent else {}))
+            ledger.record_event(cwd, kind, claims[0], "", **fields, **({"agent": agent} if agent else {}))
     except (gitinfo.GitCommandError, OSError):
         return
 
@@ -167,13 +172,7 @@ def _record_long_handback(payload: dict, body: str | None, cwd: str) -> None:
     tokens = estimated_tokens(body)
     if tokens <= HANDBACK_TOKEN_LIMIT:
         return
-    try:
-        claims = ledger.open_claims(cwd=cwd)
-        if len(claims) == 1:
-            agent = agent_scope.agent_id(payload)
-            ledger.record_event(cwd, "long-handback", claims[0], "", tokens=tokens, **({"agent": agent} if agent else {}))
-    except (gitinfo.GitCommandError, OSError):
-        return
+    _record_count(payload, cwd, "long-handback", tokens=tokens)
 
 
 def decide(payload: dict, refusal: Callable[[str, str | None], tuple[str, str] | None]) -> dict | None:
