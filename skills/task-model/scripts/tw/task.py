@@ -3,7 +3,7 @@
 # 宣言が無いと Python 3.9 が、長い日本語の行の読み込み位置によって「Non-UTF-8 code」で落ちる。
 """Beads に置いたタスクの運用を操作する入口コマンド。
 
-使い方: tw <status|new|claim|release|hold|done|ship|finish|land|config|config-doctor|show|find|edit|plan-check|plan-phases|verify|verify-check|accept|brief|pause|step|lap|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|ask-guard|lap-hook|ref-guard> ...
+使い方: tw <status|new|claim|release|hold|done|ship|finish|land|config|config-doctor|show|find|edit|plan-check|plan-phases|verify|verify-check|accept|brief|pause|step|lap|escalate-check|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|ask-guard|lap-hook|ref-guard> ...
 
 plugin の `bin/tw` から呼ぶ。`commit-guard`・`handback-guard` の
 `--agent-scoped` は plugin の `hooks/hooks.json` が付け、入力に `agent_id` があるとき（サブエージェント）だけ関門を掛ける（`commit-guard` は主のセッションの書き込みの `bd` だけ例外）。
@@ -41,6 +41,7 @@ import tw_brief
 import tw_claim
 import tw_config
 import tw_edit
+import tw_escalate
 import tw_finish
 import tw_handback
 import tw_hold
@@ -159,6 +160,12 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
         r"""自分の着手の印のタスクのオーケストレーターの段の頭を、`flow/` に `{"event":"lap","stage":"<段>"}` の1行として足す（メインが打つ。`delegate`・`retro` の `start` は plugin の hook〔`lap-hook`〕も書き、`end` は `lap T-xxx accept start`〔`tw accept` が打つものも手で打つものも。最後の `claim` 以降で段 `delegate` が開いていれば、続けてその `end` を書く。出力の行は足さない〕・`finish`〔`retro`〕が書く。`start` は打ったものも重ねて書き、所要の集計は閉じていない同じ段の2つ目の `start` を数えない。`end` は、最後の `claim` 以降でその段が開いているときだけ書く〔開いていなくても `LAPPED` は出す〕ので、`tw` が閉じた段に手で `end` を重ねても1つ。第3引数を付けると `"edge":"start"`／`"end"` も入り、段の所要時間は同じ段の `end − start`。省くと `edge` の欄は書かず、旧い呼び方のまま、その出来事から同じタスクの次の出来事までの差。第3引数が `start`・`end` のどちらでもなければ終了コード2）。`--model <haiku|sonnet|opus>` は段 `delegate` の端 `start` にだけ付けられ、行に `"model"` 欄を足す（委譲先のモデルが `difficulty` と違う分業と、そこから `difficulty` のモデルへ戻す引き上げで、メインが委譲の直前に打つ。ほかの段・端に付けると終了コード2で記録しない）。`<段>` は `direct`（委譲しない近道でメインが直し始めた）・`delegate`（委譲を投げた。メインで行う流れでは実装の段に入った）・`accept`（最後の段の返りを受けて受け入れに入った）・`review`（受け入れ役を起こした。差し戻しのあとも打つ）・`retro`（振り返りに入った）・`land`（別のリポジトリへの合流。台帳は着手側と作業先で別なので `tw land` は記録せず、着手した作業ツリーでメインが `start`／`end` を打つ）・`sync`（`tw ship` のあとのトラッカー反映とバックアップ）。ほかの段は終了コード2。着手の印が無ければ記録しない。記録に失敗しても終了コードは 0
 
 出力: `LAPPED\tT-xxx\t<段>`（第3引数を付けたときは末尾に `\t<start|end>`）・`NOT_CLAIMED\tT-xxx`""",
+    ),
+    "escalate-check": (
+        "開いている委譲が長引いていたら、difficulty を上げる提案の行を出す（止めない）。",
+        r"""台帳の `flow/` から、最後の `claim` 以降で開いている `delegate` の引き金を読む: `edit-churn`（同じファイルを5回書き換えた。`handback-guard` が残す）・`verify-failed-streak`（`verify` が2回続けて落ちた。`infra` の落ちは数えない）・`slow-delegation`（経過が直近28日の 委譲・同じ difficulty・normal の中央値〔`tw metrics --stages` と同じ元。標本5件未満なら見ない〕の3倍を超えた）。新しく立った引き金だけを出し、`escalate-suggest` を台帳へ残す（同じ委譲で同じ引き金は1回）。見張りの shell が定期的に打つ。着手の印が無い・読めないときは何も出さない
+
+出力: 引き金ごとに `ESCALATE_SUGGEST\tT-xxx\t<引き金>\t<詳細>\t<次のモデル>`（次のモデルは `haiku`→`sonnet`、`sonnet`→`opus`、`opus` は `-`）。終了コードはいつも0""",
     ),
     "relay": (
         "段の結果を、後の段が読む申し送り（Beads の comment）として鍵ごとに書く・読む。",
@@ -405,6 +412,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_lap.add_argument("stage")
     p_lap.add_argument("edge", nargs="?", default=None)
     p_lap.add_argument("--model", choices=taskfile.DIFFICULTY_VALUES, default=None)
+    sub.add_parser("escalate-check").add_argument("task_id")
     p_relay = sub.add_parser("relay")
     p_relay.add_argument("task_id")
     p_relay.add_argument("key")
@@ -615,6 +623,8 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
             tw_handback.cmd_step(toplevel, args.task_id, args.step)
         elif args.command == "lap":
             tw_handback.cmd_lap(toplevel, args.task_id, args.stage, args.edge, args.model)
+        elif args.command == "escalate-check":
+            tw_escalate.cmd_escalate_check(toplevel, args.task_id)
         elif args.command == "relay":
             tw_relay.cmd_relay(toplevel, args.task_id, args.key, args.body_file)
         elif args.command == "metrics":

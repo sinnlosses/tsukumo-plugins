@@ -6,12 +6,14 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timedelta, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 from selftest_support import RESULT_FULL, RESULT_REQUIRED, check, git, git_env, refuse_direct_run, say, weight, write  # noqa: E402
 import beads  # noqa: E402
 import commit_guard  # noqa: E402
+import escalation  # noqa: E402
 import gitinfo  # noqa: E402
 import handback_guard  # noqa: E402
 import ledger  # noqa: E402
@@ -944,6 +946,82 @@ def test_handback_guard_edit_churn() -> None:
             _send_edit(tmp, wt2, "a4", os.path.join(wt2, "c.txt"))
         check("着手の控えの無い作業ツリーでは数えない",
               not os.path.exists(os.path.join(wt2, ".tw", "local", ledger.EDIT_COUNTS_DIR_NAME)))
+
+
+def test_escalation_triggers() -> None:
+    say("escalation.triggers: 3つの引き金を台帳の出来事から読み、同じ委譲で1回だけ出す")
+    t0 = datetime(2026, 10, 26, 0, 0, tzinfo=timezone.utc)
+
+    def ev(sec: int, kind: str, **fields) -> metrics.Event:
+        return metrics.Event(t0 + timedelta(seconds=sec), kind, "T-1", {"difficulty": "sonnet", **fields})
+
+    base = [ev(0, "claim"), ev(1, "lap", stage="delegate", edge="start")]
+    verify_fail = lambda s, **f: ev(s, "verify", result="VERIFY_NOT_PASSED", cause="real", **f)  # noqa: E731
+    verify_pass = lambda s: ev(s, "verify", result="VERIFIED")  # noqa: E731
+    at = lambda events, sec=10, median=None: escalation.triggers(events, "T-1", t0 + timedelta(seconds=sec), median)  # noqa: E731
+    names = lambda found: [n for n, _d, _m in found]  # noqa: E731
+
+    check("引き金が無ければ空", at(base) == [])
+    check("edit-churn の出来事で出る（次のモデルは opus）", at(base + [ev(5, "edit-churn", edits=5)]) == [("edit-churn", "同じファイルを5回書き換えた", "opus")])
+    check("verify 1回の落ちでは出ない", at(base + [verify_fail(5)]) == [])
+    check("verify が2回続けて落ちると出る", names(at(base + [verify_fail(5), verify_fail(6)])) == ["verify-failed-streak"])
+    check("落ち→通過→落ちでは出ない", at(base + [verify_fail(5), verify_pass(6), verify_fail(7)]) == [])
+    check("infra の落ちは数えない（落ち・infra・落ちで出る）",
+          names(at(base + [verify_fail(5), ev(6, "verify", result="VERIFY_NOT_PASSED", cause="infra"), verify_fail(7)])) == ["verify-failed-streak"])
+    check("経過が中央値の3倍ちょうどでは出ない", at(base, sec=1 + 300, median=100.0) == [])
+    check("経過が中央値の3倍を超えると出る", names(at(base, sec=1 + 301, median=100.0)) == ["slow-delegation"])
+    check("中央値が無ければ経過が長くても出ない", at(base, sec=100000, median=None) == [])
+    check("delegate が end 済みなら出ない", at(base + [ev(5, "edit-churn"), ev(6, "lap", stage="delegate", edge="end")]) == [])
+    check("同じ引き金の escalate-suggest 済みなら出ない（別の引き金は出る）",
+          names(at(base + [ev(5, "edit-churn"), ev(6, "escalate-suggest", trigger="edit-churn"), verify_fail(7), verify_fail(8)]))
+          == ["verify-failed-streak"])
+    check("起点より前の edit-churn は数えない", at([ev(0, "claim"), ev(1, "edit-churn"), ev(2, "lap", stage="delegate", edge="start")]) == [])
+    opus = [metrics.Event(e.at, e.kind, e.task, {**e.fields, "difficulty": "opus"}) for e in base + [ev(5, "edit-churn")]]
+    check("opus は次のモデルが -", at(opus)[0][2] == "-")
+
+    anchor = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(days=1)
+
+    def delegation(n: int, seconds: int) -> list[metrics.Event]:
+        task = f"T-{10 + n}"
+        t = lambda s, kind, **f: metrics.Event(anchor + timedelta(hours=n, seconds=s), kind, task,  # noqa: E731
+                                                  {"difficulty": "sonnet", **f})
+        return [t(0, "claim"), t(1, "lap", stage="delegate", edge="start"), t(1 + seconds, "lap", stage="delegate", edge="end"),
+                t(2 + seconds, "ship", result="SHIPPED")]
+
+    five = [e for n in range(5) for e in delegation(n, 100)]
+    four = [e for n in range(4) for e in delegation(n, 100)]
+    check("中央値は標本5件で引ける", escalation.median_seconds(five, "sonnet") == 100, str(escalation.median_seconds(five, "sonnet")))
+    check("標本4件では None", escalation.median_seconds(four, "sonnet") is None)
+    now = datetime.now(timezone.utc)
+    live = [metrics.Event(now - timedelta(seconds=500), "claim", "T-99", {"difficulty": "sonnet"}),
+            metrics.Event(now - timedelta(seconds=400), "lap", "T-99", {"difficulty": "sonnet", "stage": "delegate", "edge": "start"})]
+    check("suggestions は台帳の中央値の3倍で slow-delegation を出す", names(escalation.suggestions(five + live, "T-99", now)) == ["slow-delegation"])
+    check("標本が足りなければ suggestions は出さない", escalation.suggestions(four + live, "T-99", now) == [])
+
+
+@weight(4)
+def test_escalate_check() -> None:
+    say("task.py escalate-check: 新しく立った引き金だけ ESCALATE_SUGGEST を出して台帳へ残し、止めない")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(tmp, verify="`true`")
+        commit_task(main_path, taskfile.Task("T-100", "長い委譲", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        r = run_task(wt1, "escalate-check", "T-100")
+        check("委譲が開いていなければ何も出さず終了コード0", r.returncode == 0 and r.stdout == "", r.stdout + r.stderr)
+        run_task(wt1, "lap", "T-100", "delegate", "start")
+        for _ in range(5):
+            _send_edit(tmp, wt1, "a1", os.path.join(wt1, "a.txt"))
+        r = run_task(wt1, "escalate-check", "T-100")
+        check("edit-churn の提案を1行出す（次のモデルは opus）",
+              r.returncode == 0 and r.stdout == "ESCALATE_SUGGEST\tT-100\tedit-churn\t同じファイルを5回書き換えた\topus\n", r.stdout + r.stderr)
+        suggested = [row for row in flow_rows(wt1) if row["event"] == "escalate-suggest"]
+        check("escalate-suggest を trigger つきで1行残す", len(suggested) == 1 and suggested[0]["trigger"] == "edit-churn", str(suggested))
+        r = run_task(wt1, "escalate-check", "T-100")
+        check("2回目は同じ引き金を出さない", r.returncode == 0 and r.stdout == "", r.stdout + r.stderr)
+        r = run_task(wt1, "escalate-check", "T-999")
+        check("着手の印が無いタスクには何も出さず終了コード0", r.returncode == 0 and r.stdout == "", r.stdout + r.stderr)
+        table = {line.split("\t")[0]: line.split("\t")[1:] for line in run_task(wt1, "metrics").stdout.splitlines()}
+        check("tw metrics の escalate_suggest に件数が出る", table.get("escalate_suggest") == ["1", "0"], str(table))
 
 
 def test_lap() -> None:
@@ -2366,6 +2444,8 @@ TESTS = (
     test_handback_guard,
     test_handback_guard_long_delegation_and_length,
     test_handback_guard_edit_churn,
+    test_escalation_triggers,
+    test_escalate_check,
     test_agent_scoped_outside_write,
     test_handback_guard_other_repo,
     test_step_stamps_other_repo,
