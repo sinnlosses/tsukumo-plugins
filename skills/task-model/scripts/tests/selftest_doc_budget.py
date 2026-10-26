@@ -49,7 +49,7 @@ LIMITS: dict[str, int] = {
     "task-workflow/parts/retrospect/retrospect.md": 3900,
     "task-workflow/parts/ship/ship.md": 7400,
     "task-model/WORKFLOW.md": 85000,
-    "task-model/tw-reference.md": 47200,
+    "task-model/tw-reference.md": 45300,
     "task-model/preflight.md": 800,
 }
 
@@ -63,6 +63,7 @@ UNLIMITED: frozenset[str] = frozenset(
         "retrospect/detail.md",
         "task-model/TRACKER.md",
         "task-model/legacy.md",
+        "task-model/hook-rationale.md",
         "task-workflow/flows/direct.md",
         "task-workflow/flows/hold.md",
         "task-workflow/flows/main.md",
