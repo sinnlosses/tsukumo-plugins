@@ -28,6 +28,7 @@ STOP_EVENTS = ("SubagentStop", "Stop")
 WRITE_TOOLS = ("Edit", "Write", "NotebookEdit")
 LONG_DELEGATION_STEPS = 100
 HANDBACK_TOKEN_LIMIT = 2000
+EDIT_CHURN_THRESHOLD = 5
 
 
 def run(
@@ -56,10 +57,27 @@ def _is_writer(payload: dict) -> bool:
         if payload.get("hook_event_name") == "PreToolUse" and payload.get("tool_name") in WRITE_TOOLS:
             if ledger.open_claims(cwd=cwd) and not _writes_outside_work(payload, cwd):
                 ledger.mark_agent_writer(agent_id, cwd=cwd)
+                _record_edit_churn(payload, cwd, agent_id)
             return False
         return ledger.is_agent_writer(agent_id, cwd=cwd)
     except (gitinfo.GitCommandError, OSError):
         return False
+
+
+def _record_edit_churn(payload: dict, cwd: str, agent_id: str) -> None:
+    """同じファイルへの書き換えが `EDIT_CHURN_THRESHOLD` 回にちょうど達したら、`edit-churn` を台帳へ1行残す（記録だけ）。"""
+    tool_input = payload.get("tool_input")
+    key = "notebook_path" if payload.get("tool_name") == "NotebookEdit" else "file_path"
+    path = tool_input.get(key) if isinstance(tool_input, dict) else None
+    claims = ledger.open_claims(cwd=cwd)
+    if not isinstance(path, str) or not path or len(claims) != 1:
+        return
+    try:
+        target = str((pathlib.Path(cwd) / path).resolve())
+        if ledger.count_agent_edit(agent_id, target, cwd=cwd) == EDIT_CHURN_THRESHOLD:
+            ledger.record_event(cwd, "edit-churn", claims[0], "", edits=EDIT_CHURN_THRESHOLD, agent=agent_id)
+    except (OSError, RuntimeError):
+        return
 
 
 def _writes_outside_work(payload: dict, cwd: str) -> bool:

@@ -22,6 +22,7 @@ LEDGER_DIR_NAME = "task-workflow"
 STATE_DIR_ENV = "TW_STATE_DIR"
 AGENT_WRITERS_DIR_NAME = "task-agent-writers"
 AGENT_TASKS_DIR_NAME = "task-agent-tasks"
+EDIT_COUNTS_DIR_NAME = "task-edit-counts"
 
 
 def ledger_root(cwd: str | None = None) -> str:
@@ -169,7 +170,7 @@ def clear_open_claim(task_id: str, cwd: str | None = None) -> None:
     if os.path.exists(path):
         os.remove(path)
     if not open_claims(cwd):
-        for name in (AGENT_WRITERS_DIR_NAME, AGENT_TASKS_DIR_NAME):
+        for name in (AGENT_WRITERS_DIR_NAME, AGENT_TASKS_DIR_NAME, EDIT_COUNTS_DIR_NAME):
             shutil.rmtree(os.path.join(stamps.worktree_state_dir(cwd), name), ignore_errors=True)
 
 
@@ -189,6 +190,29 @@ def mark_agent_writer(agent_id: str, cwd: str | None = None) -> None:
     os.makedirs(d, exist_ok=True)
     with open(os.path.join(d, agent_id), "w", encoding="utf-8"):
         pass
+
+
+def count_agent_edit(agent_id: str, path_key: str, cwd: str | None = None) -> int:
+    """サブエージェントが同じ書き先を書き換えた回数を1増やして、増やした後の回数を返す。
+
+    書き先は `path_key` の sha1 の先頭12桁で控え、パスそのものは残さない。控えが壊れていれば数え直す。
+    """
+    d = os.path.join(stamps.worktree_state_dir(cwd), EDIT_COUNTS_DIR_NAME)
+    os.makedirs(d, exist_ok=True)
+    path = os.path.join(d, agent_id)
+    counts: dict[str, int] = {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            loaded = json.load(f)
+        if isinstance(loaded, dict):
+            counts = {k: v for k, v in loaded.items() if isinstance(k, str) and isinstance(v, int)}
+    except (OSError, ValueError):
+        pass
+    key = hashlib.sha1(path_key.encode("utf-8")).hexdigest()[:12]
+    counts[key] = counts.get(key, 0) + 1
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(counts, f)
+    return counts[key]
 
 
 def record_agent_task(agent_id: str, session_id: str, cwd: str | None = None) -> bool:

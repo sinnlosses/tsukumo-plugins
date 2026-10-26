@@ -911,6 +911,41 @@ def test_handback_guard_long_delegation_and_length() -> None:
         check("ASCII は4文字を1トークンと数える", handback_guard.estimated_tokens("a" * 8000) == 2000)
 
 
+@weight(4)
+def test_handback_guard_edit_churn() -> None:
+    say("task.py handback-guard --agent-scoped: 同じファイルへの5回目の書き換えで edit-churn を残し、拒まない")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(tmp, verify="`true`")
+        commit_task(main_path, taskfile.Task("T-100", "書き直し", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+
+        def churn() -> list[dict]:
+            return [row for row in flow_rows(wt1) if row["event"] == "edit-churn"]
+
+        a, b = os.path.join(wt1, "a.txt"), os.path.join(wt1, "b.txt")
+        for _ in range(4):
+            _send_edit(tmp, wt1, "a1", a)
+        check("同じファイルへの4回では残さない", churn() == [])
+        _send_edit(tmp, wt1, "a1", a)
+        rows = churn()
+        check("5回目で edit-churn を edits・agent つきで1行残す（パスは入れない）",
+              len(rows) == 1 and rows[0]["edits"] == 5 and rows[0]["agent"] == "a1" and rows[0]["task"] == "T-100"
+              and "a.txt" not in json.dumps(rows[0]), str(rows))
+        _send_edit(tmp, wt1, "a1", a)
+        check("6回目では増やさない", len(churn()) == 1)
+        for _ in range(4):
+            _send_edit(tmp, wt1, "a2", a)
+            _send_edit(tmp, wt1, "a2", b)
+        check("別のサブエージェント・別のファイルは別に数える（4回ずつでは残さない）", len(churn()) == 1)
+        for _ in range(5):
+            _send_edit(tmp, wt1, "a3", os.path.join(tmp, "outside.txt"))
+        check("作業ツリーの外への書き換えは数えない", len(churn()) == 1)
+        for _ in range(5):
+            _send_edit(tmp, wt2, "a4", os.path.join(wt2, "c.txt"))
+        check("着手の控えの無い作業ツリーでは数えない",
+              not os.path.exists(os.path.join(wt2, ".tw", "local", ledger.EDIT_COUNTS_DIR_NAME)))
+
+
 def test_lap() -> None:
     say("task.py lap: 5つの段が flow に1行ずつ書かれ、知らない段は拒み、印が無ければ記録しない")
     with tempfile.TemporaryDirectory() as tmp:
@@ -2330,6 +2365,7 @@ TESTS = (
     test_commit_guard_covers_inactive_ref_guard,
     test_handback_guard,
     test_handback_guard_long_delegation_and_length,
+    test_handback_guard_edit_churn,
     test_agent_scoped_outside_write,
     test_handback_guard_other_repo,
     test_step_stamps_other_repo,
