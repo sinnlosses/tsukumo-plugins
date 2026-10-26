@@ -81,6 +81,7 @@ verify = "pnpm check"        # 受け入れ判定に使う。打つものが無�
 | `hook_tally` | 直近30日の hook ごとの拒否の回数を出すコマンド。読むのは `tw` ではなく週ごとの横断の振り返りで、無ければその観点を飛ばす |
 | `review_code_globs` | 文書の拡張子（`.md` など）でもコード扱いにして、受け入れの新しい文脈のレビューを掛けるパスの glob の配列。最上位に `review_code_globs = ["skills/**", "agents/**"]` の形で書く。`**` は `/` を越え、`*`・`?` は越えない。空の配列でも書かなくてもよく、無ければ文書の拡張子だけの差分は `SKIP\tdocs-only`。`review_needed.py` が読む |
 | `shell_write_guard` | `tw`（既定）・`project`。`project` なら `tw commit-guard` は `SHELL_WRITE` を見ない（プロジェクトが自前のシェル書き込みの hook で止める印。ほかの規則は変わらない）。欄の形は `tw config --schema`。書く口は `tw config set shell_write_guard tw\|project` |
+| `loop_max_ships` | `"12"` の形の1以上の整数（既定12）。`/loop` が1日に送ってよい件数の上限で、`tw loop-check` が読む |
 | `steps` | スキルの並び。最上位に `steps = ["<全名>", …]`（文字列の配列）で書く。1つ以上・重複なし。並びの順が呼ぶ順。無ければ `tw config --schema` の `default`（`tw` と同じ plugin の候補を、`metadata` の `workflow-step-order` の小さい順に並べたもの）。名前は同じ `values`（SKILL.md の frontmatter の `metadata` に `workflow-step: "true"` を持つスキル）の全名。`metadata` の `workflow-brief-<役>`（役の語は `tw brief --help`。SKILL.md のディレクトリからの相対パス）は実装役・受け入れ役への依頼文の型で、`tw brief` が並びの順で最初に持つスキルのものを読む。書くのは `tw config set steps '<1行の JSON の配列>'` |
 
 欄の形（各欄の既定と候補）は、ここに書き写さず `tw config --schema` が出す。廃止した `flow` の行と `[parts]` の表は、設定に残っていれば `INVALID`（終了コード3）で止まる。
@@ -341,10 +342,8 @@ front matter（`id`・`summary`・`status`・`difficulty`・`loopable`・近道�
 言い切りかどうかは文面から機械で決められず、根拠の行を一律に求めると聞いて決まっただけの項目にも要るので、検査には足さない。
 
 **手順を書く文書の変更の計画に順の確かめの段を求める検査**: `tw plan-check`（`tw_edit._print_plan_check`）は印・段の見出しと欄（`- 前の段:`・`- 触るファイル:`）の形・名指すファイルの変わりだけを見て、段の本文の文は読まない（`taskfile.plan_step_specs`）。
-計画が機械に渡す欄は `- 前の段:`・`- 触るファイル:` の 2 つだけで、コマンドの手順を書く文書を直す計画かを示す欄も印も無く、
-名指すファイルのパスからも手順を書く文書とそれ以外の文書を分けられない。段の文面の判定は自由記述の解釈になるので、`plan-check` には足さず、実装役の決まり（`implementer-brief.md`）に置く。
-同じ理由で、検査を置き換える・足す段が弱めた実装で落ちる確認を求めているかも見ない。名指すパス（`test/architecture` など）から検査を扱う計画とは分けられても、段が自己テストを求めているかは本文の解釈になる。
-計画が頼る印・値・イベントを実機で確かめたかも見ない。「前提の裏取り」の行は書式の決まった欄ではなく、計画が実行で決まる値に頼っているか・2列目が読んだ場所か打ったコマンドかは本文の解釈になる（決まりは `implementer-brief.md` の「作業の作法」）。
+計画が機械に渡す欄は `- 前の段:`・`- 触るファイル:` の 2 つだけで、手順を書く文書を直す計画かを示す欄も印も無い。段の文面の判定は自由記述の解釈になるので、`plan-check` には足さず、実装役の決まり（`implementer-brief.md`）に置く。
+同じ理由で、検査を置き換える・足す段が弱めた実装で落ちる確認を求めているか、計画が頼る印・値・イベントを実機で確かめたか（「前提の裏取り」の行は書式の決まった欄ではない）も見ない（決まりは `implementer-brief.md` の「作業の作法」）。
 
 ## status と着手の印
 
