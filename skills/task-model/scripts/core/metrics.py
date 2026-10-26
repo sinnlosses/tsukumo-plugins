@@ -35,7 +35,7 @@ HIGHER_IS_WORSE = (
     "escalate_suggest",
 )
 OPEN_LIMIT = 5
-FIX_WINDOW =timedelta(days=7)
+FIX_WINDOW = timedelta(days=7)
 LOWER_IS_WORSE = ("shipped", "reflection_none_ratio")
 STAGE_ORDER = ("計画", "直し", "委譲", "検証", "受け入れ", "レビュー", "振り返り", "合流", "送り出し", "反映")
 ROUTES = ("direct", "normal", "split", "escalated")
