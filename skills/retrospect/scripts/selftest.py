@@ -1206,7 +1206,7 @@ def test_route_comparison() -> None:
     for i in range(20):
         many += [ev(after(2, i), "claim", f"N{i}"), ev(after(2, 400 + i), "lap", f"N{i}", stage="delegate"), ev(after(2, 500 + i), "ship", f"N{i}", result="SHIPPED")]
     many.sort(key=lambda e: e.at)
-    check("direct が 2/23 = 9% なら ok", "DIRECT_SHARE\t2\t23\t8.7%\tok" in wk.route_rows(many, 28), str(wk.route_rows(many, 28)))
+    check("direct が 2/23 = 8.7% なら ok", "DIRECT_SHARE\t2\t23\t8.7%\tok" in wk.route_rows(many, 28), str(wk.route_rows(many, 28)))
     many = [e for e in many if e.task != "B"]
     low = wk.route_rows(many, 28)
     check("direct が送り出しの 5% 未満（1/22）なら DIRECT_SHARE が below の行を出す", "DIRECT_SHARE\t1\t22\t4.5%\tbelow" in low, str(low))
