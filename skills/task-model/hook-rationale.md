@@ -28,3 +28,9 @@ plugin のサブエージェントは frontmatter の `hooks`・`permissionMode`
 | --- | --- |
 | シェルでのファイルの書き換え拒否 | git の hook はコミット・参照の更新・checkout などの git の操作のときにしか走らず、ファイルを書いた時点では何も起こらない。事後の差分検査（`handback-guard`・`plan-check`・`verify-check`）は中身を見るが書いた手段を見ないので、「`Edit`・`Write` で書く」は差分から判定できない |
 | 検証コマンドの直打ち拒否 | 検証コマンドは git を通らないので、git の hook は打ったことを知らない。打った結果は `verify-check` の控えの有無として事後に分かるが、控えを残さない直打ちそのものは止められない |
+
+#### `handback-guard` が構造の節の欠けを `additionalContext` で知らせる件
+
+`## 構造の変更` の節の欠けは `graph` の見栄えにしか効かず、作業の安全に効かないので、拒まず通して `PreToolUse` の `additionalContext` で知らせ、`hook-denials/` に `mode: "log-only"` の行で残す（`ledger.record_denial` の `mode`。tsukumo の `hook-denial-tally` は数えず `hook-denial-replay` が拾い、`material.py` と `intervention_effect.py` の `read_denials` も除く）。
+確かめた範囲: 公式 docs（https://code.claude.com/docs/en/hooks ）は `PreToolUse` が `additionalContext` を受けると書く。入るのは `SubagentHandback` を呼んだエージェントの文脈と読める（docs が明記しているわけではない）。
+確かめていないこと: 生きた環境で主に届くか、`SubagentHandback` は呼ぶと走りが終わるので呼んだ側が読めるか、`permissionDecision` を省いた `PreToolUse` 単独で通るか。
