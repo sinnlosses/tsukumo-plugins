@@ -135,7 +135,8 @@ def test_weekly() -> None:
         check(
             "近道と通常の比較は道ごとの件数・所要の中央値・fix_within_7d と、20件に届いたかを出す",
             lines_of("近道と通常の比較", out)
-            == ["ROUTE\tdirect\t0\t-\t-", "ROUTE\tnormal\t1\t518400\t0% (0/1)", "DIRECT_GATE\t0\t20\tnot_reached"],
+            == ["ROUTE\tdirect\t0\t-\t-", "ROUTE\tnormal\t1\t518400\t0% (0/1)", "DIRECT_GATE\t0\t20\tnot_reached",
+               "DIRECT_SHARE\t0\t2\t0.0%\tbelow"],
             out,
         )
         check("期間内に送り出した段が無ければ段の所要時間は EMPTY", lines_of("段の所要時間", out) == ["EMPTY"], out)
@@ -1199,6 +1200,16 @@ def test_route_comparison() -> None:
     column_fix = metrics.column_between(events, datetime.now(timezone.utc) - timedelta(days=28), datetime.now(timezone.utc) + timedelta(seconds=1))["fix_within_7d"]
     check("1本の直しが direct の2件を直しても fix_within_7d は tw metrics と同じく1と数える",
           "ROUTE\tdirect\t2\t150\t50% (1/2)" in rows and column_fix == "33% (1/3)", f"{rows} {column_fix}")
+    check("direct が送り出しの 5% 以上なら DIRECT_SHARE は ok", "DIRECT_SHARE\t2\t3\t66.7%\tok" in rows, str(rows))
+
+    many = list(events)
+    for i in range(20):
+        many += [ev(after(2, i), "claim", f"N{i}"), ev(after(2, 400 + i), "lap", f"N{i}", stage="delegate"), ev(after(2, 500 + i), "ship", f"N{i}", result="SHIPPED")]
+    many.sort(key=lambda e: e.at)
+    check("direct が 2/23 = 9% なら ok", "DIRECT_SHARE\t2\t23\t8.7%\tok" in wk.route_rows(many, 28), str(wk.route_rows(many, 28)))
+    many = [e for e in many if e.task != "B"]
+    low = wk.route_rows(many, 28)
+    check("direct が送り出しの 5% 未満（1/22）なら DIRECT_SHARE が below の行を出す", "DIRECT_SHARE\t1\t22\t4.5%\tbelow" in low, str(low))
 
 
 def test_flaky_tests() -> None:
