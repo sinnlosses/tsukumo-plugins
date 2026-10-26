@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import tempfile
+from datetime import datetime, timedelta, timezone
 
 from selftest_support import RESULT_FULL, check, git, refuse_direct_run, say, write  # noqa: E402
 import beads  # noqa: E402
+import ledger  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_fixtures import BODY, commit_task, flow_rows, make_repo, run_task  # noqa: E402
 
@@ -46,6 +49,55 @@ def test_finish_bundles_done_commit_ship() -> None:
             and ("SHIPPED\t" in r.stdout or "NOTHING" in r.stdout),
             r.stdout + r.stderr,
         )
+
+
+def _ship_rows(wt: str, **days_ago: int) -> None:
+    """`{ID: 何日前}` の SHIPPED を台帳に足す（ID の `-` は `_` で渡す）。"""
+    now = datetime.now(timezone.utc)
+    rows = [
+        json.dumps({"t": (now - timedelta(days=d)).isoformat(timespec="seconds"), "event": "ship",
+                    "task": k.replace("_", "-"), "result": "SHIPPED"})
+        for k, d in days_ago.items()
+    ]
+    write(os.path.join(ledger.flow_dir(ledger.ledger_root(cwd=wt)), "2000-01.jsonl"), "\n".join(rows) + "\n")
+
+
+def _finish_lines(wt: str, message: str, *args: str) -> tuple[int, list[str], str]:
+    r = run_task(wt, "finish", "T-100", "--result-file", "-", "--message", message, *args, stdin=RESULT)
+    return r.returncode, [l for l in r.stdout.splitlines() if l.startswith("WARN_FIX_LINK")], r.stdout + r.stderr
+
+
+def test_finish_warns_fix_link() -> None:
+    say("task.py finish: 直近7日に送った別IDを含むコミットは WARN_FIX_LINK を COMMITTED と SHIPPED の間に出す（拒まない）")
+    with tempfile.TemporaryDirectory() as tmp:
+        _main, wt1 = _claimed(tmp)
+        _ship_rows(wt1, T_200=1, T_201=8, T_100=3)
+        write(os.path.join(wt1, "work.txt"), "x")
+        code, warns, out = _finish_lines(wt1, "T-200 の取りこぼしと T-201 と T-100 を直す", "--add", "work.txt")
+        kinds = [l.split("\t", 1)[0] for l in out.splitlines()]
+        check("7日以内の T-200 だけ出る。8日前の T-201 と自分の T-100 は出ない",
+              code == 0 and warns == ["WARN_FIX_LINK\tT-200"], out)
+        check("COMMITTED → WARN_FIX_LINK → SHIPPED の順",
+              [k for k in kinds if k in ("COMMITTED", "WARN_FIX_LINK", "SHIPPED")] == ["COMMITTED", "WARN_FIX_LINK", "SHIPPED"], out)
+    with tempfile.TemporaryDirectory() as tmp:
+        _main, wt1 = _claimed(tmp)
+        _ship_rows(wt1, T_200=1)
+        write(os.path.join(wt1, "work.txt"), "x")
+        code, warns, out = _finish_lines(wt1, "ふつうの完了", "--add", "work.txt")
+        check("件名にも本文にも ID が無ければ出ない", code == 0 and warns == [], out)
+    with tempfile.TemporaryDirectory() as tmp:
+        _main, wt1 = _claimed(tmp)
+        _ship_rows(wt1, T_200=1)
+        code, warns, out = _finish_lines(wt1, "T-200 を直す")
+        check("差分が無く NO_COMMIT なら出ない", code == 0 and "NO_COMMIT" in out and warns == [], out)
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1 = _claimed(tmp)
+        _ship_rows(wt1, T_201=2)
+        git(main_path, "commit", "--allow-empty", "-q", "-m", "T-201: 追加")
+        target = git(main_path, "rev-parse", "HEAD").stdout.strip()
+        write(os.path.join(wt1, "work.txt"), "x")
+        code, warns, out = _finish_lines(wt1, f"元に戻す\n\nThis reverts commit {target}.", "--add", "work.txt")
+        check("戻すの件名と This reverts commit の先の ID が出る", code == 0 and warns == ["WARN_FIX_LINK\tT-201"], out)
 
 
 def test_finish_refuses_missing_result_lines() -> None:
@@ -412,6 +464,7 @@ def test_finish_twice_without_resume_is_refused() -> None:
 
 
 TESTS = (
+    test_finish_warns_fix_link,
     test_finish_without_add_skips_drifted_submodule,
     test_finish_without_add_skips_added_and_removed_submodule,
     test_finish_without_add_skips_moved_submodule_and_url_change,
