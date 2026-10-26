@@ -42,7 +42,7 @@ metadata:
 
 - 申し送り（`finished`・`skipped` で返す前に必ず書く）: `tw relay T-xxx 受け入れ --body-file -` に、判定の語と、受け入れ役の最後の返却の
   `- 材料:`・`- 指摘:`・`- 付随:`・`- 目視:`・`- 預けること:` の行（差し戻しの回をまたいだ `- 指摘:` の `規約:` の行も）を渡す。`skipped` は飛ばしたわけの1行を渡す
-- `finished`: 判定が `受け入れ` か `預ける`（`accept.md` の表で手順7へ進むもの）で済んだら、オーケストレーターの「進み具合の帯（`work_plan`）」の表の
+- `finished`: 判定が `受け入れ` か、手順7へ進む `預ける`（3回目の `tw hold` で外したものを除く）で済んだら、「進み具合の帯（`work_plan`）」の表の
   `--through 受け入れ` の行どおりに `work_plan` を呼び、`phaseSummary` に判定のまとめを書く
 - `skipped`: `work_plan` の `skippedPhases` にこの段の名前（帯の段が `tw plan-phases` の並びにあるときだけ。近道の並びには無い）を入れて進める
-- `stopped`（`accept.md` の表で手順7へ進まずに止まるもの。人に預けて `tw release T-xxx` したときなど）: `report` の `workPlanClosing` に `stopped` を渡し、後の段を呼ばない
+- `stopped`（手順7へ進まずに止まるもの。人に預けて `tw release T-xxx` したとき、3回目に `- 預けること:` が残って `tw hold` で外したときなど）: `report` の `workPlanClosing` に `stopped` を渡し、後の段を呼ばない

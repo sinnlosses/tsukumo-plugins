@@ -40,11 +40,11 @@
 | `CONTINUE` で、`tw ship` が `SHIPPED`・`NOTHING` で、取り直した `tw status` に `着手可否` が `READY` かつ `loopable` が `Y` の行がある | 続ける |
 | `tw ship` が `SHIPPED`・`NOTHING` で、その行が無い | 続けない |
 | `tw ship` がほかの先頭語か、判断待ちで外したとき以外で手順8より前で終わった | 続けない |
-| 判断待ちで外し、`tw loop-check` が `CONTINUE` で、`tw hold` が `CONTINUE\tY` を出し、作業ツリーに作業（`claim` した時点より後のコミットか変更）が無い | 続ける |
+| 判断待ちで外し、`tw loop-check` が `CONTINUE` で、`tw hold` が `CONTINUE\tY` を出し、作業ツリーに `claim` 後のコミットも変更も無い | 続ける |
 | `tw hold` が `CONTINUE\tN` を出したか、作業が残っている（次の `claim` が `DIRTY` で止まる） | 続けず、人の判断待ちを添えて終える |
 
-判断待ちで外すのは、`tw ask-guard` に拒まれたときと、実装役が人の判断を要すると止めて返したとき（frame が実装と合わない等）。
-論点を `tw hold T-xxx --reason-file -` に渡して外し、`loopable: N` には直さない（着手中の Y→N は `tw edit` が拒む）。
+判断待ちで外すのは、`tw ask-guard` に拒まれたとき、実装役が人の判断を要すると止めて返したとき（frame が実装と合わない等）、3回目の受け入れに `- 預けること:` が残ったとき。
+論点を `tw hold T-xxx --reason-file -` に渡して外し、`loopable: N` には直さない。
 `report` の outcome は `stopped` でよいが、`favor` に判断のお願いを書いて終えない（`/loop` が切れる）。
 
 続行するときは、止めずに次の1件へ進む。
