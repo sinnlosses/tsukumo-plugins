@@ -882,7 +882,7 @@ def test_done_required_lines() -> None:
 
 
 def test_done_replay_diff_notice() -> None:
-    say("task.py done: harness の面を名指す計画で - 再演の差: が無ければ REPLAY_DIFF_MISSING を出す（拒まない）。古い - 再演の差: の行も読む")
+    say("task.py done: harness の面を名指す計画で - タスクの再試の差: が無ければ REPLAY_DIFF_MISSING を出す（拒まない）。古い - 再演の差: の行も読む")
     replayed = INTERVENTION + "\n- タスクの再試の差: 5件 × k=2 で通過率 +1ポイント（no observed effect）"
     legacy = INTERVENTION + "\n- 再演の差: 5件 × k=2 で通過率 +1ポイント（no observed effect）"
     cases = (
