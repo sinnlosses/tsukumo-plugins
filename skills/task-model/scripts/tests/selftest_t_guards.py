@@ -524,10 +524,11 @@ def _plugin_hooks() -> list[tuple[str, str | None, list[str]]]:
             for event, groups in hooks.items() for group in groups for h in group["hooks"]]
 
 
-def _run_hook(argv: list[str], payload: dict | str, env: dict, root: str = PLUGIN_ROOT) -> subprocess.CompletedProcess[str]:
+def _run_hook(argv: list[str], payload: dict | str, env: dict, root: str = PLUGIN_ROOT,
+              cwd: str | None = None) -> subprocess.CompletedProcess[str]:
     resolved = [a.replace("${CLAUDE_PLUGIN_ROOT}", root) for a in argv]
     stdin = payload if isinstance(payload, str) else json.dumps(payload)
-    return subprocess.run(resolved, input=stdin, capture_output=True, text=True, env=env)
+    return subprocess.run(resolved, input=stdin, capture_output=True, text=True, env=env, cwd=cwd)
 
 
 @weight(6)
@@ -567,7 +568,7 @@ def test_agent_scoped_guard() -> None:
 
         all_hooks = _plugin_hooks()
         check("hooks/hooks.json の hook はすべて exec 形で ${CLAUDE_PLUGIN_ROOT}/bin/tw-hook を呼ぶ",
-              len(all_hooks) == 8 and all(argv[0] == "${CLAUDE_PLUGIN_ROOT}/bin/tw-hook" and len(argv) > 1 for _, _, argv in all_hooks),
+              len(all_hooks) == 10 and all(argv[0] == "${CLAUDE_PLUGIN_ROOT}/bin/tw-hook" and len(argv) > 1 for _, _, argv in all_hooks),
               str(all_hooks))
         hooks = [argv for _, _, argv in all_hooks if "--agent-scoped" in argv]
         ask_hooks = [argv for _, _, argv in all_hooks if "ask-guard" in argv]
@@ -624,6 +625,22 @@ def test_agent_scoped_guard() -> None:
         check("hooks.json の SubagentStop の lap-hook は開いている review の end を書き、stdout は空",
               r.returncode == 0 and r.stdout == "" and [(e["task"], e.get("edge")) for e in review_laps] == [("T-100", "start"), ("T-100", "end")],
               repr(review_laps) + r.stdout + r.stderr)
+        beat_hooks = [(e, m, argv) for e, m, argv in all_hooks if "heartbeat" in argv]
+        check("hooks/hooks.json は PostToolUse・PostToolUseFailure で matcher の無い heartbeat を1つずつ呼ぶ",
+              sorted(e for e, _, _ in beat_hooks) == ["PostToolUse", "PostToolUseFailure"]
+              and all(m is None and argv[1:] == ["heartbeat"] for _, m, argv in beat_hooks),
+              str(beat_hooks))
+        beats = os.path.join(wt1, ".tw", "local", ledger.AGENT_BEATS_DIR_NAME)
+        for event, _, hook in beat_hooks:
+            tool = {"hook_event_name": event, "tool_name": "Read", "cwd": wt1}
+            agent = f"a-beat-{event}"
+            r = _run_hook(hook, {**tool, "agent_id": agent}, env, cwd=wt1)
+            check(f"hooks.json の {event} の heartbeat は agent_id 付きなら控えのある作業ツリーに鼓動を書く",
+                  r.returncode == 0 and r.stdout == "" and os.path.isfile(os.path.join(beats, agent)), r.stdout + r.stderr)
+            before = sorted(os.listdir(beats))
+            r = _run_hook(hook, tool, env, cwd=wt1)
+            check(f"hooks.json の {event} の heartbeat は agent_id が無ければ書かない",
+                  r.returncode == 0 and r.stdout == "" and sorted(os.listdir(beats)) == before, r.stdout + r.stderr)
         fake_root = tempfile.mkdtemp(dir=tmp)
         os.makedirs(os.path.join(fake_root, "bin"))
         shutil.copy2(os.path.join(PLUGIN_ROOT, "bin", "tw-hook"), os.path.join(fake_root, "bin", "tw-hook"))
@@ -632,6 +649,11 @@ def test_agent_scoped_guard() -> None:
         os.chmod(fake_tw, 0o755)
         crashed = {"hook_event_name": "PreToolUse", "cwd": wt1, "agent_id": "a-writer-1"}
         for event, matcher, hook in all_hooks:
+            if hook[1:] == ["heartbeat"]:
+                r = _run_hook(hook, crashed, env, root=fake_root, cwd=wt1)
+                check(f"hooks.json の {event} の heartbeat は tw を呼ばないので、tw が落ちても終了コード0",
+                      r.returncode == 0 and r.stdout == "" and "boom" not in r.stderr, r.stdout + r.stderr)
+                continue
             blocks = event == "PreToolUse" and any(g in hook for g in ("commit-guard", "handback-guard", "ask-guard"))
             r = _run_hook(hook, crashed, env, root=fake_root)
             check(f"hooks.json の {event}（matcher {matcher}）の {hook[1:]} は、サブエージェントで tw が落ちると"
@@ -694,9 +716,11 @@ def test_agent_scoped_reader_handback() -> None:
         _send_edit(tmp, wt2, "a-elsewhere")
         check("着手の控えの無い作業ツリーでは印を書かない",
               not os.path.exists(os.path.join(wt2, ".tw", "local", ledger.AGENT_WRITERS_DIR_NAME)))
+        write(os.path.join(wt1, ".tw", "local", ledger.AGENT_BEATS_DIR_NAME, "a-writer"), "1\n")
         run_task(wt1, "release", "T-100")
-        check("控えが無くなると印も消える",
-              not os.path.exists(os.path.join(wt1, ".tw", "local", ledger.AGENT_WRITERS_DIR_NAME)))
+        check("控えが無くなると印も鼓動も消える",
+              not os.path.exists(os.path.join(wt1, ".tw", "local", ledger.AGENT_WRITERS_DIR_NAME))
+              and not os.path.exists(os.path.join(wt1, ".tw", "local", ledger.AGENT_BEATS_DIR_NAME)))
 
 
 @weight(8)

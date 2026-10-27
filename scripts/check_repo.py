@@ -71,6 +71,8 @@ PLUGIN_HOOKS = (
     ("SubagentStop", None, ("handback-guard", "--agent-scoped")),
     ("SubagentStop", "(^|:)acceptor$", ("lap-hook",)),
     ("SubagentStart", "(^|:)(general-purpose|no-delegate)$", ("lap-hook",)),
+    ("PostToolUse", None, ("heartbeat",)),
+    ("PostToolUseFailure", None, ("heartbeat",)),
 )
 
 ACCEPTOR_DISALLOWED_TOOLS = ("Agent", "Edit", "Write", "NotebookEdit")

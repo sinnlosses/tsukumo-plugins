@@ -23,6 +23,7 @@ STATE_DIR_ENV = "TW_STATE_DIR"
 AGENT_WRITERS_DIR_NAME = "task-agent-writers"
 AGENT_TASKS_DIR_NAME = "task-agent-tasks"
 EDIT_COUNTS_DIR_NAME = "task-edit-counts"
+AGENT_BEATS_DIR_NAME = "task-agent-beats"
 
 
 def ledger_root(cwd: str | None = None) -> str:
@@ -176,7 +177,7 @@ def clear_open_claim(task_id: str, cwd: str | None = None) -> None:
     if os.path.exists(path):
         os.remove(path)
     if not open_claims(cwd):
-        for name in (AGENT_WRITERS_DIR_NAME, AGENT_TASKS_DIR_NAME, EDIT_COUNTS_DIR_NAME):
+        for name in (AGENT_WRITERS_DIR_NAME, AGENT_TASKS_DIR_NAME, EDIT_COUNTS_DIR_NAME, AGENT_BEATS_DIR_NAME):
             shutil.rmtree(os.path.join(stamps.worktree_state_dir(cwd), name), ignore_errors=True)
 
 

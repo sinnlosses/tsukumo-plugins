@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -53,9 +54,57 @@ def make_root(tmp: str, shell: str, with_tw: bool) -> str:
     return hook
 
 
-def run(hook: str, args: list[str], stdin: str, tw_exit: int) -> subprocess.CompletedProcess[str]:
+def run(hook: str, args: list[str], stdin: str, tw_exit: int, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
     env = {"PATH": "/usr/bin:/bin", "FAKE_TW_EXIT": str(tw_exit)}
-    return subprocess.run([hook, *args], input=stdin, capture_output=True, text=True, env=env)
+    return subprocess.run([hook, *args], input=stdin, capture_output=True, text=True, env=env, cwd=cwd)
+
+
+def check_heartbeat(tmp: str, hook: str) -> None:
+    repo = os.path.join(tmp, "repo")
+    os.makedirs(repo)
+    subprocess.run(["git", "init", "-q", repo], check=True)
+    local = os.path.join(repo, ".tw", "local")
+    beats = os.path.join(local, "task-agent-beats")
+
+    def beat(payload: dict, where: str = repo) -> subprocess.CompletedProcess[str]:
+        return run(hook, ["heartbeat"], json.dumps(payload), 1, cwd=where)
+
+    tool = {"hook_event_name": "PostToolUse", "tool_name": "Read", "cwd": repo}
+    r = beat({**tool, "agent_id": "a-1"})
+    check("heartbeat は着手の控えが無ければ書かず、.tw/local も作らない",
+          r.returncode == 0 and r.stdout == "" and not os.path.exists(local), repr((r.returncode, r.stdout, r.stderr)))
+
+    os.makedirs(os.path.join(local, "task-open-claims"))
+    with open(os.path.join(local, "task-open-claims", "T-1"), "w", encoding="utf-8"):
+        pass
+    before = int(time.time())
+    r = beat({**tool, "agent_id": "a-1"})
+    after = int(time.time())
+    try:
+        with open(os.path.join(beats, "a-1"), encoding="utf-8") as f:
+            written = f.read().strip()
+    except OSError:
+        written = ""
+    check("heartbeat は控えがあり agent_id 付きなら task-agent-beats/<agent_id> に今の epoch 秒を書き、tw を呼ばない",
+          r.returncode == 0 and r.stdout == "" and "fake tw" not in r.stderr
+          and written.isdigit() and before - 5 <= int(written) <= after + 5,
+          repr((r.returncode, r.stdout, r.stderr, written)))
+
+    for label, payload in (
+        ("agent_id の無い入力（主のセッション）", tool),
+        ("文字列の中にしか agent_id が無い入力", {**tool, "tool_input": {"command": 'echo "agent_id": "a-evil"'}}),
+        ("ファイル名に使えない agent_id", {**tool, "agent_id": "../x"}),
+    ):
+        r = beat(payload)
+        names = sorted(os.listdir(beats))
+        check(f"heartbeat は {label}では書かない", r.returncode == 0 and r.stdout == "" and names == ["a-1"],
+              repr((r.returncode, r.stdout, names)))
+
+    outside = os.path.join(tmp, "not-git")
+    os.makedirs(outside)
+    r = beat({**tool, "agent_id": "a-2", "cwd": outside}, where=outside)
+    check("heartbeat は git の外では何も書かず 0", r.returncode == 0 and r.stdout == "" and os.listdir(outside) == [],
+          repr((r.returncode, r.stdout, r.stderr)))
 
 
 def main() -> int:
@@ -102,6 +151,8 @@ def main() -> int:
         r = run(missing, guard, SUBAGENT, 0)
         check("(d) bin/tw が無い（127）なら agent_id ありでも案内して 0",
               r.returncode == 0 and "前提が欠けている" in r.stderr, repr((r.returncode, r.stderr)))
+
+        check_heartbeat(tmp, hook)
 
     if failures:
         print(f"NG: {len(failures)} 件")

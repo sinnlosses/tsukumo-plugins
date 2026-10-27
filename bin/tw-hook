@@ -1,5 +1,6 @@
 #!/bin/sh
 # 使い方: tw-hook [--fail-closed] <サブコマンド> [旗…]（落ちたときの扱いの正典は tw-reference.md「hook の関門」）
+#         tw-hook heartbeat（tw を呼ばず、サブエージェントの最終活動の時刻を .tw/local/task-agent-beats/<agent_id> に書く）
 # 入力は会話の中身を含むので、一時ファイルに書かず変数に持つ。
 here=$(cd "$(dirname "$0")" && pwd)
 fail_closed=no
@@ -9,6 +10,15 @@ if [ "${1:-}" = --fail-closed ]; then
 fi
 subcommand=${1:-}
 input=$(cat)
+if [ "$subcommand" = heartbeat ]; then
+  id=$(printf '%s' "$input" | sed -n 's/.*"agent_id"[[:space:]]*:[[:space:]]*"\([A-Za-z0-9_-][A-Za-z0-9._-]*\)".*/\1/p' | head -n 1)
+  [ -n "$id" ] || exit 0
+  top=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+  [ -n "$(ls -A "$top/.tw/local/task-open-claims" 2>/dev/null)" ] || exit 0
+  beats="$top/.tw/local/task-agent-beats"
+  mkdir -p "$beats" 2>/dev/null && date +%s >"$beats/$id.tmp" 2>/dev/null && mv -f "$beats/$id.tmp" "$beats/$id" 2>/dev/null
+  exit 0
+fi
 printf '%s' "$input" | "$here/tw" "$@"
 c=$?
 case $c in
