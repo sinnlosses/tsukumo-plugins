@@ -23,6 +23,7 @@ import metrics  # noqa: E402
 import ref_guard  # noqa: E402
 import stamps  # noqa: E402
 import taskfile  # noqa: E402
+import tw_escalate  # noqa: E402
 import tw_handback  # noqa: E402
 import tw_plan  # noqa: E402
 from selftest_fixtures import BODY, commit_task, disarm_ref_guard, flow_rows, hook_env, make_repo, metadata, readonly_git, run_guard, run_handback_guard, run_task, snapshot  # noqa: E402
@@ -1054,6 +1055,35 @@ def test_escalate_check() -> None:
         check("着手の印が無いタスクには何も出さず終了コード0", r.returncode == 0 and r.stdout == "", r.stdout + r.stderr)
         table = {line.split("\t")[0]: line.split("\t")[1:] for line in run_task(wt1, "metrics").stdout.splitlines()}
         check("tw metrics の escalate_suggest に件数が出る", table.get("escalate_suggest") == ["1", "0"], str(table))
+
+
+@weight(3)
+def test_beat_watch() -> None:
+    say("task.py beat-watch: hook が書いた鼓動を読み、無音が秒数以上になったら SILENT を1回だけ出す")
+    line, shown = tw_escalate.silence_line(1299, 1000, 300, False)
+    check("無音が秒数未満なら出さない", (line, shown) == (None, False), repr((line, shown)))
+    line, shown = tw_escalate.silence_line(1300, 1000, 300, False)
+    check("無音が秒数ちょうどで SILENT <n>s を出す", (line, shown) == ("SILENT 300s", True), repr((line, shown)))
+    line, shown = tw_escalate.silence_line(1400, 1000, 300, shown)
+    check("同じ無音の2回目は出さない", (line, shown) == (None, True), repr((line, shown)))
+    line, shown = tw_escalate.silence_line(1800, 1450, 300, False)
+    check("鼓動が進んだあとの無音でまた出す", (line, shown) == ("SILENT 350s", True), repr((line, shown)))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, verify="`true`")
+        commit_task(main_path, taskfile.Task("T-100", "見張り", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        check("鼓動が無ければ None", tw_escalate.last_beat(wt1, "a-quiet") is None)
+        beat_hook = next(argv for event, _, argv in _plugin_hooks() if event == "PostToolUse" and "heartbeat" in argv)
+        env = hook_env(tmp, f"{os.path.dirname(sys.executable)}:/usr/bin:/bin")
+        before = int(datetime.now(timezone.utc).timestamp())
+        r = _run_hook(beat_hook, {"hook_event_name": "PostToolUse", "tool_name": "Read", "cwd": wt1, "agent_id": "a-busy"}, env, cwd=wt1)
+        beat = tw_escalate.last_beat(wt1, "a-busy")
+        check("hooks.json の heartbeat が書いた鼓動を読める",
+              r.returncode == 0 and beat is not None and before - 5 <= beat <= before + 5, repr(beat) + r.stderr)
+        for args in (("T-100", "../x", "300"), ("T-100", "a-busy", "0"), ("T-100", "a-busy", "x")):
+            r = run_task(wt1, "beat-watch", *args)
+            check(f"beat-watch {' '.join(args)} は終了コード2", r.returncode == 2 and r.stdout == "", r.stdout + r.stderr)
 
 
 def test_lap() -> None:
@@ -2539,6 +2569,7 @@ TESTS = (
     test_handback_guard_edit_churn,
     test_escalation_triggers,
     test_escalate_check,
+    test_beat_watch,
     test_agent_scoped_outside_write,
     test_handback_guard_other_repo,
     test_step_stamps_other_repo,

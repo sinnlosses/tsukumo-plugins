@@ -51,15 +51,15 @@
 
    **(f) 無音の見張り**: 委譲を待つあいだメインはターンを終えていて、委譲先が無音でも起こすイベントが無い。
    そこで委譲を投げた直後に `Monitor` で見張りを起こす。
-   - 起こし方: `Agent` の戻りの `output_file` は symlink で、実体は委譲先の transcript。
-     `stat` は `-L` を付けて実体の更新時刻を読む（付けないと symlink 自体の時刻で更新が見えない）。
-     `T` には `${CLAUDE_SKILL_DIR}/parts/implementer/unresponsive.md` の項3が決める無音の秒数を渡す（数はここに書かない）:
-     `f=<output_file>; T=<秒数>; l=$(date +%s); p=$(stat -L -f %m "$f"); g=0; c=0; while :; do n=$(date +%s); m=$(stat -L -f %m "$f"); [ "$m" != "$p" ] && { p=$m; l=$n; g=0; }; [ $((n-l)) -ge $T ] && [ $g -eq 0 ] && { echo "SILENT $((n-l))s"; g=1; }; c=$((c+1)); [ $((c%6)) -eq 0 ] && tw escalate-check T-xxx; sleep 5; done`
-     更新のたびには出さず、無音を越えた1回だけ出す。`Monitor` の `timeout_ms` は上限（30分）にし、
-     失効の通知が来たとき委譲先がまだ動いていれば起こし直す。並列の段では担当ごとに1つ起こす。
-     見張るのは transcript の実体の更新だけで、作業ツリーの更新は補いにしない（読み取りと待ちの間は進まない）。
+   - 起こし方: `Agent` の戻りの `agentId` を渡して `tw beat-watch T-xxx <agentId> <T>` を `Monitor` で起こす。
+     `T` には `${CLAUDE_SKILL_DIR}/parts/implementer/unresponsive.md` の項3が決める無音の秒数を渡す（数はここに書かない）。
+     鼓動は plugin の hook（`PostToolUse`・`PostToolUseFailure`）が委譲先のツール呼び出しのたびに書き、
+     `beat-watch` は無音が `T` を越えた1回だけ `SILENT` を出し、30秒ごとに引き上げの提案（`ESCALATE_SUGGEST`）も出す。
+     `Monitor` の `timeout_ms` は上限（30分）にし、失効の通知が来たとき委譲先がまだ動いていれば起こし直す。
+     並列の段では担当ごとに1つ起こす。`SendMessage` で次の段を渡しても `agentId` は変わらない。
+     作業ツリーの更新は補いにしない（読み取りと待ちの間は進まない）。
    - `SILENT` の通知は `${CLAUDE_SKILL_DIR}/parts/implementer/unresponsive.md` の項3、`ESCALATE_SUGGEST` の通知は項6に従う。
-   - 委譲先の最後の段の返却を受けたら、見張りを `TaskStop` で止める（手順6の頭。返却後も数秒更新されるので、畳まないと失効まで残る）。
+   - 委譲先の最後の段の返却を受けたら、見張りを `TaskStop` で止める（手順6の頭。畳まないと失効まで残る）。
 
 5c. **実装の依頼文の場合分け**（毎回渡す決まりは brief にある）: 文面は依頼文の型 `${CLAUDE_SKILL_DIR}/parts/implementer/implementer-request.md` にあり、
    `tw brief implementer` が場合に当たる節を足す。メインは型を読まず、手で写さない:

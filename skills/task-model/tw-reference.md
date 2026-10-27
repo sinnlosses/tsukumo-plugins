@@ -43,7 +43,8 @@ PATH に無ければ plugin を入れる。どのディレクトリから打っ�
 | `step T-xxx <n>` | 最後でない段を済ませて返す直前に打つ（委譲先。着手した作業ツリーで打つ。別のリポジトリのタスクでは、出力の鍵は着手側のもの。作業先の作業ツリーの控えは作業先の中身の鍵で別に書かれる）。設定に `step_check` があれば、控えを書く前にタスクの各作業ツリー（着手した木と、作業先の別のリポジトリの木）でその木の設定の `step_check` を打ち、落ちたら控えを書かない。控えを書いたあと、`merge-base HEAD <主ブランチ>` から主ブランチの先端までに変わったファイルのうち、計画の名指すファイルか着手のあとにその作業ツリー（別のリポジトリなら作業先の枝の作業ツリー、その主ブランチ）が変えたファイルに当たるものを、`STEPPED` の前に1ファイル1行で知らせる（パスは生の文字列。名前の変更は元と先を別のファイルとして数え、名指した側かこの作業ツリーが変えた側が出る。知らせだけで終了コードは変えず、取り込みもしない） | `MAIN_TOUCHED\tT-xxx\t<ファイル>`・`STEPPED`・`LAST_STEP`（終了コード4。最後の段は `tw verify` を通して返す）・`STEP_CHECK_FAILED`（終了コード4。続けて出力の末尾20行。直してから打ち直す）・`NOT_OWNER` |
 | `lap T-xxx <段> [start\|end] [--model <モデル>]` | オーケストレーターの段の頭と終わりを記録するとき（メイン。段は `direct`・`delegate`・`accept`・`review`・`retro`・`land`・`sync`。`end` は段が開いているときだけ記録する。`--model` は `delegate start` にだけ付け、分業と引き上げの委譲の直前に打つ） | `LAPPED`・`NOT_CLAIMED` |
 | `relay T-xxx <鍵> [--body-file <path\|->]` | 段の結果を後の段へ申し送りとして書くとき（`--body-file` 付き。着手の印の持ち主だけ）と、前の段の申し送りを鍵で引くとき（欄と鍵は WORKFLOW.md「段の申し送り」） | `RELAYED`・`RELAY`（次の行から本文）・`NONE`・`NOT_OWNER`・`NOT_READY` |
-| `escalate-check T-xxx` | 見張りが30秒ごとに打つ（手で打たない）。開いている委譲の引き上げの提案 | `ESCALATE_SUGGEST`（引き金・詳細・次のモデル）。止めず終了コード0 |
+| `escalate-check T-xxx` | `beat-watch` が30秒ごとに読む（手で打たない）。開いている委譲の引き上げの提案 | `ESCALATE_SUGGEST`（引き金・詳細・次のモデル）。止めず終了コード0 |
+| `beat-watch T-xxx <agentId> <秒数>` | 委譲の直後に `Monitor` で起こす見張り（メイン） | `SILENT <n>s`・`ESCALATE_SUGGEST`。不正な引数は2 |
 | `loop-check` | `/loop` の入口の段と、続行判断（`tw ship`・`tw hold` のあと）で打つ。今日の台帳から停止規則（送った件数が `loop_max_ships` に達した・`hold` が3件連続・直近3件の `ship` で `VERIFY_FAILED` が2件）を見る | `CONTINUE`／`STOP`（`max_ships`・`hold_streak`・`verify_failed`）、続けて `SHIPPED_TODAY`（件数・ID）。終了コード0 |
 | `handback-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むとき（と構造の節の欠けを知らせるとき）だけ JSON 1行（`SubagentStop` は `block`、`PreToolUse` は deny か `additionalContext`）。ただし同じファイルの5回目の書き換えで `edit-churn` を残し、通す返却で、委譲の歩数が100超なら `flow/` に `long-delegation`、本文が約2,000トークン超なら `long-handback`（`tw metrics` の `long_delegation`・`long_handback`） |
 | `ask-guard` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ deny の JSON 1行（理由はタスクIDと次の一手）。通すときは何も出さない |
@@ -74,7 +75,7 @@ PATH に無ければ plugin を入れる。どのディレクトリから打っ�
 
 ### hook の関門
 
-hook 4種（Claude Code の hook 3種と git の hook `ref-guard`）の仕様の正典はこの節。判定の細部（何をコミット・書き換えとみなすか、通す書き方、読む控えの順）は `tw commit-guard --help`・`tw handback-guard --help`・`tw ask-guard --help`・`tw ref-guard --help` が持つ。同じ `hooks/hooks.json` から呼ぶ `lap-hook` は拒まない記録で、関門に数えない（下の lap の段落）。
+hook 4種（Claude Code の hook 3種と git の hook `ref-guard`）の仕様の正典はこの節。判定の細部（何をコミット・書き換えとみなすか、通す書き方、読む控えの順）は `tw commit-guard --help`・`tw handback-guard --help`・`tw ask-guard --help`・`tw ref-guard --help` が持つ。同じ `hooks/hooks.json` から呼ぶ `lap-hook`（下の lap の段落）と `heartbeat`（委譲先の鼓動 `.tw/local/task-agent-beats/<agent_id>` を書く。`bin/tw-hook`）は拒まない記録で、関門に数えない。
 
 | hook | 掛かる場面 | 拒むもの | 拒まれた側の次の一手 |
 | --- | --- | --- | --- |
@@ -113,7 +114,6 @@ hook 4種（Claude Code の hook 3種と git の hook `ref-guard`）の仕様の
 `lap-hook` は関門ではなく記録で、何も拒まず何も出さない。書くのは控えがちょうど1件の作業ツリーだけで、start は段が閉じているとき（細部は `tw lap-hook --help`）。
 end は手打ちも `tw`・hook も、最後の `claim` 以降でその段が開いているときだけ記録する（手打ちは開いていなくても `LAPPED` を出すが記録しない）ので、閉じた段に重ねても end は1つ。
 メインの `--model` 付きの手打ちと hook が重なって同じ段の start が続いても、所要の集計（`tw metrics --stages`・振り返りの段の所要時間）は閉じていない同じ段の2つ目の start を数えない。
-
 **`commit-guard`・`handback-guard`・`ask-guard` は Claude Code の hook の取り決めに従う**: 出力は TSV でなく JSON で、終了コードはいつも0（`ref-guard` は git の hook の取り決めに従い、拒むときだけ終了コード1）。
 読めない入力も何も出さずに通す。タスク運用を始めていないリポジトリ・git の外でも打てる。
 **落ちたときの扱い**（殻 `bin/tw-hook`）: `tw` が 78・127 で終われば案内して 0（通す）。ほかの非 0 は、`--fail-closed` を付けた `PreToolUse` の関門 4 つでサブエージェント（入力に `agent_id`）なら終了コード 2 で止め、主のセッション・`SubagentStop`（2 は「止まるな」になる）・`lap-hook` では 1 で通す。殻が起動できなければ非ブロッキングのエラーで通る。

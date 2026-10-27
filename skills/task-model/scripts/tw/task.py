@@ -3,7 +3,7 @@
 # 宣言が無いと Python 3.9 が、長い日本語の行の読み込み位置によって「Non-UTF-8 code」で落ちる。
 """Beads に置いたタスクの運用を操作する入口コマンド。
 
-使い方: tw <status|new|claim|release|hold|done|ship|finish|land|config|config-doctor|show|find|edit|plan-check|plan-phases|verify|verify-check|accept|brief|pause|step|lap|escalate-check|loop-check|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|ask-guard|lap-hook|ref-guard> ...
+使い方: tw <status|new|claim|release|hold|done|ship|finish|land|config|config-doctor|show|find|edit|plan-check|plan-phases|verify|verify-check|accept|brief|pause|step|lap|escalate-check|beat-watch|loop-check|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|ask-guard|lap-hook|ref-guard> ...
 
 plugin の `bin/tw` から呼ぶ。`commit-guard`・`handback-guard` の
 `--agent-scoped` は plugin の `hooks/hooks.json` が付け、入力に `agent_id` があるとき（サブエージェント）だけ関門を掛ける（`commit-guard` は主のセッションの書き込みの `bd` だけ例外）。
@@ -164,9 +164,15 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     ),
     "escalate-check": (
         "開いている委譲が長引いていたら、difficulty を上げる提案の行を出す（止めない）。",
-        r"""台帳の `flow/` から、最後の `claim` 以降で開いている `delegate` の引き金を読む: `edit-churn`（同じファイルを5回書き換えた。`handback-guard` が残す）・`verify-failed-streak`（`verify` が2回続けて落ちた。`infra` の落ちは数えない）・`slow-delegation`（経過が直近28日の 委譲・同じ difficulty・normal の中央値〔`tw metrics --stages` と同じ元。標本5件未満なら見ない〕の3倍を超えた）。新しく立った引き金だけを出し、`escalate-suggest` を台帳へ残す（同じ委譲で同じ引き金は1回）。見張りの shell が定期的に打つ。着手の印が無い・読めないときは何も出さない
+        r"""台帳の `flow/` から、最後の `claim` 以降で開いている `delegate` の引き金を読む: `edit-churn`（同じファイルを5回書き換えた。`handback-guard` が残す）・`verify-failed-streak`（`verify` が2回続けて落ちた。`infra` の落ちは数えない）・`slow-delegation`（経過が直近28日の 委譲・同じ difficulty・normal の中央値〔`tw metrics --stages` と同じ元。標本5件未満なら見ない〕の3倍を超えた）。新しく立った引き金だけを出し、`escalate-suggest` を台帳へ残す（同じ委譲で同じ引き金は1回）。見張りの `beat-watch` が30秒ごとに同じ判定を読む（手で打つのは確かめるときだけ）。着手の印が無い・読めないときは何も出さない
 
 出力: 引き金ごとに `ESCALATE_SUGGEST\tT-xxx\t<引き金>\t<詳細>\t<次のモデル>`（次のモデルは `haiku`→`sonnet`、`sonnet`→`opus`、`opus` は `-`）。終了コードはいつも0""",
+    ),
+    "beat-watch": (
+        "委譲先の鼓動を読み、無音が続いたら `SILENT` の行を出す見張り（止めるまで回る）。",
+        r"""メインが委譲を投げた直後に `Monitor` で起こす。引数は タスクID・`Agent` の戻りの `agentId`・無音の秒数。5秒ごとに、plugin の hook（`PostToolUse`・`PostToolUseFailure` の `tw-hook heartbeat`）が委譲先のツール呼び出しのたびに書く `.tw/local/task-agent-beats/<agent_id>` の epoch 秒を読み、起こした時刻と鼓動の大きいほうからの無音が秒数以上になったら1回だけ出す（鼓動が進めば次の無音でまた出す）。30秒ごとに `escalate-check` と同じ提案を同じプロセスで出す。`agent_id` がファイル名に使えないか秒数が正の整数でなければ終了コード2
+
+出力: `SILENT <n>s`・`ESCALATE_SUGGEST\tT-xxx\t<引き金>\t<詳細>\t<次のモデル>`（行ごとに flush）""",
     ),
     "loop-check": (
         "`/loop` を続けてよいかを、台帳の今日の出来事から数えて返す（読むだけ）。",
@@ -420,6 +426,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_lap.add_argument("edge", nargs="?", default=None)
     p_lap.add_argument("--model", choices=taskfile.DIFFICULTY_VALUES, default=None)
     sub.add_parser("escalate-check").add_argument("task_id")
+    p_beat = sub.add_parser("beat-watch")
+    p_beat.add_argument("task_id")
+    p_beat.add_argument("agent_id")
+    p_beat.add_argument("seconds")
     sub.add_parser("loop-check")
     p_relay = sub.add_parser("relay")
     p_relay.add_argument("task_id")
@@ -633,6 +643,8 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
             tw_handback.cmd_lap(toplevel, args.task_id, args.stage, args.edge, args.model)
         elif args.command == "escalate-check":
             tw_escalate.cmd_escalate_check(toplevel, args.task_id)
+        elif args.command == "beat-watch":
+            tw_escalate.cmd_beat_watch(toplevel, args.task_id, args.agent_id, args.seconds)
         elif args.command == "loop-check":
             tw_loop.cmd_loop_check(toplevel)
         elif args.command == "relay":
