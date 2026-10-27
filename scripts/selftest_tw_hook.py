@@ -27,6 +27,9 @@ SUBAGENT = json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Bash", "to
 MAIN = json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "git commit -m x"}, "cwd": "/tmp"})
 IN_STRING_ONLY = json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Bash",
                              "tool_input": {"command": 'echo "agent_id": x'}, "cwd": "/tmp"})
+NESTED_ONLY = json.dumps({"hook_event_name": "PostToolUse", "tool_name": "X", "cwd": "/tmp", "tool_response": {"agent_id": "nested"}})
+TOP_AFTER_NESTED = json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"agent_id": "nested"},
+                               "cwd": "/tmp", "agent_id": "a-1"})
 STOP = json.dumps({"hook_event_name": "SubagentStop", "cwd": "/tmp", "agent_id": "a-1", "agent_type": "tsukumo-workflow:no-delegate"})
 
 failures: list[str] = []
@@ -66,8 +69,8 @@ def check_heartbeat(tmp: str, hook: str) -> None:
     local = os.path.join(repo, ".tw", "local")
     beats = os.path.join(local, "task-agent-beats")
 
-    def beat(payload: dict, where: str = repo) -> subprocess.CompletedProcess[str]:
-        return run(hook, ["heartbeat"], json.dumps(payload), 1, cwd=where)
+    def beat(payload: dict | str, where: str = repo) -> subprocess.CompletedProcess[str]:
+        return run(hook, ["heartbeat"], payload if isinstance(payload, str) else json.dumps(payload), 1, cwd=where)
 
     tool = {"hook_event_name": "PostToolUse", "tool_name": "Read", "cwd": repo}
     r = beat({**tool, "agent_id": "a-1"})
@@ -94,11 +97,29 @@ def check_heartbeat(tmp: str, hook: str) -> None:
         ("agent_id の無い入力（主のセッション）", tool),
         ("文字列の中にしか agent_id が無い入力", {**tool, "tool_input": {"command": 'echo "agent_id": "a-evil"'}}),
         ("ファイル名に使えない agent_id", {**tool, "agent_id": "../x"}),
+        ("入れ子のキーにしか agent_id が無い入力（主のセッション）", {**tool, "tool_response": {"agent_id": "a-nested"}}),
+        ("入れ子のキーが前後に複数あり最上位に無い入力",
+         {"tool_input": {"items": [{"agent_id": "a-n1"}]}, **tool, "tool_response": {"agent_id": "a-n2", "x": {"agent_id": "a-n3"}}}),
+        ("最上位の agent_id が文字列でない入力", {**tool, "agent_id": 5, "tool_response": {"agent_id": "a-n4"}}),
     ):
         r = beat(payload)
         names = sorted(os.listdir(beats))
         check(f"heartbeat は {label}では書かない", r.returncode == 0 and r.stdout == "" and names == ["a-1"],
               repr((r.returncode, r.stdout, names)))
+
+    nested = {"tool_input": {"agent_id": "a-n1"}, "tool_response": {"agent_id": "a-n2", "list": [{"agent_id": "a-n3"}]}}
+    for label, name, payload in (
+        ("入れ子のキーより後ろにある最上位", "a-top-after", json.dumps({**tool, **nested, "agent_id": "a-top-after"})),
+        ("入れ子のキーより前にある最上位", "a-top-before", json.dumps({"agent_id": "a-top-before", **tool, **nested})),
+        ("入れ子が前後に複数ある間の最上位", "a-top-mid",
+         json.dumps({"tool_input": {"agent_id": "a-n1"}, "agent_id": "a-top-mid", **tool, "tool_response": {"agent_id": "a-n2"}})),
+        ("整形済み（改行と字下げ）の入力の最上位", "a-top-pretty", json.dumps({**tool, **nested, "agent_id": "a-top-pretty"}, indent=2)),
+    ):
+        r = beat(payload)
+        names = sorted(os.listdir(beats))
+        check(f"heartbeat は {label}の agent_id だけで書く",
+              r.returncode == 0 and r.stdout == "" and name in names and not any(n.startswith("a-n") for n in names),
+              repr((r.returncode, r.stdout, r.stderr, names)))
 
     outside = os.path.join(tmp, "not-git")
     os.makedirs(outside)
@@ -141,6 +162,14 @@ def main() -> int:
         r = run(hook, guard, IN_STRING_ONLY, 1)
         check("agent_id が文字列の中にしか無ければ主のセッションとみなして 1 で通す",
               r.returncode == 1 and "関門が掛かっていない" in r.stderr, repr((r.returncode, r.stderr)))
+
+        r = run(hook, guard, NESTED_ONLY, 1)
+        check("agent_id が入れ子のキーにしか無ければ主のセッションとみなして 1 で通す",
+              r.returncode == 1 and "関門が掛かっていない" in r.stderr, repr((r.returncode, r.stderr)))
+
+        r = run(hook, guard, TOP_AFTER_NESTED, 1)
+        check("入れ子のキーの後ろに最上位の agent_id があれば 2 で止める",
+              r.returncode == 2 and "落ちたので止めた" in r.stderr, repr((r.returncode, r.stderr)))
 
         for code in (1, 2):
             r = run(hook, ["handback-guard", "--agent-scoped"], STOP, code)
