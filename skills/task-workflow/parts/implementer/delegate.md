@@ -35,7 +35,7 @@
    Agent ツールの説明にこの名前が無ければ、plugin をまだ入れていない（人がやること。README の「入れ方」へ誘導する）ので、`general-purpose` へ黙って落とさず止める。
    決まりの本文も依頼文も手で組まず、`tw brief implementer T-xxx` の出力の2行目以降をそのまま渡す
    （タスクID・`implementer-brief.md` の絶対パス・`tw verify`／`tw pause` の打ち方・手順5cの場合分けが入る。
-   `no-delegate` でも `general-purpose` でも同じ依頼文）。メインが足すのは判断の部分（この作業で何を重く見るか、
+   依頼文は `no-delegate` の1通り）。メインが足すのは判断の部分（この作業で何を重く見るか、
    手順5bで `PLAN_UNCOVERED` などから分かった足りない点）だけ。1行目 `BRIEF\tT-xxx\timplementer\t<節,…>` は渡さず、
    選ばれた節（tw が決めた場合分け）を読む。`NOT_OWNER`・`MISSING`・`INVALID` が出たら行を添えて人に預け `tw release T-xxx` する。
 

@@ -97,6 +97,8 @@ def main() -> int:
     check("全名が実在する名なら問題なし", unknown("`tsukumo-workflow:task-workflow` と `tsukumo-workflow:acceptor`。", known) == [])
     check("実在しない名の全名を返す", unknown("`tsukumo-workflow:task-workflw` と `tsukumo-workflow:acceptor`", known) == ["task-workflw"])
     check("`<name>` の雛形は拾わない", unknown("`tsukumo-workflow:<name>`", known) == [])
+    check("名前を指して呼ぶ言い回しを拾う", check_repo.SHORT_NAME_CALL.search("`retrospect` を Skill ツールで名前を指して呼び") is not None)
+    check("全名の呼び方は拾わない", check_repo.SHORT_NAME_CALL.search("`tsukumo-workflow:retrospect` を Skill ツールで呼び") is None)
 
     marked = check_repo.is_workflow_step
     head = '---\nname: s\ndescription: "d"\nmetadata:\n  workflow-step: "true"\n---\n'

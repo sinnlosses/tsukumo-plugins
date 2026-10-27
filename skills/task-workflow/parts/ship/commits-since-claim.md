@@ -1,7 +1,7 @@
 # COMMITS_SINCE_CLAIM の扱い
 
    `claim` した時点より後に、委譲先が hook（`tw commit-guard`）をすり抜けて作ったコミットがあった合図。
-   すり抜けるのは `general-purpose` への委譲と、Bash の文字列に `git` が出ないコミットだけ。
+   すり抜けるのは、Bash の文字列に `git` が出ないコミットだけ。
    控えの無い古い印では出ない:
 
    | 出力 | すること |

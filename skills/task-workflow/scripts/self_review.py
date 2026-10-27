@@ -65,7 +65,7 @@ CHECK_PATH = re.compile(
 COMMENT_AUDIT_RELATIVE = os.path.join("comment-audit", "scripts", "diff_added_comment_lines.py")
 
 QUESTIONS = {
-    "comment": "足されたコメント行のそれぞれに comment-audit スキル（Skill ツールで名前を指して読む）の「判定の1問」を当てて、消す・縮める・正典へ移すものが無いか",
+    "comment": "足されたコメント行のそれぞれに `tsukumo-workflow:comment-audit` スキル（Skill ツールで読む）の「判定の1問」を当てて、消す・縮める・正典へ移すものが無いか",
     "type-shape": "変えた型・定数の推論された型が前より緩んでいないか（readonly・リテラル・タプルが広がっていないか）",
     "repeat-shape": "足した関数・ループと同じ形の処理が、出力に並んだ同じファイルの中に既にないか（あれば寄せられないか）",
     "doc-vs-check": "変えた文書が言う範囲と、変えた検査が拾う範囲が合っているか",

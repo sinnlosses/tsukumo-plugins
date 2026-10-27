@@ -186,12 +186,18 @@ def unknown_qualified_names(text: str, known: set[str]) -> list[str]:
     return [n for n in dict.fromkeys(QUALIFIED_NAME.findall(text)) if n not in known]
 
 
+SHORT_NAME_CALL = re.compile(r"Skill ツールで名前を指して")
+
+
 def check_qualified_names(names: list[str], agents: list[str]) -> None:
-    """スキル・エージェントを呼ぶ全名が、実在する名に一致するか。"""
+    """スキル・エージェントを呼ぶ全名が、実在する名に一致するか。短い名で呼ぶ言い回しも拾う。"""
     known = set(names) | set(agents)
     for n in names:
         for md in markdown_files(n):
-            for bad in unknown_qualified_names(read(md), known):
+            text = read(md)
+            for m in SHORT_NAME_CALL.finditer(text):
+                fail(f"{os.path.relpath(md, ROOT)}: 全名でなく名前を指して呼ぶ言い回し（`{m.group(0)}`）が残っている")
+            for bad in unknown_qualified_names(text, known):
                 fail(f"{os.path.relpath(md, ROOT)}: `tsukumo-workflow:{bad}` は実在するスキル・エージェントの名ではない")
 
 

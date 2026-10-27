@@ -32,7 +32,7 @@ disable-model-invocation: true
    そのセッションのコミット（`git log`）、タスクの `## 結果`（task-model の運用なら `tw show`）、
    プロジェクトに集計の道具があればそれ（`tw config` の `hook_tally` の行など）、
    サブエージェントの手数（タスクに紐付くセッションなら
-   `retrospect` を Skill ツールで名前を指して呼び、その置き場の `python3 <Base directory>/scripts/material.py . <タスクID> --signals`）。
+   `tsukumo-workflow:retrospect` を Skill ツールで呼び、その置き場の `python3 <Base directory>/scripts/material.py . <タスクID> --signals`）。
    セッションのログ（jsonl）の本文は材料にしない（守ること1）。
    _済んだ印_: 材料にするセッションと、そこから取った記録の一覧が決まっている
 
@@ -46,7 +46,7 @@ disable-model-invocation: true
 
    _済んだ印_: 上の3種のそれぞれについて、あるか・どこにあるかが言える
 
-4. **改善の候補を7つの観点で探す。** 観点は `retrospect` スキル（Skill ツールで名前を指して呼ぶ）の副ファイル
+4. **改善の候補を7つの観点で探す。** 観点は `tsukumo-workflow:retrospect` スキル（Skill ツールで呼ぶ）の副ファイル
    `detail.md`（`retrospect` の置き場にある）の節「改善の7観点」にある。読んで、各観点の
    「使うとき」に当たるものを見る。
    _済んだ印_: 「使うとき」に当たった観点のすべてに、候補か「候補なし」が付いている

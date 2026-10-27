@@ -11,7 +11,7 @@ metadata:
 # 振り返りの段
 
 並びの段の1つ。手順の本文は `task-workflow` の `parts/retrospect/retrospect.md`（オーケストレーターの手順6a）で、このスキルは入口と出口だけを持つ。
-振り返りの観点・物差し・判定の口は `retrospect` スキルが持ち、この段はそれを Skill ツールで名前を指して呼ぶ（呼ぶ名前の決め方は `parts/retrospect/retrospect.md`）。
+振り返りの観点・物差し・判定の口は `retrospect` スキルが持ち、この段は `tsukumo-workflow:retrospect` を Skill ツールで呼ぶ（手順は `parts/retrospect/retrospect.md`）。
 入口と出口の正典は tsukumo の契約 `docs/architecture/workflow-contract.md`「スキルの契約」
 （https://github.com/sinnlosses/tsukumo/blob/main/docs/architecture/workflow-contract.md）。
 
