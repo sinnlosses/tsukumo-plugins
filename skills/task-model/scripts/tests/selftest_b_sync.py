@@ -348,15 +348,15 @@ def test_edit_list_count() -> None:
 
         r, calls = lists("edit", a, "--section", "参考情報", "--body-file", "-")
         check("GitHub が変わっていない edit は成功し list を打たない", r.returncode == 0 and r.stdout.startswith("EDITED")
-              and "TRACKER\tOK\tgithub" in r.stdout and calls == [], r.stdout + r.stderr + "\n".join(calls))
+              and calls == [], r.stdout + r.stderr + "\n".join(calls))
 
         fake.clock_offset = 60
         fake.edit(n, body="GitHub で直した本文")
         r, calls = lists("edit", a, "--summary", "題を直した")
         issue = beads.show(main_path, beads.to_bd_id(a))
-        check("GitHub が変わったあとの edit は取り込みのあと読み直し、list は1回以下",
-              r.returncode == 0 and "TRACKER\tOK\tgithub" in r.stdout and len(calls) <= 1
-              and issue is not None and "GitHub で直した本文" in str(issue.raw.get("description")),
+        check("claim のあと送っていないので、GitHub が変わった edit は CONFLICT（Beads が勝つ）で、list は1回以下",
+              r.returncode == 0 and f"TRACKER\tCONFLICT\t{a}" in r.stdout and len(calls) <= 1
+              and issue is not None and "GitHub で直した本文" not in str(issue.raw.get("description")),
               r.stdout + r.stderr + "\n".join(calls))
         check("取り込みのあとも着手の印は戻っている", issue is not None and issue.status == "in_progress"
               and issue.assignee == "wt1", str(issue and issue.raw))

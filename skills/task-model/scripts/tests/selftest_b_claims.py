@@ -59,11 +59,12 @@ def test_release_force_clears_github_label() -> None:
         check("前提: GitHub に status::in_progress が付く", r.returncode == 0
               and "status::in_progress" in status_labels(fake, n), r.stdout + repr(fake.issues[n]["labels"]))
         r = run_task(wt1, "release", a, "--force")
-        check("RELEASED と TRACKER OK", r.returncode == 0 and r.stdout.startswith("RELEASED")
-              and "TRACKER\tOK\tgithub" in r.stdout, r.stdout + r.stderr)
-        check("GitHub の status::in_progress が外れる", "status::in_progress" not in status_labels(fake, n),
-              repr(fake.issues[n]["labels"]))
+        check("RELEASED だけで GitHub には書かない", r.returncode == 0 and r.stdout.startswith("RELEASED")
+              and "TRACKER\tOK\tgithub" not in r.stdout
+              and "status::in_progress" in status_labels(fake, n), r.stdout + r.stderr + repr(fake.issues[n]["labels"]))
         r = run_task(main_path, "sync")
+        check("sync が GitHub の status::in_progress を外す", "status::in_progress" not in status_labels(fake, n),
+              r.stdout + repr(fake.issues[n]["labels"]))
         again = beads.show(main_path, bd_id)
         check("sync のあとも open のまま", r.returncode == 0 and again is not None and again.status == "open",
               r.stdout + str(again and again.status))
@@ -82,7 +83,7 @@ def test_release_force_deadline_then_sync() -> None:
         local.env[tracker.OP_TIMEOUT_ENV] = "2"
         fake.delay = 5
         r = run_task(wt1, "release", a, "--force")
-        check("RELEASED と TRACKER FAILED", r.returncode == 0 and r.stdout.startswith("RELEASED")
+        check("RELEASED と TRACKER FAILED（取り込みの読みが切れた行。送りは release にない）", r.returncode == 0 and r.stdout.startswith("RELEASED")
               and "TRACKER\tFAILED\tgithub" in r.stdout, r.stdout + r.stderr)
         fake.delay = 0
         r = run_task(main_path, "sync")
@@ -284,22 +285,22 @@ def test_pull_sees_other_worktree_kv() -> None:
 
 
 def test_after_sees_other_worktree_kv() -> None:
-    say("Status 欄: 1回の操作の before と after の間に別の作業ツリーが書いた項目の控えを、after が読み直して見る")
+    say("Status 欄: claim は書かず、sync の途中に別の作業ツリーが書いた項目の控えを、Status 欄の書き込みが読み直して見る")
     with github() as (fake, tmp, main_path, wt1):
         arm_kv_write(tmp)
-        a, b = new(main_path, "着手の間に控えを書かれる"), new(main_path, "控えを書かれない")
-        r = run_task(wt1, "claim", b)
-        want = fake.status_of(num(b))
-        check("前提: claim が Status 欄を書く", r.returncode == 0 and want not in (None, "Todo"), r.stdout + repr(fake.items))
+        a = new(main_path, "送りの間に控えを書かれる")
+        writes = fake.status_writes
+        r = run_task(wt1, "claim", a)
+        check("claim は Status 欄を書かない", r.returncode == 0 and fake.status_writes == writes
+              and fake.status_of(num(a)) == "Todo", r.stdout + repr(fake.items))
         key = f"{tracker_github.ITEMS_KEY_PREFIX}{num(a)}"
         item = json.loads(bd(main_path, "kv", "get", key).stdout)
-        writes = fake.status_writes
-        written = json.dumps({"item": item["item"], "status": want}, ensure_ascii=False)
-        with kv_written_during(tmp, f"kv set {beads.CLAIM_SNAPSHOT_KEY_PREFIX}", key, written) as fired:
-            r = run_task(wt1, "claim", a)
-        check("前提: claim の途中（着手の印の控えを書く前）に項目の控えを書いた", r.returncode == 0 and os.path.exists(fired),
+        written = json.dumps({"item": item["item"], "status": "In progress"}, ensure_ascii=False)
+        with kv_written_during(tmp, f"kv set {tracker.SYNCED_ITEM_PREFIX}", key, written) as fired:
+            r = run_task(main_path, "sync")
+        check("前提: sync の途中（同期の時刻を書く前）に項目の控えを書いた", r.returncode == 0 and os.path.exists(fired),
               r.stdout + r.stderr)
-        check("after は書かれた控え（もう書く値）を見て Status 欄を書かない",
+        check("書かれた控え（もう書く値）を見て Status 欄を書かない",
               fake.status_writes == writes and fake.status_of(num(a)) == "Todo", r.stdout + repr(fake.items))
 
 

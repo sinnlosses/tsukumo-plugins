@@ -437,23 +437,26 @@ def test_tracker_command_bd_calls() -> None:
         counted = os.path.join(tmp, "bd-count.txt")
         local.env = {**local.env, "BD_COUNT_FILE": counted}
 
-        def counted_run(label: str, cwd: str, *args: str, stdin: str | None = None) -> list[str]:
+        def counted_run(label: str, cwd: str, *args: str, stdin: str | None = None, writes: bool = False) -> list[str]:
             open(counted, "w").close()
             r = run_task(cwd, *args, stdin=stdin)
             calls = [c for c in open(counted).read().splitlines() if c.split(" ", 1)[0] in verbs]
             say(f"  {label}: bd {len(calls)} 回")
-            check(f"{label} は成功する", r.returncode == 0 and "TRACKER\tOK\tgithub" in r.stdout, r.stdout + r.stderr)
+            sent = any(c.startswith(("github push", "github sync")) for c in calls)
+            check(f"{label} は成功し、GitHub へ{'送る' if writes else '送らない'}",
+                  r.returncode == 0 and ("TRACKER\tOK\tgithub" in r.stdout) == writes and sent == writes,
+                  r.stdout + r.stderr + "\n".join(calls))
             check(f"{label}: config get を打たず、config list は1回以下",
                   not any(c.startswith("config get") for c in calls)
                   and sum(c.startswith("config list") for c in calls) <= 1, "\n".join(calls))
             return calls
 
         counted_run("new", main_path, "new", "--summary", "数える2", "--difficulty", "sonnet", "--loopable", "Y",
-                    "--body-file", "-", stdin=PLANNED_BODY)
+                    "--body-file", "-", stdin=PLANNED_BODY, writes=True)
         calls = counted_run("claim", wt1, "claim", a)
-        check("claim: Project の控えを kv get で読まず、kv list は3回",
+        check("claim: Project の控えを kv get で読まず、kv list は2回（送りの分が無い）",
               not any(c.startswith("kv get task-workflow.project") for c in calls)
-              and calls.count("kv list --json") == 3, "\n".join(calls))
+              and calls.count("kv list --json") == 2, "\n".join(calls))
         counted_run("edit", wt1, "edit", a, "--section", "参考情報", "--body-file", "-", stdin="メモ\n")
         write(os.path.join(wt1, f"{a}.txt"), f"{a}\n")
         git(wt1, "add", f"{a}.txt")

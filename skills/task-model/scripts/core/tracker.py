@@ -5,8 +5,7 @@
 `TRACKER\\tFAILED\\t…` の行を足して先へ進み、`task sync` で打ち直す）。
 
 - `github`: Beads の `issue_prefix` が `gh` なら双方向（取り込みは `bd` の増分に頼らず、番号を選んで
-  `bd github pull <番号>…`）、`t` なら Beads から送るだけ。1件の操作はその1件だけを送り、`ship`・`sync` は
-  全件を送る。そのあと Project の Status 欄を `gh api graphql` で書く（`bd` は Status 欄を触らない）。
+  `bd github pull <番号>…`）、`t` なら Beads から送るだけ。書くのは `new` と、`ship`・`sync` の全件の送りだけ。そのあと Project の Status 欄を `gh api graphql` で書く（`bd` は Status 欄を触らない）。
   `bd` へ渡す token は `GITHUB_TOKEN` が無ければ `gh auth token` から取る
 - `jira`: `bd jira sync --pull` だけ。Jira には書かない（`--push` と引数なしの `sync` は打たない）。取り込んだ
   振り分け前の課題は `external_ref` の Jira のキーの ID（`proj-123`）へ付け替える
@@ -159,12 +158,17 @@ class Session:
         return lines
 
     def after(self, bd_ids: list[str]) -> list[str]:
-        """操作のあと、触った課題だけを送って Status 欄を書く。"""
+        """操作のあと。jira は取り込むだけで、github・なしは何も書かない（送りは `push_created` と `sync_all`）。"""
         self._begin(time.monotonic() + _op_timeout())
         if self.tracker.kind == "jira":
             return _jira_pull(self.toplevel)
+        return []
+
+    def push_created(self, bd_ids: list[str]) -> list[str]:
+        """`new`（`t` 接頭辞）のあと、作った課題だけを送って Status 欄を書く。"""
+        self._begin(time.monotonic() + _op_timeout())
         if self.tracker.kind != "github":
-            return []
+            return self.after(bd_ids)
         ids = [i for i in bd_ids if not beads.is_provisional(i)]
         try:
             if ids:

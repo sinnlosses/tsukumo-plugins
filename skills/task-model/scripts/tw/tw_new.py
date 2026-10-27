@@ -170,7 +170,7 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
     print(f"CREATED\t{beads.to_task_id(bd_id)}\tbeads:{bd_id}")
     tw_plan.warn_report_names(body)
     tw_plan.warn_large_plan(beads.to_task_id(bd_id), body)
-    tw_base.print_lines(trk.after([bd_id]))
+    tw_base.print_lines(trk.push_created([bd_id]))
 
 
 class _Locked(Exception):
@@ -304,7 +304,7 @@ def cmd_new_batch(toplevel: str, path: str) -> None:
     if trk.bidirectional:
         finals, lines = trk.register_many(created)
     elif created:
-        lines = trk.after(created)
+        lines = trk.push_created(created)
     for (_, checked, _refs), bd_id in zip(prepared, created):
         final = finals[bd_id]
         _record_fixes(toplevel, checked, final)
