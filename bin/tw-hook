@@ -1,8 +1,5 @@
 #!/bin/sh
-# 使い方: tw-hook [--fail-closed] <サブコマンド> [旗…]
-# hooks/hooks.json が exec 形で呼ぶ。stdin の hook の入力をそのまま bin/tw に渡し、stdout は素通しにする。
-# bin/tw の終了コード: 0 はそのまま。78・127（前提が欠けている）は案内して 0。
-# それ以外は、--fail-closed があり入力に agent_id があれば 2（PreToolUse なら呼び出しを止める）、無ければ 1（止めない）。
+# 使い方: tw-hook [--fail-closed] <サブコマンド> [旗…]（落ちたときの扱いの正典は tw-reference.md「hook の関門」）
 # 入力は会話の中身を含むので、一時ファイルに書かず変数に持つ。
 here=$(cd "$(dirname "$0")" && pwd)
 fail_closed=no
