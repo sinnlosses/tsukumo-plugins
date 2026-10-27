@@ -56,6 +56,7 @@ def test_release_force_clears_github_label() -> None:
         r = run_task(main_path, "sync")
         check("前提: GitHub に status::in_progress が付く", r.returncode == 0
               and "status::in_progress" in status_labels(fake, n), r.stdout + repr(fake.issues[n]["labels"]))
+        time.sleep(1.1)
         r = run_task(wt1, "release", a, "--force")
         check("RELEASED だけで GitHub には書かない", r.returncode == 0 and r.stdout.startswith("RELEASED")
               and "TRACKER\tOK\tgithub" not in r.stdout
