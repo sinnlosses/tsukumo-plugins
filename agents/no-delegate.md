@@ -1,6 +1,6 @@
 ---
 name: no-delegate
-description: "調べもの・コード検索・複数手順の実行を行う汎用エージェント。`general-purpose` から `Agent` ツールを外したもので、これ自身は別のサブエージェント（fork を含む）を立てられない。委譲を1段で止めたい場面（例: `/next-task` からの委譲）で `general-purpose` の代わりに使う。着手の印が立った作業ツリーでは、コミットと、計画・検証の欠けた返却を hook（`tw commit-guard`・`tw handback-guard`）が拒む。"
+description: "`general-purpose` から `Agent` ツールを外したもの。委譲を1段で止めたい場面（例: `/next-task` からの委譲）で使う。"
 disallowedTools: Agent
 ---
 
