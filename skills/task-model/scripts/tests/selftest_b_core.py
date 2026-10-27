@@ -102,6 +102,24 @@ def test_setup_and_config_doctor() -> None:
         main_path, wt1, _ = make_repo(tmp, prefix=None)
         check("init.py が .beads を作る", os.path.isdir(os.path.join(main_path, ".beads")))
         check("stealth で .beads は git に見えない", git(main_path, "status", "--porcelain").stdout.strip() == "")
+
+        def init_out() -> str:
+            return subprocess.run([sys.executable, os.path.join(HERE, "..", "core", "init.py")],
+                                  cwd=main_path, capture_output=True, text=True, env=env()).stdout
+
+        config_path = os.path.join(main_path, ".tw", "config.toml")
+        with open(config_path, encoding="utf-8") as f:
+            before = f.read()
+        out = init_out()
+        with open(config_path, encoding="utf-8") as f:
+            after = f.read()
+        check("backup が未記入なら init.py は backup UNSET の知らせを出し、設定は書き換えない",
+              any(l.startswith("backup\tUNSET\t") for l in out.splitlines()) and before == after, out)
+        write(config_path, before + 'backup = "/somewhere/else"\n')
+        check("backup を書いてあれば UNSET を出さない", "backup\t" not in init_out())
+        os.remove(config_path)
+        check("設定が無ければ UNSET を出さない", "backup\t" not in init_out())
+        write(config_path, before)
         r = run_task(wt1, "config-doctor")
         check("config-doctor が store・beads・tracker の行を足す", r.returncode == 0
               and tail_line(r.stdout, "store").startswith("store\tOK\tbeads")

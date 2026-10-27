@@ -9,6 +9,7 @@
 **既存ファイルは上書きしない。**
 設定（`.tw/config.toml`）は**点検するだけで書かない**（値は検証コマンドの選定そのもので、
 判断が要る。書くのは `/setup-tasks`）。
+`backup` が未記入なら、書かずに `backup\tUNSET` の知らせの行を出す。
 """
 
 from __future__ import annotations
@@ -27,7 +28,10 @@ def main() -> None:
 
     os.makedirs(layout.TW_DIR, exist_ok=True)
     prepare_gitignore(layout.TW_GITIGNORE_PATH)
-    print(f"config\t{check_config()[0]}")
+    line, config = check_config()
+    print(f"config\t{line}")
+    if line.startswith("OK\t") and config is not None and "backup" not in config.written:
+        print(f"backup\tUNSET\t{beads.backup_dir('.')}\t書くのは setup-tasks（既定は .beads と同じディスク）")
     code = prepare_beads(".")
     if code:
         raise SystemExit(code)

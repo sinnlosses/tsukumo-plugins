@@ -29,16 +29,15 @@ description: "タスク運用に要る .tw/ （.gitignore）をプロジェク�
    | `config\tOK` | `.tw/config.toml` があり読める。手順2を飛ばす |
    | `config\tMISSING` | `.tw/config.toml` が無い（か `verify` が無い）。手順2で書く |
    | `config\tINVALID` | 設定が読めない。理由をユーザーに見せ、どう直すかを聞いてから直す |
-   | `CREATED\t<…/.beads>`・`KEPT\t<…/.beads>` | 設定が読めたので、タスクの置き場の `.beads` を用意した（トラッカーが `github` なら `bd init --stealth -p gh` で ID は Issue 番号、それ以外は `-p t`）・既にあった。設定が無い・読めないあいだは作らない |
+   | `backup\tUNSET` | `backup` が未記入。書かず、手順3で置き場を聞く |
+   | `CREATED\t<…/.beads>`・`KEPT\t<…/.beads>` | 設定が読めたので、タスクの置き場の `.beads` を用意した・既にあった（接頭辞はトラッカーで決まる）。設定が無い・読めないあいだは作らない |
    | `NOT_MAIN_WORKTREE`（終了コード4） | `.beads` は主ブランチを出している作業ツリー（本体）の根に置く。パスの作業ツリーで打ち直すよう案内する |
    | `FAILED\tbd init`（終了コード1） | `bd` が無いか `bd init` が失敗した。行を添えて、`bd`（Beads）と Dolt を入れるよう案内して終了する |
-
-   ドラフトは `tw new --draft` で Beads に積むので置き場は作らない。`docs/history/` も掘らない。
 
 2. **`.tw/config.toml` を書く**（`config\tMISSING` のときだけ）。聞くのは検証コマンドだけ。**推測で書かない**:
 
    - `package.json` の `scripts`、`Makefile`、`justfile`、`pyproject.toml`、既にある `AGENTS.md`・`CLAUDE.md` の
-     記述から探し、**実際に走らせて通ることを確かめてから**書く（受け入れと `tw ship` の付け替え後に毎回打たれる）。
+     記述から探し、**実際に走らせて通ることを確かめてから**書く。
      決め手が無い・見つからないときはユーザーに聞く。打つものが無いと決まったら `"なし"` と書き、行ごと消さない
    - `verify` 以外のキーはコメントアウトした見本で置く。キーと語彙は正典「ファイル配置と設定ファイル」の表
 
@@ -48,6 +47,7 @@ description: "タスク運用に要る .tw/ （.gitignore）をプロジェク�
    # verify_before_ship = ""    # 送る前に tw ship が打つ重い検証
    # format = "pnpm format"     # あれば tw verify が検証の前に打つ
    # branch = "既定"            # 既定 / 作業ブランチを切る / 切らない
+   # backup = "<git の外のパス>" # Beads の写しの置き場
    ```
 
    `AGENTS.md`・`CLAUDE.md` には書かない。
@@ -64,7 +64,7 @@ description: "タスク運用に要る .tw/ （.gitignore）をプロジェク�
 
 3. **通しで確かめる**: `tw status` と `tw config`。
    まっさらなら `---` と末尾の集計行だけが出る（終了コード0）。`MISSING` なら手順1・2が効いていない。
-   `tw config-doctor` の `store`・`beads`・`tracker` の行も `OK` を確かめる。
+   `tw config-doctor` の `store`・`beads`・`tracker`・`backup` の行も `OK` を確かめる。`WARN_BACKUP_SAME_DISK` なら報告に載せ、置き場を人に聞く（推測で書かない）。
 
 4. **コミットする**（件名にタスクIDは付けない。push はしない）。作業ツリーの枝に居るなら
    `tw ship` で `main` へ送る。
