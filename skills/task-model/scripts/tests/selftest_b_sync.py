@@ -419,7 +419,6 @@ def test_tracker_writes_only_at_new_and_ship() -> None:
               repr({k: v.stdout + v.stderr for k, v in results.items()}))
         check("claim・edit のあとも GitHub の Status 欄は Todo のまま", fake.status_of(num(a)) == "Todo", repr(fake.items))
 
-        # 数え方が空振りしていないこと: 本物の edit は 0、旧 after の送りを足すと 1 以上。
         weak = writes_during(lambda: (edit("--summary", "また直した"), _push_created_in_process(wt1, beads.to_bd_id(a))))
         check("弱めた実装（edit のあとに旧 after の送りを足す）では書き込みが数えられる", weak >= 1, f"書き込み {weak} 件")
 
