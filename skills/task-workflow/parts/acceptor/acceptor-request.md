@@ -13,9 +13,7 @@
 
 - プロジェクトの規約のファイル（そこから引かれるコーディング規約も読む）: {{rules}}
 - `tw accept` の判定: {{verdict}}
-- 振り返りの材料（委譲先の段ごとの返却の friction log の行、そのまま）:
-
-{{friction}}
+- 材料の `friction` の値（`tw brief` が決めた1語。委譲先の報告は渡さない）: `{{friction}}`
 
 - `comment-audit` を Skill ツールで名前を指して読む（一覧の末尾が `comment-audit` の行。リンクで入れたとき
   `comment-audit`、plugin で入れたとき `tsukumo-workflow:comment-audit`。一覧に出ている名前のまま使う）。差分で足されたコメント行は、その置き場（Base directory）の

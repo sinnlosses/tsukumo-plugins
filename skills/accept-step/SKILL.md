@@ -24,7 +24,7 @@ metadata:
 - 呼び出しの引数: タスクの ID 1つ（以下 `T-xxx`）
 - Beads から: `tw show T-xxx` の `## 完了条件`、`tw accept T-xxx` が読む着手の控えと差分の範囲
 - 設定: `tw config` の検証コマンド
-- 申し送りから: `tw relay T-xxx 実装` の本文。`parts/acceptor/accept.md` が受け入れ役に渡す「委譲先の段ごとの返却の friction log の行」はここから読む
+- 申し送りから: `tw relay T-xxx 実装` の本文。`tw brief acceptor` が材料の `friction` の値（1語）を決めるのに読む（行そのものは受け入れ役に渡さない）
   （行の形と `NONE` の読み方は task-model の WORKFLOW.md「段の申し送り」の「鍵 `実装` の書き方と読み方」）
 
 ## 手順

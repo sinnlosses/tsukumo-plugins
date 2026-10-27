@@ -27,6 +27,7 @@ SNAPSHOT_SCRIPT = os.path.join(TASK_MODEL_DIR, "scripts", "core", "review_snapsh
 RULE_FILES = ("AGENTS.md", "CLAUDE.md")
 RELAY_IMPLEMENT_KEY = "実装"
 NO_DELEGATION_LINE = "- 規約: 委譲なし"
+_FRICTION_NONE = re.compile(r"friction log: なし\s*$")
 VERDICT_WORDS = ("REVIEW", "SKIP", "NOTHING", "NO_RANGE")
 _PLACEHOLDER = re.compile(r"\{\{(\w+)\}\}")
 
@@ -147,7 +148,7 @@ def cmd_brief_acceptor(
         criteria=criteria,
         rules="・".join(f"`{p}`" for p in rules) or "無い（作業ツリーの根に規約のファイルが無い）",
         verdict="`" + verdict.replace("\t", "\\t") + "`",
-        friction=_friction_lines(toplevel, shown),
+        friction=_friction_value(toplevel, shown),
     )
     _print_brief(shown, ROLE_ACCEPTOR, sections, chosen, values)
 
@@ -170,13 +171,13 @@ def _snapshot(tree: str) -> str:
     return r.stdout.strip()
 
 
-def _friction_lines(toplevel: str, shown: str) -> str:
-    """申し送り `実装` の本文から、`- ドラフト:`（子項目ごと）と `- 規約:` の行を除いたもの。
-    `- 規約: 委譲なし` の行は残す（受け入れ役が委譲しない流れと見分ける）。"""
+def _friction_value(toplevel: str, shown: str) -> str:
+    """申し送り `実装` から材料の `friction` の値（`none`・`some`・`missing`）を決める。委譲先の報告の行は返さない。
+    `- ドラフト:`（子項目ごと）・`- 規約:`・`- 実装 計画:` の行は数えない。`- 規約: 委譲なし` は friction log の行が無くても `none`。"""
     body = beads.last_relay(beads.comments(toplevel, beads.to_bd_id(shown)), RELAY_IMPLEMENT_KEY)
     if body is None:
-        return "（申し送り `実装` が無い。friction log を書いていない返却として扱う）"
-    kept: list[str] = []
+        return "missing"
+    counted: list[str] = []
     in_draft = False
     for line in body.splitlines():
         if line.startswith("- ドラフト:"):
@@ -185,9 +186,13 @@ def _friction_lines(toplevel: str, shown: str) -> str:
         if in_draft and line[:1] in (" ", "\t"):
             continue
         in_draft = False
-        if not line.startswith("- 規約:") or line.strip() == NO_DELEGATION_LINE:
-            kept.append(line)
-    return "\n".join(kept).strip("\n") or "（申し送り `実装` に friction log の行が無い）"
+        if line.startswith("- ") and not line.startswith(("- 規約:", "- 実装 計画:")):
+            counted.append(line)
+    if any(not _FRICTION_NONE.search(line) for line in counted):
+        return "some"
+    if counted or NO_DELEGATION_LINE in (line.strip() for line in body.splitlines()):
+        return "none"
+    return "missing"
 
 
 def work_repo(toplevel: str, shown: str, plan_body: str) -> WorkRepo | None:
