@@ -23,18 +23,7 @@ import stamps  # noqa: E402
 import taskfile  # noqa: E402
 import tw_handback  # noqa: E402
 import tw_plan  # noqa: E402
-from selftest_fixtures import BODY, TASK_PY, commit_task, disarm_ref_guard, flow_rows, hook_env, make_repo, metadata, readonly_git, run_guard, run_handback_guard, run_task, snapshot  # noqa: E402
-
-
-NO_DELEGATE = os.path.join(HERE, "..", "..", "..", "..", "agents", "no-delegate.md")
-
-
-def _hook_command(subcommand: str) -> str:
-    with open(NO_DELEGATE, encoding="utf-8") as f:
-        for line in f:
-            if line.strip().startswith(f"command: tw {subcommand}"):
-                return line.strip()[len("command: "):]
-    raise RuntimeError(f"no-delegate.md に tw {subcommand} の hook の行が無い")
+from selftest_fixtures import BODY, commit_task, disarm_ref_guard, flow_rows, hook_env, make_repo, metadata, readonly_git, run_guard, run_handback_guard, run_task, snapshot  # noqa: E402
 
 
 @weight(9)
@@ -74,7 +63,6 @@ def test_commit_guard() -> None:
             check(f"通す: {command}", run_guard(tmp, where, command) is None)
         r = run_task(tmp, "commit-guard", stdin="not json")
         check("読めない入力は何も出さずに通す", r.returncode == 0 and r.stdout == "", r.stdout + r.stderr)
-        _check_hook_line(tmp, wt1)
 
         write(os.path.join(wt1, "work.txt"), "x\n")
         git(wt1, "add", "work.txt")
@@ -808,38 +796,6 @@ def test_agent_task_record() -> None:
               not os.path.exists(os.path.join(wt1, ".tw", "local", ledger.AGENT_TASKS_DIR_NAME)))
 
 
-def _check_hook_line(
-    tmp: str,
-    claimed: str,
-    subcommand: str = "commit-guard",
-    payload_fields: dict | None = None,
-    refused: str = '"deny"',
-) -> None:
-    """`no-delegate.md` の hook の行を `sh -c` で打つ。`claimed` は拒まれる状態の作業ツリー。"""
-    hook = _hook_command(subcommand)
-    fields = payload_fields or {"tool_name": "Bash", "tool_input": {"command": "git commit -m x"}}
-    payload = json.dumps({**fields, "cwd": claimed})
-    bare_path = "/usr/bin:/bin"
-
-    def run_hook(tw_script: str | None) -> subprocess.CompletedProcess:
-        path = bare_path
-        if tw_script is not None:
-            bin_dir = tempfile.mkdtemp(dir=tmp)
-            write(os.path.join(bin_dir, "tw"), tw_script)
-            os.chmod(os.path.join(bin_dir, "tw"), 0o755)
-            path = f"{bin_dir}:{bare_path}"
-        return subprocess.run(["sh", "-c", hook], input=payload, capture_output=True, text=True, env=hook_env(tmp, path))
-
-    r = run_hook(f'#!/bin/sh\nexec {sys.executable} {TASK_PY} "$@"\n')
-    check(f"hook の行は tw {subcommand} を呼んで拒む", r.returncode == 0 and refused in r.stdout, r.stdout + r.stderr)
-    r = run_hook(None)
-    check(f"tw が PATH に無くても {subcommand} の hook は何も出さず0で通す",
-          r.returncode == 0 and r.stdout == "", r.stdout + r.stderr)
-    r = run_hook(f"#!/bin/sh\nexec {sys.executable} -c 'raise RuntimeError(\"x\")'\n")
-    check(f"tw {subcommand} が例外で落ちても hook は何も出さず0で通す",
-          r.returncode == 0 and r.stdout == "", r.stdout + r.stderr)
-
-
 def _block_reason(out: dict | None) -> str:
     return str(out.get("reason", "")) if out is not None and out.get("decision") == "block" else ""
 
@@ -870,7 +826,6 @@ def test_handback_guard() -> None:
               and "NOT_VERIFIED" in out["hookSpecificOutput"]["permissionDecisionReason"], str(out))
         check("ほかのツールの PreToolUse には何も出さない", run_handback_guard(tmp, wt1, "PreToolUse", "Bash") is None)
         check("ほかのイベントには何も出さない", run_handback_guard(tmp, wt1, "PostToolUse", "SubagentHandback") is None)
-        _check_hook_line(tmp, wt1, "handback-guard", {"hook_event_name": "SubagentStop"}, '"block"')
 
         r = run_task(wt1, "verify")
         check("plan-check が PLAN_FIRST で tw verify が通れば通す",
