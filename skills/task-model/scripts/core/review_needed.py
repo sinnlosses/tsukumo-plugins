@@ -97,7 +97,9 @@ def decide(difficulty: str, paths: list[str], has_range: bool, globs: tuple[str,
 MARK_PATHS = 5
 TEST_DIRS = frozenset({"test", "tests", "__tests__", "e2e"})
 TEST_NAME = re.compile(r"(?:test_.*\.py|.*_test\.py|selftest_.*\.py|.*\.(?:test|spec)\.[jt]sx?)")
-TEST_DEFINITION = re.compile(r"\s*(?:(?:async\s+)?def (?:test|selftest)_|(?:it|test)\()")
+TEST_DEFINITION = re.compile(
+    r"\s*(?:(?:async\s+)?def (?:test|selftest)_|(?:it|test)(?:\.(?:skip|fixme|only))?\(|xit\()"
+)
 SKIP_NOTATION = re.compile(
     r"pytest\.mark\.skip|pytest\.skip\(|unittest\.skip|skipTest\(|\b(?:it|test|describe)\.skip\(|\bx(?:it|describe)\(|test\.fixme\("
 )
@@ -131,10 +133,11 @@ def marks(paths: list[str], patch: list[str]) -> list[tuple[str, list[str]]]:
             body = line[1:]
             if line.startswith("-") and TEST_DEFINITION.match(body):
                 removed[current] = removed.get(current, 0) + 1
-            elif line.startswith("+") and TEST_DEFINITION.match(body):
-                added[current] = added.get(current, 0) + 1
-            elif line.startswith("+") and SKIP_NOTATION.search(body):
-                skipped[current] = True
+            elif line.startswith("+"):
+                if TEST_DEFINITION.match(body):
+                    added[current] = added.get(current, 0) + 1
+                if SKIP_NOTATION.search(body):
+                    skipped[current] = True
     found: list[tuple[str, list[str]]] = []
     lost = sorted(p for p in deleted if is_test_path(p))
     lost += sorted(p for p in removed if p not in deleted and removed[p] > added.get(p, 0))

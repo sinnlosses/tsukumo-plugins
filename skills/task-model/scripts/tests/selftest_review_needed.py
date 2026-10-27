@@ -204,6 +204,7 @@ def test_broken_config() -> None:
 
 TWO_TESTS = "def test_one():\n    assert 1\n\n\ndef test_two():\n    assert 2\n"
 EXPECTED = "test/e2e/expected/home.html"
+JS_TESTS = "it('a', () => {});\ntest('b', () => {});\n"
 
 
 def init_marks_repo(d: str) -> None:
@@ -211,6 +212,7 @@ def init_marks_repo(d: str) -> None:
     write(d, "tests/test_a.py", TWO_TESTS)
     write(d, EXPECTED, "<p>a</p>\n")
     write(d, "test/e2e/expected/other.html", "<p>b</p>\n")
+    write(d, "test/a.spec.ts", JS_TESTS)
     git(d, "add", "tests", "test")
     git(d, "commit", "-q", "-m", "tests")
 
@@ -229,6 +231,11 @@ def test_marks_table() -> None:
         ("テストのファイルを足す", [("tests/test_b.py", TWO_TESTS)], []),
         ("テストに skip を足す", [("tests/test_a.py", "import pytest\n\n\n@pytest.mark.skip\n" + TWO_TESTS)], ["test-skipped"]),
         ("テストの定義を消して skip を足す", [("tests/test_a.py", "import pytest\n\n\n@pytest.mark.skip\ndef test_one():\n    assert 1\n")], ["test-deleted", "test-skipped"]),
+        *[
+            (f"JS の {before} を {after} に書き換える（skip しただけ）",
+             [("test/a.spec.ts", JS_TESTS.replace(before, after, 1))], ["test-skipped"])
+            for before, after in (("it(", "it.skip("), ("test(", "test.skip("), ("it(", "xit("), ("test(", "test.fixme("))
+        ],
         ("テストでないファイルに skip の語を足す", [("a.py", "x = 1  # pytest.mark.skip\n")], []),
         ("テストでないファイルを消す", [("a.py", None)], []),
         ("expected だけ変える", [(EXPECTED, "<p>c</p>\n")], ["expected-only"]),
