@@ -15,7 +15,7 @@ metadata:
 このスキルは入口と出口だけを持つ。入口と出口の正典は tsukumo の契約 `docs/architecture/workflow-contract.md`「スキルの契約」
 （https://github.com/sinnlosses/tsukumo/blob/main/docs/architecture/workflow-contract.md）。
 
-判定は受け入れ役のエージェントがこの段の中の道具として行う。選び方（`subagent_type` の全名・`model` の渡し方）は
+判定は受け入れ役のエージェントがこの段の中の道具として行う。選び方（全名・`model` の渡し方）は
 `parts/acceptor/accept.md` のとおり。受け入れ役への依頼文は `tw brief acceptor` が、metadata の `workflow-brief-acceptor` が指す型
 `parts/acceptor/acceptor-request.md` から出す。同梱の `agents/acceptor.md`（Opus 固定・`Agent`・`Edit`・`Write`・`NotebookEdit` を持たない）は並びに出さない。
 
