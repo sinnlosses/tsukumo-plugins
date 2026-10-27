@@ -1,7 +1,7 @@
 """`tw commit-guard`・`tw handback-guard` の `--agent-scoped` の判定。
 
-引数なしの呼び出し（`agents/no-delegate.md` の frontmatter の hook）は常に関門を掛ける。
-`--agent-scoped`（plugin の `hooks/hooks.json`。主のセッションにも掛かる）では、入力に `agent_id` があるとき
+引数なしの呼び出しは常に関門を掛ける。
+`--agent-scoped`（`hooks/hooks.json` が付ける。主のセッションにも掛かる）では、入力に `agent_id` があるとき
 （サブエージェントの中で発火したとき）だけ関門を掛け、エージェントの名前は見ない。`agent_type` は `--agent` で
 起こした主のセッションにも入るので見ない。
 """

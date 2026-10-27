@@ -274,7 +274,7 @@ front matter（`id`・`summary`・`status`・`difficulty`・`loopable`・近道�
   で閉じる
 - **依存の解決**: `done`・`dropped`（`ship` で `bd close` したもの）と、Beads に無い ID（旧アーカイブ由来）は解決済み。
   `todo`・`hold` は未解決。後から変えるのは `tw edit T-xxx --add-deps T-yyy` と `--remove-deps`（本文の `## 注意` に書くだけでは Beads の依存に入らず、BLOCKED に出ない）
-- **委譲先を hook が拒む**: 印を立ててから `done` を打つまで委譲先（サブエージェント。plugin で入れたときは名前を問わず、リンクだけで入れたときは frontmatter に hook を持つ実装役のエージェント定義）に掛かる関門（拒むもの・掛かる口）は `tw-reference.md`「hook の関門」節。コミットは git の hook（`ref-guard`）でも拒み、こちらは呼び手を問わないので、控えがあるうちはメインも `tw` を通さずにコミットしない（`tw finish` で `done` のあとにコミットする）。
+- **委譲先を hook が拒む**: 印を立ててから `done` を打つまで委譲先（サブエージェント。`hooks/hooks.json` が名前を問わず掛ける）に掛かる関門（拒むもの・掛かる口）は `tw-reference.md`「hook の関門」節。コミットは git の hook（`ref-guard`）でも拒み、こちらは呼び手を問わないので、控えがあるうちはメインも `tw` を通さずにコミットしない（`tw finish` で `done` のあとにコミットする）。
   委譲先は `Edit`・`Write` で書き、検証は `tw verify` で打ち、最後でない段は `tw step T-xxx <n>`、止める返却は `tw pause` を返す直前に打つ
 - **取り残し**（前提: 1つの作業ツリーでは同時に1セッション）:
 
