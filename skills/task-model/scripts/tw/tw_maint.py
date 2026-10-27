@@ -21,7 +21,7 @@ import tw_base
 def cmd_config_doctor(toplevel: str) -> None:
     """設定と置き場のズレの点検（読むだけ・`--fix` は無い）。検査1つに1行、タブ区切りで出す
     （`task status` と同じ形。人向けの段落は出さない）。判定は書き起こさず、既存の部品
-    （`gitinfo.base_branch`・`init.check_config`・`beads.is_initialized`）を呼ぶだけ
+    （`gitinfo.base_branch`・`init.config_state`・`beads.is_initialized`）を呼ぶだけ
     （正典 WORKFLOW.md「ファイル配置と設定ファイル」）。
 
     `base_branch`・`config` の2行を必ず出す（途中の検査が INVALID でも残りの検査は続ける。呼び出し側が全体像を
@@ -40,10 +40,9 @@ def cmd_config_doctor(toplevel: str) -> None:
         print(f"base_branch\tINVALID\t{e}")
         exit_code = 3
 
-    # 検査2: 設定が読めるか（`init.check_config`）。
-    line, config = init.check_config(toplevel)
-    kind = line.partition("\t")[0]
-    print(f"config\t{line}")
+    # 検査2: 設定が読めるか（`init.config_state`）。
+    kind, detail, config = init.config_state(toplevel)
+    print(f"config\t{kind}\t{detail}")
     if kind == "INVALID":
         exit_code = 3
     elif kind != "OK":

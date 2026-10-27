@@ -16,6 +16,7 @@ sys.path.insert(1, os.path.join(HERE, "..", "core"))
 sys.path.insert(1, os.path.join(HERE, "..", "tw"))
 
 import beads  # noqa: E402
+import init  # noqa: E402
 import layout  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
@@ -115,10 +116,26 @@ def test_setup_and_config_doctor() -> None:
             after = f.read()
         check("backup が未記入なら init.py は backup UNSET の知らせを出し、設定は書き換えない",
               any(l.startswith("backup\tUNSET\t") for l in out.splitlines()) and before == after, out)
-        write(config_path, before + 'backup = "/somewhere/else"\n')
-        check("backup を書いてあれば UNSET を出さない", "backup\t" not in init_out())
-        os.remove(config_path)
-        check("設定が無ければ UNSET を出さない", "backup\t" not in init_out())
+        check("UNSET の知らせは同じディスクだと言い切らない",
+              "既定は" not in out and "tw config-doctor" in out, out)
+        states = (
+            ("OK", "backup 記入済み", before + 'backup = "/somewhere/else"\n', False),
+            ("OK", "backup 未記入", before, True),
+            ("MISSING", "設定ファイルなし", None, False),
+            ("INVALID", "verify なし", 'branch = "既定"\n', False),
+            ("INVALID", "branch が語彙の外", before + 'branch = "自分で切らない"\n', False),
+            ("INVALID", "知らないキー", before + 'foo = "x"\n', False),
+        )
+        for state, label, body, unset in states:
+            if body is None:
+                os.remove(config_path)
+            else:
+                write(config_path, body)
+            out = init_out()
+            check(f"設定が {state} のとき UNSET は{'出す' if unset else '出さない'}（{label}）",
+                  out.count("backup\tUNSET\t") == (1 if unset else 0)
+                  and any(l.startswith(f"config\t{state}\t") for l in out.splitlines())
+                  and init.config_state(main_path)[0] == state, out)
         write(config_path, before)
         r = run_task(wt1, "config-doctor")
         check("config-doctor が store・beads・tracker の行を足す", r.returncode == 0
