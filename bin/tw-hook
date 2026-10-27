@@ -1,0 +1,29 @@
+#!/bin/sh
+# 使い方: tw-hook [--fail-closed] <サブコマンド> [旗…]
+# hooks/hooks.json が exec 形で呼ぶ。stdin の hook の入力をそのまま bin/tw に渡し、stdout は素通しにする。
+# bin/tw の終了コード: 0 はそのまま。78・127（前提が欠けている）は案内して 0。
+# それ以外は、--fail-closed があり入力に agent_id があれば 2（PreToolUse なら呼び出しを止める）、無ければ 1（止めない）。
+# 入力は会話の中身を含むので、一時ファイルに書かず変数に持つ。
+here=$(cd "$(dirname "$0")" && pwd)
+fail_closed=no
+if [ "${1:-}" = --fail-closed ]; then
+  fail_closed=yes
+  shift
+fi
+subcommand=${1:-}
+input=$(cat)
+printf '%s' "$input" | "$here/tw" "$@"
+c=$?
+case $c in
+  0) exit 0 ;;
+  78|127)
+    echo 'tsukumo-workflow: 前提が欠けている（tw config-doctor で確かめる）' >&2
+    exit 0
+    ;;
+esac
+if [ "$fail_closed" = yes ] && printf '%s' "$input" | grep -q '"agent_id"[[:space:]]*:'; then
+  echo "tsukumo-workflow: $subcommand が終了コード $c で落ちたので止めた（関門を掛けられない。tw config-doctor で確かめる）" >&2
+  exit 2
+fi
+echo "tsukumo-workflow: $subcommand が終了コード $c で落ちた（関門が掛かっていない）" >&2
+exit 1
