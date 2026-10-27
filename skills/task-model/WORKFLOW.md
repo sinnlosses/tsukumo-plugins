@@ -78,7 +78,7 @@ verify = "pnpm check"        # 受け入れ判定に使う。打つものが無�
 | `store` | `beads` だけ（ほかの値は `INVALID`。[legacy.md](legacy.md)） |
 | `tracker` | `なし`・`github`・`jira`（「Beads とトラッカー」） |
 | `github_project` | `"<owner>/<番号>"`（Status 欄を書く Project）。`tracker = "github"` なら必須 |
-| `backup` | Beads のバックアップの置き場（git の外） |
+| `backup` | Beads のバックアップの置き場（git の外）。`.beads` と同じディスクなら `tw config-doctor` が `WARN_BACKUP_SAME_DISK` を出す |
 | `hook_tally` | 直近30日の hook ごとの拒否の回数を出すコマンド。読むのは `tw` ではなく週ごとの横断の振り返りで、無ければその観点を飛ばす |
 | `review_code_globs` | 文書の拡張子（`.md` など）でもコード扱いにして、受け入れの新しい文脈のレビューを掛けるパスの glob の配列。最上位に `review_code_globs = ["skills/**", "agents/**"]` の形で書く。`**` は `/` を越え、`*`・`?` は越えない。空の配列でも書かなくてもよく、無ければ文書の拡張子だけの差分は `SKIP\tdocs-only`。`review_needed.py` が読む |
 | `shell_write_guard` | `tw`（既定）・`project`。`project` なら `tw commit-guard` は `SHELL_WRITE` を見ない（プロジェクトが自前のシェル書き込みの hook で止める印。ほかの規則は変わらない）。欄の形は `tw config --schema`。書く口は `tw config set shell_write_guard tw\|project` |

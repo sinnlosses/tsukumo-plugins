@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -157,10 +158,11 @@ def cmd_jira_closed(toplevel: str, task_ids: list[str]) -> None:
 
 
 def _doctor_store(toplevel: str, config: layout.Config) -> int:
-    """`config-doctor` の検査3。`store`・`beads`・`tracker` の行を出し、終了コードを返す。"""
+    """`config-doctor` の検査3。`store`・`beads`・`tracker`・`backup` の行を出し、終了コードを返す。"""
     print(f"store\tOK\t{config.store}")
     code = 0
-    if beads.is_initialized(toplevel):
+    initialized = beads.is_initialized(toplevel)
+    if initialized:
         print(f"beads\tOK\t{beads.beads_dir(toplevel)}")
     else:
         print(f"beads\tMISSING\t{beads.beads_dir(toplevel)}\tinit.py（bd init --stealth）")
@@ -168,4 +170,20 @@ def _doctor_store(toplevel: str, config: layout.Config) -> int:
     t = tracker.read_tracker(toplevel)
     detail = f"\t{t.project_owner}/{t.project_number}" if t.kind == "github" else ""
     print(f"tracker\tOK\t{t.kind}{detail}")
+    if initialized:
+        print(backup_row(beads.backup_dir(toplevel), beads.beads_dir(toplevel)))
     return code
+
+
+def _device(path: str) -> int:
+    return os.stat(path).st_dev
+
+
+def backup_row(target: str, beads_path: str, dev_of=_device) -> str:
+    """`backup\\t<OK|WARN_BACKUP_SAME_DISK>\\t<置き場>…`。置き場がまだ無ければ、存在する一番近い祖先で比べる。"""
+    probe = os.path.abspath(target)
+    while not os.path.exists(probe) and os.path.dirname(probe) != probe:
+        probe = os.path.dirname(probe)
+    if dev_of(probe) == dev_of(beads_path):
+        return f"backup\tWARN_BACKUP_SAME_DISK\t{target}\t.beads と同じディスク（ディスクの事故で一緒に失う）"
+    return f"backup\tOK\t{target}"

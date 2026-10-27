@@ -230,7 +230,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
 
 終了コード1の意味が他と違う（「直すものがある」。環境の故障ではない）。検査の最悪値を返し、`INVALID` があれば3、直すもの（必須の前提の欠落・古さを含む）があれば1、全部OKで0。点検のコマンドなので、1で止まっても報告するだけでよい。
 
-出力: `base_branch`・`config` の2行。`config\t<OK|MISSING|INVALID>\t<ファイル>\t<詳細>`（読めない・語彙の外は `INVALID`、設定が無い・検証コマンドが無いは `MISSING`）。前提の行は `<python|git|bd|dolt|gh|tw>\t<OK|MISSING|OPTIONAL>\t<必須|任意>\t<版・詳細>`（必須の欠落と最低版未満が `MISSING`。`gh` はトラッカーが github のときだけ必須、`tw` は任意）。設定が読めれば続けて `store\tOK\tbeads`・`beads\t<OK|MISSING>\t<.beads のパス>`（`MISSING` は直すもの）・`tracker\tOK\t<なし|github|jira>`。各行の2語目が `OK`／`MISSING`／`INVALID`（前提の行は `OPTIONAL` も）""",
+出力: `base_branch`・`config` の2行。`config\t<OK|MISSING|INVALID>\t<ファイル>\t<詳細>`（読めない・語彙の外は `INVALID`、設定が無い・検証コマンドが無いは `MISSING`）。前提の行は `<python|git|bd|dolt|gh|tw>\t<OK|MISSING|OPTIONAL>\t<必須|任意>\t<版・詳細>`（必須の欠落と最低版未満が `MISSING`。`gh` はトラッカーが github のときだけ必須、`tw` は任意）。設定が読めれば続けて `store\tOK\tbeads`・`beads\t<OK|MISSING>\t<.beads のパス>`（`MISSING` は直すもの）・`tracker\tOK\t<なし|github|jira>`。`.beads` が `OK` ならさらに `backup\t<OK|WARN_BACKUP_SAME_DISK>\t<置き場>`（`.beads` と同じディスクなら警告。終了コードは変えない）。各行の2語目が `OK`／`MISSING`／`INVALID`（前提の行は `OPTIONAL`、`backup` は `WARN_BACKUP_SAME_DISK` も）""",
     ),
     "metrics": (
         "台帳の `flow/` の記録から、直近 N 日と前の同じ長さの期間の数を並べる（読むだけ）。",

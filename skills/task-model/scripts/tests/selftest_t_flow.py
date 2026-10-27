@@ -626,9 +626,37 @@ def test_config_doctor() -> None:
         r = run_task(repo, "config-doctor")
         check(
             ".beads が無ければ終了コード1で beads が MISSING",
-            r.returncode == 1 and any(l.startswith("beads\tMISSING\t") for l in r.stdout.splitlines()),
+            r.returncode == 1 and any(l.startswith("beads\tMISSING\t") for l in r.stdout.splitlines())
+            and not any(l.startswith("backup\t") for l in r.stdout.splitlines()),
             r.stdout + r.stderr,
         )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = _make_config_doctor_repo(tmp, "backup-same-disk")
+        write(os.path.join(repo, ".tw", "config.toml"), f'verify = "なし"\nbackup = "{tmp}/bk/deeper"\n')
+        r = run_task(repo, "config-doctor")
+        check(
+            "置き場が .beads と同じディスクなら backup が WARN_BACKUP_SAME_DISK で、終了コードは0のまま",
+            r.returncode == 0
+            and any(l.startswith(f"backup\tWARN_BACKUP_SAME_DISK\t{tmp}/bk/deeper\t") for l in r.stdout.splitlines()),
+            r.stdout + r.stderr,
+        )
+
+    import tw_maint
+    with tempfile.TemporaryDirectory() as tmp:
+        beads_path = os.path.join(tmp, ".beads")
+        missing = os.path.join(tmp, "none", "deeper")
+        seen: list[str] = []
+
+        def by_path(p: str) -> int:
+            seen.append(p)
+            return 7 if p == beads_path else 8
+
+        check("違う番号なら OK",
+              tw_maint.backup_row(missing, beads_path, dev_of=by_path) == f"backup\tOK\t{missing}")
+        check("置き場が無ければ存在する一番近い祖先で比べる", tmp in seen and missing not in seen, str(seen))
+        check("無い置き場でも同じ番号なら WARN_BACKUP_SAME_DISK",
+              tw_maint.backup_row(missing, beads_path, dev_of=lambda p: 1).startswith("backup\tWARN_BACKUP_SAME_DISK\t"))
 
     with tempfile.TemporaryDirectory() as tmp:
         repo = _make_config_doctor_repo(tmp, "bad-branch")
