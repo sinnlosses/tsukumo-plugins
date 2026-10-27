@@ -12,7 +12,7 @@
 # 自己テストは一時ディレクトリを RAM ディスクに置く（作れなければ今の場所）。
 # 低優先度（taskpolicy -c utility / nice）で流すのは `CHECK_LOWPRI=1` のときだけ。
 #
-# 1. リポジトリ全体の整合（frontmatter・README の索引・参照先の実在）（いつも）
+# 1. リポジトリ全体の整合（frontmatter・README の索引・参照先の実在・公式の claude plugin validate）（いつも）
 # 2. task-model のスクリプトの自己テスト（review_needed.py・review_snapshot.py を含む。台帳と Beads 方式は並べて走らせ、出力は流し終えてから順に出す）
 #    絞れるときは tests/selftest_scope.py の対応の表が決め、selftest_task.py に当たる selftest_t_* だけを流す。表に載らないファイルは全件
 # 3. task-model の WORKFLOW.md・tw-reference.md を読む検査（それだけが変わったときの軽い段）
@@ -131,6 +131,12 @@ echo "== リポジトリの整合 =="
 if [ "$mode" != plan ]; then
   $LOWPRI python3 "$here/scripts/selftest_check_repo.py"
   python3 "$here/scripts/check_repo.py"
+  if command -v claude >/dev/null 2>&1; then
+    claude plugin validate "$here"
+    claude plugin validate "$here/plugins/tsukumo-figure"
+  else
+    echo "claude コマンドが無いので claude plugin validate を飛ばす"
+  fi
 fi
 
 pid_retro=
