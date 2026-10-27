@@ -20,4 +20,4 @@
 
    **近道を降りる**（直しが名指すファイルの外へ広がる・判断が要る・`VERIFY_NOT_PASSED` が1回の直しで通らない）:
    直したファイルを `git restore` で戻し、`tw edit T-xxx --direct N` を打ってから、手順5の委譲へ進む
-   （`delegate` の start の打ち分けは手順5のとおりで、plugin で入れたときは委譲先の起動で `tw lap-hook` が書く）。
+   （`delegate` の start の打ち分けは手順5のとおりで、委譲先の起動で `tw lap-hook` が書く）。

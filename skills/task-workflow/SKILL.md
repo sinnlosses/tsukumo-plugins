@@ -62,11 +62,9 @@ lap は並びのスキルではなく、このスキル（オーケストレー�
    委譲は `## やること` の段（`### <n>. <名前>`）を1段ずつ頼む。最初の委譲で段1を渡し、
    委譲先は段を1つ済ませるたびに返す。次の段は手順5bで、**同じ委譲先を `SendMessage` で再開して**渡す
    （新しい委譲先は起こさない。例外は `difficulty` を上げるとき（分業の引き上げを含む）と手順5dの引き継ぎと、(e) の並列の段だけ）。
-   委譲の lap（`delegate` の start）は、plugin で入れたとき（スキルの一覧の名前が `tsukumo-workflow:` で始まる）は
-   `hooks/hooks.json` の `tw lap-hook` が委譲先の起動（`SubagentStart`）で書くので打たない。
-   リンクだけで入れたとき（`hooks/hooks.json` が読まれない）だけ、最初の委譲を投げる直前に `tw lap T-xxx delegate start` を打つ（並列の段でも1回だけ）。
-   hook と重なって打っても、所要の集計は二重に数えない。end は手順6の受け入れの頭の `accept` の start で `tw` が書く。
-   分業と引き上げの委譲では、plugin で入れたときもメインが直前に `--model` 付きで打つ（`delegate.md` の (c)(d)）。
+   委譲の lap（`delegate` の start）は `hooks/hooks.json` の `tw lap-hook` が委譲先の起動（`SubagentStart`）で書くので打たない。
+   end は手順6の受け入れの頭の `accept` の start で `tw` が書く。
+   分業と引き上げの委譲では、メインが直前に `--model` 付きで打つ（`delegate.md` の (c)(d)）。
    投げた直後に (f) の見張りを起こす。
 
    **(a) 近道と `loopable: N`**: `CLAIMED` の行末が `direct=Y` で `tw plan-check T-xxx` が `PLAN_REGISTERED` なら、

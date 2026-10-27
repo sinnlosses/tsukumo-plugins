@@ -104,15 +104,15 @@ hook 4種（Claude Code の hook 3種と git の hook `ref-guard`）の仕様の
 | 段 | start を書くもの | end を書くもの |
 | --- | --- | --- |
 | `direct` | メイン（`tw lap`。端なし） | — |
-| `delegate` | plugin で入れたときは `lap-hook`（委譲先の起動）。リンクだけで入れたとき・委譲しないメインの流れはメイン。委譲先のモデルが `difficulty` と違う分業と、そこから戻す引き上げでは、メインが委譲の直前に `--model` 付きで打つ（hook はモデルを知らず、開いた段には書かない） | `accept` の start（`tw accept` が打つものも手で打つものも） |
+| `delegate` | `lap-hook`（委譲先の起動）。委譲しないメインの流れはメイン。委譲先のモデルが `difficulty` と違う分業と、そこから戻す引き上げでは、メインが委譲の直前に `--model` 付きで打つ（hook はモデルを知らず、開いた段には書かない） | `accept` の start（`tw accept` が打つものも手で打つものも） |
 | `accept` | `tw accept`（作業先が別のリポジトリのタスクも） | `tw accept`（開いているときだけ書くので、`--after-review` を打ち直しても1つ） |
-| `review` | 1回目は `tw accept`、2回目からはメイン | `lap-hook`（受け入れ役の停止。開いているときだけ）。リンクだけで入れたときはメイン |
-| `retro` | plugin で入れたときは `lap-hook`（振り返りのスキルの呼び出し）。リンクだけで入れたときはメイン | `tw finish`（`done` の前） |
+| `review` | 1回目は `tw accept`、2回目からはメイン | `lap-hook`（受け入れ役の停止。開いているときだけ） |
+| `retro` | `lap-hook`（振り返りのスキルの呼び出し） | `tw finish`（`done` の前） |
 | `land`・`sync` | メイン | メイン |
 
 `lap-hook` は関門ではなく記録で、何も拒まず何も出さない。書くのは控えがちょうど1件の作業ツリーだけで、start は段が閉じているとき（細部は `tw lap-hook --help`）。
 end は手打ちも `tw`・hook も、最後の `claim` 以降でその段が開いているときだけ記録する（手打ちは開いていなくても `LAPPED` を出すが記録しない）ので、閉じた段に重ねても end は1つ。
-メインの手打ちと hook が重なって同じ段の start が続いても、所要の集計（`tw metrics --stages`・振り返りの段の所要時間）は閉じていない同じ段の2つ目の start を数えない。
+メインの `--model` 付きの手打ちと hook が重なって同じ段の start が続いても、所要の集計（`tw metrics --stages`・振り返りの段の所要時間）は閉じていない同じ段の2つ目の start を数えない。
 
 **`commit-guard`・`handback-guard`・`ask-guard` は Claude Code の hook の取り決めに従う**: 出力は TSV でなく JSON で、終了コードはいつも0（`ref-guard` は git の hook の取り決めに従い、拒むときだけ終了コード1）。
 読めない入力も何も出さずに通す。タスク運用を始めていないリポジトリ・git の外でも打てる。
