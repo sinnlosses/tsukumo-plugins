@@ -18,7 +18,7 @@ tsukumo のワークフローの契約に型の合う1つの例だが、tsukumo 
 
 スキルは `tsukumo-workflow:<name>`、エージェント定義は `tsukumo-workflow:no-delegate`・
 `tsukumo-workflow:acceptor` の名前で入る。`bin/tw` はプラグインが有効なあいだ Bash の PATH に入る。
-プラグインに入れたエージェント定義の frontmatter の `hooks` は無視されるので、hook は `hooks/hooks.json` が掛ける。
+hook は `hooks/hooks.json` だけが掛け、エージェント定義の frontmatter に `hooks` は置かない。
 hook の掛かり方は `skills/task-model/tw-reference.md`「hook の関門」節。
 
 入れ方はこの1つだけにする。スキルを `~/.claude/skills/` へ、エージェント定義を `~/.claude/agents/` へリンクで置くと、

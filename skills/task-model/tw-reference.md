@@ -87,7 +87,7 @@ hook 4種（Claude Code の hook 3種と git の hook `ref-guard`）の仕様の
 
 **掛かる口**: plugin で入れると、`hooks/hooks.json` が `"${CLAUDE_PLUGIN_ROOT}/bin/tw"` を呼ぶ（plugin のエージェント定義は frontmatter の `hooks` を無視するため）。
 `commit-guard`・`handback-guard` は `--agent-scoped` 付きで、入力に `agent_id` があるときだけ掛かる（`agent_type` は `--agent` で起こした主のセッションにも入るので見ない）。例外が2つあり、`commit-guard` は `agent_id` が無い主のセッションでも書き込みの `bd` だけは判定し（コマンドに `bd` の語が無ければ解析しない）、`agent_id` があるときは `agent_type` の末尾が受け入れ役のエージェント名なら受け入れ役の規則を足す（この `agent_type` が PreToolUse の入力に入るかは実物で確かめていない。`SubagentStart` の `agent_type` は `lap-hook` が使っている）。`handback-guard` は `Edit`・`Write`・`NotebookEdit` の `PreToolUse` でも呼ばれ、書いた印を残す。`commit-guard` は、入力に `agent_id`・`session_id` があり `cwd` の作業ツリーの着手の控えがちょうど1件なら、拒否の判定とは別に、台帳の `flow/` へ `agent` の出来事（`agent`・`session`）を最初の1回だけ足す（`WORKFLOW.md`「ファイル配置と設定ファイル」）。`ask-guard` は付けずに呼び、主のセッションにも掛かる。`lap-hook` も付けずに `SubagentStart` と matcher `Skill` の `PreToolUse` で呼ばれる（下の lap の段落）。
-導入は plugin の 1 経路だけ（GH-771 で決めた）。スキルとエージェント定義を `~/.claude/` へリンクで置くと `hooks/hooks.json` が読まれず、`ask-guard`・`lap-hook`・主のセッションの `bd` の書き込みの拒否・受け入れ役の拒否が掛からず、plugin と併用すると同じスキルが二重に見える。同梱の実装役のエージェント定義の frontmatter の hook はリンク導入の時代の口で、plugin では無視される。
+導入は plugin の 1 経路だけ（GH-771 で決めた）。スキルとエージェント定義を `~/.claude/` へリンクで置くと `hooks/hooks.json` が読まれず、`ask-guard`・`lap-hook`・主のセッションの `bd` の書き込みの拒否・受け入れ役の拒否が掛からず、plugin と併用すると同じスキルが二重に見える。関門は `hooks/hooks.json` だけが掛け、エージェント定義の frontmatter に `hooks` は置かない。
 `ref-guard` は `tw claim` が共有の git dir の `hooks/reference-transaction` に置く薄い殻で、全作業ツリーに1つ。控えの無い作業ツリーでは何もしないので、`done`・`ship` では消さない（消してよい。次の `claim` が置き直す）。
 `commit-guard` は打つたびに `ref-guard` が効くかを確かめ（`ref_guard.inactive_reason`）、効かなければコミットを自分の文字列の判定で拒む。
 効かない場面は次のすべてで、`tw claim` も置いたあとに同じ判定をして、効かなければ標準エラーに `ref-guard:` の1行を出す:
