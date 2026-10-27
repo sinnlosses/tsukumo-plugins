@@ -22,7 +22,7 @@ hook は `hooks/hooks.json` だけが掛け、エージェント定義の frontm
 hook の掛かり方は `skills/task-model/tw-reference.md`「hook の関門」節。
 
 入れ方はこの1つだけにする。スキルを `~/.claude/skills/` へ、エージェント定義を `~/.claude/agents/` へリンクで置くと、
-同じスキルが二重に見え、`hooks/hooks.json` が読まれないぶん `ask-guard`・`lap-hook`・主のセッションの `bd` 書き込みの拒否・受け入れ役の拒否が掛からない。
+同じスキルが二重に見え、`hooks/hooks.json` が読まれないぶん `ask-guard`・`lap-hook`・主のセッションの `bd` 書き込みの拒否・受け入れ役の拒否が掛からず、見張りの鼓動（`heartbeat`）も書かれない。
 
 ### このリポジトリの作業ツリーで直しながら使う
 
