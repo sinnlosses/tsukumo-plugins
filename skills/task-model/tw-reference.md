@@ -85,8 +85,8 @@ hook 4種（Claude Code の hook 3種と git の hook `ref-guard`）の仕様の
 
 **拒否の記録**: 4つの関門が拒むたびに、共有の git dir の `hook-denials/<年-月>.jsonl` へ `{at, hook, rule, actor}` の1行を足す（tsukumo の `hook-denial-record.ts` と同じ形。`hook` は `tw-commit-guard` など、`rule` は `GIT_COMMIT`・`DISARM_REF_GUARD`・`GIT_STASH`・`GIT_ADD_ALL`・`GIT_PUSH`・`GIT_WORKTREE_REMOVE`・`GIT_BRANCH_DELETE`・`BD_WRITE`・`ACCEPTOR_TW`・`SHELL_WRITE`・`DIRECT_VERIFY`・`PLAN_OR_VERIFY_MISSING`・`STRUCTURE_SECTION_{MISSING,EMPTY,NO_MARK,OTHER}`・`LOOPABLE_ASK`・`MOVE_REF`、`actor` は `agent_id` の有無で `subagent`・`main`。`ref-guard` は常に `main`）。`subagent` の行にだけ `agent`（その `agent_id`。トランスクリプト `agent-<agent_id>.jsonl` と同じ名前で、振り返りの `material.py` がそのトランスクリプトのエラーから引く）を足す。`STRUCTURE_SECTION_*` は通した返却の行で `mode: "log-only"` を持つ。コマンド・パス・会話は入れず、書けなくても関門の出力と終了コードは変えない。
 
-**掛かる口**: plugin で入れると、`hooks/hooks.json` が `"${CLAUDE_PLUGIN_ROOT}/bin/tw"` を呼ぶ。
-`commit-guard`・`handback-guard` は `--agent-scoped` 付きで、入力に `agent_id` があるときだけ掛かる（`agent_type` は `--agent` で起こした主のセッションにも入るので見ない）。例外が2つあり、`commit-guard` は `agent_id` が無い主のセッションでも書き込みの `bd` だけは判定し（コマンドに `bd` の語が無ければ解析しない）、`agent_id` があるときは `agent_type` が受け入れ役のエージェント名で終わるなら受け入れ役の規則を足す（この `agent_type` が PreToolUse の入力に入るかは実物で確かめていない。`SubagentStart` の `agent_type` は `lap-hook` が使っている）。`handback-guard` は `Edit`・`Write`・`NotebookEdit` の `PreToolUse` でも呼ばれ、書いた印を残す。`commit-guard` は、入力に `agent_id`・`session_id` があり `cwd` の作業ツリーの着手の控えがちょうど1件なら、拒否の判定とは別に、台帳の `flow/` へ `agent` の出来事（`agent`・`session`）を最初の1回だけ足す（`WORKFLOW.md`「ファイル配置と設定ファイル」）。`ask-guard` は付けずに呼び、主のセッションにも掛かる。`lap-hook` も付けずに `SubagentStart` と matcher `Skill` の `PreToolUse` で呼ばれる（下の lap の段落）。
+**掛かる口**: plugin で入れると、`hooks/hooks.json` が exec 形で殻 `${CLAUDE_PLUGIN_ROOT}/bin/tw-hook` を呼び、殻が `bin/tw` を呼ぶ。
+`commit-guard`・`handback-guard` は `--agent-scoped` 付きで、入力に `agent_id` があるときだけ掛かる（`agent_type` は `--agent` で起こした主のセッションにも入るので見ない）。例外が2つあり、`commit-guard` は `agent_id` が無い主のセッションでも書き込みの `bd` だけは判定し（コマンドに `bd` の語が無ければ解析しない）、`agent_id` があるときは `agent_type` が受け入れ役のエージェント名で終わるなら受け入れ役の規則を足す（この `agent_type` が PreToolUse の入力に入るかは実物で確かめていない。`SubagentStart` の `agent_type` は `lap-hook` が使っている）。`handback-guard` は `Edit`・`Write`・`NotebookEdit` の `PreToolUse` でも呼ばれ、書いた印を残す。`commit-guard` は、入力に `agent_id`・`session_id` があり `cwd` の作業ツリーの着手の控えがちょうど1件なら、拒否の判定とは別に、台帳の `flow/` へ `agent` の出来事（`agent`・`session`）を最初の1回だけ足す（`WORKFLOW.md`「ファイル配置と設定ファイル」）。`ask-guard` は付けずに呼び、主のセッションにも掛かる。`lap-hook` も付けずに `SubagentStart`・`SubagentStop`（matcher で実装役・受け入れ役に絞る）と matcher `Skill` の `PreToolUse` で呼ばれる（下の lap の段落）。
 導入は plugin の 1 経路だけ（GH-771 で決めた）。関門は `hooks/hooks.json` だけが掛け、エージェント定義の frontmatter に `hooks` は置かない。
 `ref-guard` は `tw claim` が共有の git dir の `hooks/reference-transaction` に置く薄い殻で、全作業ツリーに1つ。控えの無い作業ツリーでは何もしないので、`done`・`ship` では消さない（消してよい。次の `claim` が置き直す）。
 `commit-guard` は打つたびに `ref-guard` が効くかを確かめ（`ref_guard.inactive_reason`）、効かなければコミットを自分の文字列の判定で拒む。
@@ -116,6 +116,6 @@ end は手打ちも `tw`・hook も、最後の `claim` 以降でその段が開
 
 **`commit-guard`・`handback-guard`・`ask-guard` は Claude Code の hook の取り決めに従う**: 出力は TSV でなく JSON で、終了コードはいつも0（`ref-guard` は git の hook の取り決めに従い、拒むときだけ終了コード1）。
 読めない入力も何も出さずに通す。タスク運用を始めていないリポジトリ・git の外でも打てる。
-plugin の `hooks.json` は、`tw` 自体が落ちた（終了コード 78・127 以外の非 0）ときは標準エラーに理由を出して終了コード 1 で返し（作業は止めない）、78・127 は案内して 0 で返す。
+**落ちたときの扱い**（殻 `bin/tw-hook`）: `tw` が 78・127 で終われば案内して 0（通す）。ほかの非 0 は、`--fail-closed` を付けた `PreToolUse` の関門 4 つでサブエージェント（入力に `agent_id`）なら終了コード 2 で止め、主のセッション・`SubagentStop`（2 は「止まるな」になる）・`lap-hook` では 1 で通す。殻が起動できなければ非ブロッキングのエラーで通る。
 
 tools・`permissions.deny`・git の hook で置き換えられない理由は `hook-rationale.md`（hook を足すか迷ったときだけ読む）。
