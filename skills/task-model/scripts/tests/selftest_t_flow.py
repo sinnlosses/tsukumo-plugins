@@ -793,17 +793,17 @@ def test_bin_tw_python_floor() -> None:
         import json
 
         with open(os.path.join(plugin_root, "hooks", "hooks.json"), encoding="utf-8") as f:
-            commands = [h["command"] for gs in json.load(f)["hooks"].values() for g in gs for h in g["hooks"]]
-        r = subprocess.run(["/bin/sh", "-c", commands[0]], capture_output=True, text=True,
-                           env={"PATH": f"{old}:{base_path}", "CLAUDE_PLUGIN_ROOT": plugin_root})
+            first = next(h for gs in json.load(f)["hooks"].values() for g in gs for h in g["hooks"])
+        argv = [a.replace("${CLAUDE_PLUGIN_ROOT}", plugin_root) for a in (first["command"], *first.get("args", []))]
+        r = subprocess.run(argv, capture_output=True, text=True, input="{}",
+                           env={"PATH": f"{old}:{base_path}"})
         check(
             "hook は前提の欠落で bin/tw の理由と案内の2行を出し、終了コードは0（コミットや委譲を塞がない）",
             r.returncode == 0 and r.stdout == "" and r.stderr.count("\n") == 2
             and "Python 3.9 以上が要る" in r.stderr and "前提が欠けている" in r.stderr,
             r.stdout + r.stderr,
         )
-        r = subprocess.run(["/bin/sh", "-c", commands[0]], capture_output=True, text=True,
-                           env={"PATH": os.environ["PATH"], "CLAUDE_PLUGIN_ROOT": plugin_root}, input="{}")
+        r = subprocess.run(argv, capture_output=True, text=True, input="{}", env={"PATH": os.environ["PATH"]})
         check("前提が揃っていれば hook は警告を出さず終了コード0", r.returncode == 0 and r.stderr == "", r.stdout + r.stderr)
 
 

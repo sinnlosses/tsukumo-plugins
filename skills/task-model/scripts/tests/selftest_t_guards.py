@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -16,6 +17,7 @@ import commit_guard  # noqa: E402
 import escalation  # noqa: E402
 import gitinfo  # noqa: E402
 import handback_guard  # noqa: E402
+import lap_hook  # noqa: E402
 import ledger  # noqa: E402
 import metrics  # noqa: E402
 import ref_guard  # noqa: E402
@@ -511,10 +513,21 @@ def test_commit_guard_other_repo() -> None:
 HOOKS_JSON = os.path.join(HERE, "..", "..", "..", "..", "hooks", "hooks.json")
 
 
-def _plugin_hook_commands() -> list[str]:
+PLUGIN_ROOT = os.path.abspath(os.path.join(HERE, "..", "..", "..", ".."))
+
+
+def _plugin_hooks() -> list[tuple[str, str | None, list[str]]]:
+    """hooks.json の hook ごとの（イベント, matcher, exec 形の argv）。argv の `${CLAUDE_PLUGIN_ROOT}` は置き換えない。"""
     with open(HOOKS_JSON, encoding="utf-8") as f:
         hooks = json.load(f)["hooks"]
-    return [h["command"] for groups in hooks.values() for group in groups for h in group["hooks"]]
+    return [(event, group.get("matcher"), [h["command"], *h.get("args", [])])
+            for event, groups in hooks.items() for group in groups for h in group["hooks"]]
+
+
+def _run_hook(argv: list[str], payload: dict | str, env: dict, root: str = PLUGIN_ROOT) -> subprocess.CompletedProcess[str]:
+    resolved = [a.replace("${CLAUDE_PLUGIN_ROOT}", root) for a in argv]
+    stdin = payload if isinstance(payload, str) else json.dumps(payload)
+    return subprocess.run(resolved, input=stdin, capture_output=True, text=True, env=env)
 
 
 @weight(6)
@@ -552,82 +565,78 @@ def test_agent_scoped_guard() -> None:
         check("commit-guard --agent-scoped は書いた印の無いサブエージェントも拒む",
               r.returncode == 0 and r.stdout != "", r.stdout + r.stderr)
 
-        all_hooks = _plugin_hook_commands()
-        hooks = [h for h in all_hooks if " ask-guard" not in h and " lap-hook" not in h]
-        ask_hooks = [h for h in all_hooks if " ask-guard" in h]
-        with open(HOOKS_JSON, encoding="utf-8") as f:
-            by_event = json.load(f)["hooks"]
-        lap_hooks = {
-            (event, g.get("matcher")): [h["command"] for h in g["hooks"]]
-            for event, groups in by_event.items() for g in groups if any(" lap-hook" in h["command"] for h in g["hooks"])
-        }
+        all_hooks = _plugin_hooks()
+        check("hooks/hooks.json の hook はすべて exec 形で ${CLAUDE_PLUGIN_ROOT}/bin/tw-hook を呼ぶ",
+              len(all_hooks) == 8 and all(argv[0] == "${CLAUDE_PLUGIN_ROOT}/bin/tw-hook" and len(argv) > 1 for _, _, argv in all_hooks),
+              str(all_hooks))
+        hooks = [argv for _, _, argv in all_hooks if "--agent-scoped" in argv]
+        ask_hooks = [argv for _, _, argv in all_hooks if "ask-guard" in argv]
+        lap_hooks = {(event, matcher): argv for event, matcher, argv in all_hooks if "lap-hook" in argv}
         check("hooks/hooks.json は SubagentStart・SubagentStop と Skill の PreToolUse で --agent-scoped なしの lap-hook を1つずつ呼ぶ",
-              sorted(lap_hooks) == [("PreToolUse", "Skill"), ("SubagentStart", None), ("SubagentStop", None)]
-              and all(len(cs) == 1 and cs[0].startswith('"${CLAUDE_PLUGIN_ROOT}/bin/tw" lap-hook ')
-                      and "--agent-scoped" not in cs[0] for cs in lap_hooks.values()),
+              sorted(e for e, _ in lap_hooks) == ["PreToolUse", "SubagentStart", "SubagentStop"]
+              and ("PreToolUse", "Skill") in lap_hooks
+              and all(argv[1:] == ["lap-hook"] for argv in lap_hooks.values()),
               str(lap_hooks))
-        check("hooks/hooks.json は --agent-scoped 付きで ${CLAUDE_PLUGIN_ROOT}/bin/tw を呼ぶ hook を4つ持つ",
-              len(hooks) == 4 and all(
-                  h.startswith('"${CLAUDE_PLUGIN_ROOT}/bin/tw" ') and " --agent-scoped " in h for h in hooks),
+        start_matcher = next((m for e, m in lap_hooks if e == "SubagentStart"), None) or ""
+        stop_matcher = next((m for e, m in lap_hooks if e == "SubagentStop"), None) or ""
+        check("lap-hook の matcher は lap_hook の実装役・受け入れ役の名前（裸と plugin 付き）に当たり、ほかに当たらない",
+              all(re.search(start_matcher, f"{p}{t}") for t in lap_hook.IMPLEMENTER_TYPES for p in ("", "tsukumo-workflow:"))
+              and all(re.search(stop_matcher, f"{p}{lap_hook.ACCEPTOR_TYPE}") for p in ("", "tsukumo-workflow:"))
+              and not any(re.search(m, n) for m in (start_matcher, stop_matcher)
+                          for n in ("Explore", "", "tsukumo-workflow:acceptor-x", "no-delegate-x"))
+              and not re.search(stop_matcher, "tsukumo-workflow:no-delegate"),
+              f"{start_matcher!r} {stop_matcher!r}")
+        check("hooks/hooks.json は --agent-scoped 付きで commit-guard・handback-guard を呼ぶ hook を4つ持つ",
+              len(hooks) == 4 and all(a in ("commit-guard", "handback-guard") for a in (argv[-2] for argv in hooks)),
               str(all_hooks))
-        with open(HOOKS_JSON, encoding="utf-8") as f:
-            pre = json.load(f)["hooks"]["PreToolUse"]
         check("hooks/hooks.json は Edit・Write・NotebookEdit の PreToolUse で handback-guard を呼ぶ",
-              any(g.get("matcher") == "Edit|Write|NotebookEdit"
-                  and all(" handback-guard --agent-scoped " in h["command"] for h in g["hooks"]) for g in pre),
-              str(pre))
-        check("hooks/hooks.json は --agent-scoped なしで ${CLAUDE_PLUGIN_ROOT}/bin/tw ask-guard を呼ぶ hook を1つ持つ",
-              len(ask_hooks) == 1 and ask_hooks[0].startswith('"${CLAUDE_PLUGIN_ROOT}/bin/tw" ask-guard ')
-              and "--agent-scoped" not in ask_hooks[0],
+              any(e == "PreToolUse" and m == "Edit|Write|NotebookEdit" and "handback-guard" in argv and "--agent-scoped" in argv
+                  for e, m, argv in all_hooks),
               str(all_hooks))
-        env = {
-            **hook_env(tmp, f"{os.path.dirname(sys.executable)}:/usr/bin:/bin"),
-            "CLAUDE_PLUGIN_ROOT": os.path.abspath(os.path.join(HERE, "..", "..", "..", "..")),
-        }
+        check("hooks/hooks.json は --agent-scoped なしで ask-guard を呼ぶ hook を1つ持つ",
+              len(ask_hooks) == 1 and "--agent-scoped" not in ask_hooks[0],
+              str(all_hooks))
+        env = hook_env(tmp, f"{os.path.dirname(sys.executable)}:/usr/bin:/bin")
         for hook in ask_hooks:
             payload = {"tool_name": "AskUserQuestion", "tool_input": {}, "cwd": wt1}
-            r = subprocess.run(["sh", "-c", hook], input=json.dumps(payload), capture_output=True, text=True, env=env)
+            r = _run_hook(hook, payload, env)
             check(f"hooks.json の {hook} は agent_type が無くても loopable: Y の控えで拒む",
                   r.returncode == 0 and '"deny"' in r.stdout, r.stdout + r.stderr)
         for hook in hooks:
             fields = commit if "commit-guard" in hook else stop
             for agent_id, refused in (("a-writer-1", True), (None, False)):
                 payload = {**fields, **({} if agent_id is None else {"agent_id": agent_id, "agent_type": "my-implementer"})}
-                r = subprocess.run(["sh", "-c", hook], input=json.dumps(payload), capture_output=True, text=True, env=env)
+                r = _run_hook(hook, payload, env)
                 check(f"hooks.json の {hook} は agent_id={agent_id} で{'拒む' if refused else '通す'}",
                       r.returncode == 0 and (r.stdout != "") == refused, r.stdout + r.stderr)
-        start_hook = lap_hooks.get(("SubagentStart", None), [""])[0]
+        start_hook = next((argv for (e, _), argv in lap_hooks.items() if e == "SubagentStart"), ["/bin/false"])
         payload = {"hook_event_name": "SubagentStart", "cwd": wt1, "agent_id": "a-new", "agent_type": "tsukumo-workflow:no-delegate"}
-        r = subprocess.run(["sh", "-c", start_hook], input=json.dumps(payload), capture_output=True, text=True, env=env)
+        r = _run_hook(start_hook, payload, env)
         delegate_laps = [e for e in flow_rows(wt1) if e["event"] == "lap" and e.get("stage") == "delegate"]
         check("hooks.json の SubagentStart の lap-hook は控え1件の作業ツリーに delegate の start を書き、stdout は空",
               r.returncode == 0 and r.stdout == "" and [(e["task"], e.get("edge")) for e in delegate_laps] == [("T-100", "start")],
               repr(delegate_laps) + r.stdout + r.stderr)
         run_task(wt1, "lap", "T-100", "review", "start")
-        stop_hook = lap_hooks.get(("SubagentStop", None), [""])[0]
+        stop_hook = next((argv for (e, _), argv in lap_hooks.items() if e == "SubagentStop"), ["/bin/false"])
         payload = {"hook_event_name": "SubagentStop", "cwd": wt1, "agent_id": "a-acc", "agent_type": "tsukumo-workflow:acceptor"}
-        r = subprocess.run(["sh", "-c", stop_hook], input=json.dumps(payload), capture_output=True, text=True, env=env)
+        r = _run_hook(stop_hook, payload, env)
         review_laps = [e for e in flow_rows(wt1) if e["event"] == "lap" and e.get("stage") == "review"]
         check("hooks.json の SubagentStop の lap-hook は開いている review の end を書き、stdout は空",
               r.returncode == 0 and r.stdout == "" and [(e["task"], e.get("edge")) for e in review_laps] == [("T-100", "start"), ("T-100", "end")],
               repr(review_laps) + r.stdout + r.stderr)
-        for code, expected_exit in ((1, 1), (78, 0), (127, 0)):
-            fake_root = tempfile.mkdtemp(dir=tmp)
-            os.makedirs(os.path.join(fake_root, "bin"))
-            fake_tw = os.path.join(fake_root, "bin", "tw")
-            write(fake_tw, f"#!/bin/sh\necho boom >&2\nexit {code}\n")
-            os.chmod(fake_tw, 0o755)
-            for hook in all_hooks:
-                guard = next((g for g in ("ask-guard", "lap-hook", "commit-guard") if f" {g}" in hook), "handback-guard")
-                r = subprocess.run(["sh", "-c", hook], input="{}", capture_output=True, text=True,
-                                   env={**env, "CLAUDE_PLUGIN_ROOT": fake_root})
-                if code == 1:
-                    ok = (r.returncode == 1 and r.stdout == "" and "boom" in r.stderr
-                          and f"{guard} が終了コード 1 で落ちた" in r.stderr)
-                else:
-                    ok = r.returncode == 0 and r.stdout == "" and "前提が欠けている" in r.stderr
-                check(f"hooks.json の {guard} は tw が終了コード {code} で落ちると終了コード {expected_exit} で理由を出す",
-                      ok, r.stdout + r.stderr)
+        fake_root = tempfile.mkdtemp(dir=tmp)
+        os.makedirs(os.path.join(fake_root, "bin"))
+        shutil.copy2(os.path.join(PLUGIN_ROOT, "bin", "tw-hook"), os.path.join(fake_root, "bin", "tw-hook"))
+        fake_tw = os.path.join(fake_root, "bin", "tw")
+        write(fake_tw, "#!/bin/sh\necho boom >&2\nexit 1\n")
+        os.chmod(fake_tw, 0o755)
+        crashed = {"hook_event_name": "PreToolUse", "cwd": wt1, "agent_id": "a-writer-1"}
+        for event, matcher, hook in all_hooks:
+            blocks = event == "PreToolUse" and any(g in hook for g in ("commit-guard", "handback-guard", "ask-guard"))
+            r = _run_hook(hook, crashed, env, root=fake_root)
+            check(f"hooks.json の {event}（matcher {matcher}）の {hook[1:]} は、サブエージェントで tw が落ちると"
+                  f"終了コード {2 if blocks else 1}（{'止める' if blocks else '通す'}）",
+                  r.returncode == (2 if blocks else 1) and r.stdout == "" and "boom" in r.stderr, r.stdout + r.stderr)
 
 
 def _send_edit(tmp: str, where: str, agent_id: str, file_path: str | None = None, tool_input: dict | None = None) -> None:

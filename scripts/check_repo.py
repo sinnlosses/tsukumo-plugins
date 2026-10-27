@@ -15,7 +15,8 @@
 - 各 SKILL.md の `!` 埋め込み（インラインとフェンス）が `|| true`・`|| :`・`; true` で終わること
 - 同梱スクリプトが構文として読めること
 - `.claude-plugin/plugin.json` の `name` が `tsukumo-workflow` であること、`bin/tw` が実行でき `task.py` を
-  呼ぶこと、`hooks/hooks.json` が `${CLAUDE_PLUGIN_ROOT}/bin/tw` を呼ぶ `commit-guard`・`handback-guard` の `--agent-scoped` 付きの hook と `ask-guard` の hook を持ち、`SubagentStart`・`SubagentStop` と matcher `Skill` の `PreToolUse` に `lap-hook` の hook を持つこと
+  呼ぶこと、`bin/tw-hook` が実行できること、`hooks/hooks.json` の hook がすべて exec 形で `${CLAUDE_PLUGIN_ROOT}/bin/tw-hook` を呼び、
+  （イベント, matcher, `args`）の組が `PLUGIN_HOOKS` と過不足なく一致すること（`--fail-closed` は `PreToolUse` の関門だけ）
 - `.claude-plugin/marketplace.json` の `./` 以外のプラグイン（`plugins/<名>/`）に、同じ名前の `plugin.json` と、名前がディレクトリ名と合う `SKILL.md` があること
 - `tw` の指す `task.py` が実行でき、スキルの Markdown が `task.py` を `python3` で呼ぶ形や `` `task …` `` の略記で書いていないこと
 - 兄弟スキルの `scripts/` を `sys.path` に足して `import` しているなら、`REQUIRES` にその
@@ -58,13 +59,19 @@ OPTIONAL_SKILLS = (
     "writing-for-agents",
 )
 
-def hook_tail(subcommand: str) -> str:
-    """hook の command の末尾。前提の欠落（78・127）は案内して 0、ほかの非 0 は理由を出して 1 で返す。"""
-    return (
-        "|| { c=$?; case $c in 78|127) "
-        "echo 'tsukumo-workflow: 前提が欠けている（tw config-doctor で確かめる）' >&2; exit 0;; "
-        f'*) echo "tsukumo-workflow: {subcommand} が終了コード $c で落ちた（関門が掛かっていない）" >&2; exit 1;; esac; }}'
-    )
+HOOK_COMMAND = "${CLAUDE_PLUGIN_ROOT}/bin/tw-hook"
+
+# hooks/hooks.json の hook の（イベント, matcher, args）。
+PLUGIN_HOOKS = (
+    ("PreToolUse", "Bash", ("--fail-closed", "commit-guard", "--agent-scoped")),
+    ("PreToolUse", "Edit|Write|NotebookEdit", ("--fail-closed", "handback-guard", "--agent-scoped")),
+    ("PreToolUse", "SubagentHandback", ("--fail-closed", "handback-guard", "--agent-scoped")),
+    ("PreToolUse", "AskUserQuestion", ("--fail-closed", "ask-guard")),
+    ("PreToolUse", "Skill", ("lap-hook",)),
+    ("SubagentStop", None, ("handback-guard", "--agent-scoped")),
+    ("SubagentStop", "(^|:)acceptor$", ("lap-hook",)),
+    ("SubagentStart", "(^|:)(general-purpose|no-delegate)$", ("lap-hook",)),
+)
 
 ACCEPTOR_DISALLOWED_TOOLS = ("Agent", "Edit", "Write", "NotebookEdit")
 
@@ -329,24 +336,28 @@ def check_plugin() -> None:
         if done.returncode != 0 or "commit-guard" not in done.stdout:
             fail(f"bin/tw --help が task.py に届かない（終了コード {done.returncode}）")
 
+    if not os.access(os.path.join(ROOT, "bin", "tw-hook"), os.X_OK):
+        fail("bin/tw-hook が無いか実行ビットが無い")
+
     try:
         hooks = json.loads(read(os.path.join(ROOT, "hooks", "hooks.json")))["hooks"]
-        commands = [h["command"] for groups in hooks.values() for g in groups for h in g["hooks"]]
-    except (OSError, ValueError, KeyError, TypeError):
-        fail("hooks/hooks.json を読めない（hooks.<イベント>[].hooks[].command の形）")
+        entries = [(event, g.get("matcher"), h) for event, groups in hooks.items() for g in groups for h in g["hooks"]]
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        fail("hooks/hooks.json を読めない（hooks.<イベント>[].hooks[] の形）")
         return
-    for subcommand in ("commit-guard", "handback-guard"):
-        want = f'"${{CLAUDE_PLUGIN_ROOT}}/bin/tw" {subcommand} --agent-scoped {hook_tail(subcommand)}'
-        if want not in commands:
-            fail(f"hooks/hooks.json に hook {want!r} が無い")
-    want = f'"${{CLAUDE_PLUGIN_ROOT}}/bin/tw" ask-guard {hook_tail("ask-guard")}'
-    if want not in commands:
-        fail(f"hooks/hooks.json に hook {want!r} が無い")
-    want = f'"${{CLAUDE_PLUGIN_ROOT}}/bin/tw" lap-hook {hook_tail("lap-hook")}'
-    for event, matcher in (("SubagentStart", None), ("SubagentStop", None), ("PreToolUse", "Skill")):
-        groups = [g for g in hooks.get(event, []) if g.get("matcher") == matcher]
-        if not any(h["command"] == want for g in groups for h in g["hooks"]):
-            fail(f"hooks/hooks.json の {event}{'' if matcher is None else f'（matcher {matcher}）'} に hook {want!r} が無い")
+    found = []
+    for event, matcher, h in entries:
+        args = h.get("args") if isinstance(h, dict) else None
+        if not isinstance(args, list) or not all(isinstance(a, str) for a in args) or h.get("command") != HOOK_COMMAND:
+            fail(f"hooks/hooks.json の {event} の hook が exec 形で {HOOK_COMMAND} を呼んでいない: {h!r}")
+            continue
+        found.append((event, matcher, tuple(args)))
+    for missing in sorted(set(PLUGIN_HOOKS) - set(found), key=str):
+        fail(f"hooks/hooks.json に hook {missing!r} が無い")
+    for extra in sorted(set(found) - set(PLUGIN_HOOKS), key=str):
+        fail(f"hooks/hooks.json に想定外の hook {extra!r} がある")
+    if len(found) != len(set(found)):
+        fail("hooks/hooks.json に同じ hook が重なっている")
 
 
 def check_cross_references(names: list[str]) -> None:
