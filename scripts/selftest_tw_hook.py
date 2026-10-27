@@ -57,9 +57,38 @@ def make_root(tmp: str, shell: str, with_tw: bool) -> str:
     return hook
 
 
-def run(hook: str, args: list[str], stdin: str, tw_exit: int, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
-    env = {"PATH": "/usr/bin:/bin", "FAKE_TW_EXIT": str(tw_exit)}
+def run(hook: str, args: list[str], stdin: str, tw_exit: int, cwd: str | None = None,
+        path_prefix: str | None = None) -> subprocess.CompletedProcess[str]:
+    path = "/usr/bin:/bin" if path_prefix is None else f"{path_prefix}:/usr/bin:/bin"
+    env = {"PATH": path, "FAKE_TW_EXIT": str(tw_exit)}
     return subprocess.run([hook, *args], input=stdin, capture_output=True, text=True, env=env, cwd=cwd)
+
+
+def check_heartbeat_spares_python(tmp: str, hook: str) -> None:
+    repo = os.path.join(tmp, "repo-spy")
+    os.makedirs(repo)
+    subprocess.run(["git", "init", "-q", repo], check=True)
+    spy = os.path.join(tmp, "spy-bin")
+    os.makedirs(spy)
+    mark = os.path.join(tmp, "python-called")
+    with open(os.path.join(spy, "python3"), "w", encoding="utf-8") as f:
+        f.write(f'#!/bin/sh\n: > "{mark}"\nexec /usr/bin/python3 "$@"\n')
+    os.chmod(os.path.join(spy, "python3"), 0o755)
+    payload = json.dumps({"hook_event_name": "PostToolUse", "tool_name": "Read", "cwd": repo, "agent_id": "a-spy"})
+
+    r = run(hook, ["heartbeat"], payload, 1, cwd=repo, path_prefix=spy)
+    check("heartbeat は着手の控えが無い作業ツリーでは python3 を起こさない",
+          r.returncode == 0 and not os.path.exists(mark), repr((r.returncode, r.stderr)))
+
+    claims = os.path.join(repo, ".tw", "local", "task-open-claims")
+    os.makedirs(claims)
+    with open(os.path.join(claims, "T-1"), "w", encoding="utf-8"):
+        pass
+    r = run(hook, ["heartbeat"], payload, 1, cwd=repo, path_prefix=spy)
+    check("heartbeat は控えがあるときだけ python3 で最上位の agent_id を読んで書く",
+          r.returncode == 0 and os.path.exists(mark)
+          and os.path.isfile(os.path.join(repo, ".tw", "local", "task-agent-beats", "a-spy")),
+          repr((r.returncode, r.stderr)))
 
 
 def check_heartbeat(tmp: str, hook: str) -> None:
@@ -182,6 +211,7 @@ def main() -> int:
               r.returncode == 0 and "前提が欠けている" in r.stderr, repr((r.returncode, r.stderr)))
 
         check_heartbeat(tmp, hook)
+        check_heartbeat_spares_python(tmp, hook)
 
     if failures:
         print(f"NG: {len(failures)} 件")
