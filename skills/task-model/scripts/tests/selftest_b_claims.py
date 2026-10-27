@@ -69,7 +69,7 @@ def test_release_force_clears_github_label() -> None:
 
 
 def test_release_force_deadline_then_sync() -> None:
-    say("release --force: GitHub が遅くても待たず、sync が label を外し open のまま")
+    say("release --force: 取り込みの読みが上限切れでも、sync が label を外し open のまま")
     with github() as (fake, _tmp, main_path, wt1):
         a = new(main_path, "送りが切れる")
         n, bd_id = num(a), beads.to_bd_id(a)
@@ -80,11 +80,10 @@ def test_release_force_deadline_then_sync() -> None:
               and "status::in_progress" in status_labels(fake, n), r.stdout + repr(fake.issues[n]["labels"]))
         local.env[tracker.OP_TIMEOUT_ENV] = "2"
         fake.delay = 5
-        started = time.monotonic()
         r = run_task(wt1, "release", a, "--force")
-        check("RELEASED は GitHub の遅れを待たず、TRACKER の行も出さない（着手中は取り込まず、送りも release にない）",
-              r.returncode == 0 and r.stdout.startswith("RELEASED") and "TRACKER" not in r.stdout
-              and time.monotonic() - started < 5, r.stdout + r.stderr)
+        check("RELEASED と TRACKER FAILED（取り込みの読みが切れた行。担当者の無い in_progress は取り込む。送りは release にない）",
+              r.returncode == 0 and r.stdout.startswith("RELEASED") and "TRACKER\tFAILED\tgithub" in r.stdout,
+              r.stdout + r.stderr)
         fake.delay = 0
         r = run_task(main_path, "sync")
         again = beads.show(main_path, bd_id)
