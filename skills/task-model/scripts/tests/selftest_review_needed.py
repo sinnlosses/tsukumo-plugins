@@ -202,7 +202,71 @@ def test_broken_config() -> None:
             )
 
 
+TWO_TESTS = "def test_one():\n    assert 1\n\n\ndef test_two():\n    assert 2\n"
+EXPECTED = "test/e2e/expected/home.html"
+
+
+def init_marks_repo(d: str) -> None:
+    init_repo(d)
+    write(d, "tests/test_a.py", TWO_TESTS)
+    write(d, EXPECTED, "<p>a</p>\n")
+    write(d, "test/e2e/expected/other.html", "<p>b</p>\n")
+    git(d, "add", "tests", "test")
+    git(d, "commit", "-q", "-m", "tests")
+
+
+def marks_of(output: str) -> list[str]:
+    return [line.split("\t")[1] for line in output.splitlines() if line.startswith("MARK\t")]
+
+
+def test_marks_table() -> None:
+    print("テストの削除・skip・expected だけの差分は MARK の行で印を付け、境界の外では出ない")
+    cases: list[tuple[str, list[tuple[str, str | None]], list[str]]] = [
+        ("テストのファイルを消す", [("tests/test_a.py", None)], ["test-deleted"]),
+        ("テストの定義を1つ消す", [("tests/test_a.py", "def test_one():\n    assert 1\n")], ["test-deleted"]),
+        ("定義を消して別の定義を足す（差し引き0）", [("tests/test_a.py", "def test_one():\n    assert 1\n\n\ndef test_three():\n    assert 3\n")], []),
+        ("テストの本体だけ書き換える", [("tests/test_a.py", TWO_TESTS.replace("assert 2", "assert 20"))], []),
+        ("テストのファイルを足す", [("tests/test_b.py", TWO_TESTS)], []),
+        ("テストに skip を足す", [("tests/test_a.py", "import pytest\n\n\n@pytest.mark.skip\n" + TWO_TESTS)], ["test-skipped"]),
+        ("テストの定義を消して skip を足す", [("tests/test_a.py", "import pytest\n\n\n@pytest.mark.skip\ndef test_one():\n    assert 1\n")], ["test-deleted", "test-skipped"]),
+        ("テストでないファイルに skip の語を足す", [("a.py", "x = 1  # pytest.mark.skip\n")], []),
+        ("テストでないファイルを消す", [("a.py", None)], []),
+        ("expected だけ変える", [(EXPECTED, "<p>c</p>\n")], ["expected-only"]),
+        ("expected を2つとも変える", [(EXPECTED, "<p>c</p>\n"), ("test/e2e/expected/other.html", "<p>d</p>\n")], ["expected-only"]),
+        ("expected とコードを一緒に変える", [(EXPECTED, "<p>c</p>\n"), ("a.py", "x = 2\n")], []),
+        ("テスト置き場の expected でない資料を変える", [("tests/data.json", "{}\n")], []),
+        ("文書だけ変える", [("README.md", "b\n")], []),
+    ]
+    for label, edits, want in cases:
+        with tempfile.TemporaryDirectory() as d:
+            init_marks_repo(d)
+            for path, body in edits:
+                if body is None:
+                    os.remove(os.path.join(d, path))
+                else:
+                    write(d, path, body)
+            got = marks_of(run(d, "--difficulty", "sonnet"))
+            check(f"{label}: 印は {want}", got == want, repr(got))
+
+
+def test_marks_line_and_range() -> None:
+    print("MARK の行は判定の行のあとに種類とパスで出て、範囲つきでも同じ印が付く")
+    with tempfile.TemporaryDirectory() as d:
+        init_marks_repo(d)
+        git(d, "checkout", "-q", "-b", "work")
+        os.remove(os.path.join(d, "tests/test_a.py"))
+        git(d, "add", "-A")
+        git(d, "commit", "-q", "-m", "drop")
+        got = run(d, "--difficulty", "sonnet", "main..work")
+        check("判定の行のあとに MARK<TAB>test-deleted<TAB>パス",
+              got == "REVIEW\tcode\t1\nMARK\ttest-deleted\ttests/test_a.py", repr(got))
+        got = run(d, "--difficulty", "sonnet", "main..main")
+        check("差分が空なら印は出ない", got == "NOTHING", repr(got))
+
+
 def main() -> int:
+    test_marks_table()
+    test_marks_line_and_range()
     test_code_globs()
     test_code_globs_absent_or_empty()
     test_glob_boundary()

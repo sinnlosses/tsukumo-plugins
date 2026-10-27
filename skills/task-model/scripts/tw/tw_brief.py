@@ -106,7 +106,7 @@ def cmd_brief_acceptor(
         _usage("brief acceptor: --since は --round と一緒に打つ")
     if not visual_wait and round_number is None and accept_file is None:
         _usage("brief acceptor: --accept-file（tw accept か review_needed.py の出力）が要る")
-    verdict, tree_sha = _read_verdict(tw_base.read_body(accept_file)) if accept_file is not None else ("", None)
+    verdict, tree_sha, marks = _read_verdict(tw_base.read_body(accept_file)) if accept_file is not None else ("", None, [])
     shown, issue, plan_body, _mark, _base, _drift = tw_edit.own_plan(toplevel, task_id)
     template_path, sections = _template(toplevel, ROLE_ACCEPTOR, ACCEPTOR_SECTIONS)
     criteria = str(issue.raw.get("acceptance_criteria") or "").strip("\n")
@@ -147,20 +147,29 @@ def cmd_brief_acceptor(
     values.update(
         criteria=criteria,
         rules="・".join(f"`{p}`" for p in rules) or "無い（作業ツリーの根に規約のファイルが無い）",
-        verdict="`" + verdict.replace("\t", "\\t") + "`",
+        verdict="`" + verdict.replace("\t", "\\t") + "`" + "".join(f" 印: `{m.replace(chr(9), chr(92) + 't')}`" for m in marks),
+        how=_verify_ways(plan_body),
         friction=_friction_value(toplevel, shown),
     )
     _print_brief(shown, ROLE_ACCEPTOR, sections, chosen, values)
 
 
-def _read_verdict(text: str) -> tuple[str, str | None]:
-    """`tw accept` か `review_needed.py` の出力から `(判定の行, SNAPSHOT の木)`。判定の行が無ければ終了コード2。"""
+_VERIFY_WAY = re.compile(r"^[ \t]*- 確かめ方:[ \t]*(.+?)[ \t]*$", re.MULTILINE)
+
+
+def _verify_ways(plan_body: str) -> str:
+    """計画の段の `- 確かめ方:` の欄（完了条件の行ごとのコマンドか台本）を ` / ` でつないだ1行。無ければ `無い`。"""
+    return " / ".join(_VERIFY_WAY.findall(plan_body)) or "無い"
+
+
+def _read_verdict(text: str) -> tuple[str, str | None, list[str]]:
+    """`tw accept` か `review_needed.py` の出力から `(判定の行, SNAPSHOT の木, MARK の行)`。判定の行が無ければ終了コード2。"""
     lines = text.splitlines()
     verdict = next((line for line in lines if line.split("\t", 1)[0] in VERDICT_WORDS), None)
     if verdict is None:
         _usage("brief acceptor: --accept-file に判定の行（REVIEW・SKIP・NOTHING・NO_RANGE）が無い")
     snapshot = next((line.split("\t", 1)[1] for line in lines if line.startswith("SNAPSHOT\t")), None)
-    return verdict or "", snapshot
+    return verdict or "", snapshot, [line for line in lines if line.startswith("MARK\t")]
 
 
 def _snapshot(tree: str) -> str:

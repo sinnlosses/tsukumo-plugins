@@ -256,6 +256,24 @@ def test_brief_acceptor_review() -> None:
                   and "委譲なし" not in body, f"{stdin!r} -> {body}")
 
 
+def test_brief_acceptor_marks_and_verify_ways() -> None:
+    say("task.py brief acceptor: accept の MARK の行を判定の値に印として載せ、計画の `- 確かめ方:` を依頼文に渡す（無ければ 無い）")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _ = make_repo(tmp, branch="切らない")
+        _claim_with_plan(wt1, main_path, "### 1. 書く\n- 満たす完了条件: 1, 2\n- 確かめ方: 1 は `pytest -q`、2 は台本A\n", acceptance="1. 通る\n2. 動く")
+        accept = "REVIEW\tcode\t2\nMARK\ttest-skipped\ttests/test_a.py\nMARK\texpected-only\ttest/e2e/expected/a.html\n"
+        body = _acceptor(wt1, "--accept-file", "-", stdin=accept).stdout
+        check("MARK の行ごとに 印 が判定の値に付く",
+              "`REVIEW\\tcode\\t2` 印: `MARK\\ttest-skipped\\ttests/test_a.py` 印: `MARK\\texpected-only\\ttest/e2e/expected/a.html`" in body, body)
+        check("計画の確かめ方の本文が依頼文に載り、{{ が残らない",
+              "計画の確かめ方" in body and ": 1 は `pytest -q`、2 は台本A\n" in body and "{{" not in body, body)
+        body = _acceptor(wt1, "--accept-file", "-", stdin="REVIEW\tcode\t2\n").stdout
+        check("印が無ければ判定の値だけ", "`REVIEW\\tcode\\t2`\n" in body and "印:" not in body, body)
+        run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-", stdin="### 1. 書く\n- 満たす完了条件: 1, 2\n")
+        body = _acceptor(wt1, "--accept-file", "-", stdin="SKIP\tdocs-only\n").stdout
+        check("確かめ方の欄が無ければ 無い", "（完了条件の行ごと。打って結果を判定に使う）: 無い\n" in body, body)
+
+
 def test_brief_acceptor_other_repo() -> None:
     say("task.py brief acceptor: 作業先が別のリポジトリなら、作業先の作業ツリーと主ブランチからの範囲で差分を出し、木もそこで取る")
     with tempfile.TemporaryDirectory() as tmp:
@@ -358,6 +376,7 @@ TESTS = (
     test_brief_implementer_visual,
     test_brief_implementer_every_combination,
     test_brief_acceptor_review,
+    test_brief_acceptor_marks_and_verify_ways,
     test_brief_acceptor_other_repo,
     test_brief_acceptor_visual,
     test_brief_acceptor_round,
