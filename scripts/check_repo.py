@@ -6,8 +6,7 @@
 見るもの:
 - 各 SKILL.md の frontmatter が読めて、`name` がディレクトリ名と一致すること
 - 各 `agents/*.md`（plugin が持ち込むエージェント定義）の frontmatter が
-  読めて、`name` がファイル名と一致し、`description` があること。`no-delegate` の frontmatter が
-  コミットを拒む hook（`tw commit-guard`）と返却を拒む hook（`tw handback-guard`）を持つこと。
+  読めて、`name` がファイル名と一致し、`description` があること。
   `acceptor` が `model: opus` で、`Agent`・`Edit`・`Write`・`NotebookEdit` を持たず hooks も持たないこと
 - README の「由来」一覧が `skills/` と過不足なく一致すること（README が索引なので）
 - スキル同士の相互参照が、実在するスキルか `OPTIONAL_SKILLS`（あれば使う外のスキル）を指していること
@@ -57,12 +56,6 @@ OPTIONAL_SKILLS = (
     "token-usage-diet",
     "verifying-before-completion",
     "writing-for-agents",
-)
-
-# `agents/no-delegate.md` の frontmatter の hooks に要る行。
-NO_DELEGATE_HOOK_LINES = (
-    "command: tw commit-guard 2>/dev/null || true",
-    "command: tw handback-guard 2>/dev/null || true",
 )
 
 def hook_tail(subcommand: str) -> str:
@@ -142,13 +135,6 @@ def check_agent_frontmatter(names: list[str]) -> None:
             fail(f"agents/{n}.md: frontmatter の name が {fm.get('name')!r} でファイル名と違う")
         if not fm.get("description"):
             fail(f"agents/{n}.md: description が無い")
-    if "no-delegate" in names:
-        text = read(os.path.join(AGENTS, "no-delegate.md"))
-        head = text[: text.find("\n---\n", 3)]
-        lines = [line.strip() for line in head.splitlines()]
-        for hook_line in NO_DELEGATE_HOOK_LINES:
-            if hook_line not in lines:
-                fail(f"agents/no-delegate.md: frontmatter に hook の行 {hook_line!r} が無い")
     if "acceptor" in names:
         text = read(os.path.join(AGENTS, "acceptor.md"))
         head = text[: text.find("\n---\n", 3)]

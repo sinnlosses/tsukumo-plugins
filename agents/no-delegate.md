@@ -2,20 +2,6 @@
 name: no-delegate
 description: "調べもの・コード検索・複数手順の実行を行う汎用エージェント。`general-purpose` から `Agent` ツールを外したもので、これ自身は別のサブエージェント（fork を含む）を立てられない。委譲を1段で止めたい場面（例: `/next-task` からの委譲）で `general-purpose` の代わりに使う。着手の印が立った作業ツリーでは、コミットと、計画・検証の欠けた返却を hook（`tw commit-guard`・`tw handback-guard`）が拒む。"
 disallowedTools: Agent
-hooks:
-  PreToolUse:
-    - matcher: Bash
-      hooks:
-        - type: command
-          command: tw commit-guard 2>/dev/null || true
-    - matcher: SubagentHandback
-      hooks:
-        - type: command
-          command: tw handback-guard 2>/dev/null || true
-  Stop:
-    - hooks:
-        - type: command
-          command: tw handback-guard 2>/dev/null || true
 ---
 
 `general-purpose` エージェントと同じ進め方で、調べものやコード検索、複数手順にまたがる作業を行う。

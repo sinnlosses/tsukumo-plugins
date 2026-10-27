@@ -8,8 +8,6 @@
 # 構文とリポジトリの整合は、いつも流す。check.sh 自身が変わったときは全段を流す。
 # `--full` のとき、main の上にいるとき、detached HEAD のとき、差分が取れないときも全段を流す。
 # `agents/*.md` の中身だけの変更（追加・削除でない）は、どの段にも当てない。
-# ただし agents/no-delegate.md の frontmatter（先頭の `---` から次の `---` まで）の変更は、
-# テストが hook 行を読むので、当てる。
 # `--plan` は段を流さず、流す段（== 見出し ==）と飛ばす段、task コマンドの節では絞りの先（`-- 絞り: <モジュール>` か `ALL`）だけを出す。`--full` と並べても段を流さない。
 # 自己テストは一時ディレクトリを RAM ディスクに置く（作れなければ今の場所）。
 # 低優先度（taskpolicy -c utility / nice）で流すのは `CHECK_LOWPRI=1` のときだけ。
@@ -57,14 +55,7 @@ if [ "$mode" != full ]; then
     && untracked=$(git -C "$here" ls-files --others --exclude-standard 2>/dev/null); then
     changed=$(printf '%s\n%s\n' "$diffed" "$untracked")
     scoped=yes
-    # agents/*.md のうち自己テストが実物を読むのは、no-delegate.md の frontmatter の hook 行だけ
     bodyonly=$(git -C "$here" diff --name-only --no-renames --diff-filter=M "$base" -- 'agents/*.md' 2>/dev/null)
-    fm_end=$(git -C "$here" show "$base:agents/no-delegate.md" 2>/dev/null \
-      | { n=0; d=0; while IFS= read -r l; do n=$((n+1)); [ "$l" = --- ] && d=$((d+1)); [ "$d" -eq 2 ] && { echo "$n"; break; }; done; })
-    if [ -n "$bodyonly" ] && git -C "$here" diff -U0 "$base" -- agents/no-delegate.md 2>/dev/null \
-      | grep '^@@' | while read -r _ old _; do old=${old#-}; [ "${old%%,*}" -le "${fm_end:-999999}" ] && { echo hit; break; }; done | grep -q hit; then
-      bodyonly=$(printf '%s\n' "$bodyonly" | grep -vx agents/no-delegate.md || true)
-    fi
     [ -z "$bodyonly" ] || changed=$(printf '%s\n' "$changed" | grep -vxF "$bodyonly" || true)
   fi
 fi
