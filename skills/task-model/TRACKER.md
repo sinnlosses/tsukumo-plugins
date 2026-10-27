@@ -135,10 +135,10 @@ Project・Status 欄・選択肢の ID は `bd kv` の `task-workflow.project` �
 - **タスクの操作**（`claim`・`release`・`edit`・`adopt`・`done`・`hold`）: 触る課題だけを
   取り込み → 操作の順で打ち、**送らない**。Beads が正で、GitHub は `ship` か `tw sync` までずれる
   （`claim` の直後に label `status::in_progress` や担当者は付かず、Status 欄は間に `sync` を挟まなければ `In progress` を経ず `Done` へ1回で変わる）。
-  ただし Beads が `in_progress` で担当者のある課題（着手中で未送り）は取り込まない。取り込みは `tw sync` と、着手前（`open`）の課題への操作だけが打つ。
-  着手中に GitHub 側だけが変わっても `tw sync` まで入らず、両側が変わっていれば Beads が勝って `CONFLICT` を出す。
-  担当者が空の `in_progress`（止めた取り込みが印を消した版）は取り込んで戻す。
-  送るのは `new`・`ship`・`sync` だけ。取り込み（`tw sync` と着手前の取り込み）は前回の同期の時刻を進めるので、取り込みのあとの直し（assignee・label・付け替え）は
+  取り込みを打つのは `tw sync` と、Beads が `in_progress` で担当者のある課題（着手中で未送り）**以外**への操作
+  （`open`・`deferred`・閉じた課題と、担当者が空の `in_progress`〔止めた取り込みが印を消した版なので取り込んで戻す〕）。
+  着手中で担当者のある課題は、GitHub 側だけが変わっても `tw sync` まで入らず、両側が変わっていれば Beads が勝って `CONFLICT` を出す。
+  送るのは `new`・`ship`・`sync` だけ。取り込み（`tw sync` と、上の操作の取り込み）は前回の同期の時刻を進めるので、取り込みのあとの直し（assignee・label・付け替え）は
   その場で送る（送らないと、次の取り込みがその課題を「Beads で変えたもの」として飛ばし、GitHub での変更を送り返して消す）
 - **衝突**: 課題ごとの勝ち負けで、欄ごとには合わせない。取り込みは前回の同期より後に Beads で
   変えた課題を上書きしないので、**両側で変えたら Beads が勝ち**、GitHub の版は Issue の編集履歴に残る。
