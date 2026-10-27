@@ -67,8 +67,9 @@ def test_tracker_deadline_counted_per_gh_call() -> None:
 
         return remaining
 
-    real_gh = tracker_github._gh
+    real_gh, real_show = tracker_github._gh, beads.show
     tracker_github._gh = stub_gh
+    beads.show = lambda _toplevel, _bd_id: None
     try:
         reply.update({"number": 1})
         session = tracker.Session("/nonexistent", tracker.Tracker("github"))
@@ -103,6 +104,7 @@ def test_tracker_deadline_counted_per_gh_call() -> None:
         check("Status を書く失敗のあとの読み直しも、尽きていたら打たない", failed and len(calls) == 1, str(calls))
     finally:
         tracker_github._gh = real_gh
+        beads.show = real_show
 
 
 def test_tracker_timeout() -> None:
