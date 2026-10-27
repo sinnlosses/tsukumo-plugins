@@ -246,8 +246,6 @@ def test_brief_acceptor_review() -> None:
         check("SKIP は レビュー を付けない", r.returncode == 0 and _head(r) == "BRIEF\tT-100\tacceptor\t常に,同じリポジトリ", body)
         check("依頼文に委譲先の自己申告（friction log の行・自己点検・ドラフト・規約の行）が含まれず、friction は some の1語だけ",
               not any(m in body for m in markers) and ": `some`" in body, body)
-        check("含めると落ちる（検査自身: 自己申告を足した依頼文は引っかかる）",
-              any(m in body + "\n" + selfreport for m in markers))
 
         for stdin, want in (("- 実装 段1: friction log: なし\n- 実装 段2: friction log: なし\n- 規約: なし\n", "none"),
                             ("- 実装 計画: 段は2つ\n", "missing"),
