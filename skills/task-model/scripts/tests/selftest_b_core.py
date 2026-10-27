@@ -16,6 +16,7 @@ sys.path.insert(1, os.path.join(HERE, "..", "core"))
 sys.path.insert(1, os.path.join(HERE, "..", "tw"))
 
 import beads  # noqa: E402
+import init  # noqa: E402
 import layout  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
@@ -102,6 +103,40 @@ def test_setup_and_config_doctor() -> None:
         main_path, wt1, _ = make_repo(tmp, prefix=None)
         check("init.py が .beads を作る", os.path.isdir(os.path.join(main_path, ".beads")))
         check("stealth で .beads は git に見えない", git(main_path, "status", "--porcelain").stdout.strip() == "")
+
+        def init_out() -> str:
+            return subprocess.run([sys.executable, os.path.join(HERE, "..", "core", "init.py")],
+                                  cwd=main_path, capture_output=True, text=True, env=env()).stdout
+
+        config_path = os.path.join(main_path, ".tw", "config.toml")
+        with open(config_path, encoding="utf-8") as f:
+            before = f.read()
+        out = init_out()
+        with open(config_path, encoding="utf-8") as f:
+            after = f.read()
+        check("backup が未記入なら init.py は backup UNSET の知らせを出し、設定は書き換えない",
+              any(l.startswith("backup\tUNSET\t") for l in out.splitlines()) and before == after, out)
+        check("UNSET の知らせは同じディスクだと言い切らない",
+              "既定は" not in out and "tw config-doctor" in out, out)
+        states = (
+            ("OK", "backup 記入済み", before + 'backup = "/somewhere/else"\n', False),
+            ("OK", "backup 未記入", before, True),
+            ("MISSING", "設定ファイルなし", None, False),
+            ("INVALID", "verify なし", 'branch = "既定"\n', False),
+            ("INVALID", "branch が語彙の外", before + 'branch = "自分で切らない"\n', False),
+            ("INVALID", "知らないキー", before + 'foo = "x"\n', False),
+        )
+        for state, label, body, unset in states:
+            if body is None:
+                os.remove(config_path)
+            else:
+                write(config_path, body)
+            out = init_out()
+            check(f"設定が {state} のとき UNSET は{'出す' if unset else '出さない'}（{label}）",
+                  out.count("backup\tUNSET\t") == (1 if unset else 0)
+                  and any(l.startswith(f"config\t{state}\t") for l in out.splitlines())
+                  and init.config_state(main_path)[0] == state, out)
+        write(config_path, before)
         r = run_task(wt1, "config-doctor")
         check("config-doctor が store・beads・tracker の行を足す", r.returncode == 0
               and tail_line(r.stdout, "store").startswith("store\tOK\tbeads")

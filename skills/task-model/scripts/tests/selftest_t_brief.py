@@ -234,21 +234,44 @@ def test_brief_acceptor_review() -> None:
               "`git diff HEAD`" in body and "1. 通る\n2. 動く" in body and "`REVIEW\\tcode\\t" in body
               and f"`{os.path.join(os.path.realpath(wt1), 'CLAUDE.md')}`" in body and "{{" not in body, body)
         check("acceptor-brief.md の絶対パスが実在する", _paths_exist(body), body)
-        check("申し送りが無ければその旨", "申し送り `実装` が無い" in body, body)
+        check("申し送りが無ければ friction は missing", "`friction` の値" in body and ": `missing`" in body, body)
 
+        selfreport = "段1でテストが1回落ちた（a.py）"
+        markers = (selfreport, "何かを変える", "根拠: x", "自己点検: 外れ", "- 規約: なし")
         run_task(wt1, "relay", "T-100", "実装", "--body-file", "-",
-                 stdin="- 黄: 段1でテストが1回落ちた（a.py）\n- ドラフト: 何かを変える\n  - 根拠: x\n- 規約: なし\n")
+                 stdin=f"- 実装 段1: friction log: なし\n- 黄: {selfreport}\n- 自己点検: 外れ\n"
+                       "- ドラフト: 何かを変える\n  - 根拠: x\n- 規約: なし\n")
         r = _acceptor(wt1, "--accept-file", "-", stdin="SKIP\tdocs-only\n")
         body = r.stdout
         check("SKIP は レビュー を付けない", r.returncode == 0 and _head(r) == "BRIEF\tT-100\tacceptor\t常に,同じリポジトリ", body)
-        check("friction の行はそのまま、ドラフト（子項目ごと）と規約の行は除く",
-              "- 黄: 段1でテストが1回落ちた（a.py）" in body and "ドラフト" not in body and "根拠: x" not in body
-              and "- 規約: なし" not in body, body)
+        check("依頼文に委譲先の自己申告（friction log の行・自己点検・ドラフト・規約の行）が含まれず、friction は some の1語だけ",
+              not any(m in body for m in markers) and ": `some`" in body, body)
 
-        run_task(wt1, "relay", "T-100", "実装", "--body-file", "-", stdin="- 規約: 委譲なし\n")
+        for stdin, want in (("- 実装 段1: friction log: なし\n- 実装 段2: friction log: なし\n- 規約: なし\n", "none"),
+                            ("- 実装 計画: 段は2つ\n", "missing"),
+                            ("- 規約: 委譲なし\n", "none")):
+            run_task(wt1, "relay", "T-100", "実装", "--body-file", "-", stdin=stdin)
+            body = _acceptor(wt1, "--accept-file", "-", stdin="SKIP\tdocs-only\n").stdout
+            check(f"friction の値は {want}（行は渡さない）", f"（`tw brief` が決めた1語。委譲先の報告は渡さない）: `{want}`" in body
+                  and "委譲なし" not in body, f"{stdin!r} -> {body}")
+
+
+def test_brief_acceptor_marks_and_verify_ways() -> None:
+    say("task.py brief acceptor: accept の MARK の行を判定の値に印として載せ、計画の `- 確かめ方:` を依頼文に渡す（無ければ 無い）")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _ = make_repo(tmp, branch="切らない")
+        _claim_with_plan(wt1, main_path, "### 1. 書く\n- 満たす完了条件: 1, 2\n- 確かめ方: 1 は `pytest -q`、2 は台本A\n", acceptance="1. 通る\n2. 動く")
+        accept = "REVIEW\tcode\t2\nMARK\ttest-skipped\ttests/test_a.py\nMARK\texpected-only\ttest/e2e/expected/a.html\n"
+        body = _acceptor(wt1, "--accept-file", "-", stdin=accept).stdout
+        check("MARK の行ごとに 印 が判定の値に付く",
+              "`REVIEW\\tcode\\t2` 印: `MARK\\ttest-skipped\\ttests/test_a.py` 印: `MARK\\texpected-only\\ttest/e2e/expected/a.html`" in body, body)
+        check("計画の確かめ方の本文が依頼文に載り、{{ が残らない",
+              "計画の確かめ方" in body and ": 1 は `pytest -q`、2 は台本A\n" in body and "{{" not in body, body)
+        body = _acceptor(wt1, "--accept-file", "-", stdin="REVIEW\tcode\t2\n").stdout
+        check("印が無ければ判定の値だけ", "`REVIEW\\tcode\\t2`\n" in body and "印:" not in body, body)
+        run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-", stdin="### 1. 書く\n- 満たす完了条件: 1, 2\n")
         body = _acceptor(wt1, "--accept-file", "-", stdin="SKIP\tdocs-only\n").stdout
-        check("委譲なしの規約の行は残し、friction log の行が無いとは書かない",
-              "- 規約: 委譲なし" in body and "friction log の行が無い" not in body, body)
+        check("確かめ方の欄が無ければ 無い", "（完了条件の行ごと。打って結果を判定に使う）: 無い\n" in body, body)
 
 
 def test_brief_acceptor_other_repo() -> None:
@@ -353,6 +376,7 @@ TESTS = (
     test_brief_implementer_visual,
     test_brief_implementer_every_combination,
     test_brief_acceptor_review,
+    test_brief_acceptor_marks_and_verify_ways,
     test_brief_acceptor_other_repo,
     test_brief_acceptor_visual,
     test_brief_acceptor_round,

@@ -167,5 +167,6 @@ Project・Status 欄・選択肢の ID は `bd kv` の `task-workflow.project` �
 `bd backup init <置き場>/dolt`）と `bd export -o <置き場>/issues.jsonl` を取る（`BACKUP\tOK|FAILED\t<置き場>`）。
 **置き場がリポジトリの中なら取らない**——`bd export` の JSONL には作成者のメールアドレス（`owner`）が
 入るので、公開リポジトリにコミットされうる場所へ置かない。戻すのは `bd backup restore`（人が行う）。
+置き場が `.beads` と同じディスクなら、`tw config-doctor` が `WARN_BACKUP_SAME_DISK` で知らせる。
 
 **触らないもの**: `bd metrics`（端末全体の設定）、`bd reclaim`、`bd init` の `--stealth` なし。

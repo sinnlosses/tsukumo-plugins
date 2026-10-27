@@ -9,6 +9,7 @@
 **既存ファイルは上書きしない。**
 設定（`.tw/config.toml`）は**点検するだけで書かない**（値は検証コマンドの選定そのもので、
 判断が要る。書くのは `/setup-tasks`）。
+`backup` が未記入なら、書かずに `backup\tUNSET` の知らせの行を出す。
 """
 
 from __future__ import annotations
@@ -27,7 +28,10 @@ def main() -> None:
 
     os.makedirs(layout.TW_DIR, exist_ok=True)
     prepare_gitignore(layout.TW_GITIGNORE_PATH)
-    print(f"config\t{check_config()[0]}")
+    state, detail, config = config_state()
+    print(f"config\t{state}\t{detail}")
+    if state == "OK" and config is not None and "backup" not in config.written:
+        print(f"backup\tUNSET\t{beads.backup_dir('.')}\t書くのは setup-tasks（同じディスクかは tw config-doctor が判定する）")
     code = prepare_beads(".")
     if code:
         raise SystemExit(code)
@@ -82,23 +86,23 @@ def prepare_beads(root: str) -> int:
     return 0
 
 
-def check_config(root: str = ".") -> tuple[str, layout.Config | None]:
-    """設定が読めるかの1行 `<OK|MISSING|INVALID>\t<ファイル>\t<詳細>` と、読めた `Config`（読めなければ `None`）。
+def config_state(root: str = ".") -> tuple[str, str, layout.Config | None]:
+    """設定が読めるかを、状態（`OK`・`MISSING`・`INVALID`）・`<ファイル>\t<詳細>`・読めた `Config`（読めなければ `None`）で返す。
 
-    `branch` が語彙の外なら行は `INVALID` で、`Config` は返す。書き換えはしない。
+    行は `config\t<状態>\t<ファイル>\t<詳細>`。`branch` が語彙の外なら `INVALID` で、`Config` は返す。書き換えはしない。
     """
     try:
         config = layout.read_config(root)
     except layout.ConfigError as e:
-        return f"INVALID\t{layout.CONFIG_PATH}\t{e}", None
+        return "INVALID", f"{layout.CONFIG_PATH}\t{e}", None
     if config.source is None:
-        return f"MISSING\t{layout.CONFIG_PATH}\t（verify を書いて作る）", config
+        return "MISSING", f"{layout.CONFIG_PATH}\t（verify を書いて作る）", config
     if config.branch not in layout.BRANCH_VALUES:
         values = " / ".join(layout.BRANCH_VALUES)
-        return f"INVALID\t{config.source}\t- ブランチ: の値 {config.branch!r} が {values} のどれでもない", config
+        return "INVALID", f"{config.source}\t- ブランチ: の値 {config.branch!r} が {values} のどれでもない", config
     if "verify" not in config.written:
-        return f"MISSING\t{config.source}\t（検証コマンドが無い）", config
-    return f"OK\t{config.source}\tverify={config.verify or layout.NO_COMMAND}", config
+        return "MISSING", f"{config.source}\t（検証コマンドが無い）", config
+    return "OK", f"{config.source}\tverify={config.verify or layout.NO_COMMAND}", config
 
 
 if __name__ == "__main__":
