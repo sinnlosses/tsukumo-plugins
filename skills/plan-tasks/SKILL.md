@@ -167,7 +167,7 @@ description: "会話での明示の指示、引数のファイル、エージェ
    `tw edit <ID> --section '<節名>' --body-file -` で書く（ドラフトの空の節を初めて書く編集は `FRAME_CHANGED` にならない）。
    `- 観点:` の行を持つドラフトと、計画が harness の面を名指すドラフトは `## 介入` も要る。無ければ
    `tw edit <ID> --section '介入' --body-file -` で足す（`## 参考情報` の後ろに入る）。
-   複数の節は `--section` と `--body-file` の組を繰り返して1回で打つ（`-` は1回だけなので、2節目からはファイル）。呼び出しごとにトラッカーへの反映の待ちがかかる。
+   複数の節は `--section` と `--body-file` の組を繰り返して1回で打つ（`-` は1回だけなので、2節目からはファイル）。
    見立ての `difficulty`・`loopable` は `tw edit <ID> --difficulty … --loopable …` で直す。書けたら
    `tw edit <ID> --status todo`（判断待ちが残るなら `hold`。節と同じ呼び出しに付けてもよい）。出力が `NOT_READY\t<ID>\tDRAFT\t<理由>` なら、
    本文が `tw new` の検査を通っていない（状態は変わっていない）ので、理由のとおり直して打ち直す。

@@ -632,7 +632,7 @@ Beads の中は `proj-123`）も同じ ID として読む。読む形はトラ�
 
 **設定のキー**は `tracker`・`github_project`・`backup`（値は「ファイル配置と設定ファイル」の表）。
 
-**トラッカーの失敗はタスクの操作を止めない。** `new`・`claim`・`release`・`edit`・`adopt`・`done`・`ship` は
+**トラッカーの失敗はタスクの操作を止めない。** `new`・`ship`・`sync` は
 `TRACKER\tFAILED\t…` の行を足して終了コードはそのままで、打ち直しは `tw sync`。
 
 用意・タスクの要素と Beads の置き場・サイクルの各段で Beads に起きること・トラッカー（GitHub・Jira）・
