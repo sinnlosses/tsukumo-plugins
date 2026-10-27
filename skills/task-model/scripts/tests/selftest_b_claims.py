@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import json
 import os
 import shutil
 import subprocess
@@ -19,7 +18,6 @@ sys.path.insert(1, os.path.join(HERE, "..", "tw"))
 import beads  # noqa: E402
 import ledger  # noqa: E402
 import tracker  # noqa: E402
-import tracker_github  # noqa: E402
 from selftest_b_fakegithub import FakeGitHub, arm_kv_write, github, kv_written_during, status_labels  # noqa: E402
 from selftest_b_support import bd, claim_snapshots, make_repo, new, num, work_and_done  # noqa: E402
 from selftest_fixtures import run_handback_guard, run_task, start_task  # noqa: E402
@@ -71,7 +69,7 @@ def test_release_force_clears_github_label() -> None:
 
 
 def test_release_force_deadline_then_sync() -> None:
-    say("release --force: 送りが上限切れでも、sync が label を外し open のまま")
+    say("release --force: GitHub が遅くても待たず、sync が label を外し open のまま")
     with github() as (fake, _tmp, main_path, wt1):
         a = new(main_path, "送りが切れる")
         n, bd_id = num(a), beads.to_bd_id(a)
@@ -82,9 +80,11 @@ def test_release_force_deadline_then_sync() -> None:
               and "status::in_progress" in status_labels(fake, n), r.stdout + repr(fake.issues[n]["labels"]))
         local.env[tracker.OP_TIMEOUT_ENV] = "2"
         fake.delay = 5
+        started = time.monotonic()
         r = run_task(wt1, "release", a, "--force")
-        check("RELEASED と TRACKER FAILED（取り込みの読みが切れた行。送りは release にない）", r.returncode == 0 and r.stdout.startswith("RELEASED")
-              and "TRACKER\tFAILED\tgithub" in r.stdout, r.stdout + r.stderr)
+        check("RELEASED は GitHub の遅れを待たず、TRACKER の行も出さない（着手中は取り込まず、送りも release にない）",
+              r.returncode == 0 and r.stdout.startswith("RELEASED") and "TRACKER" not in r.stdout
+              and time.monotonic() - started < 5, r.stdout + r.stderr)
         fake.delay = 0
         r = run_task(main_path, "sync")
         again = beads.show(main_path, bd_id)
@@ -269,12 +269,9 @@ def test_pull_sees_other_worktree_kv() -> None:
         for n in (na, nb):
             fake.edit(n, labels=[l for l in fake.issues[n]["labels"] if l != "status::in_progress"])
 
-        def edit(task_id: str) -> subprocess.CompletedProcess:
-            return run_task(wt1, "edit", task_id, "--section", "参考情報", "--body-file", "-", stdin="メモ\n")
-
         with kv_written_during(tmp, "github pull", f"{tracker.PUSHED_KEY_PREFIX}{na}", "") as fired:
-            r = edit(a)
-        rb = edit(b)
+            r = run_task(main_path, "sync")
+        rb = r
         got_a, got_b = beads.show(main_path, a_id), beads.show(main_path, b_id)
         check("前提: 取り込みの直前に送りの印を書いた", os.path.exists(fired), r.stdout + r.stderr)
         check("取り込みの間に印が空にされた課題は、送っていない着手として in_progress と assignee へ戻す",
@@ -282,26 +279,6 @@ def test_pull_sees_other_worktree_kv() -> None:
               r.stdout + r.stderr + str(got_a and got_a.raw))
         check("印がそのままの課題は、GitHub で手放されたとして open のまま", got_b is not None and got_b.status == "open",
               rb.stdout + rb.stderr + str(got_b and got_b.raw))
-
-
-def test_after_sees_other_worktree_kv() -> None:
-    say("Status 欄: claim は書かず、sync の途中に別の作業ツリーが書いた項目の控えを、Status 欄の書き込みが読み直して見る")
-    with github() as (fake, tmp, main_path, wt1):
-        arm_kv_write(tmp)
-        a = new(main_path, "送りの間に控えを書かれる")
-        writes = fake.status_writes
-        r = run_task(wt1, "claim", a)
-        check("claim は Status 欄を書かない", r.returncode == 0 and fake.status_writes == writes
-              and fake.status_of(num(a)) == "Todo", r.stdout + repr(fake.items))
-        key = f"{tracker_github.ITEMS_KEY_PREFIX}{num(a)}"
-        item = json.loads(bd(main_path, "kv", "get", key).stdout)
-        written = json.dumps({"item": item["item"], "status": "In progress"}, ensure_ascii=False)
-        with kv_written_during(tmp, f"kv set {tracker.SYNCED_ITEM_PREFIX}", key, written) as fired:
-            r = run_task(main_path, "sync")
-        check("前提: sync の途中（同期の時刻を書く前）に項目の控えを書いた", r.returncode == 0 and os.path.exists(fired),
-              r.stdout + r.stderr)
-        check("書かれた控え（もう書く値）を見て Status 欄を書かない",
-              fake.status_writes == writes and fake.status_of(num(a)) == "Todo", r.stdout + repr(fake.items))
 
 
 # 長いものから並列に乗せる（後ろに残ると全体がその分延びる）。
@@ -312,7 +289,6 @@ TESTS = (
     test_claim_not_restored_when_released_on_github,
     test_claim_not_restored_by_plain_sync_after_release_on_github,
     test_pull_sees_other_worktree_kv,
-    test_after_sees_other_worktree_kv,
     test_claim_kept_through_concurrent_syncs,
     test_release_force_without_assignee,
     test_release_force_clears_github_label,

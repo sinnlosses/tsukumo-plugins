@@ -145,10 +145,21 @@ class Session:
     # --- 1件の操作 -------------------------------------------------------------
 
     def before(self, bd_ids: list[str]) -> list[str]:
-        """操作の前に、触る課題を GitHub から取り込む（双方向のときだけ）。"""
+        """操作の前に、触る課題を GitHub から取り込む（双方向のときだけ）。
+
+        Beads が `in_progress` で担当者のある課題（着手中で未送り）は取り込まない。
+        担当者が空の `in_progress` は止めた取り込みが印を消した版なので、取り込んで戻す。
+        """
         self._begin(time.monotonic() + _op_timeout())
-        numbers = [int(m.group(1)) for m in (GH_ID.match(i) for i in bd_ids) if m]
-        if not self.bidirectional or not numbers:
+        matched = [(i, m) for i, m in ((i, GH_ID.match(i)) for i in bd_ids) if m]
+        if not self.bidirectional or not matched:
+            return []
+        numbers = []
+        for bd_id, m in matched:
+            issue = beads.show(self.toplevel, bd_id)
+            if issue is None or issue.status != "in_progress" or not issue.assignee:
+                numbers.append(int(m.group(1)))
+        if not numbers:
             return []
         try:
             lines = self._pull({n: gh.rest_issue(self.toplevel, self._repository(), n, self._remaining) for n in numbers})

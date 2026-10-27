@@ -354,8 +354,8 @@ def test_edit_list_count() -> None:
         fake.edit(n, body="GitHub で直した本文")
         r, calls = lists("edit", a, "--summary", "題を直した")
         issue = beads.show(main_path, beads.to_bd_id(a))
-        check("claim のあと送っていないので、GitHub が変わった edit は CONFLICT（Beads が勝つ）で、list は1回以下",
-              r.returncode == 0 and f"TRACKER\tCONFLICT\t{a}" in r.stdout and len(calls) <= 1
+        check("着手中の edit は GitHub が変わっていても取り込まず、CONFLICT も list も出ない",
+              r.returncode == 0 and "TRACKER" not in r.stdout and calls == []
               and issue is not None and "GitHub で直した本文" not in str(issue.raw.get("description")),
               r.stdout + r.stderr + "\n".join(calls))
         check("取り込みのあとも着手の印は戻っている", issue is not None and issue.status == "in_progress"
