@@ -178,6 +178,23 @@ def markdown_files(name: str) -> list[str]:
     return out
 
 
+QUALIFIED_NAME = re.compile(r"tsukumo-workflow:([a-z][a-z-]*[a-z])")
+
+
+def unknown_qualified_names(text: str, known: set[str]) -> list[str]:
+    """`tsukumo-workflow:<名>` の形で書かれた、実在するスキル・エージェントに無い名（出てきた順、重複なし）。"""
+    return [n for n in dict.fromkeys(QUALIFIED_NAME.findall(text)) if n not in known]
+
+
+def check_qualified_names(names: list[str], agents: list[str]) -> None:
+    """スキル・エージェントを呼ぶ全名が、実在する名に一致するか。"""
+    known = set(names) | set(agents)
+    for n in names:
+        for md in markdown_files(n):
+            for bad in unknown_qualified_names(read(md), known):
+                fail(f"{os.path.relpath(md, ROOT)}: `tsukumo-workflow:{bad}` は実在するスキル・エージェントの名ではない")
+
+
 def check_script_paths(names: list[str]) -> None:
     """`${CLAUDE_SKILL_DIR}/...` が実在するファイルを指しているか。"""
     pat = re.compile(r"\$\{CLAUDE_SKILL_DIR\}(/[\w./-]+)")
@@ -827,6 +844,7 @@ def main() -> None:
     check_frontmatter(names)
     check_readme_index(names)
     check_script_paths(names)
+    check_qualified_names(names, agent_names())
     check_shell_embeds(names)
     check_tw_entry(names)
     check_plugin()

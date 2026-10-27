@@ -10,7 +10,7 @@
 
 | 項目 | 条件 | 読む・渡す・検査する側 |
 | --- | --- | --- |
-| 選ばれ方 | Agent ツールの一覧で名前の末尾が `acceptor` の行。無いときと複数当たったときの扱いは `accept.md` に書く | 手順6 |
+| 選ばれ方 | `subagent_type` は `tsukumo-workflow:acceptor`。一覧に無いときの扱いは `accept.md` に書く | 手順6 |
 | 持たない道具 | `Agent`・`Edit`・`Write`・`NotebookEdit` を持たず、frontmatter に `hooks` を持たない（書き換えないので返却は `tw handback-guard` に判定されない。コミットを拒む `tw commit-guard` は、plugin で入れたときは名前を問わず掛かり、リンクだけで入れたときは掛からない） | 手順6、`check_repo.py`（同梱の定義だけ） |
 | 依頼 | `受け入れ`（差分のレビュー・目視・材料）と `目視待ち`（目視だけ）の2種類。渡すものは `tw brief acceptor` が型 `acceptor-request.md` から出す依頼文（手順6と `visual-review.md`）。どちらにも `acceptor-brief.md` の絶対パスが載る。レビューの要否は `tw accept`（作業先が別のリポジトリでも）の `REVIEW\t…` と木の SHA か、`SKIP`・`NOTHING`・`NO_RANGE`。`目視待ち` を受けた受け入れ役は、最後の `受け入れ` も `SendMessage` で続けて受ける（`visual-review.md`）。差し戻しのあとの2・3回目も同じ受け入れ役が `SendMessage` で2つの木の SHA（`tw brief acceptor --round` の依頼文）と、メインが取り下げた指摘の行を受ける。呼び戻せないときだけ新しい受け入れ役が、前の回の指摘の原文・2つの木の SHA・手順6の渡すものを受ける（`review-rounds.md`） | 手順6、`visual-review.md`、`review-rounds.md`、`other-repo.md`、`tw accept` |
 | 返却の1行目 | `受け入れ <判定> \| <1文>`。判定は下の3語のどれか。形が違えば `SendMessage` で返し直させる | 手順6 |

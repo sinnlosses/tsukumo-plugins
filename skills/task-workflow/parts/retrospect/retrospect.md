@@ -11,8 +11,7 @@
    `hooks/hooks.json` の `tw lap-hook` が書くので打たない。リンクだけで入れたとき（`hooks/hooks.json` が読まれない）だけ、呼ぶ直前に `tw lap T-xxx retro start` を打つ
    （重なって打っても所要の集計は二重に数えない）。end は手順7の `tw finish` が `done` の前に書くので打たない。
    受け入れ役の最後の返却の `- 材料: friction=… human=…` の2つの値を、
-   振り返りのスキルを Skill ツールで名前を指して呼び（一覧の末尾が `retrospect` の行。リンクで入れたとき `retrospect`、plugin で入れたとき `tsukumo-workflow:retrospect`。
-   一覧に出ている名前のまま使い、一覧に無ければ代えずに行を添えて人に預ける。複数当たったら選ばずに止めて人に預ける）、
+   振り返りのスキル `tsukumo-workflow:retrospect` を Skill ツールで呼び（一覧に無ければ plugin をまだ入れていない。代えずに人に預ける）、
    タスクID `T-xxx` と一緒にそのまま渡す。判定の口 `material.py --gate` は retrospect が自分の置き場から打つ
    （値の意味は `parts/acceptor/acceptor-return.md`。`human` は手順6で依頼に添えたメモの数が返る。
    検証の打ち直し・受け入れでの直し・レビューの指摘は `material.py --gate` が台帳から数えるので渡さない）。

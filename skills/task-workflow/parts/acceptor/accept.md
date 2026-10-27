@@ -27,11 +27,10 @@
    `plan-check` の行（`PLAN_FIRST`・`PLAN_REGISTERED` など）は、手順5bの表で読んだものと同じに読む。
    着手より後のコミットも作業ツリーの変更も無い計測だけのタスクは、`tw accept` が `NO_RANGE` を出し、続く `tw verify-check` が `NOT_VERIFIED\tnone` になる（単一のリポジトリで確かめた）。検証する中身が無いので `tw verify` は起こさず、手順6aへ進む（`tw finish` は検証の控えを見ない。`tw ship` の戻りは枝の状態による: 主ブランチを出している作業ツリーでは `SHIPPED`、主ブランチより先のコミットが無い別の枝では `NOTHING`）。作業先が別のリポジトリのときは、範囲つきの判定なので `NO_RANGE` ではなく `NOTHING` になる（`review_needed.py` のコードで確かめた。実行では確かめていない）。
 
-   受け入れ役は Agent ツールで起こす。`subagent_type` は、Agent ツールの説明に並ぶエージェント末尾が `acceptor` の行
-   （`acceptor` か `tsukumo-workflow:acceptor`。tsukumo-plugins の `agents/acceptor.md`。モデルは Opus 固定で、
-   読むだけの定義。書き換えないので返却は `tw handback-guard` に判定されない）があれば、一覧に出ている名前のまま `model` を渡さずに起こす。
-   末尾一致が複数当たったら選ばずに止め、行を添えて人に預け `tw release T-xxx` する。
-   無ければ手順5の `subagent_type` の選び方と同じにして `model: opus` を渡す。決まりの本文も依頼文も手で組まず、
+   受け入れ役は Agent ツールで起こす。`subagent_type` は `tsukumo-workflow:acceptor`
+   （tsukumo-plugins の `agents/acceptor.md`。モデルは Opus 固定で、
+   読むだけの定義。書き換えないので返却は `tw handback-guard` に判定されない）で、`model` を渡さずに起こす。
+   Agent ツールの説明にこの名前が無ければ、plugin をまだ入れていない（人がやること。README の「入れ方」へ誘導する）ので、止める。決まりの本文も依頼文も手で組まず、
    `tw accept T-xxx` の出力を `tw brief acceptor T-xxx --accept-file -` に渡し（実装の依頼に `--visual` を付けたタスクでは、委譲先が報告した
    画像のパスを幅ごとに `--image <パス>` で。いちばん狭い幅も。パスが無ければ `--visual`。`visual-review.md`）、出力の2行目以降をそのまま渡す。依頼文には作業ツリーのパス・
    差分を出すコマンド・`## 完了条件` の本文・規約のファイルのパス・`acceptor-brief.md` の絶対パス・判定と木の SHA・画像のパス・

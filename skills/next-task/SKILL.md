@@ -68,8 +68,7 @@ metadata:
    | `TAKEN`・`NOT_READY` | 先を越された・状態が変わった。手順1から別の1件を選び直す（3回続いたら止まる） |
    | `DIRTY`・`UNSHIPPED`・`INVALID`・`GIT_READ_ONLY` | `${CLAUDE_SKILL_DIR}/start-stopped.md` の「手順4の表の残り」に従って終了する |
 
-5. **`task-workflow` を呼ぶ**: Skill ツールの一覧で末尾が `task-workflow` の行（リンクで入れたとき `task-workflow`、
-   plugin で入れたとき `tsukumo-workflow:task-workflow`）を呼び、次を渡す:
+5. **`task-workflow` を呼ぶ**: Skill ツールで `tsukumo-workflow:task-workflow` を呼び（一覧に無ければ plugin をまだ入れていない。人がやることとして止める）、次を渡す:
    タスクID、手順4の `CLAIMED` の行（`HOLD` を選んだときは `HOLD`）、呼ばれ方（`/loop` か直接）、
    `/loop` ならその依頼文。ここから先（送り出し・完了報告・続行判断）は `task-workflow` に従う。
 

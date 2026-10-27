@@ -92,6 +92,12 @@ def main() -> int:
     check("裸の `acceptor` は拾う",
           mentions("受け入れ役は `acceptor` に渡す。brief の前の acceptor", skills, agents) == ["acceptor"])
 
+    unknown = check_repo.unknown_qualified_names
+    known = {"task-workflow", "acceptor"}
+    check("全名が実在する名なら問題なし", unknown("`tsukumo-workflow:task-workflow` と `tsukumo-workflow:acceptor`。", known) == [])
+    check("実在しない名の全名を返す", unknown("`tsukumo-workflow:task-workflw` と `tsukumo-workflow:acceptor`", known) == ["task-workflw"])
+    check("`<name>` の雛形は拾わない", unknown("`tsukumo-workflow:<name>`", known) == [])
+
     marked = check_repo.is_workflow_step
     head = '---\nname: s\ndescription: "d"\nmetadata:\n  workflow-step: "true"\n---\n'
     check("metadata の workflow-step: \"true\" を印として拾う", marked(head))

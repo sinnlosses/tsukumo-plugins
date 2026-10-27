@@ -30,14 +30,9 @@
    当たれば `sonnet`）のサブエージェントへ（メインのモデルは判断材料にしない。一致していても委譲する）。
    分業: (c) で `計画どおり` に決まり `difficulty: opus` なら、Agent を呼ぶ直前に
    `tw lap T-xxx delegate start --model sonnet` を打ち、`model: sonnet` で起こす（範囲と理由は正典の「分業」）。
-   `subagent_type` は、Agent ツールの説明に並ぶエージェント末尾が `no-delegate` の行
-   （`no-delegate`（リンクで入れたとき）か `tsukumo-workflow:no-delegate`（plugin で入れたとき）。`Agent` を
-   外したエージェント定義で、tsukumo-plugins の `agents/no-delegate.md`）があれば、一覧に出ている名前のまま使う。
-   末尾一致が複数当たったら選ばずに止め、行を添えて人に預け `tw release T-xxx` する。
-   一覧に無ければ、まだ入れていない（人がやること）とみなして、これまでどおり `general-purpose` を使う。hook の関門は、リンクで入れたときは
-   `no-delegate` の定義が、plugin で入れたときは `hooks/hooks.json` が名前を問わずサブエージェントに掛ける（正典の `tw-reference.md`「hook の関門」節）。一覧に無くて `general-purpose` に
-   落ちたときは Claude Code の hook の関門が掛からず（コミットだけは git の hook `ref-guard` が呼び手を問わず拒む）、
-   手順6の `COMMITS_SINCE_CLAIM` と手順5bの `plan-check`・手順6の `verify-check` だけが頼りになる。
+   `subagent_type` は `tsukumo-workflow:no-delegate`（`Agent` を外したエージェント定義で、tsukumo-plugins の
+   `agents/no-delegate.md`）。hook の関門は `hooks/hooks.json` が名前を問わずサブエージェントに掛ける（正典の `tw-reference.md`「hook の関門」節）。
+   Agent ツールの説明にこの名前が無ければ、plugin をまだ入れていない（人がやること。README の「入れ方」へ誘導する）ので、`general-purpose` へ黙って落とさず止める。
    決まりの本文も依頼文も手で組まず、`tw brief implementer T-xxx` の出力の2行目以降をそのまま渡す
    （タスクID・`implementer-brief.md` の絶対パス・`tw verify`／`tw pause` の打ち方・手順5cの場合分けが入る。
    `no-delegate` でも `general-purpose` でも同じ依頼文）。メインが足すのは判断の部分（この作業で何を重く見るか、

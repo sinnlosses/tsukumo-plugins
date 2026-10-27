@@ -16,8 +16,7 @@
 - `tw accept` の判定と印（`MARK` のテストの削除・skip・期待値だけの差分）: {{verdict}}
 - 材料の `friction` の値（`tw brief` が決めた1語。委譲先の報告は渡さない）: `{{friction}}`
 
-- `comment-audit` を Skill ツールで名前を指して読む（一覧の末尾が `comment-audit` の行。リンクで入れたとき
-  `comment-audit`、plugin で入れたとき `tsukumo-workflow:comment-audit`。一覧に出ている名前のまま使う）。差分で足されたコメント行は、その置き場（Base directory）の
+- `tsukumo-workflow:comment-audit` を Skill ツールで読む。差分で足されたコメント行は、その置き場（Base directory）の
   `python3 <Base directory>/scripts/diff_added_comment_lines.py <下のコメント行の範囲>` で拾う
 
 ## 同じリポジトリ
