@@ -971,7 +971,7 @@ def test_step_candidates() -> None:
         check("印のあるスキルだけが、作業ツリー・ホーム・plugin の順に並ぶ",
               [c.value for c in got] == ["proj-step", "home-step", "plug-b", "my-plugin:plug-a"],
               repr([c.value for c in got]))
-        check("リンクで入れた plugin のスキルは重ねず、リンクの名前（<名前>）で1つになる",
+        check("home の .claude/skills/ に plugin の実体を指すリンクがあるスキルは重ねず、リンクの名前（<名前>）で1つになる",
               [c.value for c in got].count("plug-b") == 1 and "my-plugin:plug-b" not in [c.value for c in got])
         plug_a = next(c for c in got if c.value == "my-plugin:plug-a")
         check("label は frontmatter の name、description は複数行を1行に畳んだもの",

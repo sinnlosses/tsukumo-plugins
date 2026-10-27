@@ -484,8 +484,8 @@ def _marked_skills(
 ) -> list[tuple[str, bool, _Skill]]:
     """走査先（作業ツリー・`home` の `.claude/skills/` と plugin の `skills/` の順）から、`wanted` が真のスキルを `(全名, own, _Skill)` で返す。
 
-    同じスキル（実体が同じ）は先に見つけた1つにする。リンクで入れたものは `.claude/skills/` で先に当たるので `<名前>`、
-    入っていなければ plugin の `<プラグイン>:<名前>`。全名が同じで実体が違うものも先の1つだけ。
+    同じスキル（実体が同じ）は先に見つけた1つにする。`.claude/skills/` で先に当たったものは `<名前>`、
+    当たらなければ plugin の `<プラグイン>:<名前>`。全名が同じで実体が違うものも先の1つだけ。
     """
     roots: list[tuple[str, str | None]] = []
     if project_root is not None:

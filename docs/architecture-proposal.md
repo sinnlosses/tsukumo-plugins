@@ -14,7 +14,7 @@
 | 何を中心に回るか | 依頼1つで1サイクル（見渡す→選ぶ→着手→委譲→受け入れ→振り返り→送り出し）が回る手順。手順を読むのは LLM、状態の変化と関門は `tw` | `skills/next-task/SKILL.md` 手順0〜8、`README.md`「手順はコマンド `tw` が持ち、スキルは『どのサブコマンドをいつ打つか』だけを書く」 |
 | 外の世界との境界 | Beads（`bd`・Dolt）、git、トラッカー（`gh`・Jira）、Claude Code（hook・Agent・`SendMessage`・`SubagentHandback`）、tsukumo の口（ツール一覧にあるときだけ） | `README.md`「要るもの」、`hooks/hooks.json`、`AGENTS.md`「書き方」 |
 | 状態の持ち方 | タスクは Beads。着手の印・段の lap・段の控えは台帳（共有の git dir の `task-workflow/`）と `.tw/local/`。スキルは状態を持たない | `WORKFLOW.md`「ファイル配置と設定ファイル」 |
-| 実行環境の数 | plugin で入れる／リンクで入れる、素の Claude Code／tsukumo の中（`mount`・`partial`・`user-installed`）、Codex の sandbox | `README.md`、tsukumo の `docs/architecture/workflow-contract.md`「合わせ方」 |
+| 実行環境の数 | plugin で入れる、素の Claude Code／tsukumo の中（`mount`・`partial`・`user-installed`）、Codex の sandbox | `README.md`、tsukumo の `docs/architecture/workflow-contract.md`「合わせ方」 |
 | 変わりやすい場所 | 2026-10-08 以降の203コミットで、`WORKFLOW.md` 63回・`next-task/SKILL.md` 42回・`next-task/implementer-brief.md` 17回。規則の変更と流れの変更が同じ `WORKFLOW.md` に集まる | `git log --since=2026-10-08 --format= --name-only -- skills agents hooks \| sort \| uniq -c \| sort -rn` |
 | 守られている制約 | `scripts/check_repo.py`（`REQUIRES`・`OPTIONAL_SKILLS`・`${CLAUDE_SKILL_DIR}/../` の実在・hooks の形）。tsukumo の契約（`work_plan`・`report`・返却の1行目・Beads の欄）。プラグインの部品は `tsukumo-workflow:<名前>` の名前空間に入る。ユーザー単位のスキルがプロジェクト単位の同名スキルに勝ち、プロジェクト差分は `.tw/config.toml` で表す | `README.md`「決めたこと」4・「制約」、`check_repo.py` 冒頭 |
 | 利用者と開発体制 | 今は作者1人。ただし他の人が自分の流れや部品を当てられる形を目標にする（2026-10-14 の作者の回答。近く差し替える予定は無い）。タスクはサブエージェントに委譲する運用で、スキルの文面が指示書そのもの | 作者の回答、`agents/no-delegate.md` |
@@ -119,7 +119,7 @@ lap はパーツではなくオーケストレーターが段の前後で打つ�
 
 ### 名前で呼ぶ決まり
 
-今も委譲先と受け入れ役は名前で呼んでいる。`next-task/delegate.md`・`accept.md` は Agent ツールの一覧から「末尾が `no-delegate`／`acceptor` の行」を拾い、リンクで入れたとき（`no-delegate`）と plugin で入れたとき（`tsukumo-workflow:no-delegate`）の名前の違いを吸収し、無ければ `general-purpose` に戻る。スキルの一覧も同じで、リンクで入れたものは `retrospect`、plugin のものは `<プラグイン名>:<名前>` で並ぶ。これをパーツ全体の決まりにする。
+今も委譲先と受け入れ役は名前で呼んでいる。`next-task/delegate.md`・`accept.md` は Agent ツールの一覧から「末尾が `no-delegate`／`acceptor` の行」を拾って名前の違いを吸収し、無ければ `general-purpose` に戻る。スキルの一覧も、plugin のものは `<プラグイン名>:<名前>` で並ぶ。これをパーツ全体の決まりにする（GH-1712 で全名 `tsukumo-workflow:<name>` の呼び方に固定した）。
 
 | 決まり | 理由 |
 | --- | --- |
@@ -129,7 +129,7 @@ lap はパーツではなくオーケストレーターが段の前後で打つ�
 | パーツは `disable-model-invocation: true` にしない | モデルから呼べなくなる（例: claude-skills の `implement`） |
 | 関門はパーツの名前に結ばない | 下の段落 |
 
-**関門がいま実装役の名前に結ばれている。** `hooks/hooks.json` の `commit-guard`・`handback-guard` は `--agent-scoped` で、`agent_type` の末尾が `no-delegate` のときだけ掛かる（`task.py` の `commit-guard` の説明）。リンクで入れたときは `agents/no-delegate.md` の frontmatter の hook が掛ける。どちらでも、実装役を別のエージェントに替えると関門が黙って外れる。関門は「着手の控えがある作業ツリーで動くサブエージェント」に名前を問わず掛ける形に替える。名前を問わず掛けるだけだと、受け入れ役の返却も「最後の段の返却」の判定（`## 構造の変更` の欠け）や検証の欠けで拒まれるので、`handback-guard` は `Edit`・`Write`・`NotebookEdit` を一度でも使ったサブエージェント（`agent_id` ごとの印）の返却だけを判定する（段階3で入れた。`tw-reference.md`「hook の関門」）。`hooks.json` が読まれるのは plugin で入れたときだけなので、リンクで入れた人が自作の実装役を使うときに関門をどう掛けるかは 7. に残す。
+**関門がいま実装役の名前に結ばれている。** `hooks/hooks.json` の `commit-guard`・`handback-guard` は `--agent-scoped` で、`agent_type` の末尾が `no-delegate` のときだけ掛かる（`task.py` の `commit-guard` の説明）。実装役を別のエージェントに替えると関門が黙って外れる。関門は「着手の控えがある作業ツリーで動くサブエージェント」に名前を問わず掛ける形に替える。名前を問わず掛けるだけだと、受け入れ役の返却も「最後の段の返却」の判定（`## 構造の変更` の欠け）や検証の欠けで拒まれるので、`handback-guard` は `Edit`・`Write`・`NotebookEdit` を一度でも使ったサブエージェント（`agent_id` ごとの印）の返却だけを判定する（段階3で入れた。`tw-reference.md`「hook の関門」）。`hooks.json` が読まれるのは plugin で入れたときだけなので、導入は plugin の 1 経路に決めた（7.「導入の経路と関門」）。
 
 ### 差し替えの方法
 
@@ -223,7 +223,7 @@ ship = "既定"                  # 既定は tw finish の手順
 - **「他の人が使う」前提**: tsukumo の `docs/requirements.md` は対象ユーザーを作者本人だけとしている。このプラグインを他の人に向けるなら、tsukumo 側の記述をどう扱うかを決める必要がある
 - **tsukumo 側の追随の範囲**: 段階4で `vendor/tsukumo-plugins` を上げるとき、tsukumo の文書（`workflow-contract.md`・`CLAUDE.md` の手順の参照など）のどこが `task-workflow` を規則の正典として指しているかは数えていない
 - **パーツの選びの置き場**: 本文はリポジトリごと（`.tw/config.toml`。コミットされ、同じリポジトリの人と流れを共有できる）にした。利用者ごとの好み（受け入れ役だけ替えたい、など）を許すなら、利用者単位の設定を重ねる層が要る
-- **リンクで入れたときの関門**（GH-771 で決着）: `hooks.json` は plugin で入れたときだけ読まれるので、導入を plugin の 1 経路に一本化し、リンクの道具（`install.sh` ほか）を消した
+- **導入の経路と関門**（GH-771 で決着）: `hooks.json` は plugin で入れたときだけ読まれるので、導入を plugin の 1 経路に一本化し、リンクの道具（`install.sh` ほか）を消した
 - **`next-task` から `task-workflow` を呼ぶ形**: Skill ツールで呼ぶと想定した。`/loop` の続行判断を `task-workflow` 側に置いたので、`/loop /next-task` が1サイクルで止まるかは段階4で確かめる
   - 段階4（GH-779）で決めた: 完了報告と `/loop` の続行判断は `task-workflow/completion-report.md` が持ち、文脈を空にして送り直すときは「呼ばれたときに渡された `/loop` の依頼文」をそのまま渡す。`next-task` は手順5より前で止まったときの節だけを持ち、そこからは続行しない。実際の `/loop` で1サイクルずつ回るかは、実タスクで確かめる
 - **改名と `tw` の張り替え**（段階4で決めた）: `install.sh` は、改名前の置き場（`skills/task-workflow/scripts/task.py`）を指す `~/.local/bin/tw` を自分のリンクとして張り替える。主ブランチへ入れたら、続けて `./install.sh` を打つ（打つまで PATH の `tw` は消えたパスを指して動かない）
