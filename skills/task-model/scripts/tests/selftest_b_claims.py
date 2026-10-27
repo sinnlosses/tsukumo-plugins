@@ -20,7 +20,7 @@ import ledger  # noqa: E402
 import tracker  # noqa: E402
 from selftest_b_fakegithub import FakeGitHub, arm_kv_write, github, kv_written_during, status_labels  # noqa: E402
 from selftest_b_support import bd, claim_snapshots, make_repo, new, num, work_and_done  # noqa: E402
-from selftest_fixtures import run_handback_guard, run_task, start_task  # noqa: E402
+from selftest_fixtures import PLANNED_BODY, run_handback_guard, run_task, start_task  # noqa: E402
 from selftest_support import check, git, local, refuse_direct_run, say, write  # noqa: E402
 
 
@@ -162,6 +162,37 @@ def test_claim_restored_after_killed_sync() -> None:
               r.stdout + r.stderr)
 
 
+def test_unsent_claim_survives_pull() -> None:
+    say("着手の印の控え: GitHub から取り込んだ課題（送りの印なし）を claim → edit しても送っていない着手は、止めた sync のあと戻る")
+    with github() as (fake, tmp, main_path, wt1):
+        _arm_kill_after_pull(tmp)
+        n = fake.open_issue("外で立てた課題", [], body=PLANNED_BODY)
+        r = run_task(main_path, "sync")
+        a, bd_id = f"GH-{n}", f"gh-{n}"
+        check("前提: sync が Issue を取り込んだ", r.returncode == 0 and beads.show(main_path, bd_id) is not None,
+              r.stdout + r.stderr)
+        r = run_task(main_path, "edit", a, "--body-file", "-", "--difficulty", "sonnet", "--loopable", "Y",
+                     stdin=PLANNED_BODY)
+        check("前提: 振り分けて todo にした", r.returncode == 0, r.stdout + r.stderr)
+        r = run_task(wt1, "claim", a)
+        check("前提: claim", r.returncode == 0 and r.stdout.startswith("CLAIMED"), r.stdout + r.stderr)
+        marks = beads.mark_values(beads.show(main_path, bd_id))
+        r = run_task(wt1, "edit", a, "--loopable", "Y")
+        check("前提: 着手中の edit は取り込まない", r.returncode == 0 and "TRACKER" not in r.stdout, r.stdout + r.stderr)
+        time.sleep(1.1)
+        fake.clock_offset = 60
+        fake.edit(n, body="止めた sync の前に GitHub で直した")
+        r = _killed_sync(main_path)
+        lost = beads.show(main_path, bd_id)
+        check("前提: 止めた sync が担当者と印を空にしたまま残す", r.returncode != 0 and lost is not None
+              and not lost.assignee, r.stdout + str(lost and lost.raw))
+        r = run_task(wt1, "plan-check", a)
+        got = beads.show(main_path, bd_id)
+        check("plan-check が控えから着手を戻す（RESTORED）", f"TRACKER\tRESTORED\t{a}" in r.stdout + r.stderr
+              and got is not None and got.status == "in_progress" and got.assignee == "wt1"
+              and beads.mark_values(got) == marks, r.stdout + r.stderr + str(got and got.raw))
+
+
 def test_handback_guard_after_killed_sync() -> None:
     say("着手の印の控え: 取り込みが印を消したまま handback-guard が最初に走っても、戻した印で判定し、検証の欠けた返却を拒む")
     with github(verify="echo verified") as (fake, tmp, main_path, wt1):
@@ -286,6 +317,7 @@ TESTS = (
     test_claim_not_restored_after_release_done_ship,
     test_claim_restored_after_killed_sync,
     test_handback_guard_after_killed_sync,
+    test_unsent_claim_survives_pull,
     test_claim_not_restored_when_released_on_github,
     test_claim_not_restored_by_plain_sync_after_release_on_github,
     test_pull_sees_other_worktree_kv,

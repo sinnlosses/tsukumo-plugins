@@ -19,7 +19,7 @@ import tracker  # noqa: E402
 import tracker_claims  # noqa: E402
 import tracker_github  # noqa: E402
 from selftest_b_fakegithub import arm_kv_write, github, kv_written_during  # noqa: E402
-from selftest_b_support import bd, new, num, rows  # noqa: E402
+from selftest_b_support import bd, new, num, rows, work_and_done  # noqa: E402
 from selftest_fixtures import PLANNED_BODY, run_task, start_task  # noqa: E402
 from selftest_support import check, local, refuse_direct_run, say, write  # noqa: E402
 
@@ -362,6 +362,91 @@ def test_edit_list_count() -> None:
               and issue.assignee == "wt1", str(issue and issue.raw))
 
 
+def _github_writes(fake, counted: str) -> int:
+    """偽の GitHub への書き込み（POST・PATCH・PUT・DELETE と Status 欄）と、`bd github push`・`sync` の起動の合計。"""
+    http = sum(c for k, c in fake.requests.items() if not k.startswith("GET "))
+    pushes = sum(1 for l in open(counted).read().splitlines() if l.startswith(("github push", "github sync")))
+    return http + fake.status_writes + pushes
+
+
+def _push_created_in_process(toplevel: str, bd_id: str) -> None:
+    """旧 `after` の送り（今は `push_created`）を、足場の環境のまま同じプロセスで打つ。"""
+    saved = dict(os.environ)
+    os.environ.update(local.env)
+    try:
+        tracker.session(toplevel).push_created([bd_id])
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
+
+
+def test_tracker_writes_only_at_new_and_ship() -> None:
+    say("トラッカー github・GitHub へ書くのは new と ship・sync の送りだけ（claim・edit・hold・release は書かない）")
+    with github() as (fake, tmp, main_path, wt1):
+        a, b, c = new(main_path, "書き込みを数える"), new(main_path, "hold する"), new(main_path, "release する")
+        counted = os.path.join(tmp, "bd-count.txt")
+        local.env = {**local.env, "BD_COUNT_FILE": counted}
+        open(counted, "w").close()
+
+        def writes_during(fn) -> int:
+            before = _github_writes(fake, counted)
+            fn()
+            return _github_writes(fake, counted) - before
+
+        def edit(*args: str):
+            return run_task(wt1, "edit", a, *args, stdin="メモ\n")
+
+        results = {}
+
+        def record(name: str, *args: str, stdin: str | None = None) -> None:
+            results[name] = run_task(wt1, *args, stdin=stdin)
+
+        steps = (
+            ("claim", lambda: record("claim", "claim", a)),
+            ("edit 節", lambda: results.update(e1=edit("--section", "参考情報", "--body-file", "-"))),
+            ("edit --summary", lambda: results.update(e2=edit("--summary", "題を直した"))),
+            ("edit --difficulty", lambda: results.update(e3=edit("--difficulty", "haiku"))),
+            ("hold", lambda: record("hold", "hold", b, "--reason-file", "-", stdin="理由\n")),
+            ("claim と release", lambda: (record("c1", "claim", c), record("c2", "release", c))),
+        )
+        for label, fn in steps:
+            n = writes_during(fn)
+            check(f"{label} は GitHub に書かない", n == 0, f"書き込み {n} 件")
+        check("claim・edit・hold・release は成功する", results["claim"].stdout.startswith("CLAIMED")
+              and all(results[k].returncode == 0 for k in ("e1", "e2", "e3", "hold", "c1", "c2")),
+              repr({k: v.stdout + v.stderr for k, v in results.items()}))
+        check("claim・edit のあとも GitHub の Status 欄は Todo のまま", fake.status_of(num(a)) == "Todo", repr(fake.items))
+
+        # 数え方が空振りしていないこと: 本物の edit は 0、旧 after の送りを足すと 1 以上。
+        weak = writes_during(lambda: (edit("--summary", "また直した"), _push_created_in_process(wt1, beads.to_bd_id(a))))
+        check("弱めた実装（edit のあとに旧 after の送りを足す）では書き込みが数えられる", weak >= 1, f"書き込み {weak} 件")
+
+        work_and_done(wt1, a)
+        open(counted, "w").close()
+        statuses = fake.status_writes
+        r = run_task(wt1, "ship")
+        sends = [l for l in open(counted).read().splitlines() if l.startswith("github sync --push-only")]
+        check("ship の最後に github sync --push-only が1回、TRACKER OK が1回", r.returncode == 0 and len(sends) == 1
+              and r.stdout.count("TRACKER\tOK\tgithub") == 1, r.stdout + r.stderr + "\n".join(sends))
+        check("Issue は closed で、Status 欄は Done になる",
+              fake.issues[num(a)]["state"] == "closed" and fake.status_of(num(a)) == "Done"
+              and fake.status_writes - statuses >= 1, repr(fake.issues[num(a)]) + repr(fake.items))
+
+    with github(prefix=beads.PREFIX_LOCAL) as (fake, tmp, main_path, wt1):
+        counted = os.path.join(tmp, "bd-count.txt")
+        local.env = {**local.env, "BD_COUNT_FILE": counted}
+        open(counted, "w").close()
+        made = _github_writes(fake, counted)
+        t = new(main_path, "t 接頭辞の課題")
+        check("t 接頭辞の new は送る（Beads から送るだけ）", _github_writes(fake, counted) > made and len(fake.issues) == 1,
+              repr(fake.requests))
+        made = _github_writes(fake, counted)
+        r1 = run_task(wt1, "claim", t)
+        r2 = run_task(wt1, "edit", t, "--summary", "題を直した")
+        check("t 接頭辞の claim・edit は送らない", r1.stdout.startswith("CLAIMED") and r2.returncode == 0
+              and _github_writes(fake, counted) == made, r1.stdout + r1.stderr + r2.stdout + r2.stderr)
+
+
 def test_tracker_sync_lock_busy() -> None:
     say("トラッカー github・重ねて打った sync は錠で1本にし、2本目は待たず BUSY で返る")
     with github() as (fake, _tmp, main_path, _wt1):
@@ -471,6 +556,7 @@ def test_tracker_github_draft() -> None:
 TESTS = (
     test_tracker_github_bidirectional,
     test_tracker_sync_bd_calls,
+    test_tracker_writes_only_at_new_and_ship,
     test_edit_list_count,
     test_tracker_sync_lock_busy,
     test_tracker_sync_skips_echo,
