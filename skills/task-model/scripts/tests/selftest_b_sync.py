@@ -20,7 +20,7 @@ import tracker_claims  # noqa: E402
 import tracker_github  # noqa: E402
 from selftest_b_fakegithub import arm_kv_write, github, kv_written_during  # noqa: E402
 from selftest_b_support import bd, new, num, rows, work_and_done  # noqa: E402
-from selftest_fixtures import PLANNED_BODY, run_task, start_task  # noqa: E402
+from selftest_fixtures import PLANNED_BODY, child_env, run_task, start_task  # noqa: E402
 from selftest_support import check, local, refuse_direct_run, say, write  # noqa: E402
 
 
@@ -36,6 +36,7 @@ def test_tracker_github_bidirectional() -> None:
         n, bd_id = num(a), beads.to_bd_id(a)
         r = run_task(wt1, "claim", a)
         check("claim", r.returncode == 0 and r.stdout.startswith("CLAIMED"), r.stdout + r.stderr)
+        run_task(main_path, "sync")  # claim は送らないので、GitHub の編集を取り込む前に着手を送っておく
         fake.clock_offset = 60
         fake.edit(n, body="GitHub で直した本文")
         r = run_task(main_path, "sync")
@@ -372,14 +373,13 @@ def _github_writes(fake, counted: str) -> int:
 
 
 def _push_created_in_process(toplevel: str, bd_id: str) -> None:
-    """旧 `after` の送り（今は `push_created`）を、足場の環境のまま同じプロセスで打つ。"""
-    saved = dict(os.environ)
-    os.environ.update(local.env)
-    try:
-        tracker.session(toplevel).push_created([bd_id])
-    finally:
-        os.environ.clear()
-        os.environ.update(saved)
+    """旧 `after` の送り（今は `push_created`）を、足場の環境のまま別のプロセスで打つ（並列のテストの環境変数を変えない）。"""
+    code = (
+        "import sys; sys.path.insert(0, sys.argv[1]); import tracker; "
+        "tracker.session(sys.argv[2]).push_created([sys.argv[3]])"
+    )
+    subprocess.run([sys.executable, "-c", code, os.path.join(HERE, "..", "core"), toplevel, bd_id],
+                   cwd=toplevel, env=child_env(), capture_output=True, check=False)
 
 
 def test_tracker_writes_only_at_new_and_ship() -> None:

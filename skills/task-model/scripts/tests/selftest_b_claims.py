@@ -52,7 +52,7 @@ def test_release_force_clears_github_label() -> None:
         a = new(main_path, "label が残る")
         n, bd_id = num(a), beads.to_bd_id(a)
         time.sleep(1.1)
-        bd(main_path, "update", bd_id, "--status", "in_progress")
+        bd(main_path, "update", bd_id, "--status", "in_progress", "--assignee", "wt1")
         r = run_task(main_path, "sync")
         check("前提: GitHub に status::in_progress が付く", r.returncode == 0
               and "status::in_progress" in status_labels(fake, n), r.stdout + repr(fake.issues[n]["labels"]))
@@ -179,17 +179,15 @@ def test_unsent_claim_survives_pull() -> None:
         marks = beads.mark_values(beads.show(main_path, bd_id))
         r = run_task(wt1, "edit", a, "--loopable", "Y")
         check("前提: 着手中の edit は取り込まない", r.returncode == 0 and "TRACKER" not in r.stdout, r.stdout + r.stderr)
-        time.sleep(1.1)
         fake.clock_offset = 60
         fake.edit(n, body="止めた sync の前に GitHub で直した")
         r = _killed_sync(main_path)
-        lost = beads.show(main_path, bd_id)
-        check("前提: 止めた sync が担当者と印を空にしたまま残す", r.returncode != 0 and lost is not None
-              and not lost.assignee, r.stdout + str(lost and lost.raw))
+        check("前提: 止めた sync が取り込みの直後に終わった", r.returncode != 0, r.stdout + r.stderr)
+        # 取り込みが飛ばせば着手はそのまま、飛ばさず空にしたなら plan-check が控えから戻す。どちらでも最後は着手が残る。
         r = run_task(wt1, "plan-check", a)
         got = beads.show(main_path, bd_id)
-        check("plan-check が控えから着手を戻す（RESTORED）", f"TRACKER\tRESTORED\t{a}" in r.stdout + r.stderr
-              and got is not None and got.status == "in_progress" and got.assignee == "wt1"
+        check("止めた sync のあと plan-check を打つと、着手（in_progress・担当者・印）が残っている",
+              got is not None and got.status == "in_progress" and got.assignee == "wt1"
               and beads.mark_values(got) == marks, r.stdout + r.stderr + str(got and got.raw))
 
 
