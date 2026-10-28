@@ -348,6 +348,25 @@ def test_release_then_claim_without_sync() -> None:
         check("担当者のある着手は引き込まれず TAKEN", r.returncode != 0 and "TAKEN" in r.stdout, r.stdout + r.stderr)
 
 
+def test_edit_deps_after_body_edit_keeps_body() -> None:
+    say("トラッカー github・本文を直したあとの --add-deps・--remove-deps・依存の打ち直しが本文を古い版に戻さない")
+    for case in ("add", "remove", "again"):
+        with github() as (fake, _tmp, main_path, wt1):
+            dep = new(main_path, "依存先")
+            a = new(main_path, f"{case} の本文", *(("--deps", dep) if case != "add" else ()))
+            shown = run_task(wt1, "show", a).stdout
+            body = shown.split("---\n", 2)[2].replace("## 目的・背景\n", "## 目的・背景\n\n直したあとの文\n", 1)
+            time.sleep(1.1)
+            r = run_task(wt1, "edit", a, "--change-frame", "--body-file", "-", stdin=body)
+            check(f"{case}: 本文を直せた", r.returncode == 0 and r.stdout.startswith("EDITED"), r.stdout + r.stderr)
+            check(f"{case}: 直した直後は本文が変わっている","直したあとの文" in run_task(wt1, "show", a).stdout, "")
+            flag = {"add": ("--add-deps", dep), "remove": ("--remove-deps", dep), "again": ("--add-deps", dep)}[case]
+            r = run_task(wt1, "edit", a, *flag)
+            check(f"{case}: 依存を直せた", r.returncode == 0, r.stdout + r.stderr)
+            after =run_task(wt1, "show", a).stdout
+            check(f"{case}: 本文が直したあとのまま", "直したあとの文" in after, after)
+
+
 def test_release_sync_then_github_change_is_pulled() -> None:
     say("トラッカー github・外した版を sync で送ったあとは、GitHub 側の変更をこれまでどおり取り込む")
     with github() as (fake, _tmp, main_path, wt1):
@@ -647,6 +666,7 @@ TESTS = (
     test_tracker_synced_per_issue_key,
     test_release_then_claim_without_sync,
     test_release_sync_then_github_change_is_pulled,
+    test_edit_deps_after_body_edit_keeps_body,
 )
 
 

@@ -171,7 +171,8 @@ class Session:
         if not numbers:
             return []
         try:
-            lines = self._pull({n: gh.rest_issue(self.toplevel, self._repository(), n, self._remaining) for n in numbers})
+            remote = {n: gh.rest_issue(self.toplevel, self._repository(), n, self._remaining) for n in numbers}
+            lines = self._pull(self._without_echo(remote, list(self._by_numbers(sorted(remote)).values())))
             self._save()
         except _Failed as e:
             return [f"TRACKER\tFAILED\tgithub\t{e}"]
