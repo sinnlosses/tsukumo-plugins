@@ -1197,7 +1197,74 @@ def test_subcommand_help_complete() -> None:
         check(f"{name} の description がある", bool((parser.description or "").strip()))
 
 
+def test_hold_requires_unlock_condition() -> None:
+    say("hold にする3つの入口（new --hold・edit --status hold・hold）は ## 解除の条件 が無い・空・「なし」・4行以上なら終了コード2")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp)
+        bad_unlocks = (
+            ("節が無い", task_body()),
+            ("「なし」", task_body(unlock="なし")),
+            ("4行", task_body(unlock="a\nb\nc\nd")),
+        )
+
+        def new_hold(body: str) -> subprocess.CompletedProcess:
+            return run_task(wt1, "new", "--summary", "保留", "--difficulty", "sonnet", "--loopable", "Y", "--hold",
+                            "--body-file", "-", stdin=body)
+
+        before = issue_count(wt1)
+        for label, body in bad_unlocks:
+            r = new_hold(body)
+            check(f"new --hold: {label}は終了コード2で作らない",
+                  r.returncode == 2 and "解除の条件" in r.stderr and issue_count(wt1) == before, r.stdout + r.stderr)
+        r = new_hold(task_body(unlock="\n\n"))
+        check("new --hold: 空の節は終了コード2", r.returncode == 2 and issue_count(wt1) == before, r.stdout + r.stderr)
+        r = new_hold(task_body(unlock=UNLOCK, intervention=INTERVENTION))
+        created = r.stdout.split("\t")[1] if r.stdout.startswith("CREATED\t") else ""
+        check("new --hold: 節があれば通る", created != "", r.stdout + r.stderr)
+        text = shown(wt1, created)
+        check("tw show は ## 解除の条件 を本文のとおり ## 参考情報 の後・## 介入 の前に出す",
+              UNLOCK in text and text.index("## 参考情報") < text.index("## 解除の条件") < text.index("## 介入"), text)
+
+        commit_task(main_path, taskfile.Task("T-300", "節なし", "todo", "sonnet", "Y", (), task_body()))
+        r = run_task(wt1, "edit", "T-300", "--status", "hold")
+        check("edit --status hold: 節が無ければ終了コード2で todo のまま",
+              r.returncode == 2 and "解除の条件" in r.stderr and "\nstatus: todo\n" in shown(wt1, "T-300"), r.stdout + r.stderr)
+        r = run_task(wt1, "edit", "T-300", "--status", "hold", "--section", "解除の条件", "--body-file", "-", stdin="なし\n")
+        check("edit --status hold: 同じ呼び出しで書く節が「なし」でも終了コード2",
+              r.returncode == 2 and "\nstatus: todo\n" in shown(wt1, "T-300"), r.stdout + r.stderr)
+        r = run_task(wt1, "edit", "T-300", "--status", "hold", "--section", "解除の条件", "--body-file", "-", stdin=UNLOCK + "\n")
+        check("edit --status hold: 同じ呼び出しで節を書けば通る", r.returncode == 0 and "\nstatus: hold\n" in shown(wt1, "T-300"),
+              r.stdout + r.stderr)
+        r = run_task(wt1, "edit", "T-300", "--status", "todo")
+        check("todo に戻しても節は残る", r.returncode == 0 and UNLOCK in shown(wt1, "T-300"), r.stdout + r.stderr)
+        r = run_task(wt1, "edit", "T-300", "--status", "hold")
+        check("edit --status hold: 節が残っていれば節を渡さなくても通る", r.returncode == 0, r.stdout + r.stderr)
+
+        commit_task(main_path, taskfile.Task("T-301", "節なし2", "todo", "sonnet", "Y", (), task_body()))
+        r = run_task(wt1, "claim", "T-301")
+        check("着手する", r.returncode == 0, r.stdout + r.stderr)
+        r = run_task(wt1, "hold", "T-301", "--reason-file", "-", stdin="- 論点\n")
+        check("hold: 節が無く --unlock-file も無ければ終了コード2で、印も外さない",
+              r.returncode == 2 and "解除の条件" in r.stderr and "RELEASED" not in r.stdout
+              and "\nstatus: todo\n" in shown(wt1, "T-301"), r.stdout + r.stderr)
+        empty = write(os.path.join(tmp, "empty.md"), "なし\n")
+        r = run_task(wt1, "hold", "T-301", "--reason-file", "-", "--unlock-file", empty, stdin="- 論点\n")
+        check("hold: --unlock-file が「なし」なら終了コード2で書かない",
+              r.returncode == 2 and "RELEASED" not in r.stdout and "\nstatus: todo\n" in shown(wt1, "T-301"), r.stdout + r.stderr)
+        good = write(os.path.join(tmp, "unlock.md"), "- 利用者が A か B かを決める\n- 2026-11-07 以降\n")
+        r = run_task(wt1, "hold", "T-301", "--reason-file", "-", "--unlock-file", good, stdin="- 論点\n")
+        body = shown_body(wt1, "T-301")
+        check("hold: --unlock-file の中身が節になり、論点は ## 注意 に足される",
+              r.returncode == 0 and "HELD\tT-301" in r.stdout and "\nstatus: hold\n" in shown(wt1, "T-301")
+              and "- 2026-11-07 以降" in taskfile.section_content(body, taskfile.UNLOCK_HEADING)
+              and "- 論点" in taskfile.section_content(body, taskfile.CAUTION_HEADING), r.stdout + r.stderr + body)
+        r = run_task(wt1, "hold", "T-301", "--reason-file", "-", "--unlock-file", good, stdin="- 論点2\n")
+        check("hold: すでに hold に --unlock-file を渡し直しても節は2つにならない",
+              r.returncode == 0 and shown(wt1, "T-301").count("## 解除の条件") == 1, r.stdout + r.stderr)
+
+
 TESTS = (
+    test_hold_requires_unlock_condition,
     test_subcommand_help_complete,
     test_part_direct_run_refused,
     test_done_commits_since_claim,

@@ -54,7 +54,7 @@
 | 台帳 `$(git rev-parse --path-format=absolute --git-common-dir)/task-workflow/`（環境変数 `TW_STATE_DIR` があれば `$TW_STATE_DIR/<本体の作業ツリーの名前>-<共有の git dir の realpath の sha1 の先頭12桁>/`） | 着手から送り出しまでの出来事（`flow/<YYYY-MM>.jsonl`。1行1出来事。`tw new --fixes` も `new` の出来事を足す。`tw metrics` が読む。会話・コマンド・パスは入れない。消えない）。コミットしない。全作業ツリーで1つ。`TW_STATE_DIR` を付けると、そのあとの記録はその下に書き、共有の git dir の台帳は読まない（写さない）。書けなければ標準エラーに1行出すだけで、元のサブコマンドの出力と終了コードは変わらない |
 | 作業ツリーの根の `.tw/local/task-open-claims/T-xxx` | `claim` から `done`・`release`・`ship` までの控え（中身は空）。`tw commit-guard`・`tw handback-guard`・`tw ask-guard`・`tw ref-guard` が読む。コミットしない。作業ツリーごと |
 | 共有の git dir の `hooks/reference-transaction`（`git rev-parse --git-path hooks` の下。`core.hooksPath` があれば置かない） | `tw ref-guard` を呼ぶ薄い殻（2行目が印 `# tw ref-guard`）。`claim` が置き、`done`・`ship` では消さない。控えの無い作業ツリーでは何もしない。印の無い利用者の hook があれば置かない。消してよい（次の `claim` が置き直す）。全作業ツリーで1つ |
-| 作業ツリーの根の `.tw/local/` | `tw verify`・`tw pause`・`tw step` を打った時点の中身の鍵、`ship` の検証の借り、検証のログ、書き換える道具を使ったサブエージェントの印（`task-agent-writers/<agent_id>`。着手の控えが無くなると消える）、`agent` の出来事を台帳へ残した印（`task-agent-tasks/<agent_id>`。同じく消える。出来事は `commit-guard` が、着手の控えがちょうど1件の作業ツリーでのサブエージェントの最初の Bash に1回だけ `flow/` へ足す〔タスク・`agent`＝agent_id・`session`＝session_id〕。入力に `agent_id`・`session_id` が入る根拠は Agent SDK の `BaseHookInput` の型定義で、実機の hook 入力のダンプではない）、サブエージェントの最終活動の epoch 秒（`task-agent-beats/<agent_id>`。hook の `heartbeat` がツール呼び出しのたびに書き、`tw beat-watch` が読む。同じく消える）。コミットしない。作業ツリーごと。初めて書くときに `tw` が作り、中身 `*` の `.tw/local/.gitignore` を置く |
+| 作業ツリーの根の `.tw/local/` | `tw verify`・`tw pause`・`tw step` を打った時点の中身の鍵、`ship` の検証の借り、検証のログ、書き換える道具を使ったサブエージェントの印（`task-agent-writers/<agent_id>`。着手の控えが無くなると消える）、`agent` の出来事を台帳へ残した印（`task-agent-tasks/<agent_id>`。出来事は `commit-guard` が、着手の控えがちょうど1件の作業ツリーでのサブエージェントの最初の Bash に1回だけ `flow/` へ足す〔タスク・`agent`＝agent_id・`session`＝session_id〕）、サブエージェントの最終活動の epoch 秒（`task-agent-beats/<agent_id>`。hook の `heartbeat` がツール呼び出しのたびに書き、`tw beat-watch` が読む）。コミットしない。作業ツリーごと。初めて書くときに `tw` が作り、中身 `*` の `.tw/local/.gitignore` を置く |
 
 **プロジェクトごとに変わる値は `.tw/config.toml` に置く**（コミットする。`AGENTS.md`・`CLAUDE.md` には
 書かない）。`tw` は `layout.read_config` の1つの口で読み、`tw config` が解けた値を出す（スキルはこれを読む）。
@@ -147,7 +147,9 @@ front matter（`id`・`summary`・`status`・`difficulty`・`loopable`・近道�
 | `## 参考情報` | 登録時・作業中（関係する文書・Issue・過去のタスク・URL） | 可 |
 
 `## 結果` は枠の外で、`tw done` が最後に足す（done/dropped で必須）。枠の7節の後ろ（`## 結果` の前）には
-任意の節 `## 介入` を1つだけ置ける（下の「介入の節」。ほかの位置・2つは枠と違う本文）。`tw new`・`tw adopt` は
+任意の節 `## 解除の条件`、続けて `## 介入`（下の「介入の節」）を1つずつ置ける（ほかの位置・2つは枠と違う本文）。
+`hold` にする入口（`tw new --hold`・`tw edit --status hold`・`tw hold`）は、`## 解除の条件`（何が決まれば `todo` に戻せるか。
+決める人・事柄・期日待ちなら日付を3行まで）が無い・空・「なし」・4行以上だと終了コード2で拒む。`todo` に戻しても残す。`tw new`・`tw adopt` は
 枠と違う本文（見出しの欠け・順・枠の外の見出し）、空か「なし」の `## 目的・背景`・`## 完了条件`、
 空か「なし」の `## やること`（`--hold` を除く）、下の形に沿わない計画、`## 結果` を拒む。
 `difficulty` が `opus` で `## 解くべき論点` が空か「なし」のときも拒む（`--hold` でも）。
@@ -160,7 +162,7 @@ front matter（`id`・`summary`・`status`・`difficulty`・`loopable`・近道�
 `## 目的・背景` だけ。front matter・見出しより前の文・`## 結果` は拒み、`## やること` に中身があれば下の段の形も検査する。
 `## 目的・背景` に `- 観点:` の行があれば、観点が語彙（7観点と、横断の振り返りの3観点）の中で、色が付くなら赤か黄でなければ拒み、
 `## 介入` も求める。
-欠けた節は空の欄になり、`tw show` は7節をそろえて出す（`## 介入` があればその後ろ）。ドラフトの本文を直す `tw edit` も同じ緩い検査で、
+欠けた節は空の欄になり、`tw show` は7節をそろえて出す（`## 解除の条件`・`## 介入` があればその後ろ）。ドラフトの本文を直す `tw edit` も同じ緩い検査で、
 `## 完了条件` を空のまま `## やること` だけ書く途中の編集を通す。
 
 **介入の節**: エージェントの環境（harness）を変える課題が、何を狙い、いつ効いたかを判定し、効かなければやめるかを先に決めておく節。
@@ -413,7 +415,7 @@ Beads の label・各スキルの本文は触らない）:
 `## 決まっていること（蒸し返さない）` に焼いて `todo` に戻してから `claim` する（サブエージェントは
 ユーザーに聞けないので、委譲すると決める人がすり替わる。手順はオーケストレーターの `hold` を決める流れが持つ）。
 frame が実装と合わず人が決め直すまで進められないタスクを `loopable: N` に直して止めるのは誤りで
-（着手中の Y→N は `tw edit` が拒む）、論点を `tw hold T-xxx --reason-file -` に渡して外し、出力の `CONTINUE` で
+（着手中の Y→N は `tw edit` が拒む）、論点と解除の条件を `tw hold T-xxx --reason-file - --unlock-file <ファイル>` に渡して外し、出力の `CONTINUE` で
 `/loop` を続ける（続行判断はオーケストレーターの `/loop` の続行判断が持つ）。
 ドラフト（`draft`）は `hold` と違い、やるかどうか自体が未承認で、入口はどちらから呼ばれても選ばない
 （承認して `todo`・`hold` に進めるのは登録の入口）。
@@ -432,15 +434,15 @@ frame が実装と合わず人が決め直すまで進められないタスク�
 | `docs` | 文書だけの変更 |
 
 置き場は Beads の label `kind:<種類>` で、1つのタスクに0か1つ（`tw edit --kind -` で外す）。
-`kind:` の label が語彙の外か2つ以上なら、そのタスクは `INVALID` になる。
+`kind:` の label が語彙の外か2つ以上なら `INVALID`。
 
-送った後の直しは `tw new --fixes <元のID>` で元の送り出しに結ぶ（metadata `fixes`。複数可、本文からの自動検出はしない）。`tw metrics` の `fix_within_7d` が、期間内の送った件数に対する、送り出しから7日以内に結ばれた直しのタスクの数を出す（100% を超えうる）。
+送った後の直しは `tw new --fixes <元のID>` で元の送り出しに結ぶ（metadata `fixes`。複数可、本文からの自動検出はしない）。`tw metrics` の `fix_within_7d` が、期間内の送った件数に対する、送り出しから7日以内に結ばれた直しのタスクの数を出す。
 
 **`tw find [<語>…] [--kind <種類>]` の当て方**: `READY` の行だけを `tw status` の並びで見る。
 
 - 語は NFKC と大文字小文字を揃えて、summary か `### 名指すファイル` のパスに含まれれば当たり。語どうしは言い換えとして扱い、どれか1つに当たればよい
 - `--kind` を付けると、種類が違うタスクを外す。種類の無いタスクは語だけで決まる（`--kind` だけで語が無ければ当たらない）
-- 結果は先頭語で決まり、モデルは summary と語を突き合わせない: 1件なら `FOUND`、2件以上なら `MANY`（先頭4件の `CANDIDATE` と、残りがあれば `MORE`）、0件なら `NONE`。列は `tw find --help`
+- 結果は先頭語で決まり、モデルは summary と語を突き合わせない: 1件なら `FOUND`、2件以上なら `MANY`（先頭4件の `CANDIDATE` と、残りがあれば `MORE`）、0件なら `NONE`
 
 ## 送り出し
 
