@@ -64,6 +64,15 @@ TRACKER_VALUES = ("なし", "github", "jira")
 BRANCH_VALUES = ("既定", "作業ブランチを切る", "切らない")
 DEFAULT_BRANCH = "既定"
 NO_COMMAND = "なし"
+# コマンド型のキーの持ち主。`なし` を None に読む判定・`set` の対象・`--schema` の欄はここから導く。
+COMMAND_FIELDS = {
+    "step_check": ("段ごとの検査", "段ごとに安く打つ検査コマンド（1行）。なし は打たない"),
+    "verify": ("検証", "全体の検証コマンド（1行）。なし は打つものが無い"),
+    "verify_before_ship": ("送る前の検証", "主ブランチへ入れる直前に打つ検証コマンド（1行）。なし は打たない"),
+    "format": ("整形", "検証の前に打つ整形コマンド（1行）。なし は打たない"),
+    "hook_tally": ("hook の集計", "直近30日の hook ごとの拒否の回数を出すコマンド（1行）。なし は集計の観点を飛ばす"),
+}
+COMMAND_SETTABLE_KEYS = tuple(COMMAND_FIELDS)
 
 CONFIG_KEYS = (
     "verify",
@@ -264,7 +273,7 @@ def _config_from_values(source: str, entries: list[tuple[int, str, str]]) -> Con
     for lineno, key, value in entries:
         if value == "":
             raise ConfigError(f"{source}:{lineno}: {key} の値が空")
-        if key in ("verify", "verify_before_ship", "format", "step_check", "hook_tally") and value == NO_COMMAND:
+        if key in COMMAND_SETTABLE_KEYS and value == NO_COMMAND:
             values[key] = None
         else:
             values[key] = value
@@ -321,7 +330,6 @@ def build_config(source: str | None, values: dict[str, str | None]) -> Config:
 
 # --- 設定の欄の形（`tw config --schema`）と書く口（`tw config set`） -----------------
 
-COMMAND_SETTABLE_KEYS = ("step_check", "verify", "verify_before_ship", "format", "hook_tally")
 BRANCH_KEY = "branch"
 SETTABLE_KEYS = (STEPS_KEY, *COMMAND_SETTABLE_KEYS, BRANCH_KEY, SHELL_WRITE_GUARD_KEY)
 
@@ -556,13 +564,6 @@ def default_steps(candidates: list[StepCandidate]) -> list[str]:
     return [c.value for c in sorted(own, key=lambda c: (c.order is None, c.order or 0))]
 
 
-COMMAND_FIELDS = {
-    "step_check": ("段ごとの検査", "段ごとに安く打つ検査コマンド（1行）。なし は打たない"),
-    "verify": ("検証", "全体の検証コマンド（1行）。なし は打つものが無い"),
-    "verify_before_ship": ("送る前の検証", "主ブランチへ入れる直前に打つ検証コマンド（1行）。なし は打たない"),
-    "format": ("整形", "検証の前に打つ整形コマンド（1行）。なし は打たない"),
-    "hook_tally": ("hook の集計", "直近30日の hook ごとの拒否の回数を出すコマンド（1行）。なし は集計の観点を飛ばす"),
-}
 BRANCH_FIELD_DESCRIPTIONS = {
     "既定": "tw の既定のブランチの扱い",
     "作業ブランチを切る": "着手のたびに作業ブランチを切る",

@@ -1230,6 +1230,7 @@ def test_config_set() -> None:
         check("設定が無ければ MISSING（終了コード6）", r.returncode == 6 and r.stdout.startswith("MISSING"), r.stdout + r.stderr)
 
     import layout
+    import tw_status
 
     with tempfile.TemporaryDirectory() as tmp:
         for text, expected in (('verify = "なし"\nhook_tally = "なし"\n', None), ('verify = "なし"\nhook_tally = "sh t.sh"\n', "sh t.sh")):
@@ -1237,6 +1238,18 @@ def test_config_set() -> None:
             write(os.path.join(tmp, ".tw", "config.toml"), text)
             got = layout.read_config(tmp).hook_tally
             check(f"hook_tally = {expected!r} の設定は {expected!r} に読む（なし は打たない設定）", got == expected, repr(got))
+        check("書けるコマンド型のキー・欄・読み手の None 化の集合が COMMAND_FIELDS の1つから導かれている",
+              set(layout.COMMAND_SETTABLE_KEYS) == set(layout.COMMAND_FIELDS)
+              and set(layout.COMMAND_SETTABLE_KEYS) <= set(layout.SETTABLE_KEYS)
+              and set(layout.COMMAND_SETTABLE_KEYS) == set(tw_status.CONFIG_COMMAND_KEYS),
+              repr(layout.COMMAND_SETTABLE_KEYS))
+        for key in layout.COMMAND_SETTABLE_KEYS:
+            text = 'verify = "x"\n' + (f'{key} = "なし"\n' if key != "verify" else "")
+            if key == "verify":
+                text = 'verify = "なし"\n'
+            write(os.path.join(tmp, ".tw", "config.toml"), text)
+            got = getattr(layout.read_config(tmp), key)
+            check(f"{key} = なし は None に読む（コマンド型のキーの全部）", got is None, repr(got))
 
 
 def test_config_steps() -> None:
