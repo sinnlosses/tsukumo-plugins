@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import subprocess
 import sys
 from collections.abc import Collection, Mapping
 from typing import NoReturn
@@ -374,6 +376,35 @@ def _print_doc_budget(toplevel: str, shown: str, body: str) -> None:
             print(f"DOC_BUDGET\t{shown}\t{path}\t{left[0]}\t{left[1]}")
 
 
+SIZE_BUDGET_TIMEOUT_SECONDS = 20
+
+
+def _print_size_budget(toplevel: str, shown: str, body: str) -> None:
+    root = taskfile.plan_work_repo(body)[0] or toplevel
+    try:
+        command = layout.read_config(root).size_budget
+    except (layout.ConfigError, OSError):
+        return
+    if command is None:
+        return
+    paths = [p for p in taskfile.plan_files(body)[0] if os.path.isfile(os.path.join(root, p))]
+    if not paths:
+        return
+    try:
+        r = subprocess.run(
+            ["sh", "-c", f'{command} "$@"', "sh", *paths],
+            cwd=root, capture_output=True, text=True, timeout=SIZE_BUDGET_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return
+    if r.returncode != 0:
+        return
+    for line in r.stdout.splitlines():
+        columns = line.split("\t")
+        if len(columns) == 3:
+            print(f"SIZE_BUDGET\t{shown}\t{columns[0]}\t{columns[1]}\t{columns[2]}")
+
+
 def _print_plan_check(
     toplevel: str,
     shown: str, body: str, mark: str | None, plan_base: str | None, drift: tuple[list[str], str] | None
@@ -407,6 +438,7 @@ def _print_plan_check(
     for a, b, shared in serial:
         print(f"SERIAL\t{shown}\t{a},{b}\t{','.join(shared)}")
     _print_doc_budget(toplevel, shown, body)
+    _print_size_budget(toplevel, shown, body)
     if not pairs:
         return
     for n, waits in enumerate(taskfile.step_waits(specs), start=1):

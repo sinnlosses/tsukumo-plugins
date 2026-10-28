@@ -1197,7 +1197,40 @@ def test_plan_check_doc_budget() -> None:
         check("別のリポジトリの作業先では出ない", r.returncode == 0 and "DOC_BUDGET" not in r.stdout, r.stdout + r.stderr)
 
 
+def test_plan_check_size_budget() -> None:
+    say("task.py plan-check: size_budget の出力を SIZE_BUDGET で出し、失敗や未設定では何も出さない")
+    with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as other:
+        script = os.path.join(tmp, "sb.sh")
+        write(script, 'for f in "$@"; do printf \'%s\\t5\\t10\\n\' "$f"; done\nprintf \'x\\ty\\n\'\n')
+        git(other, "init", "-q", "-b", "main")
+        write(os.path.join(other, "shared.txt"), "x\n")
+        files = ["shared.txt", "none.md"]
+
+        def plan_check(tid: str, config_extra: str, work_repo: str | None = None) -> subprocess.CompletedProcess:
+            sub = os.path.join(tmp, tid)
+            os.makedirs(sub)
+            main_path, wt1, _wt2 = make_repo(sub, extra=config_extra)
+            commit_task(main_path, taskfile.Task(tid, "大きさ", "todo", "sonnet", "Y", (), BODY))
+            run_task(wt1, "claim", tid)
+            run_task(wt1, "edit", tid, "--body-file", "-", stdin=task_body([("書く", "")], files, work_repo))
+            return run_task(wt1, "plan-check", tid)
+
+        r = plan_check("T-300", f'size_budget = "sh {script}"\n')
+        lines = r.stdout.splitlines()
+        check("あるとき実在するファイルだけ3列の行が SIZE_BUDGET で出る",
+              r.returncode == 0 and "PLAN_FIRST\tT-300" in lines
+              and [l for l in lines if l.startswith("SIZE_BUDGET")] == ["SIZE_BUDGET\tT-300\tshared.txt\t5\t10"], r.stdout + r.stderr)
+        r = plan_check("T-301", 'size_budget = "exit 3"\n')
+        check("コマンドが失敗しても SIZE_BUDGET は出ず PLAN_FIRST と終了コードは変わらない",
+              r.returncode == 0 and "PLAN_FIRST\tT-301" in r.stdout.splitlines() and "SIZE_BUDGET" not in r.stdout, r.stdout + r.stderr)
+        r = plan_check("T-302", "")
+        check("キーが無ければ何も出ない", r.returncode == 0 and "SIZE_BUDGET" not in r.stdout, r.stdout + r.stderr)
+        r = plan_check("T-303", f'size_budget = "sh {script}"\n', work_repo=other)
+        check("作業先が設定を持たない別のリポジトリなら何も出ない", r.returncode == 0 and "SIZE_BUDGET" not in r.stdout, r.stdout + r.stderr)
+
+
 TESTS = (
+    test_plan_check_size_budget,
     test_plan_check_doc_budget,
     test_large_plan_warning,
     test_report_name_warning,
