@@ -28,7 +28,7 @@ def _toplevel_or_none() -> str | None:
 
 
 def cmd_config_schema() -> None:
-    """欄の形（schema 2。並びの欄）を1行の JSON で出す（読むだけ。設定にはよらない）。候補は作業ツリー・`~`・`tw` と同じ plugin から走査する。"""
+    """欄の形（schema 2。並び・シェル書き込みの判定・コマンド型5欄・ブランチの扱い）を1行の JSON で出す（読むだけ。設定にはよらない）。候補は作業ツリー・`~`・`tw` と同じ plugin から走査する。"""
     schema = layout.config_schema(_toplevel_or_none(), os.path.expanduser("~"), layout.own_plugin_root())
     print(json.dumps(schema, ensure_ascii=False))
 

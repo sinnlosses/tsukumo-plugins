@@ -999,7 +999,7 @@ def test_step_candidates() -> None:
 
 
 def test_config_schema_version() -> None:
-    say("task.py config --schema: 並びの欄だけの schema 2。--version は知らない引数として終了コード2")
+    say("task.py config --schema: 8欄の schema 2。--version は知らない引数として終了コード2")
     with tempfile.TemporaryDirectory() as tmp:
         home = os.path.join(tmp, "home")
         repo = os.path.join(tmp, "repo")
@@ -1014,9 +1014,31 @@ def test_config_schema_version() -> None:
         schema = json.loads(r.stdout)
         steps = schema["keys"][0]
         values = [v["value"] for v in steps["values"]]
-        check("schema 2 は steps に続けて shell_write_guard の欄",
-              schema["schema"] == 2 and [k["key"] for k in schema["keys"]] == ["steps", "shell_write_guard"]
+        check("schema 2 は steps・shell_write_guard に続けて、コマンド型5欄と branch の欄",
+              schema["schema"] == 2
+              and [k["key"] for k in schema["keys"]]
+              == ["steps", "shell_write_guard", "step_check", "verify", "verify_before_ship", "format", "hook_tally", "branch"]
               and steps["kind"] == "steps" and steps["label"] and steps["description"], repr(schema))
+        import layout
+
+        command_fields = schema["keys"][2:7]
+        check("コマンド型の5欄は kind command・既定 なし で、label と description が空でない",
+              all(k["kind"] == "command" and k["default"] == "なし" and k["label"] and k["description"] for k in command_fields),
+              repr(command_fields))
+        branch_field = schema["keys"][7]
+        check("branch は choice で、既定 既定、値は BRANCH_VALUES の3値",
+              branch_field["kind"] == "choice" and branch_field["default"] == "既定" and branch_field["label"]
+              and branch_field["description"]
+              and [v["value"] for v in branch_field["values"]] == list(layout.BRANCH_VALUES)
+              and all(v["label"] and v["description"] for v in branch_field["values"]), repr(branch_field))
+
+        def missing_fields(settable: tuple[str, ...], keys: list[dict]) -> list[str]:
+            return [k for k in settable if k not in [f["key"] for f in keys]]
+
+        check("set で書けるキーは steps を含め全部が欄になっている",
+              missing_fields(layout.SETTABLE_KEYS, schema["keys"]) == [], repr(layout.SETTABLE_KEYS))
+        check("欄から branch を欠くと書けるキーの突き合わせが落ちる",
+              missing_fields(layout.SETTABLE_KEYS, [k for k in schema["keys"] if k["key"] != "branch"]) == ["branch"])
         guard = schema["keys"][1]
         check("shell_write_guard は choice で、既定 tw、値は tw・project",
               guard["kind"] == "choice" and guard["default"] == "tw"
@@ -1118,7 +1140,9 @@ def test_config_set() -> None:
         write(path, original)
         before = read_config_file()
         for args in (
-            ("verify", "x"),
+            ("tracker", "github"),
+            ("loop_max_ships", "3"),
+            ("base_branch", "main"),
             ("flow", "main"),
             ("flow", "delegate"),
             ("parts.acceptor", "my-plugin:acceptor"),
@@ -1132,34 +1156,50 @@ def test_config_set() -> None:
         r = run_task(repo, "config", "set", "steps")
         check("値の無い set は終了コード2", r.returncode == 2, r.stdout + r.stderr)
 
-        def step_check_row() -> str:
-            rows = [l for l in run_task(repo, "config").stdout.splitlines() if l.startswith("step_check\t")]
+        def row_of(key: str) -> str:
+            rows = [l for l in run_task(repo, "config").stdout.splitlines() if l.startswith(f"{key}\t")]
             return rows[0] if rows else ""
 
-        r = run_task(repo, "config", "set", "step_check", "pnpm run lint")
-        check("step_check が無ければ最後のキーの次に足され、tw config が config で出す",
-              r.returncode == 0 and r.stdout == "SET\tstep_check\tpnpm run lint\n"
-              and read_config_file() == original + 'step_check = "pnpm run lint"\n'
-              and step_check_row() == "step_check\tpnpm run lint\tconfig", r.stdout + r.stderr + read_config_file())
-        write(path, original.replace('branch = "切らない"\n', 'branch = "切らない"\nstep_check = "old"  # 段\n'))
-        r = run_task(repo, "config", "set", "step_check", "new")
-        check("step_check がある設定は値だけ変わり、ほかの行・コメントはそのまま",
-              r.returncode == 0 and read_config_file() == original.replace('branch = "切らない"\n', 'branch = "切らない"\nstep_check = "new"  # 段\n'),
-              read_config_file())
-        r = run_task(repo, "config", "set", "step_check", "なし")
-        check("step_check なしは打たない設定に読む",
-              r.returncode == 0 and step_check_row().startswith("step_check\tなし\t"), r.stdout + r.stderr + step_check_row())
         quoted_command = 'echo "a\\b" && true'
-        r = run_task(repo, "config", "set", "step_check", quoted_command)
-        check("引用符とバックスラッシュを含む値は読み直すと元のまま",
-              r.returncode == 0 and step_check_row() == f"step_check\t{quoted_command}\tconfig",
-              r.stdout + r.stderr + step_check_row())
-        before = read_config_file()
-        for label, value in (("空", ""), ("空白だけ", "  "), ("改行を含む", "a\nb"),
-                             ("復帰を含む", "a\rb"), ("タブを含む", "a\tb"), ("行区切りの制御文字を含む", "a\x0bb"),
+        for key in ("step_check", "verify", "verify_before_ship", "format", "hook_tally"):
+            write(path, original)
+            if key == "verify":
+                added = original.replace('verify = "なし"', 'verify = "pnpm run lint"')
+            else:
+                added = original + f'{key} = "pnpm run lint"\n'
+            r = run_task(repo, "config", "set", key, "pnpm run lint")
+            check(f"{key} が無ければ最後のキーの次に足され（verify は値だけ変わり）、tw config が config で出す",
+                  r.returncode == 0 and r.stdout == f"SET\t{key}\tpnpm run lint\n"
+                  and read_config_file() == added and row_of(key) == f"{key}\tpnpm run lint\tconfig",
+                  r.stdout + r.stderr + read_config_file())
+            r = run_task(repo, "config", "set", key, "new")
+            check(f"{key} がある設定は値だけ変わり、ほかの行・コメントはそのまま",
+                  r.returncode == 0 and read_config_file() == added.replace("pnpm run lint", "new"), read_config_file())
+            r = run_task(repo, "config", "set", key, "なし")
+            check(f"{key} なしは打たない設定に読む",
+                  r.returncode == 0 and row_of(key).startswith(f"{key}\tなし\t"), r.stdout + r.stderr + row_of(key))
+            r = run_task(repo, "config", "set", key, quoted_command)
+            check(f"{key} の引用符とバックスラッシュを含む値は読み直すと元のまま",
+                  r.returncode == 0 and row_of(key) == f"{key}\t{quoted_command}\tconfig", r.stdout + r.stderr + row_of(key))
+            before = read_config_file()
+            for label, value in (("空", ""), ("空白だけ", "  "), ("改行を含む", "a\nb"),
+                                 ("復帰を含む", "a\rb"), ("タブを含む", "a\tb"), ("行区切りの制御文字を含む", "a\x0bb"),
                              ("Unicode の行区切りを含む", "a b")):
-            r = run_task(repo, "config", "set", "step_check", value)
-            check(f"step_check の値が{label}なら終了コード2でファイルを変えない",
+                r = run_task(repo, "config", "set", key, value)
+                check(f"{key} の値が{label}なら終了コード2でファイルを変えない",
+                      r.returncode == 2 and r.stdout == "" and read_config_file() == before, r.stdout + r.stderr)
+
+        write(path, original.replace('branch = "切らない"', 'branch = "切らない"  # 枝'))
+        for value in ("既定", "作業ブランチを切る", "切らない"):
+            r = run_task(repo, "config", "set", "branch", value)
+            check(f"branch {value} は値だけ変わり、コメントはそのまま、tw config が config で出す",
+                  r.returncode == 0 and r.stdout == f"SET\tbranch\t{value}\n"
+                  and read_config_file() == original.replace('branch = "切らない"', f'branch = "{value}"  # 枝')
+                  and row_of("branch") == f"branch\t{value}\tconfig", r.stdout + r.stderr + read_config_file())
+        before = read_config_file()
+        for label, value in (("語彙の外", "x"), ("空", ""), ("一部だけ", "切る")):
+            r = run_task(repo, "config", "set", "branch", value)
+            check(f"branch の値が{label}なら終了コード2でファイルを変えない",
                   r.returncode == 2 and r.stdout == "" and read_config_file() == before, r.stdout + r.stderr)
 
         write(path, original)
@@ -1188,6 +1228,15 @@ def test_config_set() -> None:
         repo = _make_config_doctor_repo(tmp, "no-config", with_config=False)
         r = run_task(repo, "config", "set", "steps", '["a"]')
         check("設定が無ければ MISSING（終了コード6）", r.returncode == 6 and r.stdout.startswith("MISSING"), r.stdout + r.stderr)
+
+    import layout
+
+    with tempfile.TemporaryDirectory() as tmp:
+        for text, expected in (('verify = "なし"\nhook_tally = "なし"\n', None), ('verify = "なし"\nhook_tally = "sh t.sh"\n', "sh t.sh")):
+            os.makedirs(os.path.join(tmp, ".tw"), exist_ok=True)
+            write(os.path.join(tmp, ".tw", "config.toml"), text)
+            got = layout.read_config(tmp).hook_tally
+            check(f"hook_tally = {expected!r} の設定は {expected!r} に読む（なし は打たない設定）", got == expected, repr(got))
 
 
 def test_config_steps() -> None:

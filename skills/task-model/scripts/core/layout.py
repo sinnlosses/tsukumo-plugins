@@ -264,7 +264,7 @@ def _config_from_values(source: str, entries: list[tuple[int, str, str]]) -> Con
     for lineno, key, value in entries:
         if value == "":
             raise ConfigError(f"{source}:{lineno}: {key} の値が空")
-        if key in ("verify", "verify_before_ship", "format", "step_check") and value == NO_COMMAND:
+        if key in ("verify", "verify_before_ship", "format", "step_check", "hook_tally") and value == NO_COMMAND:
             values[key] = None
         else:
             values[key] = value
@@ -321,8 +321,9 @@ def build_config(source: str | None, values: dict[str, str | None]) -> Config:
 
 # --- 設定の欄の形（`tw config --schema`）と書く口（`tw config set`） -----------------
 
-COMMAND_SETTABLE_KEY = "step_check"
-SETTABLE_KEYS = (STEPS_KEY, COMMAND_SETTABLE_KEY, SHELL_WRITE_GUARD_KEY)
+COMMAND_SETTABLE_KEYS = ("step_check", "verify", "verify_before_ship", "format", "hook_tally")
+BRANCH_KEY = "branch"
+SETTABLE_KEYS = (STEPS_KEY, *COMMAND_SETTABLE_KEYS, BRANCH_KEY, SHELL_WRITE_GUARD_KEY)
 
 
 class ConfigValueError(ValueError):
@@ -555,6 +556,20 @@ def default_steps(candidates: list[StepCandidate]) -> list[str]:
     return [c.value for c in sorted(own, key=lambda c: (c.order is None, c.order or 0))]
 
 
+COMMAND_FIELDS = {
+    "step_check": ("段ごとの検査", "段ごとに安く打つ検査コマンド（1行）。なし は打たない"),
+    "verify": ("検証", "全体の検証コマンド（1行）。なし は打つものが無い"),
+    "verify_before_ship": ("送る前の検証", "主ブランチへ入れる直前に打つ検証コマンド（1行）。なし は打たない"),
+    "format": ("整形", "検証の前に打つ整形コマンド（1行）。なし は打たない"),
+    "hook_tally": ("hook の集計", "直近30日の hook ごとの拒否の回数を出すコマンド（1行）。なし は集計の観点を飛ばす"),
+}
+BRANCH_FIELD_DESCRIPTIONS = {
+    "既定": "tw の既定のブランチの扱い",
+    "作業ブランチを切る": "着手のたびに作業ブランチを切る",
+    "切らない": "いま居るブランチへそのまま積む",
+}
+
+
 def config_schema(project_root: str | None, home: str | None = None, plugin: tuple[str, str] | None = None) -> dict:
     """`tw config --schema` が出す欄の形（schema 2）。既定の並びは `default_steps`。"""
     candidates = step_candidates(project_root, home, plugin)
@@ -585,6 +600,20 @@ def config_schema(project_root: str | None, home: str | None = None, plugin: tup
                         "label": "プロジェクトが止める",
                         "description": "プロジェクト自前の hook に任せ、tw は SHELL_WRITE を見ない",
                     },
+                ],
+            },
+            *(
+                {"key": key, "label": label, "description": description, "kind": "command", "default": NO_COMMAND}
+                for key, (label, description) in COMMAND_FIELDS.items()
+            ),
+            {
+                "key": BRANCH_KEY,
+                "label": "ブランチの扱い",
+                "description": "着手のときにブランチをどう扱うか",
+                "kind": "choice",
+                "default": DEFAULT_BRANCH,
+                "values": [
+                    {"value": v, "label": v, "description": BRANCH_FIELD_DESCRIPTIONS[v]} for v in BRANCH_VALUES
                 ],
             },
         ],
@@ -622,10 +651,14 @@ def config_text_with(text: str, key: str, value: str, label: str = CONFIG_PATH) 
     """
     if key not in SETTABLE_KEYS:
         raise ConfigValueError(f"書けるキーは {' / '.join(SETTABLE_KEYS)} だけ: {key!r}")
-    if key == COMMAND_SETTABLE_KEY:
+    if key in COMMAND_SETTABLE_KEYS:
         if not value.strip() or not value.isprintable():
             raise ConfigValueError(f"{key} の値は空でない1行（タブ・改行などの制御文字なし）のコマンドか {NO_COMMAND}: {value!r}")
         quoted = '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    elif key == BRANCH_KEY:
+        if value not in BRANCH_VALUES:
+            raise ConfigValueError(f"{key} の値は {' / '.join(BRANCH_VALUES)} のどれか: {value!r}")
+        quoted = json.dumps(value, ensure_ascii=False)
     elif key == SHELL_WRITE_GUARD_KEY:
         if value not in SHELL_WRITE_GUARD_VALUES:
             raise ConfigValueError(f"{key} の値は {' / '.join(SHELL_WRITE_GUARD_VALUES)} のどちらか: {value!r}")
