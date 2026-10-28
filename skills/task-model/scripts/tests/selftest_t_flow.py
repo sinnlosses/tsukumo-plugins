@@ -998,6 +998,9 @@ def test_step_candidates() -> None:
               [(c.value, c.label, c.description) for c in got] == [("p:q-name", "q-name", "引用: 説明")], repr(got))
 
 
+READONLY_KEYS = ("store", "tracker", "github_project", "backup", "base_branch", "loop_max_ships")
+
+
 def test_config_schema_version() -> None:
     say("task.py config --schema: 14欄の schema 2。--version は知らない引数として終了コード2")
     with tempfile.TemporaryDirectory() as tmp:
@@ -1020,15 +1023,15 @@ def test_config_schema_version() -> None:
               schema["schema"] == 2
               and [k["key"] for k in schema["keys"]]
               == ["steps", "shell_write_guard", "step_check", "verify", "verify_before_ship", "format", "hook_tally", "branch",
-                  *layout.READONLY_FIELDS]
+                  *READONLY_KEYS]
               and steps["kind"] == "steps" and steps["label"] and steps["description"], repr(schema))
         readonly_fields = schema["keys"][8:]
         check("読み取り専用の欄は key・label・description・kind だけを持ち、default と values は無い",
-              len(readonly_fields) == len(layout.READONLY_FIELDS)
+              len(readonly_fields) == len(READONLY_KEYS)
               and all(set(k) == {"key", "label", "description", "kind"} and k["kind"] == "readonly"
                       and k["label"] and k["description"] for k in readonly_fields), repr(readonly_fields))
         check("読み取り専用のキーは set の対象と重ならない",
-              not set(layout.READONLY_FIELDS) & set(layout.SETTABLE_KEYS), repr(layout.SETTABLE_KEYS))
+              not set(READONLY_KEYS) & set(layout.SETTABLE_KEYS), repr(layout.SETTABLE_KEYS))
 
         command_fields = schema["keys"][2:7]
         check("コマンド型の5欄は kind command・既定 なし で、label と description が空でない",
@@ -1049,8 +1052,8 @@ def test_config_schema_version() -> None:
         check("欄から branch を欠くと書けるキーの突き合わせが落ちる",
               missing_fields(layout.SETTABLE_KEYS, [k for k in schema["keys"] if k["key"] != "branch"]) == ["branch"])
         check("欄から読み取り専用の1キーを欠くと、持ち主との突き合わせが欠けたキーを返す",
-              missing_fields(tuple(layout.READONLY_FIELDS), [k for k in schema["keys"] if k["key"] != "store"]) == ["store"]
-              and missing_fields(tuple(layout.READONLY_FIELDS), schema["keys"]) == [])
+              missing_fields(READONLY_KEYS, [k for k in schema["keys"] if k["key"] != "store"]) == ["store"]
+              and missing_fields(READONLY_KEYS, schema["keys"]) == [])
         guard = schema["keys"][1]
         check("shell_write_guard は choice で、既定 tw、値は tw・project",
               guard["kind"] == "choice" and guard["default"] == "tw"
@@ -1140,8 +1143,6 @@ def test_config_entries() -> None:
 
 def test_config_set() -> None:
     say("task.py config set: 検査してから .tw/config.toml に書き、ほかの行・並び・コメントを変えない")
-    import layout
-
     with tempfile.TemporaryDirectory() as tmp:
         repo = _make_config_doctor_repo(tmp, "set")
         path = os.path.join(repo, ".tw", "config.toml")
@@ -1154,7 +1155,7 @@ def test_config_set() -> None:
         write(path, original)
         before = read_config_file()
         for args in (
-            *((key, "x") for key in layout.READONLY_FIELDS),
+            *((key, "x") for key in READONLY_KEYS),
             ("flow", "main"),
             ("flow", "delegate"),
             ("parts.acceptor", "my-plugin:acceptor"),
