@@ -124,8 +124,10 @@ push は含まない）。
 ## タスクの本文
 
 書くのは `tw` コマンドだけで、`bd` を直に打って本文や label を直さない。`tw show T-xxx` は1件を
-front matter（`id`・`summary`・`status`・`difficulty`・`loopable`・近道の印があれば `direct: Y`・`dependencies` の順の
+front matter（`id`・`summary`・`status`・`difficulty`・`loopable`・近道の印があれば `direct: Y`・`dependencies`・`created`・`updated` の順の
 `key: 値` の行を `---` で挟んだもの）と本文の形で出す。front matter は出力だけの形で、`tw edit` に渡す本文には付けない（付けると終了コード2）。
+`created`・`updated` は Beads の `created_at`・`updated_at` をローカルの `YYYY-MM-DD HH:MM` にしたもの（値が無ければ `-`）で、`tw` は書かない。
+`updated` は `claim`・`sync` などの機械的な更新でも進むので、本文が変わった印ではない。
 
 - `status` は `draft`・`todo`・`hold`・`done`・`dropped`。着手中は `todo` のまま着手の印（Beads の `in_progress` と assignee）が表す。
   着手しない判断で閉じたものは `dropped`。`draft` はエージェントが聞かずに積んだドラフト（下の「ドラフトの課題」）
