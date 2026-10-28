@@ -1133,7 +1133,35 @@ def test_large_plan_warning() -> None:
               r.stdout + r.stderr)
 
 
+def test_plan_check_doc_budget() -> None:
+    say("task.py plan-check: 名指す文書の字数の上限までの残りを DOC_BUDGET で出す")
+    tw_root = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", ".."))
+    doc = "skills/task-model/tw-reference.md"
+    with open(os.path.join(tw_root, doc), "rb") as f:
+        left = 45300 - len(f.read())
+    with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as other:
+        main_path, wt1, _wt2 = make_repo(tmp)
+        for tid in ("T-200", "T-201", "T-202"):
+            commit_task(main_path, taskfile.Task(tid, "字数", "todo", "sonnet", "Y", (), BODY))
+        git(other, "init", "-q", "-b", "main")
+        write(os.path.join(other, doc), "x\n")
+
+        def plan_check(tid: str, files: list[str], work_repo: str) -> subprocess.CompletedProcess:
+            run_task(wt1, "claim", tid)
+            run_task(wt1, "edit", tid, "--body-file", "-", stdin=task_body([("書く", "")], files, work_repo))
+            return run_task(wt1, "plan-check", tid)
+
+        r = plan_check("T-200", [doc], tw_root)
+        check("表にある文書を名指すと DOC_BUDGET が出る", r.returncode == 0
+              and f"DOC_BUDGET\tT-200\t{doc}\t{left}\t45300" in r.stdout.splitlines(), r.stdout + r.stderr)
+        r = plan_check("T-201", ["docs/x.md"], tw_root)
+        check("表に無い文書では出ない", r.returncode == 0 and "DOC_BUDGET" not in r.stdout, r.stdout + r.stderr)
+        r = plan_check("T-202", [doc], other)
+        check("別のリポジトリの作業先では出ない", r.returncode == 0 and "DOC_BUDGET" not in r.stdout, r.stdout + r.stderr)
+
+
 TESTS = (
+    test_plan_check_doc_budget,
     test_large_plan_warning,
     test_report_name_warning,
     test_plan_coverage,

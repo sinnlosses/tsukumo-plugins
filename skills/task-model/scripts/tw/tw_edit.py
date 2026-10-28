@@ -10,6 +10,7 @@ from collections.abc import Collection, Mapping
 from typing import NoReturn
 
 import beads
+import doc_budget
 import layout
 import taskfile
 import tracker
@@ -174,7 +175,7 @@ def own_plan(toplevel: str, task_id: str) -> tuple[str, beads.Issue, str, str | 
 
 def cmd_plan_check(toplevel: str, task_id: str) -> None:
     shown, _issue, plan_body, mark, plan_base, drift = own_plan(toplevel, task_id)
-    _print_plan_check(shown, plan_body, mark, plan_base, drift)
+    _print_plan_check(toplevel, shown, plan_body, mark, plan_base, drift)
 
 
 def cmd_plan_phases(
@@ -362,7 +363,18 @@ def _refuse_plan_after_work(shown: str, state: str, after_work: bool) -> None:
         raise SystemExit(4)
 
 
+def _print_doc_budget(toplevel: str, shown: str, body: str) -> None:
+    root = taskfile.plan_work_repo(body)[0] or toplevel
+    if not doc_budget.same_repo(root):
+        return
+    for path in taskfile.plan_files(body)[0]:
+        left = doc_budget.remaining(root, path)
+        if left is not None:
+            print(f"DOC_BUDGET\t{shown}\t{path}\t{left[0]}\t{left[1]}")
+
+
 def _print_plan_check(
+    toplevel: str,
     shown: str, body: str, mark: str | None, plan_base: str | None, drift: tuple[list[str], str] | None
 ) -> None:
     """`drift` は登録時の計画が名指すファイルの変わりと、古いとみなす理由（`tw_plan.registered_plan_drift`）。
@@ -393,6 +405,7 @@ def _print_plan_check(
         print(f"PARALLEL\t{shown}\t{a},{b}")
     for a, b, shared in serial:
         print(f"SERIAL\t{shown}\t{a},{b}\t{','.join(shared)}")
+    _print_doc_budget(toplevel, shown, body)
     if not pairs:
         return
     for n, waits in enumerate(taskfile.step_waits(specs), start=1):

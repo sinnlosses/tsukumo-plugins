@@ -13,6 +13,10 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(1, os.path.join(HERE, "..", "core"))
+
+from doc_budget import LIMITS, remaining  # noqa: E402
+
 SKILLS = os.path.normpath(os.path.join(HERE, "..", "..", ".."))
 
 REMEDY = (
@@ -20,39 +24,6 @@ REMEDY = (
     "既存の言い直しで縮めて意味が欠けるなら縮めず、条件つきで読む文書（UNLIMITED）へ節を移すか、tw hold で上限を上げる判断を人に預ける。"
     "直しの確かめは検証全体でなく単体で: python3 skills/task-model/scripts/tests/selftest_doc_budget.py"
 )
-
-# 毎回読まれる文書の上限（skills/ からの相対パス: バイト）。今の値を100B 単位で切り上げて凍らせたもの
-LIMITS: dict[str, int] = {
-    "accept-step/SKILL.md": 4000,
-    "comment-audit/SKILL.md": 9200,
-    "implement-step/SKILL.md": 4500,
-    "list-tasks/SKILL.md": 5100,
-    "next-task/SKILL.md": 7100,
-    "plan-tasks/SKILL.md": 20500,
-    "retro/SKILL.md": 6700,
-    "retrospect-step/SKILL.md": 3900,
-    "retrospect/SKILL.md": 2700,
-    "setup-tasks/SKILL.md": 6400,
-    "ship-step/SKILL.md": 2900,
-    "task-model/SKILL.md": 2000,
-    "task-workflow/SKILL.md": 18600,
-    "task-workflow/completion-report.md": 5800,
-    "task-workflow/review-criteria.md": 1800,
-    "task-workflow/parts/implementer/delegate.md": 11500,
-    "task-workflow/parts/implementer/handback-read.md": 4500,
-    "task-workflow/parts/implementer/implementer-brief.md": 21800,
-    "task-workflow/parts/implementer/implementer-request.md": 9300,
-    "task-workflow/parts/acceptor/accept.md": 11500,
-    "task-workflow/parts/acceptor/acceptor-return.md": 6000,
-    "task-workflow/parts/acceptor/acceptor-brief.md": 5500,
-    "task-workflow/parts/acceptor/acceptor-request.md": 3200,
-    "task-workflow/parts/acceptor/verify-check.md": 1500,
-    "task-workflow/parts/retrospect/retrospect.md": 3900,
-    "task-workflow/parts/ship/ship.md": 7400,
-    "task-model/WORKFLOW.md": 70500,
-    "task-model/tw-reference.md": 45300,
-    "task-model/preflight.md": 800,
-}
 
 # 条件つき・異常系・単発で読むので上限を掛けない文書
 UNLIMITED: frozenset[str] = frozenset(
@@ -151,6 +122,22 @@ def test_counts_bytes() -> None:
     check("😀 は4B を超える", over_budget("x", "😀".encode(), 3) != "")
 
 
+def test_remaining() -> None:
+    print("上限までの残り")
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as root:
+        target = os.path.join(root, "skills", "task-model", "preflight.md")
+        os.makedirs(os.path.dirname(target))
+        for size, want in ((800, 0), (801, -1), (700, 100)):
+            with open(target, "wb") as f:
+                f.write(b"a" * size)
+            check(f"{size}B の残り", remaining(root, "skills/task-model/preflight.md") == (want, 800))
+        check("表に無い文書は None", remaining(root, "skills/task-model/legacy.md") is None)
+        check("skills/ の外は None", remaining(root, "docs/x.md") is None)
+        check("無いファイルは None", remaining(root, "skills/task-model/SKILL.md") is None)
+
+
 def unclassified(found: list[str]) -> list[str]:
     return [p for p in found if p not in LIMITS and p not in UNLIMITED]
 
@@ -190,6 +177,7 @@ def main() -> int:
     test_within_limits()
     test_one_more_line_fails()
     test_counts_bytes()
+    test_remaining()
     test_every_markdown_classified()
     test_tables_point_at_real_files()
     if failures:
