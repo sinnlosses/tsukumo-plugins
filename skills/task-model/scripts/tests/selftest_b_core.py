@@ -323,8 +323,8 @@ def test_cycle_done_ship_and_dropped() -> None:
         heads = [l for l in shown.split("\n") if l.startswith("## ")]
         check("show の末尾に ## 結果（comment から）", shown.rstrip().endswith("- 振り返り: 兆候なし")
               and "status: done" in shown, shown)
-        check("show は枠の7節をこの順に出し、結果がその後ろに付く",
-              heads == [*taskfile.SECTION_HEADINGS, "## 結果"], shown)
+        check("show は枠の7節をこの順に出し、todo に戻しても残った ## 解除の条件 のあとに結果が付く",
+              heads == [*taskfile.SECTION_HEADINGS, taskfile.UNLOCK_HEADING, "## 結果"], shown)
 
         r = run_task(wt2, "claim", c)
         work_and_done(wt2, c, dropped=True)
