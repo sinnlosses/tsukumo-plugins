@@ -311,6 +311,80 @@ def test_tracker_sync_pushes_only_changed() -> None:
               f"{fake.issue_patches}\n{r.stdout}{r.stderr}")
 
 
+def test_release_then_claim_without_sync() -> None:
+    say("トラッカー github・release か hold で外した直後の claim・edit が GitHub の古い in_progress に戻されない")
+    with github() as (fake, _tmp, main_path, wt1):
+        for verb in ("release", "hold"):
+            a = new(main_path, f"{verb} のあとに取り直す")
+            n = num(a)
+            r = run_task(wt1, "claim", a)
+            check(f"{verb}: claim", r.returncode == 0 and r.stdout.startswith("CLAIMED"), r.stdout + r.stderr)
+            run_task(wt1, "sync")
+            check(f"{verb}: 着手は GitHub へ in_progress で届いた", "status::in_progress" in fake.issues[n]["labels"]
+                  and fake.status_of(n) == "In progress", repr(fake.issues[n]) + repr(fake.items))
+            time.sleep(1.1)
+            requests_before = sum(fake.requests.values())
+            if verb == "release":
+                r = run_task(wt1, "release", a)
+            else:
+                r = run_task(wt1, "hold", a, "--reason-file", "-", stdin="手放す")
+            check(f"{verb}: 外せた", r.returncode == 0, r.stdout + r.stderr)
+            if verb == "hold":
+                r = run_task(wt1, "edit", a, "--status", "todo")
+                check("hold: sync を挟まない edit --status todo が通る", r.returncode == 0 and "NOT_READY" not in r.stdout,
+                      r.stdout + r.stderr)
+            r = run_task(wt1, "claim", a)
+            check(f"{verb}: sync を挟まない claim が通る", r.returncode == 0 and r.stdout.startswith("CLAIMED"), r.stdout + r.stderr)
+            say(f"  {verb}: 外してから取り直すまでの GitHub への要求 {sum(fake.requests.values()) - requests_before} 回")
+            issue = beads.show(main_path, beads.to_bd_id(a))
+            check(f"{verb}: 持ち主は wt1 のまま", issue is not None and issue.status == "in_progress" and issue.assignee == "wt1",
+                  str(issue and issue.raw))
+
+        b = new(main_path, "別の作業ツリーが着手中")
+        r = run_task(main_path, "claim", b)
+        check("claim", r.returncode == 0 and r.stdout.startswith("CLAIMED"), r.stdout + r.stderr)
+        run_task(main_path, "sync")
+        r = run_task(wt1, "claim", b)
+        check("担当者のある着手は引き込まれず TAKEN", r.returncode != 0 and "TAKEN" in r.stdout, r.stdout + r.stderr)
+
+
+def test_release_sync_then_github_change_is_pulled() -> None:
+    say("トラッカー github・外した版を sync で送ったあとは、GitHub 側の変更をこれまでどおり取り込む")
+    with github() as (fake, _tmp, main_path, wt1):
+        def taken_and_dropped(title: str, verb: str) -> tuple[str, int]:
+            a = new(main_path, title)
+            run_task(wt1, "claim", a)
+            run_task(wt1, "sync")
+            time.sleep(1.1)
+            if verb == "release":
+                run_task(wt1, "release", a)
+            else:
+                run_task(wt1, "hold", a, "--reason-file", "-", stdin="手放す")
+            r = run_task(wt1, "sync")
+            check(f"{verb}: 外した版を sync が送った", r.returncode == 0 and "TRACKER\tOK\tgithub" in r.stdout, r.stdout + r.stderr)
+            fake.clock_offset += 60
+            return a, num(a)
+
+        a, n = taken_and_dropped("release して送ったあとに閉じられる", "release")
+        fake.edit(n, state="closed")
+        r = run_task(wt1, "claim", a)
+        check("release→sync→GitHub で閉じる→claim は着手できない", r.returncode != 0 and "CLAIMED" not in r.stdout, r.stdout + r.stderr)
+
+        b, nb = taken_and_dropped("hold して送ったあとに担当がつく", "hold")
+        fake.edit(nb, assignee="someone")
+        run_task(wt1, "edit", b, "--status", "todo")
+        issue = beads.show(main_path, beads.to_bd_id(b))
+        check("hold→sync→GitHub で担当がつく→次の操作で取り込む", issue is not None and issue.assignee == "someone",
+              str(issue and issue.raw))
+
+        c, nc = taken_and_dropped("hold して送ったあとに本文が直される", "hold")
+        fake.edit(nc, body="GitHub で直した本文")
+        run_task(wt1, "edit", c, "--status", "todo")
+        issue = beads.show(main_path, beads.to_bd_id(c))
+        check("hold→sync→GitHub で本文が直される→次の操作で取り込む",
+              issue is not None and "GitHub で直した本文" in str(issue.raw.get("description")), str(issue and issue.raw))
+
+
 def test_tracker_sync_bd_calls() -> None:
     say("トラッカー github・1回の sync の bd の起動は、課題4件で17回以下")
     with github() as (fake, tmp, main_path, _wt1):
@@ -571,6 +645,8 @@ TESTS = (
     test_tracker_pull_reports_duplicate,
     test_tracker_project_items_per_issue,
     test_tracker_synced_per_issue_key,
+    test_release_then_claim_without_sync,
+    test_release_sync_then_github_change_is_pulled,
 )
 
 

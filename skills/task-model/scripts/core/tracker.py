@@ -149,16 +149,25 @@ class Session:
 
         Beads が `in_progress` で担当者のある課題（着手中で未送り）は取り込まない。
         担当者が空の `in_progress` は止めた取り込みが印を消した版なので、取り込んで戻す。
+        送った着手の印が残っていて、いまの Beads が `in_progress` でなく、前の送りより後に Beads で変えた課題
+        （`release`・`hold` で外した直後で未送り）は、GitHub の古い `in_progress` に戻されないよう取り込まない
+        （次の `sync` が外した版を送る）。送ったあとは時刻が進むので、これまでどおり取り込む。
         """
         self._begin(time.monotonic() + _op_timeout())
         matched = [(i, m) for i, m in ((i, GH_ID.match(i)) for i in bd_ids) if m]
         if not self.bidirectional or not matched:
             return []
         numbers = []
+        pushed: dict[int, str] | None = None
         for bd_id, m in matched:
             issue = beads.show(self.toplevel, bd_id)
-            if issue is None or issue.status != "in_progress" or not issue.assignee:
-                numbers.append(int(m.group(1)))
+            if issue is not None and issue.status == "in_progress" and issue.assignee:
+                continue
+            if issue is not None and issue.status != "in_progress":
+                pushed = self._load_pushed() if pushed is None else pushed
+                if pushed.get(int(m.group(1))) and _after(issue.raw.get("updated_at"), self._synced_at(issue)):
+                    continue
+            numbers.append(int(m.group(1)))
         if not numbers:
             return []
         try:
