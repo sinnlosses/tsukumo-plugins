@@ -73,6 +73,15 @@ COMMAND_FIELDS = {
     "hook_tally": ("hook の集計", "直近30日の hook ごとの拒否の回数を出すコマンド（1行）。なし は集計の観点を飛ばす"),
 }
 COMMAND_SETTABLE_KEYS = tuple(COMMAND_FIELDS)
+# 書けない設定の持ち主。--schema の readonly 欄はここから導く。set の対象には入れない。
+READONLY_FIELDS = {
+    "store": ("保存先", "タスクを置く台帳の種類。外部の置き場が変わるので画面からは書けない"),
+    "tracker": ("トラッカー", "タスクの同期先（なし・github・jira）。GitHub などへ書き込むので画面からは書けない"),
+    "github_project": ("GitHub Project", "tracker が github のときの <owner>/<番号>。外部の書き込み先が変わるので画面からは書けない"),
+    "backup": ("バックアップ先", "台帳の控えを置くディレクトリ。外部の置き場が変わるので画面からは書けない"),
+    "base_branch": ("主ブランチ", "送り先の主ブランチの名前。着手と送り出しの挙動が変わるので画面からは書けない"),
+    "loop_max_ships": ("連続で送る上限", "ループが続けて主ブランチへ送る件数の上限。承認なし実行の範囲が変わるので画面からは書けない"),
+}
 
 CONFIG_KEYS = (
     "verify",
@@ -617,6 +626,10 @@ def config_schema(project_root: str | None, home: str | None = None, plugin: tup
                     {"value": v, "label": v, "description": BRANCH_FIELD_DESCRIPTIONS[v]} for v in BRANCH_VALUES
                 ],
             },
+            *(
+                {"key": key, "label": label, "description": description, "kind": "readonly"}
+                for key, (label, description) in READONLY_FIELDS.items()
+            ),
         ],
     }
 
