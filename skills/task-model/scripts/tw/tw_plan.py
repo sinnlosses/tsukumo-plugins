@@ -25,6 +25,16 @@ def warn_report_names(body: str) -> None:
         )
 
 
+def warn_id_in_docs(task_id: str, body: str) -> None:
+    """`## 完了条件` に課題の ID と文書の置き場が並ぶ行があれば、標準エラーに `WARN_ID_IN_DOCS` を1行出す（拒まない）。"""
+    lines = taskfile.acceptance_id_docs_lines(body)
+    if lines:
+        print(
+            f"WARN_ID_IN_DOCS\t{task_id}\t{','.join(map(str, lines))}\t課題の ID を文書に書かせる完了条件は、課題番号を書かない規約の検査と衝突しうる。代わりの対応づけにするか、書いてよいと分かっているなら無視する",
+            file=sys.stderr,
+        )
+
+
 def warn_large_plan(task_id: str, body: str) -> None:
     """計画が大きければ、標準エラーに `WARN_LARGE_PLAN` を1行出す（拒まない）。"""
     reason = taskfile.large_plan_reason(body)

@@ -13,6 +13,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+import layout
+
 STATUS_VALUES = ("todo", "hold", "done", "dropped", "draft")
 DIFFICULTY_VALUES = ("haiku", "sonnet", "opus")
 LOOPABLE_VALUES = ("Y", "N")
@@ -927,6 +929,16 @@ def report_named_paths(body: str) -> tuple[str, ...]:
             if name.startswith("report") and re.search(r"\.md(?::\d+)?$", name):
                 found[path] = None
     return tuple(found)
+
+
+_ID_WORD = re.compile(rf"(?<![A-Za-z])ID(?![A-Za-z])|番号|(?<![A-Za-z0-9]){layout.ANY_ID_FRAGMENT}(?![A-Za-z0-9])")
+_DOCS_WORD = re.compile(r"(?<![A-Za-z])ADR(?![A-Za-z])|(?<![A-Za-z])docs(?![A-Za-z])|ドキュメント|文書")
+
+
+def acceptance_id_docs_lines(body: str) -> tuple[int, ...]:
+    """`## 完了条件` の節の行のうち、課題の ID を言う語と文書の置き場を言う語が並ぶ行の番号（節の中身の先頭を1とする）。"""
+    lines = section_content(body, ACCEPTANCE_HEADING).split("\n")
+    return tuple(n for n, line in enumerate(lines, 1) if _ID_WORD.search(line) and _DOCS_WORD.search(line))
 
 
 def changed_frame_sections(old_body: str, new_body: str) -> list[str]:

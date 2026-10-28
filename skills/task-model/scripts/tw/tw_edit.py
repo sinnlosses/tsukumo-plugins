@@ -148,6 +148,7 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
         taskfile.section_changed(current, body, heading) for heading in (taskfile.PLAN_HEADING, taskfile.ACCEPTANCE_HEADING)
     ):
         tw_plan.warn_report_names(body)
+        tw_plan.warn_id_in_docs(shown, body)
     if state == tw_plan.PLAN_AFTER_WORK:
         print(f"PLAN_AFTER_WORK\t{shown}\t作業の後に書いた")
     _print_direct_off(shown, direct_off)
