@@ -348,6 +348,43 @@ def test_release_then_claim_without_sync() -> None:
         check("担当者のある着手は引き込まれず TAKEN", r.returncode != 0 and "TAKEN" in r.stdout, r.stdout + r.stderr)
 
 
+def test_release_sync_then_github_change_is_pulled() -> None:
+    say("トラッカー github・外した版を sync で送ったあとは、GitHub 側の変更をこれまでどおり取り込む")
+    with github() as (fake, _tmp, main_path, wt1):
+        def taken_and_dropped(title: str, verb: str) -> tuple[str, int]:
+            a = new(main_path, title)
+            run_task(wt1, "claim", a)
+            run_task(wt1, "sync")
+            time.sleep(1.1)
+            if verb == "release":
+                run_task(wt1, "release", a)
+            else:
+                run_task(wt1, "hold", a, "--reason-file", "-", stdin="手放す")
+            r = run_task(wt1, "sync")
+            check(f"{verb}: 外した版を sync が送った", r.returncode == 0 and "TRACKER\tOK\tgithub" in r.stdout, r.stdout + r.stderr)
+            fake.clock_offset += 60
+            return a, num(a)
+
+        a, n = taken_and_dropped("release して送ったあとに閉じられる", "release")
+        fake.edit(n, state="closed")
+        r = run_task(wt1, "claim", a)
+        check("release→sync→GitHub で閉じる→claim は着手できない", r.returncode != 0 and "CLAIMED" not in r.stdout, r.stdout + r.stderr)
+
+        b, nb = taken_and_dropped("hold して送ったあとに担当がつく", "hold")
+        fake.edit(nb, assignee="someone")
+        run_task(wt1, "edit", b, "--status", "todo")
+        issue = beads.show(main_path, beads.to_bd_id(b))
+        check("hold→sync→GitHub で担当がつく→次の操作で取り込む", issue is not None and issue.assignee == "someone",
+              str(issue and issue.raw))
+
+        c, nc = taken_and_dropped("hold して送ったあとに本文が直される", "hold")
+        fake.edit(nc, body="GitHub で直した本文")
+        run_task(wt1, "edit", c, "--status", "todo")
+        issue = beads.show(main_path, beads.to_bd_id(c))
+        check("hold→sync→GitHub で本文が直される→次の操作で取り込む",
+              issue is not None and "GitHub で直した本文" in str(issue.raw.get("description")), str(issue and issue.raw))
+
+
 def test_tracker_sync_bd_calls() -> None:
     say("トラッカー github・1回の sync の bd の起動は、課題4件で17回以下")
     with github() as (fake, tmp, main_path, _wt1):
@@ -609,6 +646,7 @@ TESTS = (
     test_tracker_project_items_per_issue,
     test_tracker_synced_per_issue_key,
     test_release_then_claim_without_sync,
+    test_release_sync_then_github_change_is_pulled,
 )
 
 
