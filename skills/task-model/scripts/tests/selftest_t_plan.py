@@ -1099,6 +1099,37 @@ def test_report_name_warning() -> None:
               r.returncode == 0 and "WARN_REPORT_NAME" not in r.stderr, r.stdout + r.stderr)
 
 
+def test_id_in_docs_warning() -> None:
+    say("task.py new・adopt・edit: 完了条件に課題の ID と文書の置き場が並ぶ行があれば標準エラーに WARN_ID_IN_DOCS を出し、書き込みと終了コードは変えない")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
+        both = "1. 動く\n2. 移行の課題が登録され、ID が ADR に書かれている"
+        new = ("new", "--summary", "警告", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", "-")
+        r = run_task(main_path, *new, stdin=task_body([("書く", "x")], ["shared.txt"], acceptance=both))
+        check("new: ID と ADR が並ぶ行があれば WARN_ID_IN_DOCS を行番号つきで1行出し、CREATED で終わる",
+              r.returncode == 0 and r.stdout.startswith("CREATED\t") and r.stderr.count("WARN_ID_IN_DOCS\tT-") == 1
+              and "\t2\t" in r.stderr, r.stdout + r.stderr)
+        for label, text in (("ID だけ", "ID が返る"), ("docs だけ", "`docs/a.md` を直す")):
+            r = run_task(main_path, *new, stdin=task_body([("書く", "x")], ["shared.txt"], acceptance=text))
+            check(f"new: {label}の行では出さない", r.returncode == 0 and "WARN_ID_IN_DOCS" not in r.stderr, r.stdout + r.stderr)
+        subprocess.run(["bd", "create", "--id", "t-idd", "--title", "取り込み", "--silent"], cwd=main_path,
+                       capture_output=True, text=True)
+        adopt = ("adopt", "T-IDD", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", "-")
+        r = run_task(main_path, *adopt, stdin=task_body([("書く", "x")], ["shared.txt"], acceptance=both))
+        check("adopt: 出す", r.returncode == 0 and r.stdout.startswith("ADOPTED\t") and "WARN_ID_IN_DOCS\t" in r.stderr,
+              r.stdout + r.stderr)
+
+        commit_task(main_path, taskfile.Task("T-100", "依頼文", "todo", "sonnet", "Y", (), task_body([("書く", "x")], ["shared.txt"], acceptance="x")))
+        run_task(wt1, "claim", "T-100")
+        r = run_task(wt1, "edit", "T-100", "--section", "完了条件", "--change-frame", "--body-file", "-", stdin=both + "\n")
+        check("edit: ## 完了条件 を書き換えて並ぶ行が入れば出す", r.returncode == 0 and r.stdout.startswith("EDITED\t")
+              and "WARN_ID_IN_DOCS\tT-100\t2\t" in r.stderr, r.stdout + r.stderr)
+        r = run_task(wt1, "edit", "T-100", "--summary", "題だけ直す")
+        check("edit: 完了条件も計画も変えなければ出さない", r.returncode == 0 and "WARN_ID_IN_DOCS" not in r.stderr, r.stdout + r.stderr)
+        r = run_task(wt1, "brief", "implementer", "T-100")
+        check("brief implementer: 出さない", "WARN_ID_IN_DOCS" not in r.stderr, r.stdout + r.stderr)
+
+
 def test_large_plan_warning() -> None:
     say("task.py new・adopt: 名指すファイルが8件超か段が4超なら標準エラーに WARN_LARGE_PLAN を出し、書き込みと終了コードは変えない")
     with tempfile.TemporaryDirectory() as tmp:
@@ -1170,6 +1201,7 @@ TESTS = (
     test_plan_check_doc_budget,
     test_large_plan_warning,
     test_report_name_warning,
+    test_id_in_docs_warning,
     test_plan_coverage,
     test_opus_question_and_viewpoint,
     test_draft_to_todo,
