@@ -6,6 +6,7 @@ import tempfile
 
 from selftest_support import RESULT_FULL, check, git, refuse_direct_run, say, weight, write  # noqa: E402
 import beads  # noqa: E402
+import doc_budget  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import INTERVENTION, UNLOCK, task_body  # noqa: E402
 from selftest_fixtures import BODY, PLANNED_BODY, _claim_work_and_done, commit_task, issue_count, make_repo, make_submodule_repo, drift_submodule, metadata, run_task, set_acceptance_directly, set_plan_directly, shown, shown_body  # noqa: E402
@@ -1138,7 +1139,8 @@ def test_plan_check_doc_budget() -> None:
     tw_root = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", ".."))
     doc = "skills/task-model/tw-reference.md"
     with open(os.path.join(tw_root, doc), "rb") as f:
-        left = 45300 - len(f.read())
+        limit = doc_budget.LIMITS["task-model/tw-reference.md"]
+        left = limit - len(f.read())
     with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as other:
         main_path, wt1, _wt2 = make_repo(tmp)
         for tid in ("T-200", "T-201", "T-202"):
@@ -1153,7 +1155,7 @@ def test_plan_check_doc_budget() -> None:
 
         r = plan_check("T-200", [doc], tw_root)
         check("表にある文書を名指すと DOC_BUDGET が出る", r.returncode == 0
-              and f"DOC_BUDGET\tT-200\t{doc}\t{left}\t45300" in r.stdout.splitlines(), r.stdout + r.stderr)
+              and f"DOC_BUDGET\tT-200\t{doc}\t{left}\t{limit}" in r.stdout.splitlines(), r.stdout + r.stderr)
         r = plan_check("T-201", ["docs/x.md"], tw_root)
         check("表に無い文書では出ない", r.returncode == 0 and "DOC_BUDGET" not in r.stdout, r.stdout + r.stderr)
         r = plan_check("T-202", [doc], other)
