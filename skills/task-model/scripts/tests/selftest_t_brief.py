@@ -108,6 +108,10 @@ def test_brief_implementer_report_name() -> None:
         r = _brief(wt1)
         check("出さない: report で始まらない名だけ", r.returncode == 0 and "WARN_REPORT_NAME" not in r.stderr,
               r.stdout + r.stderr)
+        run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-", stdin="### 1. 書く\n`docs/report-x.ts` を置く\n")
+        r = _brief(wt1)
+        check("出さない: report で始まる .ts だけ", r.returncode == 0 and "WARN_REPORT_NAME" not in r.stderr,
+              r.stdout + r.stderr)
 
 
 def test_brief_implementer_other_repo() -> None:

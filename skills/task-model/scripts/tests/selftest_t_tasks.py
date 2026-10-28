@@ -177,11 +177,14 @@ def test_taskfile_body() -> None:
     )
     for label, path, hit in (
         ("report- で始まる md", "docs/research/report-schema.md", True),
-        ("report.ts", "report.ts", True),
+        ("report.ts は Write が通るので拾わない", "report.ts", False),
+        ("report-probe.json", "report-probe.json", False),
+        ("report.py", "report.py", False),
+        ("report.txt", "report.txt", False),
         ("ディレクトリ名だけが report", "docs/report/notes.md", False),
         ("末尾が report の名", "my-report.md", False),
         ("reports で終わる名", "comprehension-for-reports.md", False),
-        ("./ 付き", "./report.ts", True),
+        ("./ 付き", "./report.md", True),
         ("行番号付き", "docs/report-x.md:12", True),
         ("裸の語（MCP ツール名）", "report", False),
         ("識別子", "reportBody", False),
@@ -190,11 +193,11 @@ def test_taskfile_body() -> None:
     ):
         got = taskfile.report_named_paths(task_body([("書く", f"`{path}` を書く")], acceptance="x"))
         check(f"report で始まる名の判定: {label}", (got == (path,)) == hit and (hit or got == ()), repr(got))
-    both = task_body([("書く", "`a/report.ts` と `a/report.ts`")], ["src/a.py"], acceptance="`docs/report-x.md` を置く")
-    check("やること・完了条件の両方から順に重複なく拾う", taskfile.report_named_paths(both) == ("a/report.ts", "docs/report-x.md"),
+    both = task_body([("書く", "`a/report.md` と `a/report.md`")], ["src/a.py"], acceptance="`docs/report-x.md` を置く")
+    check("やること・完了条件の両方から順に重複なく拾う", taskfile.report_named_paths(both) == ("a/report.md", "docs/report-x.md"),
           repr(taskfile.report_named_paths(both)))
     check("バッククォートの外の文・目的・背景のパスは拾わない",
-          taskfile.report_named_paths(task_body([("書く", "report.ts を書く")], purpose="`report.md`")) == ())
+          taskfile.report_named_paths(task_body([("書く", "report.md を書く")], purpose="`report.md`")) == ())
 
 
 def test_new_and_status_single_worktree() -> None:

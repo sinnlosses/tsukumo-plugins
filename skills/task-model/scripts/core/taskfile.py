@@ -913,18 +913,18 @@ _BACKTICKED_PATH = re.compile(r"`([^`\s()]+)`")
 
 
 def report_named_paths(body: str) -> tuple[str, ...]:
-    """`## やること`・`## 完了条件` のバッククォートで囲んだパスのうち、basename が `report` で始まるもの。
+    """`## やること`・`## 完了条件` のバッククォートで囲んだパスのうち、basename が `report` で始まる `.md` のもの。
 
-    パスは basename に `.` を含む（拡張子つきのファイル名）トークンだけで、末尾が `/` のディレクトリ・裸の語・識別子・テスト ID
-    （`report`・`reportBody`・`report-chart`）は数えない。`/` だけを条件にすると `report.ts` が外れる。
-    委譲先（サブエージェント）はそういう名のファイルを Write できない。順に重複なく返す（`### 名指すファイル` の行も含む）。
+    末尾の `:<行番号>` は除いて拡張子を見る。`.ts`・`.json`・`.py`・`.txt` は委譲先の Write が通ると測ったので数えない。
+    末尾が `/` のディレクトリ・裸の語・識別子・テスト ID（`report`・`reportBody`・`report-chart`）も数えない。
+    委譲先（サブエージェント）は `report*.md` を Write できない。順に重複なく返す（`### 名指すファイル` の行も含む）。
     """
     sections = dict(_frame_sections(body)[1])
     found: dict[str, None] = {}
     for heading in (PLAN_HEADING, ACCEPTANCE_HEADING):
         for path in _BACKTICKED_PATH.findall(sections.get(heading, "")):
             name = path.rsplit("/", 1)[-1]
-            if name.startswith("report") and "." in name:
+            if name.startswith("report") and re.search(r"\.md(?::\d+)?$", name):
                 found[path] = None
     return tuple(found)
 

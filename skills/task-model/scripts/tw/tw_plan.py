@@ -16,11 +16,11 @@ PLAN_REGISTERED = "registered"
 
 
 def warn_report_names(body: str) -> None:
-    """計画に basename が `report` で始まるパスがあれば、標準エラーに `WARN_REPORT_NAME` を1行出す（拒まない）。"""
+    """計画に basename が `report` で始まる `.md` のパスがあれば、標準エラーに `WARN_REPORT_NAME` を1行出す（拒まない）。"""
     paths = taskfile.report_named_paths(body)
     if paths:
         print(
-            f"WARN_REPORT_NAME\t{','.join(paths)}\t委譲先は report で始まる名のファイルを書けない。名前を変えるか、メインが置く段にする",
+            f"WARN_REPORT_NAME\t{','.join(paths)}\t委譲先は report で始まる名の .md を新しく書けない（.ts などと既存ファイルの Edit は通る）。名前を変えるか、メインが置く段にする",
             file=sys.stderr,
         )
 

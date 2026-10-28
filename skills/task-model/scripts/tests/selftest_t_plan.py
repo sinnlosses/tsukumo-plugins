@@ -1068,9 +1068,13 @@ def test_report_name_warning() -> None:
         r = run_task(main_path, *new, stdin=named)
         check("new: report で始まる名があれば WARN_REPORT_NAME を1行出し、CREATED で終わる",
               r.returncode == 0 and r.stdout.startswith("CREATED\t")
-              and r.stderr.count("WARN_REPORT_NAME\tdocs/report-x.md,report.ts\t") == 1, r.stdout + r.stderr)
+              and r.stderr.count("WARN_REPORT_NAME\tdocs/report-x.md\t") == 1
+              and "report.ts" not in r.stderr, r.stdout + r.stderr)
         r = run_task(main_path, *new, stdin=plain)
         check("new: report で始まらない名だけなら出さない", r.returncode == 0 and "WARN_REPORT_NAME" not in r.stderr,
+              r.stdout + r.stderr)
+        r = run_task(main_path, *new, stdin=task_body([("書く", "x")], ["shared.txt"], acceptance="`src/report.ts` を置く"))
+        check("new: .ts は Write が通るので出さない", r.returncode == 0 and "WARN_REPORT_NAME" not in r.stderr,
               r.stdout + r.stderr)
         subprocess.run(["bd", "create", "--id", "t-warn", "--title", "取り込み", "--silent"], cwd=main_path,
                        capture_output=True, text=True)
@@ -1082,10 +1086,10 @@ def test_report_name_warning() -> None:
         commit_task(main_path, taskfile.Task("T-100", "依頼文", "todo", "sonnet", "Y", (), task_body(acceptance="x")))
         run_task(wt1, "claim", "T-100")
         r = run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-",
-                     stdin=task_body([("書く", "`src/report.py` を書く")])
+                     stdin=task_body([("書く", "`src/report.md` を書く")])
                      .split("## やること\n", 1)[1].split("\n## ", 1)[0])
         check("edit: ## やること を変えて report で始まる名が入れば出す",
-              r.returncode == 0 and r.stdout.startswith("EDITED\t") and "WARN_REPORT_NAME\tsrc/report.py\t" in r.stderr,
+              r.returncode == 0 and r.stdout.startswith("EDITED\t") and "WARN_REPORT_NAME\tsrc/report.md\t" in r.stderr,
               r.stdout + r.stderr)
         r = run_task(wt1, "edit", "T-100", "--section", "完了条件", "--change-frame", "--body-file", "-", stdin="`docs/report-y.md` を置く\n")
         check("edit: ## 完了条件 を変えたときも出す", r.returncode == 0 and "WARN_REPORT_NAME\t" in r.stderr
