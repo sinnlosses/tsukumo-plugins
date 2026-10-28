@@ -19,7 +19,7 @@ import tracker  # noqa: E402
 import tracker_claims  # noqa: E402
 import tracker_github  # noqa: E402
 from selftest_b_fakegithub import arm_kv_write, github, kv_written_during  # noqa: E402
-from selftest_b_support import HELD_PLANNED_BODY, bd, new, num, rows, work_and_done  # noqa: E402
+from selftest_b_support import HELD_PLANNED_BODY, PLANNED_BODY as NEW_DEFAULT_BODY, bd, new, num, rows, work_and_done  # noqa: E402
 from selftest_fixtures import PLANNED_BODY, child_env, run_task, start_task  # noqa: E402
 from selftest_support import check, local, refuse_direct_run, say, write  # noqa: E402
 
@@ -315,7 +315,7 @@ def test_release_then_claim_without_sync() -> None:
     say("トラッカー github・release か hold で外した直後の claim・edit が GitHub の古い in_progress に戻されない")
     with github() as (fake, _tmp, main_path, wt1):
         for verb in ("release", "hold"):
-            a = new(main_path, f"{verb} のあとに取り直す")
+            a = new(main_path, f"{verb} のあとに取り直す", body=HELD_PLANNED_BODY if verb == "hold" else NEW_DEFAULT_BODY)
             n = num(a)
             r = run_task(wt1, "claim", a)
             check(f"{verb}: claim", r.returncode == 0 and r.stdout.startswith("CLAIMED"), r.stdout + r.stderr)
@@ -352,7 +352,7 @@ def test_release_sync_then_github_change_is_pulled() -> None:
     say("トラッカー github・外した版を sync で送ったあとは、GitHub 側の変更をこれまでどおり取り込む")
     with github() as (fake, _tmp, main_path, wt1):
         def taken_and_dropped(title: str, verb: str) -> tuple[str, int]:
-            a = new(main_path, title)
+            a = new(main_path, title, body=HELD_PLANNED_BODY if verb == "hold" else NEW_DEFAULT_BODY)
             run_task(wt1, "claim", a)
             run_task(wt1, "sync")
             time.sleep(1.1)
