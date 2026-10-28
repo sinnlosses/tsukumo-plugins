@@ -1019,13 +1019,13 @@ def test_config_schema_version() -> None:
         values = [v["value"] for v in steps["values"]]
         import layout
 
-        check("schema 2 は steps・shell_write_guard に続けて、コマンド型5欄・branch・読み取り専用の欄",
+        check("schema 2 は steps・shell_write_guard に続けて、コマンド型6欄・branch・読み取り専用の欄",
               schema["schema"] == 2
               and [k["key"] for k in schema["keys"]]
-              == ["steps", "shell_write_guard", "step_check", "verify", "verify_before_ship", "format", "hook_tally", "branch",
-                  *READONLY_KEYS]
+              == ["steps", "shell_write_guard", "step_check", "verify", "verify_before_ship", "format", "hook_tally", "size_budget",
+                  "branch", *READONLY_KEYS]
               and steps["kind"] == "steps" and steps["label"] and steps["description"], repr(schema))
-        readonly_fields = schema["keys"][8:]
+        readonly_fields = schema["keys"][9:]
         check("読み取り専用の欄は key・label・description・kind だけを持ち、default と values は無い",
               len(readonly_fields) == len(READONLY_KEYS)
               and all(set(k) == {"key", "label", "description", "kind"} and k["kind"] == "readonly"
@@ -1033,11 +1033,11 @@ def test_config_schema_version() -> None:
         check("読み取り専用のキーは set の対象と重ならない",
               not set(READONLY_KEYS) & set(layout.SETTABLE_KEYS), repr(layout.SETTABLE_KEYS))
 
-        command_fields = schema["keys"][2:7]
-        check("コマンド型の5欄は kind command・既定 なし で、label と description が空でない",
+        command_fields = schema["keys"][2:8]
+        check("コマンド型の6欄は kind command・既定 なし で、label と description が空でない",
               all(k["kind"] == "command" and k["default"] == "なし" and k["label"] and k["description"] for k in command_fields),
               repr(command_fields))
-        branch_field = schema["keys"][7]
+        branch_field = schema["keys"][8]
         check("branch は choice で、既定 既定、値は BRANCH_VALUES の3値",
               branch_field["kind"] == "choice" and branch_field["default"] == "既定" and branch_field["label"]
               and branch_field["description"]
@@ -1174,7 +1174,7 @@ def test_config_set() -> None:
             return rows[0] if rows else ""
 
         quoted_command = 'echo "a\\b" && true'
-        for key in ("step_check", "verify", "verify_before_ship", "format", "hook_tally"):
+        for key in ("step_check", "verify", "verify_before_ship", "format", "hook_tally", "size_budget"):
             write(path, original)
             if key == "verify":
                 added = original.replace('verify = "なし"', 'verify = "pnpm run lint"')
@@ -1251,6 +1251,10 @@ def test_config_set() -> None:
             write(os.path.join(tmp, ".tw", "config.toml"), text)
             got = layout.read_config(tmp).hook_tally
             check(f"hook_tally = {expected!r} の設定は {expected!r} に読む（なし は打たない設定）", got == expected, repr(got))
+        for text, expected in (('verify = "なし"\nsize_budget = "なし"\n', None), ('verify = "なし"\nsize_budget = "sh t.sh"\n', "sh t.sh")):
+            write(os.path.join(tmp, ".tw", "config.toml"), text)
+            got = layout.read_config(tmp).size_budget
+            check(f"size_budget = {expected!r} の設定は {expected!r} に読む（なし は打たない設定）", got == expected, repr(got))
         check("書けるコマンド型のキー・欄・読み手の None 化の集合が COMMAND_FIELDS の1つから導かれている",
               set(layout.COMMAND_SETTABLE_KEYS) == set(layout.COMMAND_FIELDS)
               and set(layout.COMMAND_SETTABLE_KEYS) <= set(layout.SETTABLE_KEYS)

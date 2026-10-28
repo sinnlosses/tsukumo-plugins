@@ -72,7 +72,7 @@ verify = "pnpm check"        # 受け入れ判定に使う。打つものが無�
 | `verify` | 検証コマンド（`sh -c` で打つ）。`"なし"` なら打たない。必須 |
 | `verify_before_ship` | 送る前の検証コマンド（下） |
 | `format` | 整形コマンド。`tw verify` が検証の前に打つ（`tw-reference.md` の `verify`） |
-| `step_check` | 段ごとに安く打つ検査コマンド（無い・`なし` なら打たない）。`tw step` が段の控えを書く前に、タスクの各作業ツリーでその木の設定のものを打ち、落ちたら控えを書かず `STEP_CHECK_FAILED`。書く口は `tw config set step_check '<コマンド>'`（`なし` も受ける）。最後の段は `tw step` を打たないので、全段の検査は `verify` に任せる（`tw-reference.md` の `step`） |
+| `step_check` | 段ごとに安く打つ検査コマンド（無い・`なし` なら打たない）。`tw step` が段の控えを書く前に、タスクの各作業ツリーでその木の設定のものを打ち、落ちたら控えを書かず `STEP_CHECK_FAILED`。最後の段は `tw step` を打たないので、全段の検査は `verify` に任せる（`tw-reference.md` の `step`） |
 | `branch` | `既定`・`作業ブランチを切る`・`切らない`（下の表） |
 | `base_branch` | 主ブランチの名前（下の順1） |
 | `store` | `beads` だけ（ほかの値は `INVALID`。[legacy.md](legacy.md)） |
@@ -80,8 +80,9 @@ verify = "pnpm check"        # 受け入れ判定に使う。打つものが無�
 | `github_project` | `"<owner>/<番号>"`（Status 欄を書く Project）。`tracker = "github"` なら必須 |
 | `backup` | Beads のバックアップの置き場（git の外）。`.beads` と同じディスクなら `tw config-doctor` が `WARN_BACKUP_SAME_DISK` を出す |
 | `hook_tally` | 直近30日の hook ごとの拒否の回数を出すコマンド。読むのは `tw` ではなく週ごとの横断の振り返りで、無ければその観点を飛ばす |
+| `size_budget` | 名指すファイルの上限までの残りを出すコマンド。読むのは `tw plan-check` で、無ければ出さない |
 | `review_code_globs` | 文書の拡張子（`.md` など）でもコード扱いにして、受け入れの新しい文脈のレビューを掛けるパスの glob の配列。最上位に `review_code_globs = ["skills/**", "agents/**"]` の形で書く。`**` は `/` を越え、`*`・`?` は越えない。空の配列でも書かなくてもよく、無ければ文書の拡張子だけの差分は `SKIP\tdocs-only`。`review_needed.py` が読む |
-| `shell_write_guard` | `tw`（既定）・`project`。`project` なら `tw commit-guard` は `SHELL_WRITE` を見ない（プロジェクトが自前のシェル書き込みの hook で止める印。ほかの規則は変わらない）。欄の形は `tw config --schema`。書く口は `tw config set shell_write_guard tw\|project` |
+| `shell_write_guard` | `tw`（既定）・`project`。`project` なら `tw commit-guard` は `SHELL_WRITE` を見ない（プロジェクトが自前のシェル書き込みの hook で止める印。ほかの規則は変わらない）。欄の形は `tw config --schema` |
 | `loop_max_ships` | `"12"` の形の1以上の整数（既定12）。`/loop` が1日に送ってよい件数の上限で、`tw loop-check` が読む |
 | `steps` | スキルの並び。最上位に `steps = ["<全名>", …]`（文字列の配列）で書く。1つ以上・重複なし。並びの順が呼ぶ順。無ければ `tw config --schema` の `default`（`tw` と同じ plugin の候補を、`metadata` の `workflow-step-order` の小さい順に並べたもの）。名前は同じ `values`（SKILL.md の frontmatter の `metadata` に `workflow-step: "true"` を持つスキル）の全名。`metadata` の `workflow-brief-<役>`（役の語は `tw brief --help`。SKILL.md のディレクトリからの相対パス）は実装役・受け入れ役への依頼文の型で、`tw brief` が並びの順で最初に持つスキルのものを読む。書くのは `tw config set steps '<1行の JSON の配列>'` |
 

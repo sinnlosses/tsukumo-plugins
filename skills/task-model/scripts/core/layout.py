@@ -71,6 +71,7 @@ COMMAND_FIELDS = {
     "verify_before_ship": ("送る前の検証", "主ブランチへ入れる直前に打つ検証コマンド（1行）。なし は打たない"),
     "format": ("整形", "検証の前に打つ整形コマンド（1行）。なし は打たない"),
     "hook_tally": ("hook の集計", "直近30日の hook ごとの拒否の回数を出すコマンド（1行）。なし は集計の観点を飛ばす"),
+    "size_budget": ("大きさの残り", "名指すファイルの上限までの残りを出すコマンド（1行）。引数にファイルを足して打ち、1行に パス<TAB>残り<TAB>上限 を出す。なし は打たない"),
 }
 COMMAND_SETTABLE_KEYS = tuple(COMMAND_FIELDS)
 # 書けない設定の持ち主。--schema の readonly 欄はここから導く。set の対象には入れない。
@@ -95,6 +96,7 @@ CONFIG_KEYS = (
     "github_project",
     "backup",
     "hook_tally",
+    "size_budget",
     "steps",
     "review_code_globs",
     "shell_write_guard",
@@ -133,6 +135,7 @@ class Config:
     github_project: str | None = None
     backup: str | None = None
     hook_tally: str | None = None
+    size_budget: str | None = None
     steps: tuple[str, ...] | None = None
     review_code_globs: tuple[str, ...] = ()
     shell_write_guard: str = SHELL_WRITE_GUARD_TW
@@ -320,6 +323,7 @@ def build_config(source: str | None, values: dict[str, str | None]) -> Config:
         github_project=values.get("github_project"),
         backup=values.get("backup"),
         hook_tally=values.get("hook_tally"),
+        size_budget=values.get("size_budget"),
         steps=tuple(json.loads(values["steps"])) if values.get("steps") else None,
         review_code_globs=tuple(json.loads(values.get(REVIEW_CODE_GLOBS_KEY) or "[]")),
         shell_write_guard=values.get(SHELL_WRITE_GUARD_KEY) or defaults.shell_write_guard,
