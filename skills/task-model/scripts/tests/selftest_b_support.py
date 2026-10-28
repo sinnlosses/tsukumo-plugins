@@ -26,7 +26,6 @@ beads.READ_REUSE_SECONDS = 0
 BODY = task_body(acceptance="- 通る", caution="z")
 # 登録の既定の本文。`make_repo` が主ブランチに置く `shared.txt` を名指す。
 PLANNED_BODY = task_body([("書く", "x")], ["shared.txt"], acceptance="- 通る", caution="z")
-# `hold` で登録・切り替えできる（`## 解除の条件` に中身がある）本文。
 HELD_BODY = task_body(acceptance="- 通る", caution="z", unlock=UNLOCK)
 HELD_PLANNED_BODY = task_body([("書く", "x")], ["shared.txt"], acceptance="- 通る", caution="z", unlock=UNLOCK)
 
