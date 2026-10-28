@@ -167,7 +167,7 @@ def test_edit_section() -> None:
             commit_task(main_path, taskfile.Task(tid, "節だけ", "todo", "sonnet", "Y", (), mentions))
 
         def read(tid: str) -> str:
-            return shown(wt1, tid)
+            return "".join(l for l in shown(wt1, tid).splitlines(keepends=True) if not l.startswith("updated: "))
 
         run_task(wt1, "claim", "T-110")
         run_task(wt1, "claim", "T-111")
