@@ -489,9 +489,9 @@ def test_tracker_command_bd_calls() -> None:
         counted_run("new", main_path, "new", "--summary", "数える2", "--difficulty", "sonnet", "--loopable", "Y",
                     "--body-file", "-", stdin=PLANNED_BODY, writes=True)
         calls = counted_run("claim", wt1, "claim", a)
-        check("claim: Project の控えを kv get で読まず、kv list は2回（送りの分が無い）",
+        check("claim: Project の控えを kv get で読まず、kv list は1回（GitHub が変わっていなければ取り込まず、送りの分も無い）",
               not any(c.startswith("kv get task-workflow.project") for c in calls)
-              and calls.count("kv list --json") == 2, "\n".join(calls))
+              and calls.count("kv list --json") == 1, "\n".join(calls))
         counted_run("edit", wt1, "edit", a, "--section", "参考情報", "--body-file", "-", stdin="メモ\n")
         write(os.path.join(wt1, f"{a}.txt"), f"{a}\n")
         git(wt1, "add", f"{a}.txt")
