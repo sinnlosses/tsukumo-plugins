@@ -64,6 +64,9 @@ WEEKLY_VIEWPOINTS = ("流れの数", "段の所要時間", "規則の棚卸し")
 
 # 枠の7節の後ろ（`## 結果` の前）に置く任意の節。正典は WORKFLOW.md「タスクの本文」で、表と食い違えば自己テストが落とす。
 INTERVENTION_HEADING = "## 介入"
+# `hold` のタスクが `todo` に戻る条件。`## 介入` の前に置く。
+UNLOCK_HEADING = "## 解除の条件"
+UNLOCK_MAX_LINES = 3
 INTERVENTION_SIGNAL = "狙う兆候"
 INTERVENTION_BASELINE = "基準線"
 INTERVENTION_TARGET = "出し先の種類"
@@ -127,7 +130,7 @@ def render(task: Task) -> str:
 def validate_new_body(body: str, hold: bool, difficulty: str) -> str | None:
     """`task new`・`task adopt` の本文検査。枠の検査に加え、`difficulty` が opus なら論点を求め、`## やること` の中身・段・
     `### 名指すファイル` を求める（`### 作業先` があればその形も）。中身を空にできるのは `hold` のときだけ。問題が無ければ `None`。"""
-    error = validate_body(body) or opus_refusal(difficulty, body)
+    error = validate_body(body) or opus_refusal(difficulty, body) or (unlock_refusal(body) if hold else None)
     if error is not None:
         return error
     if not has_plan(body):
@@ -233,6 +236,20 @@ def intervention(body: str) -> dict[str, str] | None:
     if is_blank(content):
         return None
     return {m.group(1): m.group(2) for m in _INTERVENTION_LINE.finditer(content)}
+
+
+def unlock_refusal(body: str) -> str | None:
+    """`hold` にする本文の `## 解除の条件` の誤り。節が無い・空・「なし」・`UNLOCK_MAX_LINES` 行を超える、のとき理由。"""
+    content = section_content(body, UNLOCK_HEADING)
+    if is_blank(content):
+        return (
+            f"hold にするには {UNLOCK_HEADING} に、何が決まれば todo に戻せるか"
+            f"（決める人・決める事柄・期日待ちなら日付）を書く（無い・空・「{EMPTY_MARK}」にできない）"
+        )
+    lines = [l for l in content.split("\n") if l.strip()]
+    if len(lines) > UNLOCK_MAX_LINES:
+        return f"{UNLOCK_HEADING} は {UNLOCK_MAX_LINES} 行まで（いま {len(lines)} 行）"
+    return None
 
 
 def harness_paths(paths: tuple[str, ...]) -> tuple[str, ...]:
@@ -808,7 +825,7 @@ _PLAN_FILE_LINE = re.compile(r"^- `([^`]+)`.*$")
 
 
 def validate_body(body: str, draft: bool = False) -> str | None:
-    """本文が枠（`SECTION_HEADINGS` をこの順に1つずつ、後ろに任意の `## 介入`）に沿っているか。`## 結果` は枠の外で拒む。
+    """本文が枠（`SECTION_HEADINGS` をこの順に1つずつ、後ろに任意の `## 解除の条件`、さらに任意の `## 介入`）に沿っているか。`## 結果` は枠の外で拒む。
 
     見出しは行頭の `## ` だけを数える（本文の説明文で節名に言及するのは許す）。
     `draft` なら節は枠の順のまま欠けてよく、中身が要るのは `## 目的・背景` だけ。
@@ -822,6 +839,8 @@ def validate_body(body: str, draft: bool = False) -> str | None:
     if RESULT_HEADING in headings:
         return f"{RESULT_HEADING} は tw done が書く（本文に入れない）"
     if headings[-1:] == (INTERVENTION_HEADING,):
+        headings = headings[:-1]
+    if headings[-1:] == (UNLOCK_HEADING,):
         headings = headings[:-1]
     expected = tuple(h for h in SECTION_HEADINGS if h in headings) if draft else SECTION_HEADINGS
     if headings != expected:
@@ -932,7 +951,7 @@ def section_heading(name: str) -> str | None:
     """`やること`・`## やること` を枠の見出しの行にそろえる。枠に無い名前は `None`。"""
     heading = name.strip()
     heading = heading if heading.startswith("## ") else f"## {heading}"
-    if heading in (*SECTION_HEADINGS, INTERVENTION_HEADING):
+    if heading in (*SECTION_HEADINGS, UNLOCK_HEADING, INTERVENTION_HEADING):
         return heading
     for candidate in SECTION_HEADINGS:
         if "（" in candidate:
@@ -962,12 +981,14 @@ def replace_section(body: str, heading: str, content: str) -> str | None:
 
 
 def put_section(body: str, heading: str, content: str) -> str | None:
-    """`replace_section` に加え、`## 介入` が無ければ本文の後ろ（`## 結果` があればその前）に足す。ほかの節が無ければ `None`。"""
+    """`replace_section` に加え、`## 解除の条件`・`## 介入` が無ければ足す。`## 解除の条件` は `## 介入`（無ければ `## 結果`）の前、
+    `## 介入` は `## 結果` の前（無ければ本文の最後）。ほかの節が無ければ `None`。"""
     replaced = replace_section(body, heading, content)
-    if replaced is not None or heading != INTERVENTION_HEADING:
+    if replaced is not None or heading not in (UNLOCK_HEADING, INTERVENTION_HEADING):
         return replaced
     lines = body.rstrip("\n").split("\n")
-    end = next((i for i, l in enumerate(lines) if l.rstrip() == RESULT_HEADING), len(lines))
+    before = (INTERVENTION_HEADING, RESULT_HEADING) if heading == UNLOCK_HEADING else (RESULT_HEADING,)
+    end = next((i for i, l in enumerate(lines) if l.rstrip() in before), len(lines))
     block = [heading, "", *content.strip("\n").split("\n"), ""]
     return "\n".join([*lines[:end], "", *block, *lines[end:]]).rstrip("\n") + "\n"
 

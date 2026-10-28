@@ -14,7 +14,7 @@ sys.path.insert(1, os.path.join(HERE, "..", "tw"))
 
 import beads  # noqa: E402
 import ledger  # noqa: E402
-from selftest_body import task_body  # noqa: E402
+from selftest_body import UNLOCK, task_body  # noqa: E402
 from selftest_fixtures import make_repo as make_fixture_repo, run_task  # noqa: E402
 from selftest_support import RESULT_FULL, git, local, write  # noqa: E402
 
@@ -26,6 +26,9 @@ beads.READ_REUSE_SECONDS = 0
 BODY = task_body(acceptance="- 通る", caution="z")
 # 登録の既定の本文。`make_repo` が主ブランチに置く `shared.txt` を名指す。
 PLANNED_BODY = task_body([("書く", "x")], ["shared.txt"], acceptance="- 通る", caution="z")
+# `hold` で登録・切り替えできる（`## 解除の条件` に中身がある）本文。
+HELD_BODY = task_body(acceptance="- 通る", caution="z", unlock=UNLOCK)
+HELD_PLANNED_BODY = task_body([("書く", "x")], ["shared.txt"], acceptance="- 通る", caution="z", unlock=UNLOCK)
 
 
 def env() -> dict[str, str]:
@@ -68,7 +71,7 @@ def new(cwd: str, summary: str, *extra: str, body: str = PLANNED_BODY) -> str:
 
 def new_unplanned(cwd: str, summary: str) -> str:
     """`## やること` の空な todo（`--hold` で登録して戻す）。"""
-    task_id = new(cwd, summary, "--hold", body=BODY)
+    task_id = new(cwd, summary, "--hold", body=HELD_BODY)
     r = run_task(cwd, "edit", task_id, "--status", "todo")
     if r.returncode != 0:
         raise RuntimeError(f"task edit --status todo 失敗: {r.stdout}{r.stderr}")

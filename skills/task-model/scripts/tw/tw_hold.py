@@ -11,8 +11,11 @@ import tw_base
 import tw_claim
 
 
-def cmd_hold(toplevel: str, task_id: str, reason_path: str) -> None:
+def cmd_hold(toplevel: str, task_id: str, reason_path: str, unlock_path: str | None = None) -> None:
     """自分の着手中なら印を外し、`hold` にして `## 注意` の最後に `reason_path` の論点を足す。
+
+    `## 解除の条件` は `unlock_path` の中身で置き換える（省けばいまの節を残す）。置き換えたあとに節が空・「なし」・
+    3行超なら、何も書かず終了コード2。`reason_path` と `unlock_path` の両方に `-` は渡せない。
 
     出力の最後は `HELD\\tT-xxx` と、取り直した一覧での `CONTINUE\\tY|N\\t<READY かつ loopable: Y の件数>`。
     """
@@ -33,16 +36,29 @@ def cmd_hold(toplevel: str, task_id: str, reason_path: str) -> None:
     if issue.status not in ("open", "in_progress", *beads.HOLD_STATUSES):
         print(f"NOT_READY\t{shown}\t{issue.status}")
         raise SystemExit(4)
+    unlock = tw_base.read_body(unlock_path).strip() if unlock_path is not None else None
+    error = taskfile.check_section_content(unlock) if unlock else None
+    if error is None:
+        error = taskfile.unlock_refusal(_with_unlock(beads.issue_body(issue), unlock))
+    if error is not None:
+        print(f"usage: {error}。書き換えない", file=sys.stderr)
+        raise SystemExit(2)
     if issue.status == "in_progress":
         tw_claim.cmd_release(toplevel, shown, False)
-    _write_hold(toplevel, bd_id, shown, reason)
+    _write_hold(toplevel, bd_id, shown, reason, unlock)
     print(f"HELD\t{shown}")
     tw_base.record(toplevel, "hold", shown, issue)
     ready = _ready_loopable(toplevel, shown)
     print(f"CONTINUE\t{'Y' if ready else 'N'}\t{ready}")
 
 
-def _write_hold(toplevel: str, bd_id: str, shown: str, reason: str) -> None:
+def _with_unlock(body: str, unlock: str | None) -> str:
+    if unlock is None:
+        return body
+    return taskfile.put_section(body, taskfile.UNLOCK_HEADING, unlock) or body
+
+
+def _write_hold(toplevel: str, bd_id: str, shown: str, reason: str, unlock: str | None) -> None:
     trk = tracker.session(toplevel)
     pulled = trk.before([bd_id])
     issue = beads.show(toplevel, bd_id)
@@ -56,6 +72,7 @@ def _write_hold(toplevel: str, bd_id: str, shown: str, reason: str) -> None:
     if body is None:
         print(f"usage: いまの本文に {taskfile.CAUTION_HEADING} が無い。書き換えない", file=sys.stderr)
         raise SystemExit(2)
+    body = _with_unlock(body, unlock)
     parts = beads.split_body(body)
     cmd = ["update", bd_id, "--body-file", "-", "--acceptance", parts.acceptance, "--notes", parts.notes]
     if issue.status not in beads.HOLD_STATUSES:

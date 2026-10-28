@@ -7,7 +7,7 @@ import tempfile
 from selftest_support import RESULT_FULL, check, git, refuse_direct_run, say, weight, write  # noqa: E402
 import beads  # noqa: E402
 import taskfile  # noqa: E402
-from selftest_body import INTERVENTION, task_body  # noqa: E402
+from selftest_body import INTERVENTION, UNLOCK, task_body  # noqa: E402
 from selftest_fixtures import BODY, PLANNED_BODY, _claim_work_and_done, commit_task, issue_count, make_repo, make_submodule_repo, drift_submodule, metadata, run_task, set_acceptance_directly, set_plan_directly, shown, shown_body  # noqa: E402
 
 
@@ -490,7 +490,7 @@ def test_registered_plan() -> None:
         same = new_id(r)
         r2 = register("変わる", plan_body("src/"))
         changed = new_id(r2)
-        r3 = register("書かない", BODY, "--hold")
+        r3 = register("書かない", task_body(unlock=UNLOCK), "--hold")
         unplanned = new_id(r3)
         r4 = register("作業先で変わらない", plan_body("lib/x.txt", work_repo=work))
         remote_same = new_id(r4)
@@ -800,7 +800,7 @@ def test_draft_to_todo() -> None:
                      "--body-file", "-", stdin="## 目的・背景\n\n作業中に見つけた改善\n")
         plain = r.stdout.split("\t")[1] if r.stdout.startswith("CREATED\t") else ""
         run_task(main_path, "edit", plain, "--section", "完了条件", "--body-file", "-", stdin="- 通る\n")
-        r = run_task(main_path, "edit", plain, "--status", "hold")
+        r = run_task(main_path, "edit", plain, "--status", "hold", "--section", "解除の条件", "--body-file", "-", stdin=UNLOCK)
         meta = metadata(main_path, plain)
         check("観点の行が無いドラフトを hold へ進めると from_draft は 不明", r.returncode == 0 and beads.DRAFT_KEY not in meta
               and meta.get(beads.FROM_DRAFT_KEY) == beads.FROM_DRAFT_UNKNOWN, r.stdout + r.stderr + str(meta))
@@ -825,7 +825,7 @@ def test_opus_question_and_viewpoint() -> None:
         r = new("opus", unasked)
         check("論点が無い opus の new は終了コード2で作らない", r.returncode == 2 and issue_count(main_path) == before,
               r.stdout + r.stderr)
-        r = new("opus", unasked, "--hold")
+        r = new("opus", task_body([("書く", "x")], ["shared.txt"], unlock=UNLOCK), "--hold")
         check("--hold でも論点が無い opus は拒む", r.returncode == 2 and issue_count(main_path) == before, r.stdout + r.stderr)
         r = new("opus", asked)
         check("論点がある opus の new は通る", created(r) != "", r.stdout + r.stderr)
@@ -936,9 +936,9 @@ def test_intervention_commands() -> None:
         r2 = run_task(main_path, "edit", "T-300", "--summary", "既存の直し")
         check("面を名指し節の無い既存の課題の --section 注意・--summary は通る",
               r.returncode == 0 and r2.returncode == 0, r.stdout + r.stderr + r2.stdout + r2.stderr)
-        r = run_task(main_path, "edit", "T-300", "--status", "hold")
+        r = run_task(main_path, "edit", "T-300", "--status", "hold", "--section", "解除の条件", "--body-file", "-", stdin=UNLOCK)
         r2 = run_task(main_path, "edit", "T-300", "--status", "todo")
-        check("ドラフトでない既存の課題の hold・todo の切り替えは節が無くても通る",
+        check("ドラフトでない既存の課題の hold・todo の切り替えは ## 介入 が無くても通る",
               r.returncode == 0 and r2.returncode == 0 and "\nstatus: todo\n" in shown(main_path, "T-300"),
               r.stdout + r.stderr + r2.stdout + r2.stderr)
 
@@ -1108,7 +1108,7 @@ def test_large_plan_warning() -> None:
         r = run_task(main_path, *new, stdin=body(8, 4))
         check("new: ちょうど8ファイル・4段なら出さない", r.returncode == 0 and "WARN_LARGE_PLAN" not in r.stderr,
               r.stdout + r.stderr)
-        r = run_task(main_path, *new, "--hold", stdin=task_body())
+        r = run_task(main_path, *new, "--hold", stdin=task_body(unlock=UNLOCK))
         check("new --hold: 空の ## やること なら出さない",
               r.returncode == 0 and r.stdout.startswith("CREATED\t") and "WARN_LARGE_PLAN" not in r.stderr, r.stdout + r.stderr)
         subprocess.run(["bd", "create", "--id", "t-large", "--title", "取り込み", "--silent"], cwd=main_path,

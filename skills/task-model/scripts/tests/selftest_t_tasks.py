@@ -15,8 +15,13 @@ import beads  # noqa: E402
 import gitinfo  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
-from selftest_body import INTERVENTION, task_body  # noqa: E402
+from selftest_body import INTERVENTION, UNLOCK, task_body  # noqa: E402
 from selftest_fixtures import BODY, PLANNED_BODY, body_file, commit_task, flow_rows, issue_count, issue_json, make_repo, metadata, run_task, shown, shown_body, start_task, unset_metadata  # noqa: E402
+
+
+def held(body: str) -> str:
+    """`## 解除の条件` を足した本文（`hold` の登録の検査を通す）。"""
+    return taskfile.put_section(body, taskfile.UNLOCK_HEADING, UNLOCK) or body
 
 
 def test_taskfile_body() -> None:
@@ -28,27 +33,27 @@ def test_taskfile_body() -> None:
     check("枠の見出しが欠けた本文は拒む", taskfile.validate_new_body("## 目的・背景\nx\n", hold=True, difficulty="sonnet") is not None)
     check(
         "枠の見出しの順が違う本文は拒む",
-        taskfile.validate_new_body(BODY.replace("## 注意\n\n## 参考情報\n", "## 参考情報\n\n## 注意\n"), hold=True, difficulty="sonnet")
+        taskfile.validate_new_body(held(BODY.replace("## 注意\n\n## 参考情報\n", "## 参考情報\n\n## 注意\n")), hold=True, difficulty="sonnet")
         is not None,
     )
-    check("枠の外の見出しは拒む", taskfile.validate_new_body(BODY + "\n## 背景\nx\n", hold=True, difficulty="sonnet") is not None)
-    check("見出しより前の文は拒む", taskfile.validate_new_body("前置き\n\n" + BODY, hold=True, difficulty="sonnet") is not None)
+    check("枠の外の見出しは拒む", taskfile.validate_new_body(held(BODY) + "\n## 背景\nx\n", hold=True, difficulty="sonnet") is not None)
+    check("見出しより前の文は拒む", taskfile.validate_new_body("前置き\n\n" + held(BODY), hold=True, difficulty="sonnet") is not None)
     check(
         "目的・背景が「なし」なら拒む",
-        taskfile.validate_new_body(BODY.replace("## 目的・背景\nx\n", "## 目的・背景\nなし\n"), hold=True, difficulty="sonnet") is not None,
+        taskfile.validate_new_body(held(BODY.replace("## 目的・背景\nx\n", "## 目的・背景\nなし\n")), hold=True, difficulty="sonnet") is not None,
     )
     check("完了条件が空なら拒む",
-          taskfile.validate_new_body(BODY.replace("## 完了条件\nx\n", "## 完了条件\n"), hold=True, difficulty="sonnet") is not None)
+          taskfile.validate_new_body(held(BODY.replace("## 完了条件\nx\n", "## 完了条件\n")), hold=True, difficulty="sonnet") is not None)
     check("空の ## やること は拒む", taskfile.validate_new_body(BODY, hold=False, difficulty="sonnet") is not None)
-    check("--hold なら空の ## やること を通す", taskfile.validate_new_body(BODY, hold=True, difficulty="sonnet") is None)
+    check("--hold なら空の ## やること を通す", taskfile.validate_new_body(held(BODY), hold=True, difficulty="sonnet") is None)
     filled_plan = task_body([("書く", "")])
     check("名指すファイルの小見出しが無い計画は拒む（--hold でも）",
           taskfile.validate_new_body(filled_plan, hold=False, difficulty="sonnet") is not None
-          and taskfile.validate_new_body(filled_plan, hold=True, difficulty="sonnet") is not None)
+          and taskfile.validate_new_body(held(filled_plan), hold=True, difficulty="sonnet") is not None)
     check("着手後の本文（やることあり）は validate_body を通る", taskfile.validate_body(filled_plan) is None)
     named = task_body([("書く", "x")], ["src/a.py", "docs/"]).replace("`src/a.py`", "`src/a.py`（直す）")
     check("名指すファイルつきの本文を通す（--hold でも）", taskfile.validate_new_body(named, hold=False, difficulty="sonnet") is None
-          and taskfile.validate_new_body(named, hold=True, difficulty="sonnet") is None)
+          and taskfile.validate_new_body(held(named), hold=True, difficulty="sonnet") is None)
     two_steps = named.replace("### 1. 書く\nx\n", "### 1. 書く\nx\n### 2. 試す\ny\n")
     check("段を番号の順に読み、名指すファイル・作業先は段に数えない",
           taskfile.plan_steps(two_steps) == (("書く", "試す"), None), repr(taskfile.plan_steps(two_steps)))
@@ -123,7 +128,7 @@ def test_taskfile_body() -> None:
         ("番号の無い `### ` 見出しがある", named.replace("### 1. 書く", "### 書く")),
     ):
         check(f"{label} ## やること は登録の検査で拒む（--hold でも）",
-              taskfile.validate_new_body(bad, hold=False, difficulty="sonnet") is not None and taskfile.validate_new_body(bad, hold=True, difficulty="sonnet") is not None)
+              taskfile.validate_new_body(bad, hold=False, difficulty="sonnet") is not None and taskfile.validate_new_body(held(bad), hold=True, difficulty="sonnet") is not None)
     unnumbered = BODY.replace("## やること\n", "## やること\n1. 書く\n")
     edited = lambda old, new: taskfile.validate_edited_body(old, new, draft=False, old_difficulty="sonnet", difficulty="sonnet")
     check("edit の検査は ## やること を変えたときだけ段を求める",
@@ -488,7 +493,7 @@ def test_hold() -> None:
     say("task.py hold（着手中・todo・すでに hold で HELD と CONTINUE を出し、## 注意 に論点を足す）")
     with tempfile.TemporaryDirectory() as tmp:
         main_path, wt1, wt2 = make_repo(tmp)
-        body = task_body(caution="既存の注意")
+        body = task_body(caution="既存の注意", unlock=UNLOCK)
         for tid, status, loopable in (
             ("T-100", "todo", "Y"), ("T-101", "todo", "Y"), ("T-102", "todo", "N"), ("T-103", "todo", "Y"), ("T-104", "done", "Y"),
         ):
@@ -689,8 +694,8 @@ def test_taskfile_intervention() -> None:
     check("観点つきのドラフトに5行の ## 介入 があれば通す",
           taskfile.validate_draft_body(f"{pointed}\n## 介入\n\n{INTERVENTION}\n") is None)
     check("観点つきの本文は --hold で計画が無くても ## 介入 を求める",
-          taskfile.validate_new_body(task_body(purpose="- 観点: 黄 道案内"), hold=True, difficulty="sonnet") is not None
-          and taskfile.validate_new_body(task_body(purpose="- 観点: 黄 道案内", intervention=INTERVENTION), hold=True,
+          taskfile.validate_new_body(task_body(purpose="- 観点: 黄 道案内", unlock=UNLOCK), hold=True, difficulty="sonnet") is not None
+          and taskfile.validate_new_body(task_body(purpose="- 観点: 黄 道案内", unlock=UNLOCK, intervention=INTERVENTION), hold=True,
                                          difficulty="sonnet") is None)
     for path in ("skills/x.md", "CLAUDE.md", "AGENTS.md", ".tw/config.toml", "scripts/hook/a.sh", ".claude/rules/a.md", "docs/workflow.md",
                  "skills/", "scripts/hook"):

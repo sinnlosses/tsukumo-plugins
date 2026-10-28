@@ -19,7 +19,7 @@ import tracker  # noqa: E402
 import tracker_claims  # noqa: E402
 import tracker_github  # noqa: E402
 from selftest_b_fakegithub import arm_kv_write, github, kv_written_during  # noqa: E402
-from selftest_b_support import bd, new, num, rows, work_and_done  # noqa: E402
+from selftest_b_support import HELD_PLANNED_BODY, bd, new, num, rows, work_and_done  # noqa: E402
 from selftest_fixtures import PLANNED_BODY, child_env, run_task, start_task  # noqa: E402
 from selftest_support import check, local, refuse_direct_run, say, write  # noqa: E402
 
@@ -385,7 +385,7 @@ def _push_created_in_process(toplevel: str, bd_id: str) -> None:
 def test_tracker_writes_only_at_new_and_ship() -> None:
     say("トラッカー github・GitHub へ書くのは new と ship・sync の送りだけ（claim・edit・hold・release は書かない）")
     with github() as (fake, tmp, main_path, wt1):
-        a, b, c = new(main_path, "書き込みを数える"), new(main_path, "hold する"), new(main_path, "release する")
+        a, b, c = new(main_path, "書き込みを数える"), new(main_path, "hold する", body=HELD_PLANNED_BODY), new(main_path, "release する")
         counted = os.path.join(tmp, "bd-count.txt")
         local.env = {**local.env, "BD_COUNT_FILE": counted}
         open(counted, "w").close()

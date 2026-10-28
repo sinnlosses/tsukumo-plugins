@@ -20,11 +20,13 @@ def task_body(
     acceptance: str = "x",
     caution: str = "",
     question: str = "なし",
+    unlock: str = "",
     intervention: str = "",
 ) -> str:
     """7つの見出しを正典の順に並べた本文。`steps` は（段の見出し, 本文）の並びで、`### 1.` から番号を振る。
 
-    `steps`・`files` が空なら空の `## やること`（`--hold` 用）になる。`intervention` に中身があれば後ろに `## 介入` を足す。
+    `steps`・`files` が空なら空の `## やること`（`--hold` 用）になる。`unlock` に中身があれば後ろに `## 解除の条件` を、
+    `intervention` に中身があればその後ろに `## 介入` を足す。
     """
     plan = [f"### {n}. {title}\n" + (f"{text}\n" if text else "") for n, (title, text) in enumerate(steps, 1)]
     if work_repo is not None:
@@ -40,7 +42,14 @@ def task_body(
         taskfile.CAUTION_HEADING: f"{caution}\n" if caution else "",
     }
     body = "\n".join(f"{heading}\n{contents.get(heading, '')}" for heading in taskfile.SECTION_HEADINGS)
-    return body + (f"\n{taskfile.INTERVENTION_HEADING}\n{intervention}\n" if intervention else "")
+    return (
+        body
+        + (f"\n{taskfile.UNLOCK_HEADING}\n{unlock}\n" if unlock else "")
+        + (f"\n{taskfile.INTERVENTION_HEADING}\n{intervention}\n" if intervention else "")
+    )
+
+
+UNLOCK = "- 利用者が方針 A か B かを決めたら todo に戻す"
 
 
 INTERVENTION = (

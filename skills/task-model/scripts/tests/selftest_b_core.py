@@ -25,7 +25,7 @@ import tracker_claims  # noqa: E402
 import tracker_github  # noqa: E402
 from selftest_b_fakegithub import github  # noqa: E402
 from selftest_b_support import (  # noqa: E402
-    PLANNED_BODY, bd, claim_snapshots, env, make_repo, new, new_unplanned, num, rows, tail_line, work_and_done,
+    HELD_PLANNED_BODY, PLANNED_BODY, bd, claim_snapshots, env, make_repo, new, new_unplanned, num, rows, tail_line, work_and_done,
 )
 from selftest_fixtures import run_task, start_task  # noqa: E402
 from selftest_support import RESULT_FULL, check, git, local, refuse_direct_run, say, write  # noqa: E402
@@ -234,7 +234,7 @@ def test_claim_race_owner_and_release() -> None:
         procs = [start_task(w, "new", "--summary", f"並行{i}", "--difficulty", "haiku", "--loopable", "Y",
                             *(("--hold",) if i == 2 else ()), "--body-file", "-")
                  for i, w in enumerate((wt1, wt2, main_path))]
-        outs = [p.communicate(PLANNED_BODY)[0] for p in procs]
+        outs = [p.communicate(HELD_PLANNED_BODY if i == 2 else PLANNED_BODY)[0] for i, p in enumerate(procs)]
         ids = [o.split("\t")[1] for o in outs if o.startswith("CREATED")]
         check("3つ同時の new で番号が重ならない", len(ids) == 3 and len(set(ids)) == 3, repr(outs))
         h = ids[2] if outs[2].startswith("CREATED") else ""

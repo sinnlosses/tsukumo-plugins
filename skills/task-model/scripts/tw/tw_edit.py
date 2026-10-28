@@ -44,7 +44,7 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
     ):
         print(
             f"usage: 着手中の loopable: Y を N に直さない。書き換えない。"
-            f"判断待ちで外すなら tw hold {shown} --reason-file - に論点を渡す",
+            f"判断待ちで外すなら tw hold {shown} --reason-file - --unlock-file <解除の条件を書いたファイル> に論点と解除の条件を渡す",
             file=sys.stderr,
         )
         raise SystemExit(2)
@@ -119,6 +119,11 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
         if issue.status not in ("open", *beads.HOLD_STATUSES):
             print(f"NOT_READY\t{shown}\t{issue.status}（todo↔hold は着手前だけ）")
             raise SystemExit(4)
+        if args.status == "hold" and not beads.is_draft(issue):
+            error = taskfile.unlock_refusal(body)
+            if error is not None:
+                print(f"usage: {error}。書き換えない", file=sys.stderr)
+                raise SystemExit(2)
         cmd += ["--status", "open" if args.status == "todo" else beads.HOLD_STATUS]
         if beads.is_draft(issue):
             cmd += _draft_promotion_args(toplevel, shown, body, args.status, difficulty)
