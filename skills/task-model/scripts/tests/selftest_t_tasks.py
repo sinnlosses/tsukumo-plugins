@@ -4,6 +4,7 @@ import functools
 import glob
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -206,6 +207,17 @@ def test_new_and_status_single_worktree() -> None:
             "show の閉じる --- の次は空行1行で、末尾は改行1つ",
             "\n---\n\n## " in written and "\n---\n\n\n" not in written and written.endswith("\n") and not written.endswith("\n\n"),
             written,
+        )
+        date_line = r"\d{4}-\d\d-\d\d \d\d:\d\d"
+        check(
+            "show の front matter の dependencies の次に created と updated が日時で出る",
+            re.search(rf"\ndependencies: \[[^\]]*\]\ncreated: {date_line}\nupdated: {date_line}\n---\n", written) is not None,
+            written,
+        )
+        check(
+            "Beads に日時が無ければ created と updated は -",
+            "\ncreated: -\nupdated: -\n---\n" in taskfile.render(taskfile.Task("T-1", "題", "todo", "sonnet", "Y", (), ""))
+            and beads.local_minute(None) == "-" and beads.local_minute("壊れた値") == "-",
         )
 
         r = run_task(wt1, "status")

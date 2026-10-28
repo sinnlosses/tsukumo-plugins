@@ -635,7 +635,20 @@ def _sections(text: str) -> tuple[str, list[tuple[str, str]]]:
 
 def render_task(task: taskfile.Task, issue: Issue, result: str | None) -> str:
     """`tw show` の出力（front matter と本文。正典「タスクの本文」の形）。"""
-    return taskfile.render(dataclasses.replace(task, body=issue_body(issue, result)))
+    return taskfile.render(
+        dataclasses.replace(
+            task,
+            body=issue_body(issue, result),
+            created=local_minute(issue.raw.get("created_at")),
+            updated=local_minute(issue.raw.get("updated_at")),
+        )
+    )
+
+
+def local_minute(value) -> str:
+    """`bd` の時刻をローカルの `YYYY-MM-DD HH:MM` にする。読めなければ `-`。"""
+    t = parse_time(value)
+    return t.astimezone().strftime("%Y-%m-%d %H:%M") if t is not None else "-"
 
 
 # --- 採番 ------------------------------------------------------------------------

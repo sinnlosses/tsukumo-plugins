@@ -1,8 +1,8 @@
 """タスクの形（`Task`）と本文の枠の検査、`## やること` の段・名指すファイル・作業先の解析、`## 結果` の差し替え。
 
-`tw show` が出す front matter（`render`）は **YAML ではない** 専用の6行
-（`id` / `summary` / `status` / `difficulty` / `loopable` / `dependencies`。
-`loopable` の次に任意の `direct: Y` を置けば7行）。
+`tw show` が出す front matter（`render`）は **YAML ではない** 専用の8行
+（`id` / `summary` / `status` / `difficulty` / `loopable` / `dependencies` / `created` / `updated`。
+`loopable` の次に任意の `direct: Y` を置けば9行）。
 
 検査は例外を投げない。呼び出し側が「INVALID＝データの不備」と
 「traceback＝環境の故障」を取り違えないよう、理由の文字列（通れば `None`）を返す。
@@ -96,10 +96,12 @@ class Task:
     dependencies: tuple[str, ...]
     body: str
     direct: str = "N"  # 委譲しない近道の印。"Y" のときだけ front matter に `direct: Y` の行を置く
+    created: str = "-"  # ローカルの `YYYY-MM-DD HH:MM`。Beads に値が無ければ `-`
+    updated: str = "-"
 
 
 def render(task: Task) -> str:
-    """front matter を6行ちょうど（`direct: Y` があれば7行）で書き、本文を続ける。
+    """front matter を8行ちょうど（`direct: Y` があれば9行）で書き、本文を続ける。
 
     本文は「閉じる `---` の次に空行1行、末尾は改行1つ」に揃える。Markdown の整形ツール
     （oxfmt・prettier）は見出しの前に空行を求めるので、`## 目的・背景` から始まる本文をそのまま
@@ -115,6 +117,8 @@ def render(task: Task) -> str:
         f"loopable: {task.loopable}\n"
         + ("direct: Y\n" if task.direct == "Y" else "")
         + f"dependencies: [{', '.join(task.dependencies)}]\n"
+        f"created: {task.created}\n"
+        f"updated: {task.updated}\n"
         "---\n"
         + (f"\n{body}\n" if body else "")
     )

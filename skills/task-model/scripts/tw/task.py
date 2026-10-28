@@ -190,7 +190,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
         "タスク1件を front matter と本文の形で出す（読むだけ）。",
         r"""タスク1件を front matter と本文の形で出す（読むだけ。WORKFLOW.md の「タスクの本文」）。枠の7節を空でもこの順に出す（`## 介入` があればその後ろ）
 
-出力: 本文。無ければ `NOT_READY`""",
+出力: front matter 末尾の `created:`・`updated:`（Beads の日時をローカルの `YYYY-MM-DD HH:MM` で。値が無ければ `-`）つきの本文。無ければ `NOT_READY`""",
     ),
     "find": (
         "`READY` のタスクを語と種類で絞る（読むだけ）。",
