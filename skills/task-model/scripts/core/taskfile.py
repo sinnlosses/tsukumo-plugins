@@ -931,7 +931,7 @@ def report_named_paths(body: str) -> tuple[str, ...]:
     return tuple(found)
 
 
-_ID_WORD = re.compile(rf"(?<![A-Za-z])ID(?![A-Za-z])|番号|(?<![A-Za-z0-9]){layout.ANY_ID_FRAGMENT}(?![A-Za-z0-9])")
+_ID_WORD = re.compile(rf"(?<![A-Za-z])ID(?![A-Za-z])|番号|(?<![A-Za-z0-9])(?!ADR-){layout.ANY_ID_FRAGMENT}(?![A-Za-z0-9])")
 _DOCS_WORD = re.compile(r"(?<![A-Za-z])ADR(?![A-Za-z])|(?<![A-Za-z])docs(?![A-Za-z])|ドキュメント|文書")
 
 

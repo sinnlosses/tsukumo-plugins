@@ -1109,7 +1109,7 @@ def test_id_in_docs_warning() -> None:
         check("new: ID と ADR が並ぶ行があれば WARN_ID_IN_DOCS を行番号つきで1行出し、CREATED で終わる",
               r.returncode == 0 and r.stdout.startswith("CREATED\t") and r.stderr.count("WARN_ID_IN_DOCS\tT-") == 1
               and "\t2\t" in r.stderr, r.stdout + r.stderr)
-        for label, text in (("ID だけ", "ID が返る"), ("docs だけ", "`docs/a.md` を直す")):
+        for label, text in (("ID だけ", "ID が返る"), ("docs だけ", "`docs/a.md` を直す"), ("ADR-0003 だけ", "ADR-0003 を直す")):
             r = run_task(main_path, *new, stdin=task_body([("書く", "x")], ["shared.txt"], acceptance=text))
             check(f"new: {label}の行では出さない", r.returncode == 0 and "WARN_ID_IN_DOCS" not in r.stderr, r.stdout + r.stderr)
         subprocess.run(["bd", "create", "--id", "t-idd", "--title", "取り込み", "--silent"], cwd=main_path,
