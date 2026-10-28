@@ -554,10 +554,18 @@ def test_registered_plan() -> None:
         r = run_task(wt2, "plan-check", changed)
         check("着手のあとに主ブランチが進んでも判定は変わらない",
               r.stdout.strip() == f"PLAN_STALE\t{changed}\tsrc/new.txt\tlegacy", r.stdout)
+        git(wt2, "merge", "-q", "--ff-only", "main")
         r = run_task(wt2, "edit", changed, "--body-file", "-", stdin=plan_body("src/", "shared.txt"))
         r2 = run_task(wt2, "plan-check", changed)
         check("PLAN_STALE のあとに書き直すと PLAN_FIRST", r.returncode == 0
               and r2.stdout.strip() == f"PLAN_FIRST\t{changed}", r.stdout + r.stderr + r2.stdout)
+        run_task(wt2, "release", changed)
+        r = run_task(wt2, "claim", changed)
+        r2 = run_task(wt2, "plan-check", changed)
+        check("着手中に書き直した計画は、release のあと取り直しても PLAN_STALE にならない",
+              r2.returncode == 0 and r2.stdout.split("\t")[0] in ("PLAN_FIRST", "PLAN_REGISTERED"),
+              r.stdout + r.stderr + r2.stdout)
+        run_task(wt2, "release", changed)
 
         git(wt1, "checkout", "--", ".")
         git(wt1, "clean", "-fdq")
@@ -598,6 +606,12 @@ def test_registered_plan() -> None:
             expected = f"PLAN_STALE\t{tid}\t{files}\t{why}"
             check(label, r.returncode == 0 and r.stdout.splitlines()[0] == expected, r.stdout + r.stderr)
             run_task(wt1, "release", tid)
+        run_task(wt1, "claim", hit_id)
+        r = run_task(wt1, "plan-check", hit_id)
+        check("書き直さずに取り直した登録時の計画は、名指すファイルが変わっていれば PLAN_STALE のまま",
+              r.returncode == 0 and r.stdout.splitlines()[0] == f"PLAN_STALE\t{hit_id}\tdocs/c.txt\ttouched:hit_marker",
+              r.stdout + r.stderr)
+        run_task(wt1, "release", hit_id)
 
         git(wt1, "merge", "-q", "--ff-only", "main")
         run_task(wt1, "claim", same)

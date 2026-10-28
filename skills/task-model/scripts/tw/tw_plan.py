@@ -78,6 +78,15 @@ def registered_plan_base(toplevel: str, body: str) -> str:
     return sha
 
 
+def rewritten_plan_base(toplevel: str, body: str) -> str | None:
+    """着手中に書き直した計画が読んだ主ブランチの SHA。`registered_plan_base` と同じ分かれ目で、引けなければ `None`（検査はしない）。"""
+    repo = _plan_repo(toplevel, body)
+    if repo is None:
+        return None
+    r = tw_base.run_git(repo, ["merge-base", "HEAD", gitinfo.base_branch(repo)])
+    return r.stdout.strip() if r.returncode == 0 and r.stdout.strip() else None
+
+
 def _plan_repo(toplevel: str, body: str) -> str | None:
     """計画の名指すファイルを読むリポジトリ。`### 作業先` が無ければ `toplevel`、あってもリポジトリの根でなければ `None`。"""
     path, _ = taskfile.plan_work_repo(body)

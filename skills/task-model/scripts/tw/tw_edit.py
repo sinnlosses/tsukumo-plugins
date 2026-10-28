@@ -100,6 +100,9 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
             state = tw_plan.plan_state(toplevel, metadata.get(beads.CLAIM_HEAD_KEY), body_files)
             _refuse_plan_after_work(shown, state, args.after_work)
             cmd += ["--set-metadata", f"{beads.PLAN_KEY}={state}"]
+            rewritten_base = tw_plan.rewritten_plan_base(toplevel, body)
+            if rewritten_base is not None:
+                cmd += ["--set-metadata", f"{beads.PLAN_BASE_KEY}={rewritten_base}"]
     if args.summary:
         if "\n" in args.summary or not args.summary.strip():
             print("usage: --summary は改行を含まない1行にする", file=sys.stderr)
