@@ -169,11 +169,7 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
 1. `task-model` のスクリプトの自己テスト（`scripts/tests/` の `selftest.py`・`selftest_review_needed.py`・`selftest_review_snapshot.py`・`selftest_task.py`・`selftest_beads.py`。
    後ろの2つは入口で、テストの本体は `selftest_t_*.py`・`selftest_b_*.py` にある。
    `bd` が無ければ非0で終わる）
-2. `retrospect` の自己テスト
-3. `plan-tasks` の自己テスト
-4. `comment-audit` の自己テスト
-5. `task-workflow` の自己テスト
-6. リポジトリの整合（`scripts/check_repo.py`。frontmatter、この README の由来一覧と `skills/` の一致、
+2. リポジトリの整合（`scripts/check_repo.py`。frontmatter、この README の由来一覧と `skills/` の一致、
    参照先の実在、スキル間の依存の辺と `task-model` が役の名で書かれていること、
    プラグインの名前と `bin/tw`・`hooks/hooks.json`、エージェント定義）
 

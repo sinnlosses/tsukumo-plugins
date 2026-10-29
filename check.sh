@@ -13,7 +13,7 @@
 # 低優先度（taskpolicy -c utility / nice）で流すのは `CHECK_LOWPRI=1` のときだけ。
 #
 # 1. リポジトリ全体の整合（frontmatter・README の索引・参照先の実在・殻 bin/tw-hook の自己テスト・公式の claude plugin validate）（いつも）
-# 2. task-model のスクリプトの自己テスト（致命的なもの＝関門・送り出し・検証の控え・完了・採番と排他・受け入れ・Beads の取り合いと往復だけを残す。review_needed.py・review_snapshot.py を含む。台帳と Beads 方式は並べて走らせ、出力は流し終えてから順に出す）
+# 2. task-model のスクリプトの自己テスト（review_needed.py・review_snapshot.py を含む。台帳と Beads 方式は並べて走らせ、出力は流し終えてから順に出す）
 #    絞れるときは tests/selftest_scope.py の対応の表が決め、selftest_task.py に当たる selftest_t_* だけを流す。表に載らないファイルは全件
 #
 # 当たる段は `./check.sh --plan` で見る。
@@ -160,7 +160,7 @@ if task_stage_patterns stage "task-model: scripts・task コマンドの自己�
   $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest.py"
   $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_review_needed.py"
   $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_review_snapshot.py"
-  # テストの selftest_t_*.py だけが変わったときは、Beads 方式のテスト（200 秒）は流さない（本体は変わっていない）
+  # テストの selftest_t_*.py だけが変わったときは、Beads 方式のテスト（約 160 秒）は流さない（本体は変わっていない）
   run_beads=yes
   if [ "$scoped" = yes ] && ! task_stage_patterns matching | grep -qv '^skills/task-model/scripts/tests/selftest_t_[a-z_]*\.py$'; then
     run_beads=no
