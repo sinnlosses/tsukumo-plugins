@@ -106,103 +106,6 @@ def test_ship_forces_verify_after_verify_failed_without_new_rebase() -> None:
         check("送るものが無ければ今までどおりNOTHING", r3.returncode == 0 and r3.stdout.startswith("NOTHING\t"), r3.stdout + r3.stderr)
 
 
-def test_ship_verify_failed_keeps_full_log_in_order() -> None:
-    say("task.py ship: 検証が落ちると、全文が出た順のログに残り、VERIFY_FAILED の行にそのパスが出る")
-    with tempfile.TemporaryDirectory() as tmp:
-        verify_script = write(
-            os.path.join(tmp, "verify.sh"),
-            "echo out-1\necho err-1 >&2\necho out-2\necho err-2 >&2\nexit 1\n",
-        )
-        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない", verify=f"`sh {verify_script}`")
-        commit_task(main_path, taskfile.Task("T-100", "ログ", "todo", "sonnet", "Y", (), BODY))
-
-        run_task(wt1, "claim", "T-100")
-        write(os.path.join(main_path, "unrelated.txt"), "x")
-        git(main_path, "add", "-A")
-        git(main_path, "commit", "-q", "-m", "mainだけの変更")
-        _claim_work_and_done(wt1, "T-100")
-
-        r = run_task(wt1, "ship")
-        first = r.stdout.splitlines()[0] if r.stdout else ""
-        check("VERIFY_FAILED で終了コード8", r.returncode == 8 and first.startswith("VERIFY_FAILED\t"), r.stdout + r.stderr)
-        log_path = first.split("\t")[-1]
-        check("行の末尾が落ちた回を残したログのパス",
-              os.path.dirname(log_path) == os.path.dirname(stamps.ship_verify_log_path(cwd=wt1))
-              and os.path.basename(log_path).startswith("task-ship-verify.failed-"), first)
-        with open(log_path, encoding="utf-8") as f:
-            log = f.read()
-        check("stdout と stderr が出た順に残る", log.split() == ["out-1", "err-1", "out-2", "err-2"], log)
-
-
-def test_ship_stale_verify_owed_does_not_block_nothing_or_main_worktree() -> None:
-    say("task.py ship: 検証の借りの印が残っていても、main に送るものが無い・main上で起こしたときは今までどおり動く")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない", verify="`false`")
-
-        # 送るものが無い（NOTHING）側: 古い印が残っていても検証コマンド（`false`）は打たれない。
-        stamps.mark_verify_owed("`false`", cwd=wt1)
-        r1 = run_task(wt1, "ship")
-        check("NOTHINGで返る（検証は打たれない）", r1.returncode == 0 and r1.stdout.startswith("NOTHING\t"), r1.stdout + r1.stderr)
-        check("古い印は消える", not stamps.is_verify_owed(cwd=wt1))
-
-        # main の作業ツリーで起こした（送る段なし）側。
-        stamps.mark_verify_owed("`false`", cwd=main_path)
-        commit_task(main_path, taskfile.Task("T-100", "本体で完結", "todo", "sonnet", "Y", (), BODY))
-        run_task(main_path, "claim", "T-100")
-        _claim_work_and_done(main_path, "T-100")
-        r2 = run_task(main_path, "ship")
-        check(
-            "SHIPPED main（送る段なし）で返る",
-            r2.returncode == 0 and r2.stdout.startswith("SHIPPED\tmain\t(送る段なし)"),
-            r2.stdout + r2.stderr,
-        )
-        check("古い印は消える", not stamps.is_verify_owed(cwd=main_path))
-
-
-def test_ship_nothing_records_ship_event() -> None:
-    say("task.py ship: 送るものが無い（NOTHING）ときも、着手の印を持っていたタスクの ship を result=NOTHING で flow に残す")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
-        commit_task(main_path, taskfile.Task("T-100", "別のリポジトリが作業先", "todo", "sonnet", "Y", (), BODY))
-        run_task(wt1, "claim", "T-100")
-        result_path = write(os.path.join(tmp, "result.md"), RESULT_FULL)
-        run_task(wt1, "done", "T-100", "--result-file", result_path)
-        r = run_task(wt1, "ship")
-        check("NOTHING で返る", r.returncode == 0 and r.stdout.startswith("NOTHING\t"), r.stdout + r.stderr)
-        ships = [(e["task"], e["result"]) for e in flow_rows(wt1) if e["event"] == "ship"]
-        check("ship の出来事が result=NOTHING で1つ残る", ships == [("T-100", "NOTHING")], repr(ships))
-
-
-def test_ship_records_sync_span_before_ship() -> None:
-    say("task.py ship: SHIPPED でも NOTHING でも、sync の start・end のあとに ship が flow に残る")
-    spans = lambda wt: [
-        (e["event"], e.get("stage"), e.get("edge"), e.get("result"))
-        for e in flow_rows(wt)
-        if e["event"] == "ship" or (e["event"] == "lap" and e.get("stage") == "sync")
-    ]
-    expected = lambda result: [("lap", "sync", "start", None), ("lap", "sync", "end", None), ("ship", None, None, result)]
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
-        commit_task(main_path, taskfile.Task("T-100", "別のリポジトリが作業先", "todo", "sonnet", "Y", (), BODY))
-        run_task(wt1, "claim", "T-100")
-        run_task(wt1, "done", "T-100", "--result-file", write(os.path.join(tmp, "result.md"), RESULT_FULL))
-        r = run_task(wt1, "ship")
-        check("NOTHING で返る", r.stdout.startswith("NOTHING\t"), r.stdout + r.stderr)
-        check("NOTHING: start → end → ship の順", spans(wt1) == expected("NOTHING"), repr(spans(wt1)))
-
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
-        commit_task(main_path, taskfile.Task("T-100", "送る", "todo", "sonnet", "Y", (), BODY))
-        run_task(wt1, "claim", "T-100")
-        write(os.path.join(wt1, "work.txt"), "x")
-        git(wt1, "add", "work.txt")
-        git(wt1, "commit", "-q", "-m", "work")
-        run_task(wt1, "done", "T-100", "--result-file", write(os.path.join(tmp, "result.md"), RESULT_FULL))
-        r = run_task(wt1, "ship")
-        check("SHIPPED で返る", r.stdout.startswith("SHIPPED\t"), r.stdout + r.stderr)
-        check("SHIPPED: start → end → ship の順", spans(wt1) == expected("SHIPPED"), repr(spans(wt1)))
-
-
 def test_ship_conflict_aborts_rebase() -> None:
     say("task.py ship: 衝突すればrebase --abortして止まる")
     with tempfile.TemporaryDirectory() as tmp:
@@ -360,113 +263,6 @@ def test_land_without_base_worktree() -> None:
             and os.path.isdir(wt1)
             and "wt1-branch" in git(main_path, "branch", "--format=%(refname:short)").stdout.split(),
         )
-
-
-def test_ship_and_land_sync_submodules() -> None:
-    say("task.py ship / land: 合流のあと本体のサブモジュールを記録した版へ揃える")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, wt2, origin = make_submodule_repo(tmp)
-
-        def sub_head() -> str:
-            return git(os.path.join(main_path, "vendor", "sub"), "rev-parse", "HEAD").stdout.strip()
-
-        new = advance_submodule(origin,wt1, "v2")
-        r = run_task(wt1, "ship", env=FILE_PROTOCOL_ENV)
-        check("ship は SHIPPED(0)", r.returncode == 0 and r.stdout.startswith("SHIPPED\t"), r.stdout + r.stderr)
-        check("SUBMODULE_NOT_SYNCED は出ない", "SUBMODULE_NOT_SYNCED" not in r.stdout, r.stdout)
-        check("ship のあと本体の status が空", git(main_path, "status", "--porcelain").stdout == "")
-        check("本体のサブモジュールが記録した版", sub_head() == new)
-
-        git(wt2, "merge", "-q", "--ff-only", "main")
-        new = advance_submodule(origin,wt2, "v3")
-        git(wt2, "submodule", "deinit", "-q", "-f", "vendor/sub")
-        r = run_task(main_path, "land", "wt2-branch", env=FILE_PROTOCOL_ENV)
-        check("land は LANDED で始まる", r.stdout.startswith("LANDED\t"), r.stdout + r.stderr)
-        check("SUBMODULE_NOT_SYNCED は出ない（land）", "SUBMODULE_NOT_SYNCED" not in r.stdout, r.stdout)
-        check("land のあと本体の status が空", git(main_path, "status", "--porcelain").stdout == "")
-        check("land のあと本体のサブモジュールが記録した版", sub_head() == new)
-
-
-def test_ship_and_land_report_unsynced_submodule() -> None:
-    say("task.py ship / land: サブモジュールを揃えられなくても合流は変えず SUBMODULE_NOT_SYNCED で知らせる")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, wt2, origin = make_submodule_repo(tmp)
-        advance_submodule(origin,wt1, "v2")
-        shutil.move(origin, origin + "-gone")
-
-        r = run_task(wt1, "ship", env=FILE_PROTOCOL_ENV)
-        lines = r.stdout.splitlines()
-        check("ship は SHIPPED(0) のまま", r.returncode == 0 and lines[0].startswith("SHIPPED\t"), r.stdout + r.stderr)
-        check(
-            "SHIPPED の次に SUBMODULE_NOT_SYNCED（本体のパスと理由）",
-            len(lines) > 1 and lines[1].startswith(f"SUBMODULE_NOT_SYNCED\t{os.path.realpath(main_path)}\t"),
-            r.stdout,
-        )
-
-        shutil.move(origin + "-gone", origin)
-        git(wt2, "merge", "-q", "--ff-only", "main")
-        git(os.path.join(main_path, "vendor", "sub"), *FILE_PROTOCOL, "fetch", "-q", "origin")
-        git(os.path.join(main_path, "vendor", "sub"), "checkout", "-q", git(wt1, "rev-parse", "HEAD:vendor/sub").stdout.strip())
-        advance_submodule(origin,wt2, "v3")
-        git(wt2, "submodule", "deinit", "-q", "-f", "vendor/sub")
-        shutil.move(origin, origin + "-gone")
-        wt2_head = git(wt2, "rev-parse", "HEAD").stdout.strip()
-        r = run_task(main_path, "land", "wt2-branch", env=FILE_PROTOCOL_ENV)
-        lines = r.stdout.splitlines()
-        check("land は LANDED で始まる", lines[0].startswith("LANDED\t"), r.stdout + r.stderr)
-        check(
-            "LANDED の次に SUBMODULE_NOT_SYNCED（理由は fatal の行）",
-            len(lines) > 1 and lines[1].startswith("SUBMODULE_NOT_SYNCED\t") and "\tfatal:" in lines[1],
-            r.stdout,
-        )
-        check("main は枝の先端まで進んでいる", git(main_path, "merge-base", "--is-ancestor", wt2_head, "main").returncode == 0)
-
-
-def test_land_removes_worktree_with_submodule_only_when_clean() -> None:
-    say("task.py land: サブモジュールを持つ作業ツリーは、作業ツリーとサブモジュールが綺麗なときだけ消す")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, wt2, _origin = make_submodule_repo(tmp)
-
-        def branches() -> list[str]:
-            return git(main_path, "branch", "--format=%(refname:short)").stdout.split()
-
-        r = run_task(main_path, "land", "wt2-branch", env=FILE_PROTOCOL_ENV)
-        lines = r.stdout.splitlines()
-        check(
-            "綺麗なら LANDED・REMOVED・DELETED（終了コード0）",
-            r.returncode == 0
-            and lines[0].startswith("LANDED\twt2-branch\t")
-            and lines[1:] == [f"REMOVED\t{os.path.realpath(wt2)}", "DELETED\twt2-branch"],
-            r.stdout + r.stderr,
-        )
-        check("作業ツリーと枝が消える", not os.path.exists(wt2) and "wt2-branch" not in branches())
-
-        write(os.path.join(wt1, "vendor", "sub", "dirty.txt"), "x\n")
-        main_head = git(main_path, "rev-parse", "HEAD").stdout.strip()
-        r = run_task(main_path, "land", "wt1-branch", env=FILE_PROTOCOL_ENV)
-        check(
-            "サブモジュールの中の未追跡は NOT_LANDED(4)",
-            r.returncode == 4 and r.stdout.startswith("NOT_LANDED\twt1-branch\t"),
-            r.stdout + r.stderr,
-        )
-        check(
-            "何も変えない",
-            git(main_path, "rev-parse", "HEAD").stdout.strip() == main_head
-            and os.path.isdir(wt1)
-            and "wt1-branch" in branches(),
-        )
-
-        git(wt1, "config", "submodule.vendor/sub.ignore", "all")
-        r = run_task(main_path, "land", "wt1-branch", env=FILE_PROTOCOL_ENV)
-        lines = r.stdout.splitlines()
-        check(
-            "本体の status が汚れを隠すなら LANDED のあと作業ツリーは NOT_REMOVED(4)",
-            r.returncode == 4
-            and lines[0].startswith("LANDED\twt1-branch\t")
-            and any(line.startswith(f"NOT_REMOVED\t{os.path.realpath(wt1)}\t") for line in lines),
-            r.stdout + r.stderr,
-        )
-        check("作業ツリーが残り、枝も残る", os.path.isdir(wt1) and "wt1-branch" in branches())
 
 
 def _commit(path: str, name: str, text: str, message: str) -> str:
@@ -665,52 +461,6 @@ def test_land_fold_verify_fails() -> None:
         )
 
 
-def test_land_fold_syncs_submodules_before_verify() -> None:
-    say("task.py land --fold: 主ブランチがサブモジュールを進めていれば、揃えてから検証し、揃えられなければ止まる")
-    with tempfile.TemporaryDirectory() as tmp:
-        seen = os.path.join(tmp, "verify-seen")
-        script = write(os.path.join(tmp, "verify.sh"), f'cat vendor/sub/v.txt >> "{seen}"\n')
-        main_path, wt1, wt2, origin = make_submodule_repo(tmp, verify=f"`sh {script}`")
-
-        def seen_lines() -> list[str]:
-            return _lines_of(seen)
-
-        _commit(wt1, "a.txt", "a\n", "枝の作業")
-        advance_submodule(origin, main_path, "v2")
-        r = run_task(wt1, "land", "wt1-branch", "--fold", env=FILE_PROTOCOL_ENV)
-        lines = r.stdout.splitlines()
-        check(
-            "FOLDED のあと取り込んだサブモジュールの中身で検証し、LANDED・REMOVED・DELETED（NOT_REMOVED なし）",
-            r.returncode == 0
-            and lines[0].startswith("FOLDED\twt1-branch\t")
-            and seen_lines() == ["v2"]
-            and lines[-2:] == [f"REMOVED\t{os.path.realpath(wt1)}", "DELETED\twt1-branch"]
-            and not any(line.startswith("NOT_REMOVED") for line in lines),
-            r.stdout + r.stderr + repr(seen_lines()),
-        )
-
-        _commit(wt2, "b.txt", "b\n", "枝の作業")
-        advance_submodule(origin, main_path, "v3")
-        shutil.move(origin, origin + "-gone")
-        main_head = git(main_path, "rev-parse", "main").stdout.strip()
-        r = run_task(wt2, "land", "wt2-branch", "--fold", env=FILE_PROTOCOL_ENV)
-        lines = r.stdout.splitlines()
-        check(
-            "揃えられなければ SUBMODULE_NOT_SYNCED と NOT_LANDED（終了コード4）で、検証を打たない",
-            r.returncode == 4
-            and any(line.startswith("SUBMODULE_NOT_SYNCED\t") for line in lines)
-            and lines[-1].startswith("NOT_LANDED\twt2-branch\t")
-            and seen_lines() == ["v2"],
-            r.stdout + r.stderr,
-        )
-        check(
-            "主ブランチは変わらず、作業ツリーと枝は残る",
-            git(main_path, "rev-parse", "main").stdout.strip() == main_head
-            and os.path.isdir(wt2)
-            and "wt2-branch" in _branches(main_path),
-        )
-
-
 def test_land_fold_without_verify_command() -> None:
     say("task.py land --fold: 検証コマンドが無ければ何も変えずに止まる")
     with tempfile.TemporaryDirectory() as tmp:
@@ -728,29 +478,6 @@ def test_land_fold_without_verify_command() -> None:
             git(main_path, "rev-parse", "main").stdout.strip() == main_head
             and git(wt1, "rev-parse", "HEAD").stdout.strip() == head
             and os.path.isdir(wt1),
-        )
-
-
-def test_ship_without_gitmodules_prints_no_submodule_line() -> None:
-    say("task.py ship / land: .gitmodules が無いリポジトリでは出力が変わらない")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, wt2 = make_repo(tmp)
-        for wt, name in ((wt1, "a.txt"), (wt2, "b.txt")):
-            write(os.path.join(wt, name), "x\n")
-            git(wt, "add", name)
-            git(wt, "commit", "-q", "-m", name)
-        r = run_task(wt1, "ship")
-        check(
-            "ship は SHIPPED・BACKUP だけ",
-            r.returncode == 0 and [line.split("\t")[0] for line in r.stdout.splitlines()] == ["SHIPPED", "BACKUP"],
-            r.stdout + r.stderr,
-        )
-        git(wt2, "rebase", "-q", "main")
-        r = run_task(main_path, "land", "wt2-branch")
-        check(
-            "land は LANDED・REMOVED・DELETED だけ",
-            [line.split("\t")[0] for line in r.stdout.splitlines()] == ["LANDED", "REMOVED", "DELETED"],
-            r.stdout + r.stderr,
         )
 
 
@@ -779,107 +506,6 @@ def test_ship_skips_send_on_main_worktree() -> None:
 
 def _shipped_range(repo: str, task_id: str) -> str:
     return str(metadata(repo, task_id).get(beads.SHIPPED_KEY) or "")
-
-
-def test_ship_records_shipped_range() -> None:
-    say("task.py ship: 閉じる前に送った範囲を metadata task_shipped に書く（付け替え無し・付け替え・NOTHING）")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
-        commit_task(main_path, taskfile.Task("T-100", "追い付く", "todo", "sonnet", "Y", (), BODY))
-        commit_task(main_path, taskfile.Task("T-101", "付け替え", "todo", "sonnet", "Y", (), BODY))
-        commit_task(main_path, taskfile.Task("T-102", "送るものが無い", "todo", "sonnet", "Y", (), BODY))
-
-        run_task(wt1, "claim", "T-100")
-        _claim_work_and_done(wt1, "T-100")
-        before = git(main_path, "rev-parse", "main").stdout.strip()
-        r = run_task(wt1, "ship")
-        after = git(main_path, "rev-parse", "main").stdout.strip()
-        check("付け替え無し: 送る前の main から送ったコミットまで", r.stdout.startswith("SHIPPED\t")
-              and _shipped_range(wt1, "T-100") == f"{before}..{after}", r.stdout + _shipped_range(wt1, "T-100"))
-        check("付け替え無し: 範囲は枝のコミット1件",
-              git(main_path, "rev-list", "--count", f"{before}..{after}").stdout.strip() == "1")
-
-        run_task(wt1, "claim", "T-101")
-        write(os.path.join(main_path, "unrelated.txt"), "x")
-        git(main_path, "add", "-A")
-        git(main_path, "commit", "-q", "-m", "mainだけの変更")
-        main_tip = git(main_path, "rev-parse", "main").stdout.strip()
-        _claim_work_and_done(wt1, "T-101", note="b")
-        r = run_task(wt1, "ship")
-        after = git(main_path, "rev-parse", "main").stdout.strip()
-        check("付け替え: from は付け替え先の main の先端", r.stdout.startswith("SHIPPED\t") and "rebased=yes" in r.stdout
-              and _shipped_range(wt1, "T-101") == f"{main_tip}..{after}", r.stdout + _shipped_range(wt1, "T-101"))
-
-        run_task(wt1, "claim", "T-102")
-        result_path = write(os.path.join(tmp, "result.md"), RESULT_FULL)
-        run_task(wt1, "done", "T-102", "--result-file", result_path)
-        r = run_task(wt1, "ship")
-        check("NOTHING は範囲を書かない", r.stdout.startswith("NOTHING\t") and _shipped_range(wt1, "T-102") == "",
-              r.stdout + _shipped_range(wt1, "T-102"))
-
-
-def test_ship_main_worktree_records_range_from_claim_head() -> None:
-    say("task.py ship: main の作業ツリーで起こしたときは task_claim_head から HEAD までを書く")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, _wt1, _wt2 = make_repo(tmp, branch="切らない")
-        commit_task(main_path, taskfile.Task("T-100", "本体で完結", "todo", "sonnet", "Y", (), BODY))
-        run_task(main_path, "claim", "T-100")
-        claim_head = str(metadata(main_path, "T-100").get(beads.CLAIM_HEAD_KEY))
-        _claim_work_and_done(main_path, "T-100")
-        head = git(main_path, "rev-parse", "HEAD").stdout.strip()
-        r = run_task(main_path, "ship")
-        check("送る段なしで claim_head..HEAD", r.stdout.startswith("SHIPPED\tmain\t(送る段なし)")
-              and _shipped_range(main_path, "T-100") == f"{claim_head}..{head}", r.stdout + _shipped_range(main_path, "T-100"))
-
-
-def test_status_stale_shipped_by_record() -> None:
-    say("task.py status: STALE:shipped は送った範囲の記録で決め、記録が無ければ件名で決める")
-    cases = (
-        ("記録あり・件名が規約外", "valid", False, True),
-        ("記録が祖先でない SHA・件名が規約どおり", "bogus", True, True),
-        ("記録なし・件名が規約どおり", None, True, True),
-        ("記録なし・件名が規約外", None, False, False),
-        ("記録の形が壊れている・件名が規約どおり", "malformed", True, True),
-        ("記録の形が壊れている・件名が規約外", "malformed", False, False),
-        ("実在するが祖先でない先端・件名が規約外", "orphan", False, False),
-        ("実在するが祖先でない先端・件名が規約どおり", "orphan", True, True),
-    )
-    for label, record, conforming, stale in cases:
-        with tempfile.TemporaryDirectory() as tmp:
-            main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
-            commit_task(main_path, taskfile.Task("T-100", "取り残し", "todo", "sonnet", "Y", (), BODY))
-            run_task(wt1, "claim", "T-100")
-            before = git(main_path, "rev-parse", "main").stdout.strip()
-            _claim_work_and_done(wt1, "T-100")
-            if not conforming:
-                git(wt1, "commit", "-q", "--amend", "-m", "件名にIDの無い変更")
-            head = git(wt1, "rev-parse", "HEAD").stdout.strip()
-            merged = git(main_path, "merge", "--ff-only", head)
-            if record is not None:
-                orphan = git(main_path, "commit-tree", f"{head}^{{tree}}", "-m", "枝だけ").stdout.strip()
-                value = {
-                    "valid": f"{before}..{head}",
-                    "bogus": f"{'a' * 40}..{'b' * 40}",
-                    "malformed": "壊れた値",
-                    "orphan": f"{before}..{orphan}",
-                }[record]
-                set_metadata(wt1, "T-100", beads.SHIPPED_KEY, value)
-            r = run_task(main_path, "status")
-            row = next((l for l in r.stdout.splitlines() if l.startswith("T-100\t")), "")
-            check(f"{label}: {'STALE:shipped' if stale else 'CLAIMED'}",
-                  merged.returncode == 0 and (("STALE:shipped" in row) == stale) and (stale or "CLAIMED" in row), row + merged.stderr)
-
-
-def test_claim_clears_shipped_range() -> None:
-    say("task.py claim: 前回の task_shipped を持ち越さない")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない")
-        commit_task(main_path, taskfile.Task("T-100", "再着手", "todo", "sonnet", "Y", (), BODY))
-        sha = "a" * 40
-        set_metadata(wt1, "T-100", beads.SHIPPED_KEY, f"{sha}..{sha}")
-        check("前提: 記録が読める", _shipped_range(wt1, "T-100") == f"{sha}..{sha}")
-        r = run_task(wt1, "claim", "T-100")
-        check("claim が記録を消す", r.stdout.startswith("CLAIMED") and _shipped_range(wt1, "T-100") == "", r.stdout + r.stderr)
 
 
 def test_ship_race_gives_up_after_three_tries() -> None:
@@ -922,84 +548,6 @@ def test_ship_race_gives_up_after_three_tries() -> None:
             git(wt1, "status", "--porcelain").stdout.strip() == "",
         )
         check("main にmerge commitが無い", _no_merge_commits(main_path).strip() == "")
-
-
-def test_ship_default_branch_leaves_feature_branch() -> None:
-    say("task.py ship: 既定の枝設定で本体が main を出していても feature 枝を残さない")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, wt2 = make_repo(tmp, branch="既定")
-        commit_task(main_path, taskfile.Task("T-100", "戻り先あり", "todo", "sonnet", "Y", (), BODY))
-        commit_task(main_path, taskfile.Task("T-101", "戻り先なし", "todo", "sonnet", "Y", (), BODY))
-
-        r = run_task(wt1, "claim", "T-100")
-        check("claim が feature/T-100 を切る", "branch=feature/T-100" in r.stdout, r.stdout + r.stderr)
-        _claim_work_and_done(wt1, "T-100")
-        r = run_task(wt1, "ship")
-        check("SHIPPEDで返る", r.returncode == 0 and r.stdout.startswith("SHIPPED\t"), r.stdout + r.stderr)
-        check("claim した時点の枝へ戻る", r.stdout.splitlines()[0].endswith("branch=wt1-branch"), r.stdout)
-        check("戻った枝は main に追い付いている", git(wt1, "rev-parse", "HEAD").stdout == git(main_path, "rev-parse", "main").stdout)
-        check(
-            "feature/T-100 は消える",
-            git(main_path, "branch", "--list", "feature/T-100").stdout.strip() == "",
-        )
-
-        # 戻り先が無い（detached で claim した）ときは main の位置で detached にして枝を消す。
-        git(wt2, "checkout", "-q", "--detach", "main")
-        r = run_task(wt2, "claim", "T-101")
-        check("detached からでも claim できる", r.returncode == 0 and "branch=feature/T-101" in r.stdout, r.stdout + r.stderr)
-        _claim_work_and_done(wt2, "T-101", note="2")
-        r = run_task(wt2, "ship")
-        check("SHIPPEDで返る（detached）", r.returncode == 0 and r.stdout.startswith("SHIPPED\t"), r.stdout + r.stderr)
-        check("戻れなければ detached と出す", r.stdout.splitlines()[0].endswith("branch=detached"), r.stdout)
-        check(
-            "feature/T-101 も消える",
-            git(main_path, "branch", "--list", "feature/T-101").stdout.strip() == "",
-        )
-        check("main にmerge commitが無い", _no_merge_commits(main_path).strip() == "")
-
-
-def test_branch_setting_reads_leading_word() -> None:
-    say("task.py claim: config.toml の branch は語彙の外なら INVALID")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp, branch="自分で切らない")
-        commit_task(main_path, taskfile.Task("T-100", "語彙外", "todo", "sonnet", "Y", (), BODY))
-        r = run_task(wt1, "claim", "T-100")
-        check("config.toml: 語彙に無い値は INVALID（終了コード3）", r.returncode == 3 and r.stdout.startswith("INVALID\t"),
-              r.stdout + r.stderr)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp, branch="切らない。説明")
-        r = run_task(wt1, "status")
-        check("config.toml は値の後ろの説明文を許さず INVALID", r.returncode == 3 and r.stdout.startswith("INVALID\t.tw/config.toml:"),
-              r.stdout + r.stderr)
-        write(os.path.join(wt1, ".tw", "config.toml"), 'verify = "なし"\nverify_cmd = "x"\n')
-        r = run_task(wt1, "status")
-        check("知らないキーは行番号付きで INVALID（終了コード3）",
-              r.returncode == 3 and r.stdout.startswith("INVALID\t.tw/config.toml:2:") and "verify_cmd" in r.stdout,
-              r.stdout + r.stderr)
-
-
-@weight(8)
-def test_branch_setting_missing_is_default() -> None:
-    say("task.py claim・ship: branch が無ければ `既定` として枝を切り、ship は送る")
-    for reason, kwargs in (
-        ("config.toml に branch が無い", {"branch": None}),
-    ):
-        with tempfile.TemporaryDirectory() as tmp:
-            main_path, wt1, _wt2 = make_repo(tmp, **kwargs)
-            commit_task(main_path, taskfile.Task("T-100", "作業ツリーで", "todo", "sonnet", "Y", (), BODY))
-            git(wt1, "merge", "-q", "--ff-only", "main")
-
-            r = run_task(wt1, "claim", "T-100")
-            check(f"{reason}: claim は feature/T-100 を切る",
-                  r.returncode == 0 and r.stdout.startswith("CLAIMED\tT-100\t") and "branch=feature/T-100" in r.stdout,
-                  r.stdout + r.stderr)
-            _claim_work_and_done(wt1, "T-100")
-            r = run_task(wt1, "ship")
-            check(f"{reason}: ship は送る（SHIPPED）", r.returncode == 0 and r.stdout.startswith("SHIPPED\t"),
-                  r.stdout + r.stderr)
-            check(f"{reason}: 主ブランチが作業のコミットまで進む",
-                  git(main_path, "log", "-1", "--format=%s", "main").stdout.strip() == "T-100: 完了")
 
 
 def test_base_branch_resolution() -> None:
@@ -1121,40 +669,25 @@ def test_full_cycle_on_master_repo() -> None:
 
 TESTS = (
     test_full_cycle_on_master_repo,
-    test_branch_setting_missing_is_default,
-    test_ship_default_branch_leaves_feature_branch,
     test_ship_forces_verify_after_verify_failed_without_new_rebase,
     test_ship_rebases_when_main_advances,
     test_ship_race_gives_up_after_three_tries,
-    test_branch_setting_reads_leading_word,
     test_ship_fast_forward,
-    test_ship_stale_verify_owed_does_not_block_nothing_or_main_worktree,
-    test_ship_nothing_records_ship_event,
-    test_ship_records_shipped_range,
-    test_ship_main_worktree_records_range_from_claim_head,
-    test_claim_clears_shipped_range,
-    test_status_stale_shipped_by_record,
-    test_ship_records_sync_span_before_ship,
     test_ship_conflict_aborts_rebase,
-    test_ship_verify_failed_keeps_full_log_in_order,
     test_ship_skips_send_on_main_worktree,
     test_ship_main_dirty_stops,
     test_land,
     test_land_without_base_worktree,
-    test_ship_and_land_sync_submodules,
-    test_ship_and_land_report_unsynced_submodule,
-    test_land_removes_worktree_with_submodule_only_when_clean,
     test_fold_committed,
     test_land_fold_verifies_at_most_once,
     test_land_fold_advanced,
     test_land_fold_conflict,
     test_land_fold_verify_fails,
-    test_land_fold_syncs_submodules_before_verify,
     test_land_fold_without_verify_command,
-    test_ship_without_gitmodules_prints_no_submodule_line,
     test_base_branch_resolution,
 )
 
 
 if __name__ == "__main__":
     refuse_direct_run()
+

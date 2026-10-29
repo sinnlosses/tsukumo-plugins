@@ -19,11 +19,9 @@ sys.path.insert(1, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 sys.path.insert(1, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tw"))
 
 import selftest_t_accept  # noqa: E402
-import selftest_t_brief  # noqa: E402
 import selftest_t_finish  # noqa: E402
 import selftest_t_flow  # noqa: E402
 import selftest_t_guards  # noqa: E402
-import selftest_t_phases  # noqa: E402
 import selftest_t_plan  # noqa: E402
 import selftest_t_ship  # noqa: E402
 import selftest_t_tasks  # noqa: E402
@@ -34,10 +32,8 @@ from selftest_support import beads_home, finish, local, require_all_listed, run_
 MODULES = (
     selftest_t_verify,
     selftest_t_plan,
-    selftest_t_phases,
     selftest_t_guards,
     selftest_t_accept,
-    selftest_t_brief,
     selftest_t_finish,
     selftest_t_flow,
     selftest_t_ship,

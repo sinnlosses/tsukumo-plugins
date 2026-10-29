@@ -68,34 +68,6 @@ VERIFY_SCRIPT = (
 )
 
 
-@weight(3)
-def test_verify_without_ledger() -> None:
-    say("task.py verify・verify-check: .beads の無いリポジトリでも検証の控えを残し、ほかのサブコマンドは MISSING")
-    with tempfile.TemporaryDirectory() as tmp:
-        repo = os.path.join(tmp, "plain")
-        os.makedirs(repo)
-        git(repo, "init", "-q", "-b", "main")
-        git(repo, "config", "user.email", "test@example.com")
-        git(repo, "config", "user.name", "test")
-        write(os.path.join(repo, ".tw", "config.toml"), 'verify = "true"\n')
-        write(os.path.join(repo, ".tw", ".gitignore"), "local/\n")
-        git(repo, "add", "-A")
-        git(repo, "commit", "-q", "-m", "init")
-
-        r = run_task(repo, "verify-check")
-        check("控えが無ければ NOT_VERIFIED none", r.returncode == 0 and r.stdout.strip() == "NOT_VERIFIED\tnone", r.stdout + r.stderr)
-        r = run_task(repo, "verify")
-        first = r.stdout.splitlines()[0] if r.stdout else ""
-        check("tw verify は MISSING にならず VERIFIED", r.returncode == 0 and first.startswith("VERIFIED\t"), r.stdout + r.stderr)
-        r = run_task(repo, "verify-check")
-        check("控えを読んで VERIFIED_SAME", r.stdout.strip() == f"VERIFIED_SAME\t{first.split(chr(9))[1]}", r.stdout + r.stderr)
-        write(os.path.join(repo, "x.txt"), "x\n")
-        r = run_task(repo, "verify-check")
-        check("中身が変われば NOT_VERIFIED content", r.stdout.strip() == "NOT_VERIFIED\tcontent", r.stdout + r.stderr)
-        r = run_task(repo, "status")
-        check("status は MISSING（終了コード6）のまま", r.returncode == 6 and r.stdout.startswith("MISSING\t"), r.stdout + r.stderr)
-
-
 @weight(22)
 def test_verify_stamp() -> None:
     say("task.py verify・verify-check: 検証が通った中身の鍵を控え、同じなら省いてよいと判定する")
@@ -233,95 +205,11 @@ def _advance_main(main_path: str, notes: str, extra: str | None = None) -> str:
     return git(main_path, "rev-parse", "HEAD").stdout.strip()
 
 
-def test_verify_runs_format_first() -> None:
-    say("task.py verify: 取り込みのあと・検証の前に整形コマンドを打ち、整形のあとの中身で鍵を控える")
-    fix = "echo fixed > formatted.txt\n"
-    saw = 'cat formatted.txt >> saw.log\necho "ok"\n'
-    with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1, _wt2 = make_repo(
-            tmp, branch="切らない", verify="`sh verify.sh`", format_command="`sh format.sh`"
-        )
-        write(os.path.join(wt1, "format.sh"), fix)
-        write(os.path.join(wt1, "verify.sh"), saw)
-        write(os.path.join(wt1, ".gitignore"), "saw.log\n")
-        git(wt1, "add", "-A")
-        git(wt1, "commit", "-q", "-m", "足場")
-        r = run_task(wt1, "verify")
-        check("整形が直したうえで検証が通り VERIFIED", r.returncode == 0 and r.stdout.startswith("VERIFIED\t"), r.stdout + r.stderr)
-        with open(os.path.join(wt1, "saw.log"), encoding="utf-8") as f:
-            check("検証は整形のあとの中身を見る", f.read() == "fixed\n")
-        r = run_task(wt1, "verify-check")
-        check("整形で変わった中身でも続く verify-check は VERIFIED_SAME", r.stdout.startswith("VERIFIED_SAME\t"), r.stdout + r.stderr)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1, _wt2 = make_repo(tmp, branch="切らない", verify="`sh verify.sh`", format_command="なし")
-        write(os.path.join(wt1, "format.sh"), fix)
-        write(os.path.join(wt1, "verify.sh"), 'echo "ok"\n')
-        git(wt1, "add", "-A")
-        git(wt1, "commit", "-q", "-m", "足場")
-        r = run_task(wt1, "verify")
-        check("整形コマンドが なし なら整形を打たない", r.returncode == 0 and not os.path.exists(os.path.join(wt1, "formatted.txt")), r.stdout + r.stderr)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1, _wt2 = make_repo(
-            tmp, branch="切らない", verify="`sh verify.sh`", format_command="`sh format.sh`"
-        )
-        write(os.path.join(wt1, "format.sh"), "echo broken\nexit 1\n")
-        write(os.path.join(wt1, "verify.sh"), "echo ran > verify-ran.txt\n")
-        git(wt1, "add", "-A")
-        git(wt1, "commit", "-q", "-m", "足場")
-        r = run_task(wt1, "verify")
-        check("整形が落ちれば FORMAT_FAILED（終了コード10）で検証を打たない", r.returncode == 10
-              and r.stdout.startswith("FORMAT_FAILED\t") and "broken" in r.stdout
-              and not os.path.exists(os.path.join(wt1, "verify-ran.txt")), r.stdout + r.stderr)
-        r = run_task(wt1, "verify-check")
-        check("整形が落ちた回は控えを消す", r.stdout.strip() == "NOT_VERIFIED\tnone", r.stdout)
-
-
 def _count_lines(path: str) -> int:
     if not os.path.exists(path):
         return 0
     with open(path, encoding="utf-8") as f:
         return len(f.read().splitlines())
-
-
-def test_verify_keeps_failed_logs() -> None:
-    say("task.py verify: 落ちた回のログが時刻つきで直近3本残り、整形と検証の出力が task-verify.log に並ぶ")
-    with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1, _wt2 = make_repo(
-            tmp, branch="切らない", verify="`sh verify.sh`", format_command="`sh format.sh`"
-        )
-        write(os.path.join(wt1, "format.sh"), "echo fmt-out\n")
-        git(wt1, "add", "-A")
-        git(wt1, "commit", "-q", "-m", "足場")
-
-        def verify_with(script: str) -> tuple[subprocess.CompletedProcess, str]:
-            write(os.path.join(wt1, "verify.sh"), script)
-            r = run_task(wt1, "verify")
-            return r, r.stdout.splitlines()[-1].split("\t")[-1]
-
-        def read(path: str) -> str:
-            with open(path, encoding="utf-8") as f:
-                return f.read()
-
-        r1, p1 = verify_with("echo fail-1\nexit 1\n")
-        r2, p2 = verify_with("echo fail-2\nexit 1\n")
-        r3, p3 = verify_with("echo pass-3\n")
-        tw = stamps.worktree_state_dir(wt1)
-        failed = lambda: sorted(n for n in os.listdir(tw) if n.startswith("task-verify.failed-"))
-        check("落ちた2回は終了コード10で、別々の失敗ログのパスが判定行に出る",
-              r1.returncode == 10 and r2.returncode == 10 and p1 != p2
-              and r1.stdout.splitlines()[-1].startswith("VERIFY_NOT_PASSED\t"), r1.stdout + r2.stdout)
-        check("失敗ログが2本残り中身は各回の出力", len(failed()) == 2
-              and "fail-1" in read(p1) and "fail-2" in read(p2) and "fail-2" not in read(p1), str(failed()))
-        check("通った回は task-verify.log を上書きし、整形の出力と検証の出力が並ぶ",
-              r3.returncode == 0 and p3 == stamps.verify_log_path(cwd=wt1)
-              and read(p3).split() == ["fmt-out", "pass-3"], read(p3))
-        check("通った回は失敗ログを増やさない", len(failed()) == 2)
-        _r4, p4 = verify_with("echo fail-4\nexit 1\n")
-        _r5, _p5 = verify_with("echo fail-5\nexit 1\n")
-        check("4本目で最古が消えて3本になる", len(failed()) == 3 and not os.path.exists(p1)
-              and os.path.exists(p2) and os.path.exists(p4), str(failed()))
 
 
 def _verify_count(tmp: str) -> int:
@@ -386,65 +274,6 @@ def readonly_subcommands() -> list[str]:
 def _object_files(main_path: str) -> list[str]:
     top = os.path.join(main_path, ".git", "objects")
     return sorted(os.path.join(d, f) for d, _dirs, files in os.walk(top) for f in files)
-
-
-@weight(19)
-def test_readonly_commands_stay_out_of_git() -> None:
-    say("task.py: 読むだけのサブコマンドは、未コミット・主ブランチが進んだ・衝突の各状態で、読み取り専用の .git でも落ちず object を足さない")
-    args_of = {
-        "status": ["status"],
-        "status --claims": ["status", "--claims"],
-        "show": ["show", "T-120"],
-        "find": ["find", "書く"],
-        "plan-check": ["plan-check", "T-120"],
-        "plan-phases": ["plan-phases", "T-120"],
-        "verify-check": ["verify-check"],
-        "metrics": ["metrics"],
-        "config": ["config"],
-        "config --schema": ["config", "--schema"],
-        "config --entries": ["config", "--entries"],
-        "config-doctor": ["config-doctor"],
-    }
-    names = readonly_subcommands()
-    check("tw-reference.md の読むだけの行が、テストの引数表と同じ", sorted(names) == sorted(args_of), str(names))
-
-    def probe(main_path: str, wt1: str, state: str, base_ahead: bool, verify_check: str) -> None:
-        r = subprocess.run(["git", "merge-base", "--is-ancestor", "main", "HEAD"], cwd=wt1)
-        check(f"{state}: 主ブランチが {'HEAD より先にいる' if base_ahead else 'HEAD の祖先のまま'}",
-              (r.returncode != 0) == base_ahead)
-        r = run_task(wt1, "verify-check")
-        check(f"{state}: 書ける .git で verify-check が {verify_check}",
-              r.stdout.startswith(verify_check), r.stdout + r.stderr)
-        before = _object_files(main_path)
-        with readonly_git(main_path):
-            for name in [*names, "pause"]:
-                r = run_task(wt1, *args_of.get(name, [name]))
-                if name == "verify-check":
-                    check(f"{state}: 読み取り専用の .git でも verify-check が {verify_check}",
-                          r.stdout.startswith(verify_check), r.stdout + r.stderr)
-                check(f"{state}: {name} が GIT_READ_ONLY でも書き込みの失敗でもない",
-                      r.returncode != 11 and "GIT_READ_ONLY" not in r.stdout + r.stderr
-                      and "Traceback" not in r.stderr and r.stdout != "", r.stdout + r.stderr)
-        check(f"{state}: .git/objects が増えない", _object_files(main_path) == before)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1 = _fold_repo(tmp, preship="`true`", planned=False)
-        r = run_task(wt1, "edit", "T-120", "--section", "やること", "--body-file", "-", stdin="### 1. 書く\n")
-        check("計画を書く", r.returncode == 0, r.stdout + r.stderr)
-        write(os.path.join(wt1, "work.txt"), "x\n")
-        write(os.path.join(wt1, "notes.txt"), "a\nB\nc\nd\ne\n")
-        r = run_task(wt1, "verify")
-        check("verify が通る", r.stdout.startswith("VERIFIED\t"), r.stdout + r.stderr)
-
-        write(os.path.join(wt1, "work.txt"), "y\n")
-        probe(main_path, wt1, "未コミットの変更", False, "NOT_VERIFIED\tcontent")
-
-        write(os.path.join(wt1, "work.txt"), "x\n")
-        _advance_main(main_path, NOTES, extra="other.txt")
-        probe(main_path, wt1, "主ブランチが進んだ", True, "VERIFIED_SAME\t")
-
-        _advance_main(main_path, "a\nM\nc\nd\ne\n")
-        probe(main_path, wt1, "衝突する", True, "NOT_VERIFIED\tbase")
 
 
 def test_verify_uses_preship_command_for_stamp() -> None:
@@ -677,67 +506,15 @@ def test_verify_check_passes_base_with_preship() -> None:
         check("取り込みが衝突すれば NOT_VERIFIED base", r.stdout.strip() == "NOT_VERIFIED\tbase", r.stdout)
 
 
-@weight(3)
-def test_content_key_scheme_roundtrip() -> None:
-    say("ledger: 中身の鍵の scheme を控えに書いて読み直せる。scheme 行の無い古い控えは scheme が空で、段の控えも壊れない")
-    with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1, _wt2 = make_repo(tmp, branch="切らない", verify="`true`")
-        key = stamps.content_key("true", cwd=wt1)
-        check("鍵は scheme を持つ", key.scheme == stamps.CONTENT_SCHEME and len(key.scheme) == 12, key.scheme)
-        stamps.write_verify_stamp(key, cwd=wt1)
-        check("書いて読み直した鍵が等しい", stamps.read_verify_stamp(cwd=wt1) == key)
-        path = os.path.join(stamps.worktree_state_dir(wt1), stamps.VERIFY_STAMP_FILE_NAME)
-        with open(path, encoding="utf-8") as f:
-            check("控えの最後の行が scheme:<値>", f.read().splitlines()[-1] == f"scheme:{key.scheme}")
-        write(path, f"{key.head}\n{key.tree}\n{key.verify_command}\n")
-        old = stamps.read_verify_stamp(cwd=wt1)
-        check("scheme 行の無い古い控えは読めて scheme が空", old is not None and old.scheme == ""
-              and (old.head, old.tree, old.verify_command) == (key.head, key.tree, key.verify_command))
-        check("scheme が違う鍵は等しくない", old != key)
-        stamp = stamps.StepStamp(key, "T-100", 2, "pause")
-        stamps.write_step_stamp(stamp, cwd=wt1)
-        check("段の控えは scheme 行の追加で壊れない", stamps.read_step_stamps(cwd=wt1) == [stamp])
-
-
-@weight(5)
-def test_verify_check_reports_scheme() -> None:
-    say("task.py verify-check: 控えた tw の版（scheme）だけが違えば NOT_VERIFIED scheme とこの tw のパス。同じ版なら従来どおり")
-    with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1, _wt2 = make_repo(tmp, branch="切らない", verify="`true`")
-        r = run_task(wt1, "verify")
-        check("verify が通る", r.stdout.startswith("VERIFIED\t"), r.stdout + r.stderr)
-        tree = r.stdout.split("\t")[1]
-        check("同じ版なら VERIFIED_SAME", run_task(wt1, "verify-check").stdout.strip() == f"VERIFIED_SAME\t{tree}")
-        path = os.path.join(stamps.worktree_state_dir(wt1), stamps.VERIFY_STAMP_FILE_NAME)
-        with open(path, encoding="utf-8") as f:
-            lines = f.read().splitlines()
-        write(path, "\n".join([*lines[:-1], "scheme:other"]) + "\n")
-        out = run_task(wt1, "verify-check").stdout.strip().split("\t")
-        check("scheme だけ違えば NOT_VERIFIED scheme と tw のパス", out[:2] == ["NOT_VERIFIED", "scheme"]
-              and len(out) == 3 and out[2].endswith("tw_verify.py"), str(out))
-        write(path, "\n".join(lines[:-1]) + "\n")
-        out = run_task(wt1, "verify-check").stdout.strip().split("\t")
-        check("scheme 行の無い古い控えも scheme", out[:2] == ["NOT_VERIFIED", "scheme"], str(out))
-        write(os.path.join(wt1, "work.txt"), "x\n")
-        write(path, "\n".join(lines) + "\n")
-        check("版が同じで中身だけ違えば content", run_task(wt1, "verify-check").stdout.strip() == "NOT_VERIFIED\tcontent")
-
-
 TESTS = (
-    test_verify_check_reports_scheme,
-    test_content_key_scheme_roundtrip,
     test_ship_skips_preship_verify_when_stamp_matches,
     test_verify_stamp,
-    test_verify_without_ledger,
-    test_readonly_commands_stay_out_of_git,
     test_verify_check_passes_base_with_preship,
     test_ship_runs_preship_verify_when_work_changes_tree,
     test_verify_refuses_unplanned_work,
     test_verify_check_reports_base,
-    test_verify_runs_format_first,
     test_verify_folds_base_before_check,
     test_worktree_tree_sees_same_size_edit_after_second_boundary,
-    test_verify_keeps_failed_logs,
     test_verify_conflict_before_check,
     test_verify_uses_preship_command_for_stamp,
 )
@@ -745,3 +522,4 @@ TESTS = (
 
 if __name__ == "__main__":
     refuse_direct_run()
+

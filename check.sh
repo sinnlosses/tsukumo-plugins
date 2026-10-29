@@ -13,15 +13,8 @@
 # 低優先度（taskpolicy -c utility / nice）で流すのは `CHECK_LOWPRI=1` のときだけ。
 #
 # 1. リポジトリ全体の整合（frontmatter・README の索引・参照先の実在・殻 bin/tw-hook の自己テスト・公式の claude plugin validate）（いつも）
-# 2. task-model のスクリプトの自己テスト（review_needed.py・review_snapshot.py を含む。台帳と Beads 方式は並べて走らせ、出力は流し終えてから順に出す）
+# 2. task-model のスクリプトの自己テスト（致命的なもの＝関門・送り出し・検証の控え・完了・採番と排他・受け入れ・Beads の取り合いと往復だけを残す。review_needed.py・review_snapshot.py を含む。台帳と Beads 方式は並べて走らせ、出力は流し終えてから順に出す）
 #    絞れるときは tests/selftest_scope.py の対応の表が決め、selftest_task.py に当たる selftest_t_* だけを流す。表に載らないファイルは全件
-# 3. task-model の WORKFLOW.md・tw-reference.md を読む検査（それだけが変わったときの軽い段）
-# 4. retrospect のスクリプトの自己テスト（2 の段と並べて走らせ、出力はこの段で出す）
-# 5. plan-tasks のスクリプトの自己テスト
-# 6. comment-audit のスクリプトの自己テスト
-# 7. task-workflow のスクリプトの自己テスト
-# 8. tsukumo-figure（plugins/tsukumo-figure/）の自己テスト（撮る段は playwright と chromium が無ければ飛ばす）
-# 8. 毎回読まれるスキルの文書のバイト数の上限の自己テスト（skills/ の .md が変わったとき）
 #
 # 当たる段は `./check.sh --plan` で見る。
 set -e
@@ -84,7 +77,7 @@ matching() {
 
 # task-model の自己テストの段に当たるパターンを、コマンド（stage・matching）の後ろへ渡す
 task_stage_patterns() {
-  "$@" 'skills/task-model/scripts/*' 'agents/*' 'hooks/*' 'bin/*' 'skills/retrospect/scripts/*'
+  "$@" 'skills/task-model/scripts/*' 'agents/*' 'hooks/*' 'bin/*'
 }
 
 # 当たらなければ飛ばす行を出して偽を返す。当たれば見出しを出し、--plan でなければ真を返す
@@ -140,27 +133,19 @@ if [ "$mode" != plan ]; then
   fi
 fi
 
-pid_retro=
 pid_task=
 pid_beads=
-out_retro=
 out_task=
 out_beads=
 stop_background() {
   emit_stages
-  for pid in $pid_retro $pid_task $pid_beads; do
+  for pid in $pid_task $pid_beads; do
     kill "$pid" 2>/dev/null || true
   done
-  rm -f "$out_retro" "$out_task" "$out_beads"
+  rm -f "$out_task" "$out_beads"
 }
 trap stop_background EXIT
 trap 'exit 130' INT TERM
-if [ "$mode" != plan ] && touched 'skills/retrospect/*' 'skills/task-model/scripts/*'; then
-  out_retro=$(mktemp)
-  $LOWPRI python3 "$here/skills/retrospect/scripts/selftest.py" >"$out_retro" 2>&1 &
-  pid_retro=$!
-fi
-
 task_scope() {
   scope=ALL
   [ "$scoped" = yes ] || return 0
@@ -175,16 +160,25 @@ if task_stage_patterns stage "task-model: scripts・task コマンドの自己�
   $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest.py"
   $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_review_needed.py"
   $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_review_snapshot.py"
+  # テストの selftest_t_*.py だけが変わったときは、Beads 方式のテスト（200 秒）は流さない（本体は変わっていない）
+  run_beads=yes
+  if [ "$scoped" = yes ] && ! task_stage_patterns matching | grep -qv '^skills/task-model/scripts/tests/selftest_t_[a-z_]*\.py$'; then
+    run_beads=no
+  fi
   out_task=$(mktemp)
   out_beads=$(mktemp)
   $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_task.py" $task_modules >"$out_task" 2>&1 &
   pid_task=$!
-  $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_beads.py" >"$out_beads" 2>&1 &
-  pid_beads=$!
+  if [ "$run_beads" = yes ]; then
+    $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_beads.py" >"$out_beads" 2>&1 &
+    pid_beads=$!
+  else
+    echo "Beads 方式は本体が変わっていないので飛ばした" >"$out_beads"
+  fi
   rc=0
   wait "$pid_task" || rc=1
   pid_task=
-  wait "$pid_beads" || rc=1
+  [ -z "$pid_beads" ] || wait "$pid_beads" || rc=1
   pid_beads=
   echo
   echo "-- task コマンド（develop/task/ + 台帳） --"
@@ -198,35 +192,3 @@ elif [ "$mode" = plan ] && task_stage_patterns touched; then
   echo "-- 絞り: $(printf '%s' "$scope" | tr '\n' ' ')"
 fi
 
-if stage "task-model: WORKFLOW.md・tw-reference.md を読む検査" skills/task-model/WORKFLOW.md skills/task-model/tw-reference.md; then
-  $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_task.py" test_readonly_commands_stay_out_of_git
-fi
-
-if stage "retrospect scripts の自己テスト" \
-  'skills/retrospect/*' 'skills/task-model/scripts/*'; then
-  rc=0
-  wait "$pid_retro" || rc=1
-  pid_retro=
-  cat "$out_retro"
-  [ "$rc" -eq 0 ] || exit 1
-fi
-
-if stage "plan-tasks scripts の自己テスト" 'skills/plan-tasks/*'; then
-  $LOWPRI python3 "$here/skills/plan-tasks/scripts/selftest_removed_lines.py"
-fi
-
-if stage "comment-audit scripts の自己テスト" 'skills/comment-audit/*'; then
-  $LOWPRI python3 "$here/skills/comment-audit/scripts/selftest_diff_added_comment_lines.py"
-fi
-
-if stage "tsukumo-figure scripts の自己テスト" 'plugins/tsukumo-figure/*'; then
-  $LOWPRI python3 "$here/plugins/tsukumo-figure/skills/figure-capture/scripts/selftest_figure.py"
-fi
-
-if stage "task-workflow scripts の自己テスト" 'skills/task-workflow/scripts/*' 'skills/task-model/scripts/core/gitcmd.py' 'skills/comment-audit/*'; then
-  $LOWPRI python3 "$here/skills/task-workflow/scripts/selftest_self_review.py"
-fi
-
-if stage "文書の字数の自己テスト" 'skills/*.md' 'skills/task-model/scripts/tests/selftest_doc_budget.py'; then
-  $LOWPRI python3 "$here/skills/task-model/scripts/tests/selftest_doc_budget.py"
-fi

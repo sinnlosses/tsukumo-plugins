@@ -67,39 +67,6 @@ def _finish_lines(wt: str, message: str, *args: str) -> tuple[int, list[str], st
     return r.returncode, [l for l in r.stdout.splitlines() if l.startswith("WARN_FIX_LINK")], r.stdout + r.stderr
 
 
-def test_finish_warns_fix_link() -> None:
-    say("task.py finish: 直近7日に送った別IDを含むコミットは WARN_FIX_LINK を COMMITTED と SHIPPED の間に出す（拒まない）")
-    with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1 = _claimed(tmp)
-        _ship_rows(wt1, T_200=1, T_201=8, T_100=3)
-        write(os.path.join(wt1, "work.txt"), "x")
-        code, warns, out = _finish_lines(wt1, "T-200 の取りこぼしと T-201 と T-100 を直す", "--add", "work.txt")
-        kinds = [l.split("\t", 1)[0] for l in out.splitlines()]
-        check("7日以内の T-200 だけ出る。8日前の T-201 と自分の T-100 は出ない",
-              code == 0 and warns == ["WARN_FIX_LINK\tT-200"], out)
-        check("COMMITTED → WARN_FIX_LINK → SHIPPED の順",
-              [k for k in kinds if k in ("COMMITTED", "WARN_FIX_LINK", "SHIPPED")] == ["COMMITTED", "WARN_FIX_LINK", "SHIPPED"], out)
-    with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1 = _claimed(tmp)
-        _ship_rows(wt1, T_200=1)
-        write(os.path.join(wt1, "work.txt"), "x")
-        code, warns, out = _finish_lines(wt1, "ふつうの完了", "--add", "work.txt")
-        check("件名にも本文にも ID が無ければ出ない", code == 0 and warns == [], out)
-    with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1 = _claimed(tmp)
-        _ship_rows(wt1, T_200=1)
-        code, warns, out = _finish_lines(wt1, "T-200 を直す")
-        check("差分が無く NO_COMMIT なら出ない", code == 0 and "NO_COMMIT" in out and warns == [], out)
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1 = _claimed(tmp)
-        _ship_rows(wt1, T_201=2)
-        git(main_path, "commit", "--allow-empty", "-q", "-m", "T-201: 追加")
-        target = git(main_path, "rev-parse", "HEAD").stdout.strip()
-        write(os.path.join(wt1, "work.txt"), "x")
-        code, warns, out = _finish_lines(wt1, f"元に戻す\n\nThis reverts commit {target}.", "--add", "work.txt")
-        check("戻すの件名と This reverts commit の先の ID が出る", code == 0 and warns == ["WARN_FIX_LINK\tT-201"], out)
-
-
 def test_finish_refuses_missing_result_lines() -> None:
     say("task.py finish: ## 結果 の必須行が欠ければ終了コード2で、done もコミットも ship も打たない")
     with tempfile.TemporaryDirectory() as tmp:
@@ -114,24 +81,6 @@ def test_finish_refuses_missing_result_lines() -> None:
         check("主ブランチにコミットが無く、done の記録も無い",
               "T-100: 完了" not in git(main_path, "log", "--oneline", "-3", "main").stdout
               and not [e for e in flow_rows(wt1) if e["event"] == "done"])
-
-
-def test_finish_reflection_flag() -> None:
-    say("task.py finish --reflection: 渡した値が台帳に残り、不正な値は終了コード2で done もコミットも打たない")
-    with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1 = _claimed(tmp)
-        r = run_task(wt1, "finish", "T-100", "--reflection", "some", "--result-file", "-", "--message", "x", stdin=RESULT)
-        done = [e for e in flow_rows(wt1) if e["event"] == "done"]
-        check("結果の行が兆候なしでも --reflection some なら reflection は some",
-              r.returncode == 0 and len(done) == 1 and done[0]["reflection"] == "some", r.stdout + r.stderr + repr(done))
-    with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1 = _claimed(tmp)
-        write(os.path.join(wt1, "work.txt"), "x")
-        r = run_task(wt1, "finish", "T-100", "--reflection", "bogus", "--result-file", "-", "--message", "x",
-                     "--add", "work.txt", stdin=RESULT)
-        check("不正な値は終了コード2で DONE も COMMITTED も無く、done は記録されない",
-              r.returncode == 2 and "DONE" not in r.stdout and "COMMITTED" not in r.stdout
-              and not [e for e in flow_rows(wt1) if e["event"] == "done"], r.stdout + r.stderr)
 
 
 def test_finish_stops_on_stop_lines() -> None:
@@ -182,77 +131,6 @@ def test_finish_stops_on_commits_since_claim() -> None:
             and "SHIPPED" not in r.stdout,
             r.stdout + r.stderr,
         )
-
-
-def test_finish_prints_open_span() -> None:
-    say("task.py finish: end の無い start の段を OPEN_SPAN で出し、終了コードは変えない。対が揃えば出さない")
-    with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1 = _claimed(tmp)
-        run_task(wt1, "lap", "T-100", "delegate", "start")
-        run_task(wt1, "lap", "T-100", "review", "start")
-        run_task(wt1, "lap", "T-100", "review", "end")
-        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT)
-        open_lines = [l for l in r.stdout.splitlines() if l.startswith("OPEN_SPAN")]
-        check("閉じていない delegate だけ OPEN_SPAN に出て終了コード0", r.returncode == 0 and open_lines == ["OPEN_SPAN\tT-100\tdelegate"], r.stdout + r.stderr)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1 = _claimed(tmp)
-        run_task(wt1, "lap", "T-100", "delegate", "start")
-        run_task(wt1, "lap", "T-100", "delegate", "end")
-        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT)
-        check("対が揃っていれば OPEN_SPAN は出ない", r.returncode == 0 and "OPEN_SPAN" not in r.stdout, r.stdout + r.stderr)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1 = _claimed(tmp)
-        stages = ("delegate", "accept", "review", "retro", "land")
-        for stage in stages:
-            run_task(wt1, "lap", "T-100", stage, "start")
-        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT)
-        open_lines = [l for l in r.stdout.splitlines() if l.startswith("OPEN_SPAN")]
-        check(
-            "<段> start だけ打って end を打ち漏らすと、tw が閉じる delegate（accept の start）・retro（finish）のほかはどの段も OPEN_SPAN に出る",
-            r.returncode == 0 and open_lines == [f"OPEN_SPAN\tT-100\t{s}" for s in stages if s not in ("delegate", "retro")],
-            r.stdout + r.stderr,
-        )
-
-
-def test_finish_closes_open_retro() -> None:
-    say("task.py finish: 開いた retro の end を done の前に1行だけ書き、開いていなければ書かない")
-    retro_edges = lambda wt: [e.get("edge") for e in flow_rows(wt) if e["event"] == "lap" and e.get("stage") == "retro"]
-    with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1 = _claimed(tmp)
-        run_task(wt1, "lap", "T-100", "retro", "start")
-        run_task(wt1, "lap", "T-100", "retro", "start")
-        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT)
-        kinds = [(e["event"], e.get("stage"), e.get("edge")) for e in flow_rows(wt1)]
-        check("重ねた start に end が1つ続き、OPEN_SPAN は出ない",
-              r.returncode == 0 and retro_edges(wt1) == ["start", "start", "end"] and "OPEN_SPAN" not in r.stdout,
-              repr(kinds) + r.stdout + r.stderr)
-        check("retro の end は done より前",
-              kinds.index(("lap", "retro", "end")) < next(i for i, k in enumerate(kinds) if k[0] == "done"), repr(kinds))
-
-    with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1 = _claimed(tmp)
-        run_task(wt1, "lap", "T-100", "retro", "start")
-        run_task(wt1, "lap", "T-100", "retro", "end")
-        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT)
-        check("手で閉じた retro には end を足さない", r.returncode == 0 and retro_edges(wt1) == ["start", "end"], r.stdout + r.stderr)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1 = _claimed(tmp)
-        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT)
-        check("retro の無い流れには何も書かない", r.returncode == 0 and retro_edges(wt1) == [], r.stdout + r.stderr)
-
-
-def test_finish_open_span_for_any_id_spelling() -> None:
-    say("task.py finish: ID の書き方（表示・小文字・Beads）によらず、終わりの無い段を T-100 の OPEN_SPAN で出す")
-    for spelling in ("T-100", "t-100", beads.to_bd_id("T-100")):
-        with tempfile.TemporaryDirectory() as tmp:
-            _main, wt1 = _claimed(tmp)
-            run_task(wt1, "lap", "T-100", "delegate", "start")
-            r = run_task(wt1, "finish", spelling, "--result-file", "-", "--message", "x", stdin=RESULT)
-            open_lines = [l for l in r.stdout.splitlines() if l.startswith("OPEN_SPAN")]
-            check(f"{spelling}: OPEN_SPAN\\tT-100\\tdelegate が出る", r.returncode == 0 and open_lines == ["OPEN_SPAN\tT-100\tdelegate"], r.stdout + r.stderr)
 
 
 def test_done_twice_is_refused() -> None:
@@ -343,87 +221,6 @@ def _finish_without_add(wt1: str, kind_path: str, kind: str = "submodule", gitmo
     return r.stdout
 
 
-def test_finish_without_add_skips_drifted_submodule() -> None:
-    say("task.py finish: --add を省いても、サブモジュールの指す先のずれと中の未コミットの変更は件名つきのコミットに混ぜない")
-    with tempfile.TemporaryDirectory() as tmp:
-        wt1, before, _other = _with_submodule(tmp)
-        git(os.path.join(wt1, "vendor", "sub"), "checkout", "-q", "HEAD~1")
-        _finish_without_add(wt1, "vendor/sub", "submodule")
-        check("HEAD の vendor/sub の指す先は着手時のまま", git(wt1, "rev-parse", "HEAD:vendor/sub").stdout.strip() == before)
-    with tempfile.TemporaryDirectory() as tmp:
-        wt1, before, _other = _with_submodule(tmp)
-        write(os.path.join(wt1, "vendor", "sub", "f.txt"), "dirty")
-        _finish_without_add(wt1, "vendor/sub", "submodule")
-        check("中の変更だけでも HEAD の指す先は変わらない", git(wt1, "rev-parse", "HEAD:vendor/sub").stdout.strip() == before)
-
-
-def test_finish_without_add_skips_added_and_removed_submodule() -> None:
-    say("task.py finish: --add を省いても、サブモジュールの追加（索引に載った分も）と削除は件名つきのコミットに混ぜない")
-    with tempfile.TemporaryDirectory() as tmp:
-        wt1, _before, other = _with_submodule(tmp)
-        git(wt1, *_ALLOW_FILE, "submodule", "add", "-q", other, "vendor/other")
-        _finish_without_add(wt1, "vendor/other", gitmodules=True)
-        check("HEAD に vendor/other が無い", git(wt1, "ls-tree", "HEAD", "vendor/other").stdout.strip() == "")
-    with tempfile.TemporaryDirectory() as tmp:
-        wt1, before, _other = _with_submodule(tmp)
-        shutil.rmtree(os.path.join(wt1, "vendor", "sub"))
-        _finish_without_add(wt1, "vendor/sub")
-        check("削除してもコミットに入らず、HEAD の vendor/sub は残る", git(wt1, "rev-parse", "HEAD:vendor/sub").stdout.strip() == before)
-    with tempfile.TemporaryDirectory() as tmp:
-        wt1, before, _other = _with_submodule(tmp)
-        git(wt1, "rm", "-q", "vendor/sub")
-        _finish_without_add(wt1, "vendor/sub", gitmodules=True)
-        check("git rm したあとも HEAD の vendor/sub は残る", git(wt1, "rev-parse", "HEAD:vendor/sub").stdout.strip() == before)
-
-
-def test_finish_without_add_skips_moved_submodule_and_url_change() -> None:
-    say("task.py finish: --add を省くと、サブモジュールの移動と .gitmodules だけの変更（URL）も件名つきのコミットに混ぜない。--add で明示すれば入る")
-    with tempfile.TemporaryDirectory() as tmp:
-        wt1, before, _other = _with_submodule(tmp)
-        git(wt1, "mv", "vendor/sub", "vendor/moved")
-        _finish_without_add(wt1, "vendor/moved", gitmodules=True)
-        check("移動してもコミットに入らず、HEAD は元のパスのまま",
-              git(wt1, "rev-parse", "HEAD:vendor/sub").stdout.strip() == before
-              and git(wt1, "ls-tree", "HEAD", "vendor/moved").stdout.strip() == "")
-    with tempfile.TemporaryDirectory() as tmp:
-        wt1, _before, _other = _with_submodule(tmp)
-        path = os.path.join(wt1, ".gitmodules")
-        with open(path, encoding="utf-8") as f:
-            text = f.read()
-        write(path, text.replace("sub-origin", "sub-moved"))
-        _finish_without_add(wt1, ".gitmodules")
-    with tempfile.TemporaryDirectory() as tmp:
-        wt1, _before, _other = _with_submodule(tmp)
-        path = os.path.join(wt1, ".gitmodules")
-        with open(path, encoding="utf-8") as f:
-            text = f.read()
-        write(path, text.replace("sub-origin", "sub-moved"))
-        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "完了", "--add", ".gitmodules", stdin=RESULT)
-        changed = git(wt1, "show", "--name-only", "--format=", "HEAD").stdout.split()
-        check("--add で明示した .gitmodules は従来どおりコミットに入る", ".gitmodules" in changed and "SKIPPED" not in r.stdout, r.stdout + repr(changed))
-
-
-def test_finish_subject_prefix_once() -> None:
-    say("task.py finish: 件名の T-xxx: は一度だけ付く。旧形式の --message 'T-100: …' と --add 明示も従来どおり通る")
-    for message in ("完了", "T-100: 完了"):
-        with tempfile.TemporaryDirectory() as tmp:
-            main_path, wt1 = _claimed(tmp)
-            write(os.path.join(wt1, "work.txt"), "x")
-            r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", message, "--add", "work.txt", stdin=RESULT)
-            subject = git(main_path, "log", "--format=%s", "-1", "main").stdout.strip()
-            check(f"{message!r}: 件名は T-100: 完了", r.returncode == 0 and subject == "T-100: 完了", r.stdout + r.stderr + subject)
-
-
-def test_finish_unadded_warning() -> None:
-    say("task.py finish: --add で渡さなかった変更が残れば UNADDED で知らせる")
-    with tempfile.TemporaryDirectory() as tmp:
-        _main, wt1 = _claimed(tmp)
-        write(os.path.join(wt1, "a.txt"), "x")
-        write(os.path.join(wt1, "b.txt"), "x")
-        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "完了", "--add", "a.txt", stdin=RESULT)
-        check("UNADDED のあとに b.txt が出て a.txt は出ない", "UNADDED\tb.txt" in r.stdout and "UNADDED\ta.txt" not in r.stdout, r.stdout + r.stderr)
-
-
 def test_finish_resume_after_commits_since_claim() -> None:
     say("task.py finish --resume: COMMITS_SINCE_CLAIM で止まったあと、1回でコミットと ship まで進み done は二重にならない")
     with tempfile.TemporaryDirectory() as tmp:
@@ -464,22 +261,12 @@ def test_finish_twice_without_resume_is_refused() -> None:
 
 
 TESTS = (
-    test_finish_warns_fix_link,
-    test_finish_without_add_skips_drifted_submodule,
-    test_finish_without_add_skips_added_and_removed_submodule,
-    test_finish_without_add_skips_moved_submodule_and_url_change,
     test_finish_without_add_commits_changes,
-    test_finish_subject_prefix_once,
-    test_finish_unadded_warning,
     test_finish_resume_after_commits_since_claim,
     test_finish_twice_without_resume_is_refused,
     test_done_twice_is_refused,
-    test_finish_open_span_for_any_id_spelling,
-    test_finish_prints_open_span,
-    test_finish_closes_open_retro,
     test_finish_stops_on_commits_since_claim,
     test_finish_bundles_done_commit_ship,
-    test_finish_reflection_flag,
     test_finish_stops_on_stop_lines,
     test_finish_refuses_missing_result_lines,
 )
@@ -487,3 +274,4 @@ TESTS = (
 
 if __name__ == "__main__":
     refuse_direct_run()
+

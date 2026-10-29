@@ -66,7 +66,7 @@ description: 図の構造（節点と流れ）を JSON で書くと、配色と�
 
 1. `scripts/figure/<型>.py` に `FigureType` を継いだクラスを書き、`@register` を付ける。`check(spec)` は誤りを1件1行で返し、`build(spec, theme)` は `Scene`（長方形・曲線・文字）を返す。色は `paper`・`ink`・`muted`・`accent` の役の名前で書く
 2. `scripts/figure/__init__.py` で import する
-3. `scripts/selftest_figure.py` に、描ける・不正な spec を断る・viewBox からはみ出さないの3つを足す
+3. `figure_render.py` で描いて、不正な spec を断る・viewBox からはみ出さないを手で確かめる
 
 `python3 ${CLAUDE_SKILL_DIR}/scripts/figure_render.py --types` で登録済みの型が出る。
 

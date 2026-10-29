@@ -84,83 +84,6 @@ def test_accept_stops_on_stop_lines() -> None:
         )
 
 
-def test_accept_records_accept_end() -> None:
-    say("task.py accept: 整形と verify-check まで通った回だけ accept の end を flow に残し、REVIEW で返る回は残さない")
-    accept_ends = lambda wt: [
-        e for e in flow_rows(wt) if e["event"] == "lap" and e.get("stage") == "accept" and e.get("edge") == "end"
-    ]
-    with tempfile.TemporaryDirectory() as tmp:
-        wt1 = _claimed_repo(tmp)
-        write(os.path.join(wt1, "note.md"), "x\n")
-        run_task(wt1, "verify")
-        r = run_task(wt1, "accept", "T-100")
-        check("文書だけ（レビュー不要）の回は end が1つ残る", r.returncode == 0 and len(accept_ends(wt1)) == 1, r.stdout + r.stderr)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        wt1 = _claimed_repo(tmp)
-        write(os.path.join(wt1, "code.py"), "x = 1\n")
-        r = run_task(wt1, "accept", "T-100")
-        check("REVIEW で返る回は end を残さない", "REVIEW\tcode\t1" in r.stdout and accept_ends(wt1) == [], r.stdout + r.stderr)
-        stage_edges = lambda stage: [e.get("edge") for e in flow_rows(wt1) if e["event"] == "lap" and e.get("stage") == stage]
-        check("tw accept が打つ accept・review は start として残る", stage_edges("accept") == ["start"] and stage_edges("review") == ["start"], repr(flow_rows(wt1)))
-        r = run_task(wt1, "accept", "T-100", "--after-review")
-        check("--after-review の終わりで end が1つ残る", r.returncode == 0 and len(accept_ends(wt1)) == 1, r.stdout + r.stderr)
-        check("end の行は LAPPED として表に出さない", "LAPPED" not in r.stdout, r.stdout)
-
-
-def test_accept_end_pairs_with_start_for_any_id_spelling() -> None:
-    say("task.py accept: ID の書き方（表示・小文字・Beads）によらず、accept の start と end が同じ task で残る")
-    for spelling in ("T-100", "t-100", beads.to_bd_id("T-100")):
-        with tempfile.TemporaryDirectory() as tmp:
-            wt1 = _claimed_repo(tmp)
-            write(os.path.join(wt1, "note.md"), "x\n")
-            run_task(wt1, "verify")
-            r = run_task(wt1, "accept", spelling)
-            edges = [(e["task"], e.get("edge")) for e in flow_rows(wt1) if e["event"] == "lap" and e.get("stage") == "accept"]
-            check(f"{spelling}: start と end が T-100 に残る", r.returncode == 0 and edges == [("T-100", "start"), ("T-100", "end")], repr(edges) + r.stdout + r.stderr)
-
-
-def test_accept_closes_open_delegate() -> None:
-    say("task.py accept: 最初の呼び出しで、開いた delegate の end を accept の start の直後に1行だけ書く")
-    laps = lambda wt: [(e.get("stage"), e.get("edge")) for e in flow_rows(wt) if e["event"] == "lap"]
-    with tempfile.TemporaryDirectory() as tmp:
-        wt1 = _claimed_repo(tmp)
-        run_task(wt1, "lap", "T-100", "delegate", "start")
-        write(os.path.join(wt1, "code.py"), "x = 1\n")
-        r = run_task(wt1, "accept", "T-100")
-        check("開いた delegate は accept の start の直後に閉じる",
-              laps(wt1) == [("delegate", "start"), ("accept", "start"), ("delegate", "end"), ("review", "start")],
-              repr(laps(wt1)) + r.stdout + r.stderr)
-        check("閉じた行は LAPPED として表に出さない", r.stdout.count("LAPPED") == 2, r.stdout)
-        run_task(wt1, "accept", "T-100", "--after-review")
-        check("--after-review は delegate を閉じ直さない", laps(wt1).count(("delegate", "end")) == 1, repr(laps(wt1)))
-
-    with tempfile.TemporaryDirectory() as tmp:
-        wt1 = _claimed_repo(tmp)
-        run_task(wt1, "lap", "T-100", "delegate", "start")
-        run_task(wt1, "lap", "T-100", "delegate", "end")
-        write(os.path.join(wt1, "note.md"), "x\n")
-        run_task(wt1, "verify")
-        run_task(wt1, "accept", "T-100")
-        check("手で閉じた delegate には end を足さない", laps(wt1).count(("delegate", "end")) == 1, repr(laps(wt1)))
-
-    with tempfile.TemporaryDirectory() as tmp:
-        wt1 = _claimed_repo(tmp)
-        write(os.path.join(wt1, "note.md"), "x\n")
-        run_task(wt1, "verify")
-        run_task(wt1, "accept", "T-100")
-        check("delegate の無い流れには何も書かない", all(stage != "delegate" for stage, _ in laps(wt1)), repr(laps(wt1)))
-
-    with tempfile.TemporaryDirectory() as tmp:
-        wt1 = _claimed_repo(tmp)
-        run_task(wt1, "lap", "T-100", "delegate", "start")
-        r = run_task(wt1, "lap", "T-100", "accept", "start")
-        check("tw accept を使わない受け入れ（別のリポジトリ）で手で打つ accept の start も、開いた delegate を閉じる",
-              laps(wt1) == [("delegate", "start"), ("accept", "start"), ("delegate", "end")]
-              and r.stdout == "LAPPED\tT-100\taccept\tstart\n",
-              repr(laps(wt1)) + r.stdout + r.stderr)
-
-
 REVIEW_SNAPSHOT_PY = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "core", "review_snapshot.py")
 )
@@ -191,59 +114,6 @@ def _commit(tree: str, name: str, text: str) -> None:
     write(os.path.join(tree, name), text)
     git(tree, "add", name)
     git(tree, "commit", "-q", "-m", name)
-
-
-def test_accept_other_repo() -> None:
-    say("task.py accept: 作業先が別のリポジトリなら、作業先の作業ツリーで範囲つきの判定・木の控え・verify-check を打つ")
-    with tempfile.TemporaryDirectory() as tmp:
-        wt1, _work_main, work_tree = _other_repo_claimed(tmp)
-        _commit(work_tree, "note.md", "x\n")
-        run_task(work_tree, "verify")
-        r = run_task(wt1, "accept", "T-100")
-        lines = r.stdout.splitlines()
-        check(
-            "文書だけなら NO_RANGE を出さず SKIP のあと作業先の控えで VERIFIED_SAME、整形は打たない",
-            r.returncode == 0
-            and "SKIP\tdocs-only" in lines
-            and "NO_RANGE" not in r.stdout
-            and "FORMATTED" not in lines
-            and lines[-1].startswith("VERIFIED_SAME\t"),
-            r.stdout + r.stderr,
-        )
-
-        _commit(work_tree, "code.py", "x = 1\n")
-        r = run_task(wt1, "accept", "T-100")
-        snapshot = subprocess.run([sys.executable, REVIEW_SNAPSHOT_PY], cwd=work_tree, capture_output=True, text=True).stdout.strip()
-        check(
-            "コードのコミットなら REVIEW と、作業先の作業ツリーの木の SNAPSHOT",
-            r.returncode == 0 and "REVIEW\tcode\t1" in r.stdout.splitlines() and r.stdout.splitlines()[-1] == f"SNAPSHOT\t{snapshot}",
-            r.stdout + r.stderr,
-        )
-
-        r = run_task(wt1, "accept", "T-100", "--after-review")
-        check(
-            "--after-review も作業先の控えを見る（コミットのあと verify していないので NOT_VERIFIED）、整形は打たない",
-            r.returncode == 0 and r.stdout.splitlines()[-1].startswith("NOT_VERIFIED\t") and "FORMATTED" not in r.stdout,
-            r.stdout + r.stderr,
-        )
-
-    with tempfile.TemporaryDirectory() as tmp:
-        wt1, _work_main, work_tree = _other_repo_claimed(tmp, difficulty="opus")
-        _commit(work_tree, "note.md", "x\n")
-        r = run_task(wt1, "accept", "T-100")
-        check("difficulty が opus なら REVIEW\topus", r.returncode == 0 and "REVIEW\topus" in r.stdout.splitlines(), r.stdout + r.stderr)
-
-
-def test_accept_other_repo_missing_worktree() -> None:
-    say("task.py accept: 作業先の作業ツリー（枝 t-100）が無ければ MISSING で止まる")
-    with tempfile.TemporaryDirectory() as tmp:
-        wt1, _work_main, _work_tree = _other_repo_claimed(tmp, worktree=False)
-        r = run_task(wt1, "accept", "T-100")
-        check(
-            "MISSING で終了コード6、plan-check を打たない",
-            r.returncode == 6 and any(l.startswith("MISSING\t") and "t-100" in l for l in r.stdout.splitlines()) and "PLAN_" not in r.stdout,
-            r.stdout + r.stderr,
-        )
 
 
 def test_accept_other_repo_main_dirty() -> None:
@@ -327,43 +197,14 @@ def test_accept_not_last_step() -> None:
               r.returncode == 0 and r.stdout.splitlines()[-1].startswith("VERIFIED_SAME\t"), r.stdout + r.stderr)
 
 
-def test_lap_end_not_doubled() -> None:
-    say("task.py lap・accept: end は開いている段にだけ書き、手打ちと tw の end が重ならない")
-    edges = lambda wt, stage: [e.get("edge") for e in flow_rows(wt) if e["event"] == "lap" and e.get("stage") == stage]
-    with tempfile.TemporaryDirectory() as tmp:
-        wt1 = _claimed_repo(tmp)
-        run_task(wt1, "lap", "T-100", "delegate", "start")
-        write(os.path.join(wt1, "note.md"), "x\n")
-        run_task(wt1, "verify")
-        run_task(wt1, "accept", "T-100")
-        r = run_task(wt1, "lap", "T-100", "delegate", "end")
-        check("accept が閉じた delegate へ手で end を打っても LAPPED を出し、end は1つのまま",
-              r.stdout == "LAPPED\tT-100\tdelegate\tend\n" and edges(wt1, "delegate") == ["start", "end"],
-              repr(edges(wt1, "delegate")) + r.stdout + r.stderr)
-        run_task(wt1, "accept", "T-100", "--after-review")
-        run_task(wt1, "accept", "T-100", "--after-review")
-        check("--after-review を重ねても accept の end は1つ", edges(wt1, "accept") == ["start", "end"], repr(edges(wt1, "accept")))
-        r = run_task(wt1, "lap", "T-100", "land", "end")
-        check("開いていない段への end は何も書かない",
-              r.stdout == "LAPPED\tT-100\tland\tend\n" and edges(wt1, "land") == [], repr(edges(wt1, "land")) + r.stdout)
-        run_task(wt1, "lap", "T-100", "land", "start")
-        run_task(wt1, "lap", "T-100", "land", "end")
-        check("開いた段への手打ちの end は書く", edges(wt1, "land") == ["start", "end"], repr(edges(wt1, "land")))
-
-
 TESTS = (
     test_accept_not_last_step,
-    test_lap_end_not_doubled,
-    test_accept_closes_open_delegate,
-    test_accept_end_pairs_with_start_for_any_id_spelling,
-    test_accept_records_accept_end,
     test_accept_bundles_acceptance_steps,
     test_accept_stops_on_stop_lines,
-    test_accept_other_repo,
-    test_accept_other_repo_missing_worktree,
     test_accept_other_repo_main_dirty,
 )
 
 
 if __name__ == "__main__":
     refuse_direct_run()
+

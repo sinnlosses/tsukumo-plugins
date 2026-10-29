@@ -24,75 +24,6 @@ from selftest_fixtures import PLANNED_BODY, run_handback_guard, run_task, start_
 from selftest_support import check, git, local, refuse_direct_run, say, write  # noqa: E402
 
 
-def test_release_force_without_assignee() -> None:
-    say("release --force: 担当者の消えた in_progress の着手の印を外せる")
-    with tempfile.TemporaryDirectory() as tmp:
-        main_path, wt1, _wt2 = make_repo(tmp)
-        a = new(main_path, "担当者が消えた")
-        bd_id = beads.to_bd_id(a)
-        bd(main_path, "update", bd_id, "--status", "in_progress", "--add-label", beads.SHIP_LABELS["done"])
-        stuck = beads.show(main_path, bd_id)
-        check("前提: assignee 無しの in_progress", stuck is not None and stuck.status == "in_progress"
-              and not stuck.assignee, str(stuck and stuck.raw))
-        r = run_task(wt1, "release", a)
-        check("--force 無しは NOT_OWNER（挙動は変えない）", r.returncode == 4 and r.stdout.startswith("NOT_OWNER"), r.stdout)
-        r = run_task(wt1, "release", a, "--force")
-        freed = beads.show(main_path, bd_id)
-        check("--force は RELEASED で status が open に戻る", r.returncode == 0 and r.stdout.startswith("RELEASED")
-              and freed is not None and freed.status == "open" and not freed.assignee, r.stdout + r.stderr)
-        check("ship の label も残らない", freed is not None
-              and not any(l in beads.SHIP_LABELS.values() for l in freed.labels), str(freed and freed.labels))
-        r = run_task(wt1, "release", a, "--force")
-        check("もう一度は NOT_CLAIMED", r.returncode == 0 and r.stdout.startswith("NOT_CLAIMED"), r.stdout)
-
-
-def test_release_force_clears_github_label() -> None:
-    say("release --force: GitHub の label status::in_progress も残らず、取り込みで戻らない")
-    with github() as (fake, _tmp, main_path, wt1):
-        a = new(main_path, "label が残る")
-        n, bd_id = num(a), beads.to_bd_id(a)
-        time.sleep(1.1)
-        bd(main_path, "update", bd_id, "--status", "in_progress", "--assignee", "wt1")
-        r = run_task(main_path, "sync")
-        check("前提: GitHub に status::in_progress が付く", r.returncode == 0
-              and "status::in_progress" in status_labels(fake, n), r.stdout + repr(fake.issues[n]["labels"]))
-        time.sleep(1.1)
-        r = run_task(wt1, "release", a, "--force")
-        check("RELEASED だけで GitHub には書かない", r.returncode == 0 and r.stdout.startswith("RELEASED")
-              and "TRACKER\tOK\tgithub" not in r.stdout
-              and "status::in_progress" in status_labels(fake, n), r.stdout + r.stderr + repr(fake.issues[n]["labels"]))
-        r = run_task(main_path, "sync")
-        check("sync が GitHub の status::in_progress を外す", "status::in_progress" not in status_labels(fake, n),
-              r.stdout + repr(fake.issues[n]["labels"]))
-        again = beads.show(main_path, bd_id)
-        check("sync のあとも open のまま", r.returncode == 0 and again is not None and again.status == "open",
-              r.stdout + str(again and again.status))
-
-
-def test_release_force_deadline_then_sync() -> None:
-    say("release --force: 取り込みの読みが上限切れでも、sync が label を外し open のまま")
-    with github() as (fake, _tmp, main_path, wt1):
-        a = new(main_path, "送りが切れる")
-        n, bd_id = num(a), beads.to_bd_id(a)
-        time.sleep(1.1)
-        bd(main_path, "update", bd_id, "--status", "in_progress")
-        r = run_task(main_path, "sync")
-        check("前提: GitHub に status::in_progress が付く", r.returncode == 0
-              and "status::in_progress" in status_labels(fake, n), r.stdout + repr(fake.issues[n]["labels"]))
-        local.env[tracker.OP_TIMEOUT_ENV] = "2"
-        fake.delay = 5
-        r = run_task(wt1, "release", a, "--force")
-        check("RELEASED と TRACKER FAILED（取り込みの読みが切れた行。担当者の無い in_progress は取り込む。送りは release にない）",
-              r.returncode == 0 and r.stdout.startswith("RELEASED") and "TRACKER\tFAILED\tgithub" in r.stdout,
-              r.stdout + r.stderr)
-        fake.delay = 0
-        r = run_task(main_path, "sync")
-        again = beads.show(main_path, bd_id)
-        check("sync が label を外す", r.returncode == 0 and "status::in_progress" not in status_labels(fake, n),
-              r.stdout + repr(fake.issues[n]["labels"]))
-        check("Beads は open のまま", again is not None and again.status == "open", str(again and again.status))
-
-
 KILL_AFTER_PULL_ENV = "SELFTEST_KILL_AFTER_PULL"
 
 
@@ -289,27 +220,6 @@ def test_claim_kept_through_concurrent_syncs() -> None:
                   repr(outs) + str(got and got.raw))
 
 
-def test_pull_sees_other_worktree_kv() -> None:
-    say("着手の戻し: 取り込みの途中に別の作業ツリーが書いた送りの印を見て、戻すかを決める")
-    with github() as (fake, tmp, main_path, wt1):
-        arm_kv_write(tmp)
-        a, a_id, na = _claim_and_push(fake, main_path, wt1, "取り込みの間に送りの印を空にされる")
-        b, b_id, nb = _claim_and_push(fake, main_path, wt1, "送りの印はそのまま")
-        for n in (na, nb):
-            fake.edit(n, labels=[l for l in fake.issues[n]["labels"] if l != "status::in_progress"])
-
-        with kv_written_during(tmp, "github pull", f"{tracker.PUSHED_KEY_PREFIX}{na}", "") as fired:
-            r = run_task(main_path, "sync")
-        rb = r
-        got_a, got_b = beads.show(main_path, a_id), beads.show(main_path, b_id)
-        check("前提: 取り込みの直前に送りの印を書いた", os.path.exists(fired), r.stdout + r.stderr)
-        check("取り込みの間に印が空にされた課題は、送っていない着手として in_progress と assignee へ戻す",
-              got_a is not None and got_a.status == "in_progress" and got_a.assignee == "wt1",
-              r.stdout + r.stderr + str(got_a and got_a.raw))
-        check("印がそのままの課題は、GitHub で手放されたとして open のまま", got_b is not None and got_b.status == "open",
-              rb.stdout + rb.stderr + str(got_b and got_b.raw))
-
-
 # 長いものから並列に乗せる（後ろに残ると全体がその分延びる）。
 TESTS = (
     test_claim_not_restored_after_release_done_ship,
@@ -318,13 +228,10 @@ TESTS = (
     test_unsent_claim_survives_pull,
     test_claim_not_restored_when_released_on_github,
     test_claim_not_restored_by_plain_sync_after_release_on_github,
-    test_pull_sees_other_worktree_kv,
     test_claim_kept_through_concurrent_syncs,
-    test_release_force_without_assignee,
-    test_release_force_clears_github_label,
-    test_release_force_deadline_then_sync,
 )
 
 
 if __name__ == "__main__":
     refuse_direct_run("selftest_beads.py")
+

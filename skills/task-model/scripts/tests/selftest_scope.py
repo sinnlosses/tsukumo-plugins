@@ -21,7 +21,6 @@ ALL = "ALL"
 
 SCOPED_TW = {
     "tw_accept.py": ("selftest_t_accept",),
-    "tw_brief.py": ("selftest_t_brief",),
     "tw_escalate.py": ("selftest_t_guards",),
     "tw_finish.py": ("selftest_t_finish",),
     "tw_handback.py": ("selftest_t_guards", "selftest_t_verify"),
@@ -35,6 +34,7 @@ SCOPED_TW = {
 # 自己テストが参照する先を言い切れない・広く使われるため、全件に倒す
 FULL_TW = (
     "tw_base.py",
+    "tw_brief.py",
     "tw_claim.py",
     "tw_config.py",
     "tw_edit.py",
