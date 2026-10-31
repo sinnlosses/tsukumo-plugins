@@ -49,6 +49,7 @@ def cmd_finish(
             print("usage: --result-file が要る（--resume は done 済みのタスクだけで省ける）", file=sys.stderr)
             raise SystemExit(2)
         tw_handback.close_open_lap(toplevel, bd_id, "retro")
+        tw_handback.close_open_lap(toplevel, bd_id, "accept")
         if _done_found_stray_commits(toplevel, task_id, dropped, result_path, reflection):
             raise SystemExit(STRAY_COMMITS_EXIT)
     committed = _commit(toplevel, _subject(shown, message), files)

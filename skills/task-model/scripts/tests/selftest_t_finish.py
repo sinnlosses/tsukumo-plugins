@@ -260,7 +260,31 @@ def test_finish_twice_without_resume_is_refused() -> None:
         check("done 前の --resume は --result-file が無ければ終了コード2", r.returncode == 2, r.stdout + r.stderr)
 
 
+def _accept_edges(wt: str) -> list[str]:
+    return [r.get("edge") for r in flow_rows(wt) if r["event"] == "lap" and r.get("stage") == "accept"]
+
+
+def test_finish_closes_open_accept() -> None:
+    say("task.py finish: accept が開いたままなら end を1つ書き、閉じ済み・accept が無いときは書かない")
+    with tempfile.TemporaryDirectory() as tmp:
+        _main, wt1 = _claimed(tmp)
+        run_task(wt1, "lap", "T-100", "accept", "start")
+        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT)
+        check("開いた accept に end が1つ書かれる", r.returncode == 0 and _accept_edges(wt1) == ["start", "end"], r.stdout + r.stderr)
+    with tempfile.TemporaryDirectory() as tmp:
+        _main, wt1 = _claimed(tmp)
+        run_task(wt1, "lap", "T-100", "accept", "start")
+        run_task(wt1, "lap", "T-100", "accept", "end")
+        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT)
+        check("閉じ済みなら二重に書かない", r.returncode == 0 and _accept_edges(wt1) == ["start", "end"], r.stdout + r.stderr)
+    with tempfile.TemporaryDirectory() as tmp:
+        _main, wt1 = _claimed(tmp)
+        r = run_task(wt1, "finish", "T-100", "--dropped", "--result-file", "-", "--message", "x", stdin=RESULT)
+        check("accept が無ければ何も書かない", _accept_edges(wt1) == [], r.stdout + r.stderr)
+
+
 TESTS = (
+    test_finish_closes_open_accept,
     test_finish_without_add_commits_changes,
     test_finish_resume_after_commits_since_claim,
     test_finish_twice_without_resume_is_refused,
