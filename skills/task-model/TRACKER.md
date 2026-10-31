@@ -30,6 +30,7 @@ GitHub で本文を直したあとの取り込みで `open` に戻る。`deferre
 | ドラフトから進めた課題の出自 | metadata `from_draft`（値は `- 観点:` の観点か `不明`。GitHub には載らず、取り込みで消えたら取り込み前の値を戻す。閉じた課題でも戻す） |
 | `done`・`dropped` | `bd close`（`dropped` は label `cancelled` を足す。独自の状態 `cancelled` は依存を解決しないので使わない） |
 | `difficulty`・`loopable` | metadata `difficulty`・`loopable`（GitHub には載らず、取り込みで消えたら取り込み前の値を戻す。label `difficulty:`・`loopable:` は読まない） |
+| `importance`・`urgency` | metadata `importance`・`urgency`（`high\|normal\|low`。無ければ `normal` で、振り分け前の判定に入れない。語彙の外は INVALID。GitHub には載らず、取り込みで消えたら取り込み前の値を戻す） |
 | 委譲しない近道の印 | label `direct:Y`（印が無ければ label を置かない。`direct:` の label が `Y` 以外か2つ以上なら INVALID） |
 | 種類（WORKFLOW.md「kind（種類）」） | label `kind:<種類>`（種類が無ければ label を置かない。`kind:` の label が語彙の外か2つ以上なら INVALID） |
 | `dependencies` | `blocks` の依存（`bd create --deps`。後から変えるのは `tw edit --add-deps`・`--remove-deps` が打つ `bd dep add`・`bd dep remove`） |
@@ -115,7 +116,7 @@ Project・Status 欄・選択肢の ID は `bd kv` の `task-workflow.project` �
   `open` に戻す。`tw` は取り込みを1回ごとに一意の actor `<作業ツリーの名前>:github-pull:<pid>-<time_ns>`
   で打ち（前の取り込みの更新と取り違えない）、その更新の書く直前の版
   （`bd history --events` の `old_value`。取り込みの最中に別の作業ツリーが着手しても、その着手が入る）
-  から、消えた assignee と metadata の印（`task_*`・`difficulty`・`loopable`。閉じた課題は後の2つだけ）を `bd update` で戻す。`open` に戻った着手は、
+  から、消えた assignee と metadata の印（`task_*`・`difficulty`・`loopable`・`importance`・`urgency`。閉じた課題は `difficulty`・`loopable`・`importance`・`urgency`・`draft`・`from_draft` だけ）を `bd update` で戻す。`open` に戻った着手は、
   着手の送りが GitHub に届く前の版で上書きされたときだけ `in_progress` に戻し、送ったあとで label が
   外れた・GitHub で担当者が付いたものは手放しとして戻さない。届いたかは課題ごとの送りの印
   （`bd kv` の `task-workflow.github-pushed.<番号>`。送りが届くたびに、送る直前に読んだ着手の時刻

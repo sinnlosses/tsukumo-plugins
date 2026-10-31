@@ -28,8 +28,8 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
     sections: list[str] = args.section or []
     body_files: list[str] = args.body_file or []
     _check_body_args(sections, body_files)
-    if not any([body_files,args.summary, args.difficulty, args.loopable, args.status, args.add_deps, args.remove_deps, args.direct, args.kind]):
-        print("usage: 直すもの（--body-file・--summary・--difficulty・--loopable・--status・--add-deps・--remove-deps・--direct・--kind）が無い", file=sys.stderr)
+    if not any([body_files,args.summary, args.difficulty, args.loopable, args.importance, args.urgency, args.status, args.add_deps, args.remove_deps, args.direct, args.kind]):
+        print("usage: 直すもの（--body-file・--summary・--difficulty・--loopable・--importance・--urgency・--status・--add-deps・--remove-deps・--direct・--kind）が無い", file=sys.stderr)
         raise SystemExit(2)
     add = _parse_dep_list(args.add_deps, layout.ANY_ID_PATTERN, "--add-deps", "T-999・GH-5・PROJ-123")
     remove = _parse_dep_list(args.remove_deps, layout.ANY_ID_PATTERN, "--remove-deps", "T-999・GH-5・PROJ-123")
@@ -111,7 +111,12 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
             print("usage: --summary は改行を含まない1行にする", file=sys.stderr)
             raise SystemExit(2)
         cmd += ["--title", args.summary.strip()]
-    for value, key in ((args.difficulty, beads.DIFFICULTY_KEY), (args.loopable, beads.LOOPABLE_KEY)):
+    for value, key in (
+        (args.difficulty, beads.DIFFICULTY_KEY),
+        (args.loopable, beads.LOOPABLE_KEY),
+        (args.importance, beads.IMPORTANCE_KEY),
+        (args.urgency, beads.URGENCY_KEY),
+    ):
         if value:
             cmd += ["--set-metadata", f"{key}={value}"]
     had_direct = "Y" if beads.DIRECT_ON in issue.labels else "N"

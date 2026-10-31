@@ -169,7 +169,56 @@ def test_backup() -> None:
         check("リポジトリの中へは取らない（終了コード10）", r.returncode == 10 and "BACKUP\tFAILED" in r.stdout, r.stdout)
 
 
+def test_importance_urgency_read() -> None:
+    say("重要度・緊急度の読み（値あり・欠け・語彙の外）")
+
+    def read(**metadata: str) -> tuple[taskfile.Task | None, str | None]:
+        meta = {"difficulty": "sonnet", "loopable": "Y", **metadata}
+        issue = beads.Issue("gh-1", "題", "open", (), (), None, None, None, {"metadata": meta})
+        return beads.to_task(issue)
+
+    task, _ = read(importance="high", urgency="low")
+    check("値ありは読める", task is not None and (task.importance, task.urgency) == ("high", "low"), str(task))
+    task, error = read()
+    check("欠けは normal で、振り分け前にも不正にもならない", task is not None and error is None
+          and (task.importance, task.urgency) == ("normal", "normal"), f"{task} {error}")
+    task, error = read(urgency="urgent")
+    check("語彙の外は INVALID の理由が返る（振り分け前ではない）", task is None and error is not None and "urgency" in error, str(error))
+
+
+def test_importance_urgency_flags() -> None:
+    say("tw new・edit の --importance・--urgency と tw show")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _ = make_repo(tmp)
+        plain = new(main_path, "既定")
+        shown = run_task(wt1, "show", plain).stdout
+        check("省いた課題は metadata に書かず、show にも出さない", "importance:" not in shown and "urgency:" not in shown, shown)
+        a = new(main_path, "旗つき", "--importance", "high", "--urgency", "low")
+        meta = beads.show(main_path, beads.to_bd_id(a)).raw.get("metadata", {})
+        shown = run_task(wt1, "show", a).stdout
+        check("new の旗が metadata と show に出る", (meta.get("importance"), meta.get("urgency")) == ("high", "low")
+              and "importance: high\n" in shown and "urgency: low\n" in shown, f"{meta}\n{shown}")
+        r = run_task(wt1, "edit", a, "--importance", "normal", "--urgency", "high")
+        shown = run_task(wt1, "show", a).stdout
+        check("edit で変えられ、normal に戻すと show から消える", r.returncode == 0 and "importance:" not in shown
+              and "urgency: high\n" in shown, r.stdout + r.stderr + shown)
+        r = run_task(wt1, "new", "--summary", "外", "--difficulty", "sonnet", "--loopable", "Y", "--importance", "urgent",
+                     "--body-file", "-", stdin=PLANNED_BODY)
+        check("new は語彙の外を終了コード2で拒む", r.returncode == 2, r.stdout + r.stderr)
+        r = run_task(wt1, "edit", a, "--urgency", "urgent")
+        check("edit は語彙の外を終了コード2で拒む", r.returncode == 2, r.stdout + r.stderr)
+        bd(main_path, "create", "--id", "t-adopt", "--title", "取り込み", "--silent")
+        r = run_task(main_path, "adopt", "T-ADOPT", "--difficulty", "sonnet", "--loopable", "Y", "--urgency", "high",
+                     "--body-file", "-", stdin=PLANNED_BODY)
+        adopted = beads.show(main_path, beads.to_bd_id(r.stdout.split("\t")[2].strip())) if r.returncode == 0 else None
+        meta = adopted.raw.get("metadata", {}) if adopted else {}
+        check("adopt の旗が metadata に書かれる", r.returncode == 0 and meta.get("urgency") == "high"
+              and "importance" not in meta, r.stdout + r.stderr + str(meta))
+
+
 TESTS = (
+    test_importance_urgency_read,
+    test_importance_urgency_flags,
     test_cycle_done_ship_and_dropped,
     test_claim_race_owner_and_release,
     test_backup,

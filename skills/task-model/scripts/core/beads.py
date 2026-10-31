@@ -58,6 +58,8 @@ HOLD_STATUSES = (HOLD_STATUS, LEGACY_HOLD_STATUS)
 CANCELLED_LABEL = "cancelled"
 DIFFICULTY_KEY = "difficulty"
 LOOPABLE_KEY = "loopable"
+IMPORTANCE_KEY = "importance"
+URGENCY_KEY = "urgency"
 # ドラフトの印（`tw new --draft` が `deferred` の課題に付ける metadata）。
 DRAFT_KEY = "draft"
 DRAFT_ON = "Y"
@@ -106,6 +108,8 @@ MARK_KEYS = (
     PLAN_TIP_KEY,
     DIFFICULTY_KEY,
     LOOPABLE_KEY,
+    IMPORTANCE_KEY,
+    URGENCY_KEY,
     DRAFT_KEY,
     FROM_DRAFT_KEY,
     SHIPPED_KEY,
@@ -428,6 +432,12 @@ def to_task(issue: Issue) -> tuple[taskfile.Task | None, str | None]:
         return None, "metadata difficulty が haiku|sonnet|opus の1つでない"
     if len(loopable) != 1 or loopable[0] not in taskfile.LOOPABLE_VALUES:
         return None, "metadata loopable が Y|N の1つでない"
+    levels = {}
+    for key in (IMPORTANCE_KEY, URGENCY_KEY):
+        values = attribute_values(issue, key)
+        if len(values) > 1 or (values and values[0] not in taskfile.LEVEL_VALUES):
+            return None, f"metadata {key} が {'|'.join(taskfile.LEVEL_VALUES)} の1つでない"
+        levels[key] = values[0] if values else taskfile.LEVEL_DEFAULT
     direct = label_values(issue.labels, DIRECT_LABEL)
     if direct not in ([], ["Y"]):
         return None, "label direct: は direct:Y が1つだけ（印が無ければ置かない）"
@@ -438,7 +448,11 @@ def to_task(issue: Issue) -> tuple[taskfile.Task | None, str | None]:
     if summary == "" or "\n" in summary:
         return None, "title が空か改行を含む"
     deps = tuple(to_task_id(d) for d in issue.dependencies)
-    return taskfile.Task(to_task_id(issue.bd_id), summary, status, difficulty[0], loopable[0], deps, "", "Y" if direct else "N"), None
+    task = taskfile.Task(
+        to_task_id(issue.bd_id), summary, status, difficulty[0], loopable[0], deps, "", "Y" if direct else "N",
+        importance=levels[IMPORTANCE_KEY], urgency=levels[URGENCY_KEY],
+    )
+    return task, None
 
 
 def is_draft(issue: Issue) -> bool:

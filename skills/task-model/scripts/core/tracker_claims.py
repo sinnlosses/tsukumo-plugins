@@ -17,6 +17,14 @@ SYNCED_ITEM_PREFIX = SYNCED_KEY + "."
 # 課題ごとのキー `<これ><Issue 番号>`。値は最後に届いた送りの直前に読んだその課題の着手の時刻
 # （`started_at`。着手中でなければ空）。この値は JSON でない。
 PUSHED_KEY_PREFIX = "task-workflow.github-pushed."
+CLOSED_RESTORED_KEYS = (
+    beads.DIFFICULTY_KEY,
+    beads.LOOPABLE_KEY,
+    beads.IMPORTANCE_KEY,
+    beads.URGENCY_KEY,
+    beads.DRAFT_KEY,
+    beads.FROM_DRAFT_KEY,
+)
 
 
 def _claim_restore_args(
@@ -39,7 +47,7 @@ def _claim_restore_args(
         return [
             x
             for k, v in had.items()
-            if k in (beads.DIFFICULTY_KEY, beads.LOOPABLE_KEY, beads.DRAFT_KEY, beads.FROM_DRAFT_KEY) and k not in has
+            if k in CLOSED_RESTORED_KEYS and k not in has
             for x in ("--set-metadata", f"{k}={v}")
         ]
     args: list[str] = []

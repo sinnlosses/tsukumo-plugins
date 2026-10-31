@@ -18,6 +18,8 @@ import layout
 STATUS_VALUES = ("todo", "hold", "done", "dropped", "draft")
 DIFFICULTY_VALUES = ("haiku", "sonnet", "opus")
 LOOPABLE_VALUES = ("Y", "N")
+LEVEL_VALUES = ("high", "normal", "low")
+LEVEL_DEFAULT = "normal"
 KIND_VALUES = ("bug", "feature", "refactor", "docs")
 
 # 委譲しない近道の基準（WORKFLOW.md「difficulty とモデルの切り替え」の表）。
@@ -103,10 +105,12 @@ class Task:
     direct: str = "N"  # 委譲しない近道の印。"Y" のときだけ front matter に `direct: Y` の行を置く
     created: str = "-"  # ローカルの `YYYY-MM-DD HH:MM`。Beads に値が無ければ `-`
     updated: str = "-"
+    importance: str = LEVEL_DEFAULT
+    urgency: str = LEVEL_DEFAULT
 
 
 def render(task: Task) -> str:
-    """front matter を8行ちょうど（`direct: Y` があれば9行）で書き、本文を続ける。
+    """front matter を8行ちょうど（`direct: Y`・`normal` でない `importance`・`urgency` があればその分の行を足して）で書き、本文を続ける。
 
     本文は「閉じる `---` の次に空行1行、末尾は改行1つ」に揃える。Markdown の整形ツール
     （oxfmt・prettier）は見出しの前に空行を求めるので、`## 目的・背景` から始まる本文をそのまま
@@ -121,6 +125,8 @@ def render(task: Task) -> str:
         f"difficulty: {task.difficulty}\n"
         f"loopable: {task.loopable}\n"
         + ("direct: Y\n" if task.direct == "Y" else "")
+        + (f"importance: {task.importance}\n" if task.importance != LEVEL_DEFAULT else "")
+        + (f"urgency: {task.urgency}\n" if task.urgency != LEVEL_DEFAULT else "")
         + f"dependencies: [{', '.join(task.dependencies)}]\n"
         f"created: {task.created}\n"
         f"updated: {task.updated}\n"

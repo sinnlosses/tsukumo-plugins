@@ -55,9 +55,9 @@ def _killed_sync(cwd: str) -> subprocess.CompletedProcess:
     return r
 
 
-def _claim_and_push(fake: "FakeGitHub", main_path: str, wt: str, summary: str) -> tuple[str, str, int]:
+def _claim_and_push(fake: "FakeGitHub", main_path: str, wt: str, summary: str, *extra: str) -> tuple[str, str, int]:
     """`wt` が着手して本体の sync で送り、GitHub の側の更新時刻を先へずらす。`(タスクID, Beads ID, Issue 番号)`。"""
-    a = new(main_path, summary)
+    a = new(main_path, summary, *extra)
     r = run_task(wt, "claim", a)
     if r.returncode != 0:
         raise RuntimeError(f"claim 失敗: {r.stdout}{r.stderr}")
@@ -91,6 +91,21 @@ def test_claim_restored_after_killed_sync() -> None:
         r = run_task(wt1, "plan-check", a)
         check("戻したあとは plan-check が戻さずに通る", r.returncode == 0 and "RESTORED" not in r.stdout + r.stderr,
               r.stdout + r.stderr)
+
+
+def test_importance_urgency_restored_after_killed_sync() -> None:
+    say("取り込みで metadata が消えても importance・urgency が戻る")
+    with github() as (fake, tmp, main_path, wt1):
+        _arm_kill_after_pull(tmp)
+        a, bd_id, n = _claim_and_push(fake, main_path, wt1, "重要度が消える", "--importance", "high", "--urgency", "low")
+        fake.edit(n, body="GitHub で直した")
+        _killed_sync(main_path)
+        lost = beads.show(main_path, bd_id)
+        check("前提: 止めた sync が2欄を消したまま残す", lost is not None and not beads.mark_values(lost), str(lost and lost.raw))
+        run_task(wt1, "plan-check", a)
+        got = beads.show(main_path, bd_id)
+        marks = beads.mark_values(got) if got else {}
+        check("戻したあと2欄が元の値", (marks.get("importance"), marks.get("urgency")) == ("high", "low"), str(marks))
 
 
 def test_unsent_claim_survives_pull() -> None:
@@ -224,6 +239,7 @@ def test_claim_kept_through_concurrent_syncs() -> None:
 TESTS = (
     test_claim_not_restored_after_release_done_ship,
     test_claim_restored_after_killed_sync,
+    test_importance_urgency_restored_after_killed_sync,
     test_handback_guard_after_killed_sync,
     test_unsent_claim_survives_pull,
     test_claim_not_restored_when_released_on_github,

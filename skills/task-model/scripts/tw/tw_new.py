@@ -67,8 +67,15 @@ def _check_one(toplevel: str, args: argparse.Namespace) -> _Checked:
     return _Checked(summary, deps, fixes, body, plan_base)
 
 
+def _level_metadata(args: argparse.Namespace) -> dict[str, str]:
+    """渡された `--importance`・`--urgency` だけ。省けば書かない（読むときは `normal`）。"""
+    pairs = ((beads.IMPORTANCE_KEY, args.importance), (beads.URGENCY_KEY, args.urgency))
+    return {key: value for key, value in pairs if value}
+
+
 def _metadata(args: argparse.Namespace, checked: _Checked, candidate: tuple[str, str, str] | None) -> dict[str, str]:
     metadata = {beads.DIFFICULTY_KEY: args.difficulty, beads.LOOPABLE_KEY: args.loopable}
+    metadata.update(_level_metadata(args))
     if checked.plan_base is not None:
         metadata[beads.PLAN_BASE_KEY] = checked.plan_base
     if args.draft:
@@ -249,7 +256,7 @@ def _batch_args(n: int, entry: dict, base_dir: str) -> tuple[argparse.Namespace,
     args = argparse.Namespace(
         summary=entry["summary"], difficulty=entry["difficulty"], loopable=entry["loopable"],
         deps=",".join(external), fixes=",".join(fixes), hold=bool(entry.get("hold")), draft=False,
-        candidate=None, direct=bool(entry.get("direct")), kind=kind,
+        candidate=None, direct=bool(entry.get("direct")), kind=kind, importance=None, urgency=None,
         body_file=os.path.join(base_dir, entry["body_file"]),
     )
     return args, refs
@@ -410,6 +417,8 @@ def cmd_adopt(toplevel: str, args: argparse.Namespace) -> None:
     cmd += ["--set-metadata", f"{beads.PLAN_BASE_KEY}={plan_base}"]
     cmd += [x for l in issue.labels if l.startswith(beads.DIRECT_LABEL) for x in ("--remove-label", l)]
     cmd += ["--set-metadata", f"{beads.DIFFICULTY_KEY}={args.difficulty}", "--set-metadata", f"{beads.LOOPABLE_KEY}={args.loopable}"]
+    for key, value in _level_metadata(args).items():
+        cmd += ["--set-metadata", f"{key}={value}"]
     if args.direct:
         cmd += ["--add-label", beads.DIRECT_ON]
     if args.kind:
