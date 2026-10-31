@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import functools
 import glob
 import json
@@ -15,6 +16,7 @@ import beads  # noqa: E402
 import gitinfo  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
+import tw_status  # noqa: E402
 from selftest_body import INTERVENTION, UNLOCK, task_body  # noqa: E402
 from selftest_fixtures import BODY, PLANNED_BODY, body_file, commit_task, flow_rows, issue_count, issue_json, make_repo, metadata, run_task, shown, shown_body, start_task, unset_metadata  # noqa: E402
 
@@ -112,6 +114,45 @@ def test_claim_and_release_single_worktree() -> None:
 
         r = run_task(wt1, "claim", "T-999")
         check("存在しないIDはNOT_READY", r.returncode == 4 and r.stdout.startswith("NOT_READY\t"), r.stdout)
+
+
+def test_status_priority_order() -> None:
+    say("task.py status・find（行が階級→番号の順に並び、列は増えない）")
+    rank = tw_status.priority_rank
+    levels = taskfile.Task("T-1", "題", "todo", "sonnet", "Y", (), "")
+    check(
+        "階級は緊急高かつ重要高 0・緊急高 1・重要高 2・それ以外 3（low も 3）",
+        [rank(dataclasses.replace(levels, importance=i, urgency=u))
+         for i, u in (("high", "high"), ("normal", "high"), ("high", "normal"), ("normal", "normal"), ("low", "low"))]
+        == [0, 1, 2, 3, 3],
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        _main_path, wt1, _wt2 = make_repo(tmp)
+
+        def new(*extra: str) -> str:
+            r = run_task(
+                wt1, "new", "--summary", "階級試験", "--difficulty", "sonnet", "--loopable", "Y", *extra,
+                "--body-file", body_file(wt1),
+            )
+            return r.stdout.split("\t")[1]
+
+        plain_a = new()
+        important = new("--importance", "high")
+        urgent = new("--urgency", "high")
+        both = new("--importance", "high", "--urgency", "high")
+        plain_e = new()
+        want = [both, urgent, important, plain_a, plain_e]
+
+        def ids(*args: str) -> list[str]:
+            head = run_task(wt1, *args).stdout.split("\n---\n")[0]
+            return [l.split("\t")[0] for l in head.splitlines()]
+
+        check("status の行は階級→番号の順", ids("status") == want, str(ids("status")))
+        check("status --all も同じ順", ids("status", "--all") == want, str(ids("status", "--all")))
+        check("行の列は8つのまま", all(len(l.split("\t")) == 8
+              for l in run_task(wt1, "status").stdout.split("\n---\n")[0].splitlines()))
+        found = [l.split("\t")[1] for l in run_task(wt1, "find", "階級試験").stdout.splitlines() if l.startswith("CANDIDATE\t")]
+        check("find の候補も階級順（先頭4件）", found == want[:4], str(found))
 
 
 def _ready_loopable_rows(wt: str) -> list[str]:
@@ -541,6 +582,7 @@ TESTS = (
     test_hold,
     test_edit_refuses_loopable_n_while_claimed,
     test_new_and_status_single_worktree,
+    test_status_priority_order,
     test_draft_register_and_refuse_claim,
     test_new_parallel_no_collision,
 )

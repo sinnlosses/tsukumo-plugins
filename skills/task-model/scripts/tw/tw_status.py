@@ -25,6 +25,17 @@ import tw_config
 LONG_SUMMARY_WIDTH = 80
 
 
+def priority_rank(task: taskfile.Task) -> int:
+    """行の並びの階級（0 が最優先）。緊急高かつ重要高 → 緊急高 → 重要高 → それ以外。"""
+    urgent = task.urgency == "high"
+    important = task.importance == "high"
+    if urgent and important:
+        return 0
+    if urgent:
+        return 1
+    return 2 if important else 3
+
+
 def display_width(s: str) -> int:
     """端末に出したときの桁数。日本語（East Asian Wide/Fullwidth）は2桁。"""
     return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s)
@@ -162,7 +173,7 @@ def cmd_find(toplevel: str, words: list[str], kind: str | None) -> None:
     snap = tw_base.beads_snapshot(toplevel)
     ready = [
         tid
-        for tid in sorted(snap.tasks, key=beads.sort_key)
+        for tid in sorted(snap.tasks, key=lambda tid: (priority_rank(snap.tasks[tid]), beads.sort_key(tid)))
         if snap.tasks[tid].status == "todo" and tw_base.readiness(snap.tasks[tid], snap.tasks, snap.claims) == "READY"
     ]
     hits = [tid for tid in ready if _find_hit(snap.tasks[tid], snap.issues[tid], folded, kind)]
@@ -213,11 +224,11 @@ def _print_status_table(
 ) -> None:
     """`status` の行と `---` 以降の集計（`invalid` の行まで）。
 
-    `extra_rows` は番号順の行のあとに足す行（振り分け前の課題）。集計には数えない。
+    `extra_rows` は階級順・番号順の行のあとに足す行（振り分け前の課題）。集計には数えない。
     `hidden`（候補）は行にも集計にも出さないが、依存の解決には `tasks` のまま数える。
     """
     shown = {tid: t for tid, t in tasks.items() if tid not in hidden}
-    for tid in sorted(shown, key=sort_key):
+    for tid in sorted(shown, key=lambda tid: (priority_rank(shown[tid]), sort_key(tid))):
         t = tasks[tid]
         if not show_all and t.status in ("done", "dropped"):
             continue
