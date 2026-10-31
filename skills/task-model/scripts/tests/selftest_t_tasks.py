@@ -511,7 +511,28 @@ def test_hold_requires_unlock_condition() -> None:
               r.returncode == 0 and shown(wt1, "T-301").count("## 解除の条件") == 1, r.stdout + r.stderr)
 
 
+def _brief_always_section(role_file: str) -> str:
+    path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "task-workflow", "parts", role_file)
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    return text.split("\n## 常に\n", 1)[1].split("\n## ", 1)[0]
+
+
+def test_brief_head_fixed_lines() -> None:
+    say("依頼文の型: `常に` の頭に書き込みの正しい形（実装・受け入れ）と tw を打たない旨（受け入れ）が固定の行である")
+    implementer = _brief_always_section("implementer/implementer-request.md")
+    acceptor = _brief_always_section("acceptor/acceptor-request.md")
+    for name, head in (("実装", implementer), ("受け入れ", acceptor)):
+        check(f"{name}: 書き先を変数・コマンド置換にせず絶対パスのリテラルで Write する",
+              "変数" in head and "絶対パスのリテラル" in head and "Write" in head, head)
+    check("実装: 一時ファイルと tw edit の下書きはスクラッチへ Write して --body-file で渡す",
+          "--body-file" in implementer and "スクラッチ" in implementer, implementer)
+    check("受け入れ: tw（tw verify-check・tw verify を含む）を打たず、判定だけを返す",
+          "`tw` を打たない" in acceptor and "tw verify-check" in acceptor and "判定だけ" in acceptor, acceptor)
+
+
 TESTS = (
+    test_brief_head_fixed_lines,
     test_hold_requires_unlock_condition,
     test_done_commits_since_claim,
     test_done_single_worktree,

@@ -6,6 +6,8 @@
 ## 常に
 
 `sed -i`・`perl -i`・`>`・`>>`・`tee`・python の書き込みは hook が拒む。`Edit`・`Write` で書く。
+書き先を変数・コマンド置換にしない（作業ツリーの中とみなされて拒まれる）。一時ファイルと `tw edit` の下書きは、`Write` でスクラッチの絶対パスのリテラルへ書き、`--body-file <そのパス>` で渡す。
+拒まれたら同じ書き方を繰り返さず、絶対パスのリテラルで `Write` する。
 タスク {{task_id}} を進める。まず `tw show {{task_id}}` で読み、次に {{here}}/implementer-brief.md を読んで従う。
 `tw verify`・`tw pause` は引数なしで打つのが基本。ID を付けるなら着手中の {{task_id}} だけ（違う ID は `NOT_OWNER` で拒まれる）。
 
