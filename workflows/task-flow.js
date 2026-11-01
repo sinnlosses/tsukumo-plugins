@@ -91,7 +91,8 @@ const modelOpt = typeof args.model === "string" ? { model: args.model } : {}
 
 const COMMON =
   `タスク ${taskId} は着手の印が立っている。作業ツリーは今の cwd。ファイルの書き換えは Edit・Write で行う。` +
-  "tsukumo の phase_result がツール一覧に無いときは ToolSearch で select:mcp__tsukumo__phase_result を引く（それでも無ければ呼ばない）。"
+  "tsukumo の phase_result がツール一覧に無いときは ToolSearch で select:mcp__tsukumo__phase_result を引く（それでも無ければ呼ばない）。" +
+  "`vendor/tsukumo-plugins` は読み込み元なので、`git submodule update`・`git checkout` などで動かさない（`tw` が submodule のずれで止まっても、そのまま報告する）。"
 
 const result = { stopped: false }
 
