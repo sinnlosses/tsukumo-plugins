@@ -48,7 +48,7 @@ PATH に無ければ plugin を入れる。どのディレクトリから打っ�
 | `loop-check` | `/loop` の入口の段と、続行判断（`tw ship`・`tw hold` のあと）で打つ。今日の台帳から停止規則（送った件数が `loop_max_ships` に達した・`hold` が3件連続・直近3件の `ship` で `VERIFY_FAILED` が2件）を見る | `CONTINUE`／`STOP`（`max_ships`・`hold_streak`・`verify_failed`）、続けて `SHIPPED_TODAY`（件数・ID）。終了コード0 |
 | `handback-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むとき（と構造の節の欠けを知らせるとき）だけ JSON 1行（`SubagentStop` は `block`、`PreToolUse` は deny か `additionalContext`）。ただし同じファイルの5回目の書き換えで `edit-churn` を残し、通す返却で、委譲の歩数が100超なら `flow/` に `long-delegation`、本文が約2,000トークン超なら `long-handback`（`tw metrics` の `long_delegation`・`long_handback`） |
 | `ask-guard` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ deny の JSON 1行（理由はタスクIDと次の一手）。通すときは何も出さない |
-| `lap-hook` | hook が呼ぶ（手で打たない）。委譲・振り返りの start と受け入れ役の停止の `review` end を書く記録。拒まない（下の「hook の関門」節の lap の段落） | 何も出さない |
+| `lap-hook` | hook が呼ぶ（手で打たない）。委譲・振り返りの start と、受け入れ役の停止の `review` end・振り返りの agent の停止の `retro` end を書く記録。拒まない（下の「hook の関門」節の lap の段落） | 何も出さない |
 | `ref-guard <state>` | git の `reference-transaction` hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ標準エラーに理由の1行と終了コード1（git の hook の取り決め）。通すときは何も出さず0 |
 
 | 終了コード | 先頭語 | 意味 | スキルがすること |
@@ -108,7 +108,7 @@ hook 4種（Claude Code の hook 3種と git の hook `ref-guard`）の仕様の
 | `delegate` | `lap-hook`（委譲先の起動）。委譲しないメインの流れはメイン。委譲先のモデルが `difficulty` と違う分業と、そこから戻す引き上げでは、メインが委譲の直前に `--model` 付きで打つ（hook はモデルを知らず、開いた段には書かない） | `accept` の start（`tw accept` が打つものも手で打つものも） |
 | `accept` | `tw accept`（作業先が別のリポジトリのタスクも） | `tw accept`・`tw finish`（`done` の前。開いているときだけなので1つ） |
 | `review` | 1回目は `tw accept`、2回目からはメイン | `lap-hook`（受け入れ役の停止。開いているときだけ） |
-| `retro` | `lap-hook`（振り返りのスキルの呼び出し） | `tw finish`（`done` の前） |
+| `retro` | `lap-hook`（振り返りのスキルの呼び出し、または振り返りの agent の起動） | `tw finish`（`done` の前）、または `lap-hook`（振り返りの agent の停止。開いているときだけ） |
 | `land`・`sync` | メイン | メイン |
 
 `lap-hook` は関門ではなく記録で、何も拒まず何も出さない。書くのは控えがちょうど1件の作業ツリーだけで、start は段が閉じているとき（細部は `tw lap-hook --help`）。

@@ -5,6 +5,7 @@
 - 主のセッション（入力に `agent_id` が無い）の `Skill` の `PreToolUse` で、`tool_input.skill` の最後の `:` より後ろが
   `retrospect` のもの → 段 `retro` の `start`
 - `SubagentStop` で、`agent_type` の最後の `:` より後ろが `acceptor` のもの → 段 `review` の `end`（開いているときだけ）
+- `SubagentStop` で、`agent_type` の最後の `:` より後ろが `retrospector` のもの → 段 `retro` の `end`（開いているときだけ）
 
 書くのは入力の `cwd` の作業ツリーの着手の控えがちょうど1件で、その段が開いていないときだけ。`delegate` は `accept` が
 開いているあいだは書かず、`retro` は `accept` の最後の端が `end` のときだけ書く。
@@ -60,6 +61,8 @@ def _stage(payload: dict) -> tuple[str, str] | None:
         return "retro", "start"
     if event == "SubagentStop" and _short_name(payload.get("agent_type")) == ACCEPTOR_TYPE:
         return "review", "end"
+    if event == "SubagentStop" and _short_name(payload.get("agent_type")) == RETROSPECTOR_TYPE:
+        return "retro", "end"
     if event == "PreToolUse" and payload.get("tool_name") == "Skill" and agent_scope.agent_id(payload) is None:
         tool_input = payload.get("tool_input")
         skill = tool_input.get("skill") if isinstance(tool_input, dict) else None

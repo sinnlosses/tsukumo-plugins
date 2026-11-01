@@ -66,7 +66,7 @@ Claude Code 以外の環境（Codex など）へスキルを置く入口は、�
 着手の印が立ったタスク1件を、実装 → 受け入れ → 振り返りの段で進める Claude Code の dynamic workflows の台本。
 送り出し（`tw finish`）は台本の段にせず、完了の通知を受けた呼び出し側が打つ。
 `agent()` の `agentType` は、実装・直し・受け入れの準備と締めが `tsukumo-workflow:no-delegate`、受け入れが `tsukumo-workflow:acceptor`、
-振り返りが `tsukumo-workflow:retrospector`。`tw lap-hook` が agent の起動・停止から `delegate`・`review`・`retro` の `lap` を書く。
+振り返りが `tsukumo-workflow:retrospector`。`tw lap-hook` が agent の起動・停止から `delegate`・`review`・`retro` の `lap` を書く（`retro` は起動で `start`、`retrospector` の停止で `end`）。
 
 - 呼び方（`Workflow` はメインのセッションから呼ぶ。委譲先には道具が無い）: 名前 `tsukumo-workflow:task-flow` か、`scriptPath` にこのファイルの絶対パスを渡す。
   plugin の `workflows/` が名前で読めるかは確かめていない（読み込みは次のセッションの開始か `/reload-plugins` で効く）。読めなければ `scriptPath` で渡す

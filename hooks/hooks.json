@@ -39,7 +39,7 @@
         ]
       },
       {
-        "matcher": "(^|:)acceptor$",
+        "matcher": "(^|:)(acceptor|retrospector)$",
         "hooks": [
           { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/tw-hook", "args": ["lap-hook"] }
         ]

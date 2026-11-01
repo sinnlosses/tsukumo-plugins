@@ -538,6 +538,25 @@ def test_agent_scoped_guard() -> None:
         check("hooks.json の SubagentStop の lap-hook は開いている review の end を書き、stdout は空",
               r.returncode == 0 and r.stdout == "" and [(e["task"], e.get("edge")) for e in review_laps] == [("T-100", "start"), ("T-100", "end")],
               repr(review_laps) + r.stdout + r.stderr)
+
+        def retro_edges() -> list[object]:
+            return [e.get("edge") for e in flow_rows(wt1) if e["event"] == "lap" and e.get("stage") == "retro"]
+
+        before = retro_edges()
+        run_lap_hook(tmp, wt1, _subagent_stop("tsukumo-workflow:retrospector"))
+        check("retro が開いていないときの retrospector の停止は何も書かない", retro_edges() == before, repr(before))
+        run_lap_hook(tmp, wt1, _subagent_start("tsukumo-workflow:retrospector"))
+        opened = retro_edges()
+        for other in ("tsukumo-workflow:acceptor", "tsukumo-workflow:no-delegate", "acceptor"):
+            run_lap_hook(tmp, wt1, _subagent_stop(other))
+        check("acceptor・no-delegate の停止は開いている retro の end を書かない", retro_edges() == opened, repr(opened))
+        run_lap_hook(tmp, wt1, _subagent_stop("tsukumo-workflow:retrospector"))
+        run_lap_hook(tmp, wt1, _subagent_stop("retrospector"))
+        check("開いている retro は retrospector の停止で end を1つだけ書いて閉じる",
+              retro_edges() == [*opened, "end"], repr(retro_edges()))
+        check("hooks.json の SubagentStop の matcher は retrospector の停止にも当たる",
+              all(re.search(stop_matcher, f"{p}{lap_hook.RETROSPECTOR_TYPE}") for p in ("", "tsukumo-workflow:")),
+              repr(stop_matcher))
         beat_hooks = [(e, m, argv) for e, m, argv in all_hooks if "heartbeat" in argv]
         check("hooks/hooks.json は PostToolUse・PostToolUseFailure で matcher の無い heartbeat を1つずつ呼ぶ",
               sorted(e for e, _, _ in beat_hooks) == ["PostToolUse", "PostToolUseFailure"]
