@@ -232,7 +232,11 @@ if (runs("accept")) {
     if (typeof prepared.tree === "string" && prepared.tree !== "") {
       tree = prepared.tree
     }
-    judgment = await agent(prepared.brief, {
+    const carried = first
+      ? ""
+      : `\n\n前回の受け入れ役の指摘の原文（直しが指摘に応えているかを照らす）:\n${JSON.stringify(judgment.findings)}\n` +
+        `材料の値: friction=${judgment.friction} human=${judgment.human}（前回の判定の値）`
+    judgment = await agent(prepared.brief + carried, {
       agentType: "tsukumo-workflow:acceptor",
       schema: JUDGMENT,
       label: `acceptor-${round + 1}`,
