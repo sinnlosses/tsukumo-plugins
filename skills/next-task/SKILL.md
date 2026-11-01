@@ -1,6 +1,6 @@
 ---
 name: next-task
-description: "Beads に置いた未着手タスクを1件選び、tw コマンドで着手の印を立て、task-workflow（difficulty に応じたモデルのサブエージェントに委譲し、受け入れてから作業を1コミットにして main へ送る流れ）に渡す。ユーザーが「次のタスクを進めて」「タスクをやって」と言ったとき、または /loop と組み合わせて全タスク完了までの自動進行に使う。ID を名指して「タスク GH-123 を進めて（bd show GH-123 で読める）」「T-001 をやって」のように頼まれたときも使う（選ばずにその ID で着手する）。「不具合修正のどれか」「表示まわりを1つ」のように、ID は無いが対象の種類・範囲を言って頼まれたときも使う（`READY` を頼み文の語と種類で `tw find` に絞らせて1件に決める）。タスクの一覧を見たいだけのとき・対象の種類を言わない雑談には使わない（一覧は list-tasks）。"
+description: "Beads に置いた未着手タスクを1件選び、tw コマンドで着手の印を立て、task-workflow（difficulty に応じたモデルに委譲し、受け入れてから main へ送る流れ。設定 flow が script なら台本）に渡す。ユーザーが「次のタスクを進めて」「タスクをやって」と言ったとき、または /loop と組み合わせて全タスク完了までの自動進行に使う。ID を名指して「タスク GH-123 を進めて（bd show GH-123 で読める）」「T-001 をやって」のように頼まれたときも使う（選ばずにその ID で着手する）。「不具合修正のどれか」「表示まわりを1つ」のように、ID は無いが対象の種類・範囲を言って頼まれたときも使う（`READY` を頼み文の語と種類で `tw find` に絞らせて1件に決める）。タスクの一覧を見たいだけのとき・対象の種類を言わない雑談には使わない（一覧は list-tasks）。"
 metadata:
   workflow-entry: "true"
   workflow-entry-title: "タスクの実行"
@@ -68,7 +68,8 @@ metadata:
    | `TAKEN`・`NOT_READY` | 先を越された・状態が変わった。手順1から別の1件を選び直す（3回続いたら止まる） |
    | `DIRTY`・`UNSHIPPED`・`INVALID`・`GIT_READ_ONLY` | `${CLAUDE_SKILL_DIR}/start-stopped.md` の「手順4の表の残り」に従って終了する |
 
-5. **`task-workflow` を呼ぶ**: Skill ツールで `tsukumo-workflow:task-workflow` を呼び（一覧に無ければ plugin をまだ入れていない。人がやることとして止める）、次を渡す:
+5. **流れを呼ぶ**: `tw config` の `flow` が `script` で、`HOLD` でも `direct=Y` でもなければ `${CLAUDE_SKILL_DIR}/script-flow.md` に従う。
+   ほかは Skill ツールで `tsukumo-workflow:task-workflow` を呼び（一覧に無ければ plugin をまだ入れていない。人がやることとして止める）、次を渡す:
    タスクID、手順4の `CLAIMED` の行（`HOLD` を選んだときは `HOLD`）、呼ばれ方（`/loop` か直接）、
    `/loop` ならその依頼文。ここから先（送り出し・完了報告・続行判断）は `task-workflow` に従う。
 

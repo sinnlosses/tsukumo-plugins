@@ -245,7 +245,7 @@ def _template(toplevel: str, role: str, known: tuple[str, ...]) -> tuple[str, di
     無い・読めなければ `MISSING`（終了コード6）、知らない節名があれば `INVALID`（終了コード3）。
     """
     config = layout.read_config(toplevel)
-    steps = list(config.steps) if config.steps is not None else tw_config.steps_default(toplevel)
+    steps = tw_config.skill_steps(toplevel, config)
     by_value = {c.value: c for c in tw_config.step_candidates(toplevel)}
     path = next((by_value[s].brief(role) for s in steps if s in by_value and by_value[s].brief(role)), None)
     if path is None:

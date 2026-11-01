@@ -11,10 +11,12 @@ from datetime import datetime, timedelta, timezone
 
 from selftest_support import RESULT_FULL, check, copy_beads, git, refuse_direct_run, say, weight, write  # noqa: E402
 import beads  # noqa: E402
+import layout  # noqa: E402
 import ledger  # noqa: E402
 import metrics  # noqa: E402
 import taskfile  # noqa: E402
 import tw_base  # noqa: E402
+import tw_config  # noqa: E402
 from selftest_fixtures import BODY, PLANNED_BODY, commit_task, flow_rows, make_repo, run_task  # noqa: E402
 
 
@@ -107,9 +109,49 @@ def test_all_tests_registered() -> None:
     check("並びに載っていない test_ 関数が無い", not missing, "並びに載っていない: " + ", ".join(missing))
 
 
+def _schema_key(repo: str, key: str) -> dict:
+    out = run_task(repo, "config", "--schema")
+    return next(k for k in json.loads(out.stdout)["keys"] if k["key"] == key)
+
+
+def _config_rows(repo: str) -> dict[str, list[str]]:
+    return {r.split("\t")[0]: r.split("\t") for r in run_task(repo, "config").stdout.splitlines() if "\t" in r}
+
+
+def test_config_flow_switches_step_candidates() -> None:
+    say("自己テスト: 設定の欄 flow は既定 skills で、script にすると config --schema の steps の候補が台本の段になる")
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = _make_config_doctor_repo(tmp, "flow")
+        flow = _schema_key(repo, "flow")
+        check("flow の既定は skills で、選択肢は skills と script",
+              flow["default"] == "skills" and [v["value"] for v in flow["values"]] == ["skills", "script"], repr(flow))
+        check("flow が skills の steps の候補は台本の段の名前でない",
+              "implement" not in [v["value"] for v in _schema_key(repo, "steps")["values"]])
+        check("tw config の flow の行は skills・default", _config_rows(repo)["flow"][1:] == ["skills", "default"])
+        done = run_task(repo, "config", "set", "flow", "script")
+        check("flow を script にできる", done.returncode == 0 and done.stdout.strip() == "SET\tflow\tscript",
+              done.stdout + done.stderr)
+        steps = _schema_key(repo, "steps")
+        check("flow が script の steps の候補と既定は implement・accept・retrospect",
+              [v["value"] for v in steps["values"]] == ["implement", "accept", "retrospect"]
+              and steps["default"] == ["implement", "accept", "retrospect"], repr(steps))
+        set_steps = run_task(repo, "config", "set", "steps", '["implement","accept"]')
+        check("flow が script なら steps に台本の段の名前を書ける", set_steps.returncode == 0, set_steps.stdout + set_steps.stderr)
+        check("tw config の steps の行は台本の段の名前の配列", _config_rows(repo)["steps"][1] == '["implement","accept"]')
+        bad = run_task(repo, "config", "set", "flow", "workflow")
+        check("flow の値が skills・script の外なら終了コード2", bad.returncode == 2, bad.stdout + bad.stderr)
+        mapped = tw_config.skill_steps(repo, layout.read_config(repo))
+        check("スキルの全名で読む側には、台本の段をスキルの全名に読み替え、送り出しを末尾に足して渡す",
+              [layout.step_short_name(s) for s in mapped] == ["implement", "accept", "ship"], repr(mapped))
+        check("スキルの全名で書いた steps も台本の段の名前に読み替えられ、送り出しは落ちる",
+              layout.script_steps(["tsukumo-workflow:implement-step", "tsukumo-workflow:ship-step", "retrospect"])
+              == ["implement", "retrospect"])
+
+
 TESTS = (
     test_unregistered_tests_named,
     test_all_tests_registered,
+    test_config_flow_switches_step_candidates,
 )
 
 

@@ -68,6 +68,8 @@ Claude Code 以外の環境（Codex など）へスキルを置く入口は、�
 `agent()` の `agentType` は、実装・直し・受け入れの準備と締めが `tsukumo-workflow:no-delegate`、受け入れが `tsukumo-workflow:acceptor`、
 振り返りが `tsukumo-workflow:retrospector`。`tw lap-hook` が agent の起動・停止から `delegate`・`review`・`retro` の `lap` を書く（`retro` は起動で `start`、`retrospector` の停止で `end`）。
 
+- 呼ぶ側: `/next-task` は、設定 `flow` が `script` のとき着手のあとにこの台本を呼び、完了の通知を受けて `ship-step` で送り出す（手順は `skills/next-task/script-flow.md`）。
+  既定の `skills` は今までどおり `task-workflow` を呼ぶ。切り戻しは `tw config set flow skills`
 - 呼び方（`Workflow` はメインのセッションから呼ぶ。委譲先には道具が無い）: 名前 `tsukumo-workflow:task-flow` か、`scriptPath` にこのファイルの絶対パスを渡す。
   名前での呼び出しは接頭辞つきの `tsukumo-workflow:task-flow` で通ることを確かめた。`task-flow` だけでは読めない（not found）。
   plugin を入れ直したあとの読み込みは次のセッションの開始か `/reload-plugins` で効く

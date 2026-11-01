@@ -53,6 +53,10 @@ CONFIG_PATH = ".tw/config.toml"
 STEPS_KEY = "steps"
 REVIEW_CODE_GLOBS_KEY = "review_code_globs"
 SHELL_WRITE_GUARD_KEY = "shell_write_guard"
+FLOW_KEY = "flow"
+FLOW_SKILLS = "skills"
+FLOW_SCRIPT = "script"
+FLOW_VALUES = (FLOW_SKILLS, FLOW_SCRIPT)
 SHELL_WRITE_GUARD_TW = "tw"
 SHELL_WRITE_GUARD_PROJECT = "project"
 SHELL_WRITE_GUARD_VALUES = (SHELL_WRITE_GUARD_TW, SHELL_WRITE_GUARD_PROJECT)
@@ -100,11 +104,11 @@ CONFIG_KEYS = (
     "steps",
     "review_code_globs",
     "shell_write_guard",
+    "flow",
     "loop_max_ships",
 )
 
 # 廃止したキーと表。設定に残っていれば `ConfigError` で知らせる。
-REMOVED_FLOW_KEY = "flow"
 REMOVED_PARTS_TABLE = "parts"
 
 # 置き場の根を選んでいたころのキー。書いてあっても読み捨てる。
@@ -139,6 +143,7 @@ class Config:
     steps: tuple[str, ...] | None = None
     review_code_globs: tuple[str, ...] = ()
     shell_write_guard: str = SHELL_WRITE_GUARD_TW
+    flow: str = FLOW_SKILLS
     loop_max_ships: int = DEFAULT_LOOP_MAX_SHIPS
     written: frozenset = frozenset()
 
@@ -186,7 +191,7 @@ _TABLE_PATTERN = re.compile(r"\[[ \t]*([A-Za-z0-9_-]+)[ \t]*\][ \t]*(?:#.*)?")
 def parse_config_text(text: str, label: str) -> list[tuple[int, str, str]]:
     """TOML の部分集合（空行・`# コメント`・`key = "値"`／`key = '値'`）を `(行番号, キー, 値)` にする。
 
-    表（`[…]`）は読まない。`flow` と `[parts]` は廃止したキーとして `ConfigError` にする。
+    表（`[…]`）は読まない。`[parts]` は廃止した表として `ConfigError` にする。
     """
     entries: list[tuple[int, str, str]] = []
     seen: dict[str, int] = {}
@@ -204,8 +209,6 @@ def parse_config_text(text: str, label: str) -> list[tuple[int, str, str]]:
         if m is None:
             raise ConfigError(f"{label}:{lineno}: `key = \"値\"` の形でない: {line}")
         key, rest = m.group(1), m.group(2)
-        if key == REMOVED_FLOW_KEY:
-            raise ConfigError(f"{label}:{lineno}: {key} は廃止した（並びは steps に書く。tw config set steps）")
         if key not in CONFIG_KEYS and key not in IGNORED_KEYS:
             raise ConfigError(f"{label}:{lineno}: 知らないキー {key!r}")
         if key in seen:
@@ -327,6 +330,7 @@ def build_config(source: str | None, values: dict[str, str | None]) -> Config:
         steps=tuple(json.loads(values["steps"])) if values.get("steps") else None,
         review_code_globs=tuple(json.loads(values.get(REVIEW_CODE_GLOBS_KEY) or "[]")),
         shell_write_guard=values.get(SHELL_WRITE_GUARD_KEY) or defaults.shell_write_guard,
+        flow=values.get(FLOW_KEY) or defaults.flow,
         loop_max_ships=_loop_max_ships(source, values.get("loop_max_ships"), defaults.loop_max_ships),
         written=frozenset(values),
     )
@@ -334,6 +338,8 @@ def build_config(source: str | None, values: dict[str, str | None]) -> Config:
         raise ConfigError(
             f"{source}: {SHELL_WRITE_GUARD_KEY} の値 {config.shell_write_guard!r} は {' / '.join(SHELL_WRITE_GUARD_VALUES)} のどちらか"
         )
+    if config.flow not in FLOW_VALUES:
+        raise ConfigError(f"{source}: {FLOW_KEY} の値 {config.flow!r} は {' / '.join(FLOW_VALUES)} のどちらか")
     if config.github_project is not None and config.project_owner_number is None:
         raise ConfigError(f"{source}: github_project の値 {config.github_project!r} が \"<owner>/<番号>\" の形でない")
     if config.tracker == "github" and config.github_project is None:
@@ -344,7 +350,7 @@ def build_config(source: str | None, values: dict[str, str | None]) -> Config:
 # --- 設定の欄の形（`tw config --schema`）と書く口（`tw config set`） -----------------
 
 BRANCH_KEY = "branch"
-SETTABLE_KEYS = (STEPS_KEY, *COMMAND_SETTABLE_KEYS, BRANCH_KEY, SHELL_WRITE_GUARD_KEY)
+SETTABLE_KEYS = (STEPS_KEY, *COMMAND_SETTABLE_KEYS, BRANCH_KEY, SHELL_WRITE_GUARD_KEY, FLOW_KEY)
 
 
 class ConfigValueError(ValueError):
@@ -571,6 +577,34 @@ def config_entries(project_root: str | None, home: str | None = None, plugin: tu
     }
 
 
+# 台本（`workflows/task-flow.js`）の段。`flow` が `script` のときの `steps` の候補で、送り出しは台本の段にしない。
+SCRIPT_STEPS = (
+    ("implement", "実装", "`## やること` の段を順に実装する"),
+    ("accept", "受け入れ", "受け入れ役が判定し、差し戻しを回す"),
+    ("retrospect", "振り返り", "改善候補をドラフトの課題として積む"),
+)
+
+
+def script_step_candidates() -> list[StepCandidate]:
+    return [
+        StepCandidate(name, name, description, True, order, title)
+        for order, (name, title, description) in enumerate(SCRIPT_STEPS, start=1)
+    ]
+
+
+def step_short_name(step: str) -> str:
+    """並びの名前を段の短い名前にする（`tsukumo-workflow:implement-step` も `implement` も `implement`）。"""
+    name = step.rsplit(":", 1)[-1]
+    return name[: -len("-step")] if name.endswith("-step") else name
+
+
+def script_steps(steps: object) -> list[str]:
+    """並びを台本の段の名前（`SCRIPT_STEPS`）にする。スキルの全名で書いてあっても読み替え、送り出しと台本に無い段は落とし、重複は先の1つにする。"""
+    known = {name for name, _, _ in SCRIPT_STEPS}
+    names = [step_short_name(s) for s in steps or ()]
+    return [n for i, n in enumerate(names) if n in known and n not in names[:i]]
+
+
 def default_steps(candidates: list[StepCandidate]) -> list[str]:
     """既定の並び。`tw` と同じ plugin の候補を `workflow-step-order` の小さい順に、位置の無いものはその後ろに走査順で並べる。"""
     own = [c for c in candidates if c.own]
@@ -584,12 +618,28 @@ BRANCH_FIELD_DESCRIPTIONS = {
 }
 
 
-def config_schema(project_root: str | None, home: str | None = None, plugin: tuple[str, str] | None = None) -> dict:
-    """`tw config --schema` が出す欄の形（schema 2）。既定の並びは `default_steps`。"""
-    candidates = step_candidates(project_root, home, plugin)
+def config_schema(
+    project_root: str | None,
+    home: str | None = None,
+    plugin: tuple[str, str] | None = None,
+    flow: str = FLOW_SKILLS,
+) -> dict:
+    """`tw config --schema` が出す欄の形（schema 2）。既定の並びは `default_steps`。`flow` が `script` なら `steps` の候補は台本の段（`SCRIPT_STEPS`）。"""
+    candidates = script_step_candidates() if flow == FLOW_SCRIPT else step_candidates(project_root, home, plugin)
     return {
         "schema": 2,
         "keys": [
+            {
+                "key": FLOW_KEY,
+                "label": "流れ",
+                "description": "タスクの段を進める流れ。スキルの並びか、plugin の台本 task-flow か",
+                "kind": "choice",
+                "default": FLOW_SKILLS,
+                "values": [
+                    {"value": FLOW_SKILLS, "label": "スキルの並び", "description": "task-workflow が並びのスキルを順に呼ぶ"},
+                    {"value": FLOW_SCRIPT, "label": "台本", "description": "plugin の workflows/task-flow.js を Workflow で呼ぶ"},
+                ],
+            },
             {
                 "key": STEPS_KEY,
                 "label": "並び",
@@ -680,6 +730,10 @@ def config_text_with(text: str, key: str, value: str, label: str = CONFIG_PATH) 
     elif key == SHELL_WRITE_GUARD_KEY:
         if value not in SHELL_WRITE_GUARD_VALUES:
             raise ConfigValueError(f"{key} の値は {' / '.join(SHELL_WRITE_GUARD_VALUES)} のどちらか: {value!r}")
+        quoted = json.dumps(value)
+    elif key == FLOW_KEY:
+        if value not in FLOW_VALUES:
+            raise ConfigValueError(f"{key} の値は {' / '.join(FLOW_VALUES)} のどちらか: {value!r}")
         quoted = json.dumps(value)
     else:
         try:
