@@ -142,14 +142,16 @@ if (runs("accept")) {
             "この出力には REVIEW・SKIP・NOTHING・NO_RANGE の行は出ない（整形と verify-check の行だけ）。" +
             "verify-check の行が通っている（VERIFIED か VERIFIED_SAME）なら kind は REVIEW にする。" +
             "NOT_VERIFIED・FORMAT_FAILED・MISSING・INVALID・NOT_OWNER など通っていない・止まる行が出たら kind を STOP にして reason に行を入れる。") +
-        "続けて、打った `tw accept` の出力を一時ファイルに書かず標準入力へ渡し、" +
         (first
-          ? `\`tw brief acceptor ${taskId} --accept-file -\``
-          : `\`tw brief acceptor ${taskId} --accept-file - --round ${round + 1} --since ${tree}\``) +
-        " を打つ（画面や見た目を確かめる完了条件があるタスクでは `--visual` も付ける）。" +
+          ? "続けて、打った `tw accept` の出力を一時ファイルに書かず標準入力へ渡し、" +
+            `\`tw brief acceptor ${taskId} --accept-file -\` を打つ（画面や見た目を確かめる完了条件があるタスクでは \`--visual\` も付ける）。`
+          : `続けて \`tw brief acceptor ${taskId} --round ${round + 1} --since ${tree}\` を打つ。` +
+            "`--accept-file` と `--visual` は `--round` と組めない（終了コード2）ので付けない。") +
         "kind が STOP のときは brief を空文字にしてよい。" +
-        "返すのは、kind・`tw accept` の出力全部（acceptLines）・`tw brief` の2行目以降の依頼文（brief）・" +
-        "`tw brief` の1行目の末尾の木の SHA があれば tree。",
+        "返すのは、kind・`tw accept` の出力全部（acceptLines）・`tw brief` の2行目以降の依頼文（brief）・tree。" +
+        (first
+          ? "tree は `tw accept` の出力の `SNAPSHOT` の行の木の SHA（その行が無ければ空）。"
+          : "tree は `tw brief` の1行目の末尾の木の SHA。"),
       { agentType: "tsukumo-workflow:no-delegate", schema: ACCEPT_PREPARE, label: `accept-prepare-${round + 1}`, phase: "Accept" },
     )
     if (prepared === null) {

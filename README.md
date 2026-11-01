@@ -69,7 +69,8 @@ Claude Code 以外の環境（Codex など）へスキルを置く入口は、�
 振り返りが `tsukumo-workflow:retrospector`。`tw lap-hook` が agent の起動・停止から `delegate`・`review`・`retro` の `lap` を書く（`retro` は起動で `start`、`retrospector` の停止で `end`）。
 
 - 呼び方（`Workflow` はメインのセッションから呼ぶ。委譲先には道具が無い）: 名前 `tsukumo-workflow:task-flow` か、`scriptPath` にこのファイルの絶対パスを渡す。
-  plugin の `workflows/` が名前で読めるかは確かめていない（読み込みは次のセッションの開始か `/reload-plugins` で効く）。読めなければ `scriptPath` で渡す
+  名前での呼び出しは接頭辞つきの `tsukumo-workflow:task-flow` で通ることを確かめた。`task-flow` だけでは読めない（not found）。
+  plugin を入れ直したあとの読み込みは次のセッションの開始か `/reload-plugins` で効く
 - `args`: `taskId`（着手したタスクの ID）・`phaseCount`（`## やること` の段の数。実装の agent が `phase_result` の `count` に渡す）が要る。
   任意で `steps`（走らせる段。既定は `["implement", "accept", "retrospect"]`）・`model`（実装と直しの model）・`from`（呼び直すときに始める段）
 - 前提: `tw plan-check` が `PLAN_REGISTERED` を返すタスク。計画の書き直しは台本の外で済ませる
