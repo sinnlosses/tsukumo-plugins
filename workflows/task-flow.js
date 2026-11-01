@@ -138,7 +138,9 @@ if (runs("accept")) {
             "`SKIP`・`NOTHING`・`NO_RANGE` の行が出たなら同名の kind にする。" +
             "`NOT_LAST_STEP`・`FORMAT_FAILED`・`MISSING`・`INVALID`・`NOT_OWNER` など止まる行が出たら kind を STOP にして reason に行を入れる。"
           : `受け入れ役が差し戻したので、\`tw lap ${taskId} review start\` を打ち、続けて \`tw accept ${taskId} --after-review\` を打つ。` +
-            "出力の読み方は最初の回と同じ。") +
+            "この出力には REVIEW・SKIP・NOTHING・NO_RANGE の行は出ない（整形と verify-check の行だけ）。" +
+            "verify-check の行が通っている（VERIFIED か VERIFIED_SAME）なら kind は REVIEW にする。" +
+            "NOT_VERIFIED・FORMAT_FAILED・MISSING・INVALID・NOT_OWNER など通っていない・止まる行が出たら kind を STOP にして reason に行を入れる。") +
         "続けて、打った `tw accept` の出力を一時ファイルに書かず標準入力へ渡し、" +
         (first
           ? `\`tw brief acceptor ${taskId} --accept-file -\``
