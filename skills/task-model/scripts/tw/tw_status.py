@@ -110,7 +110,7 @@ def config_rows(toplevel: str, config: layout.Config) -> list[tuple[str, str | l
             if config.flow == layout.FLOW_SCRIPT:
                 value = layout.script_steps(value) if value is not None else tw_config.steps_default(toplevel, config.flow)
             else:
-                value = list(value) if value is not None else tw_config.steps_default(toplevel)
+                value = tw_config.skill_steps(toplevel, config)
         elif key == layout.REVIEW_CODE_GLOBS_KEY:
             value = list(value)
         elif key == "base_branch" and value is None:

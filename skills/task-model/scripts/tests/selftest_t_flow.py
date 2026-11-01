@@ -148,6 +148,10 @@ def test_config_flow_switches_step_candidates() -> None:
         check("script で書いた短い名前の steps は、flow を skills に戻してもスキルの全名に読み替え、送り出しを足す",
               [layout.step_short_name(s) for s in back] == ["implement", "accept", "ship"] and all("-step" in s for s in back),
               repr(back))
+        row = json.loads(_config_rows(repo)["steps"][1])
+        check("切り戻したあとの tw config の steps の行も、スキルの全名で送り出しを足した並びで出る",
+              [layout.step_short_name(s) for s in row] == ["implement", "accept", "ship"] and all("-step" in s for s in row),
+              repr(row))
         check("スキルの全名で書いた steps も台本の段の名前に読み替えられ、送り出しは落ちる",
               layout.script_steps(["tsukumo-workflow:implement-step", "tsukumo-workflow:ship-step", "retrospect"])
               == ["implement", "retrospect"])
