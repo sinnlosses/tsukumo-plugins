@@ -1,7 +1,7 @@
 export const meta = {
   name: "task-flow",
   description: "着手の印が立ったタスク1件を、実装 → 受け入れ → 振り返りの段で進める（送り出しは呼んだ側が tw finish で行う）",
-  whenToUse: "tw claim が CLAIMED を返し、tw plan-check が PLAN_REGISTERED を返したタスク1件を進めるとき",
+  whenToUse: "tw claim が CLAIMED を返したタスク1件を進めるとき（計画が古ければ台本の中で書き直す）",
   phases: [
     { title: "Implement", detail: "no-delegate が ## やること の段を順に実装し、段ごとに phase_result を呼ぶ" },
     { title: "Accept", detail: "tw accept の判定で道を分け、acceptor が判定する。差し戻しは上限2回" },
@@ -124,9 +124,10 @@ if (runs("implement")) {
   phase("Implement")
   const planCheck = await agent(
     `${COMMON}\n` +
-      `\`tw plan-check ${taskId}\` を打ち、最初の行の先頭語で state を決める: ` +
-      "`PLAN_REGISTERED`・`PLAN_FIRST` なら ok、`PLAN_STALE`・`PLAN_NOT_FIRST` なら rewrite、" +
-      "`NOT_OWNER` など着手の印が読めない行なら stop。最初の行を line に入れて返す。作業ツリーは書き換えない。",
+      `\`tw plan-check ${taskId}\` を打ち、出力の全行を読んで state を決める: ` +
+      "`PLAN_STALE`・`PLAN_NOT_FIRST` の行、または `PLAN_UNCOVERED` の行が1つでもあれば rewrite、" +
+      "`NOT_OWNER` など着手の印が読めない行なら stop、そうでなく `PLAN_REGISTERED`・`PLAN_FIRST` の行があれば ok。" +
+      "決め手になった行を line に入れて返す。作業ツリーは書き換えない。",
     { agentType: "tsukumo-workflow:no-delegate", schema: PLAN_CHECK, label: "plan-check", phase: "Implement" },
   )
   if (planCheck === null || planCheck.state === "stop") {
@@ -137,9 +138,10 @@ if (runs("implement")) {
       `${COMMON}\n` +
         `最初に \`tw brief implementer ${taskId} --rewrite\` を打ち、出力の2行目以降の決まりを読んで従う。` +
         "登録時の `## やること` は古いので、いまの主ブランチで調べ直して書き直す（`tw edit` で節の中身だけを渡す。実装の作業はしない）。" +
-        `書き直したあと \`tw plan-check ${taskId}\` を打ち、\`PLAN_REGISTERED\`・\`PLAN_FIRST\` のいずれかであることを確かめる。` +
+        `書き直したあと \`tw plan-check ${taskId}\` を打ち、\`PLAN_FIRST\`（または \`PLAN_REGISTERED\`）が出て、` +
+        "`PLAN_STALE`・`PLAN_NOT_FIRST`・`PLAN_UNCOVERED` の行が続かないことを確かめる（足りなければ `tw edit` で書き直して打ち直す）。" +
         "返すのは、書き直したか（rewritten）・書き直したあとの `## やること` の段の数（phaseCount）・" +
-        "打った `tw plan-check` の最初の行（planLine）。書き直せず止めるなら stopped を true、reason に理由を入れる。",
+        "打った `tw plan-check` の `PLAN_FIRST`・`PLAN_REGISTERED` の行（planLine）。書き直せず止めるなら stopped を true、reason に理由を入れる。",
       { agentType: "tsukumo-workflow:no-delegate", schema: PLAN_REWRITE, label: "plan-rewrite", phase: "Implement", ...modelOpt },
     )
     if (rewrite === null || rewrite.stopped || !rewrite.rewritten) {
