@@ -69,7 +69,7 @@ PLUGIN_HOOKS = (
     ("PreToolUse", "AskUserQuestion", ("--fail-closed", "ask-guard")),
     ("PreToolUse", "Skill", ("lap-hook",)),
     ("SubagentStop", None, ("handback-guard", "--agent-scoped")),
-    ("SubagentStop", "(^|:)acceptor$", ("lap-hook",)),
+    ("SubagentStop", "(^|:)(acceptor|retrospector)$", ("lap-hook",)),
     ("SubagentStart", "(^|:)(general-purpose|no-delegate|retrospector)$", ("lap-hook",)),
     ("PostToolUse", None, ("heartbeat",)),
     ("PostToolUseFailure", None, ("heartbeat",)),
