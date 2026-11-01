@@ -197,7 +197,32 @@ def test_accept_not_last_step() -> None:
               r.returncode == 0 and r.stdout.splitlines()[-1].startswith("VERIFIED_SAME\t"), r.stdout + r.stderr)
 
 
+def test_accept_does_not_duplicate_open_laps() -> None:
+    say("task.py accept: 開いている accept・review の start は、tw accept を重ねて打っても重ねて書かない")
+    edges = lambda wt, stage: [e.get("edge") for e in flow_rows(wt) if e["event"] == "lap" and e.get("stage") == stage]
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1 = _claimed_repo(tmp)
+        write(os.path.join(wt1, "code.py"), "x = 1\n")
+        run_task(wt1, "accept", "T-100")
+        r = run_task(wt1, "accept", "T-100")
+        check("REVIEW を2回受けても accept と review の start は1つずつ",
+              r.returncode == 0 and "REVIEW\tcode\t1" in r.stdout.splitlines()
+              and edges(wt1, "accept") == ["start"] and edges(wt1, "review") == ["start"],
+              repr([edges(wt1, "accept"), edges(wt1, "review")]))
+        run_task(wt1, "lap", "T-100", "review", "start")
+        check("手打ちの review start も開いているあいだは重ねない", edges(wt1, "review") == ["start"], repr(edges(wt1, "review")))
+        run_task(wt1, "lap", "T-100", "review", "end")
+        run_task(wt1, "lap", "T-100", "review", "start")
+        check("review が閉じたあとの2周目の start は書く",
+              edges(wt1, "review") == ["start", "end", "start"], repr(edges(wt1, "review")))
+        run_task(wt1, "lap", "T-100", "review", "end")
+        run_task(wt1, "accept", "T-100", "--after-review")
+        check("--after-review が accept を閉じ、start と end が1組になる",
+              edges(wt1, "accept") == ["start", "end"], repr(edges(wt1, "accept")))
+
+
 TESTS = (
+    test_accept_does_not_duplicate_open_laps,
     test_accept_not_last_step,
     test_accept_bundles_acceptance_steps,
     test_accept_stops_on_stop_lines,
