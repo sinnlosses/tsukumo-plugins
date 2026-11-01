@@ -24,8 +24,10 @@ def steps_default(toplevel: str, flow: str = layout.FLOW_SKILLS) -> list[str]:
 
 
 def skill_steps(toplevel: str, config: layout.Config) -> list[str]:
-    """スキルの全名で読む側（`tw brief`・`tw plan-phases`）の並び。`flow` が `script` のときは台本の段をスキルの全名に読み替え、送り出しの段を末尾に足す。"""
-    if config.flow != layout.FLOW_SCRIPT:
+    """スキルの全名で読む側（`tw brief`・`tw plan-phases`）の並び。`flow` が `script` のとき、または `skills` でも台本の段の短い名前で書いてあるとき（`script` で書いたまま切り戻したとき）は、スキルの全名に読み替えて送り出しの段を末尾に足す。"""
+    script_names = {name for name, _, _ in layout.SCRIPT_STEPS}
+    script_written = config.steps is not None and any(s in script_names for s in config.steps)
+    if config.flow != layout.FLOW_SCRIPT and not script_written:
         return list(config.steps) if config.steps is not None else steps_default(toplevel)
     wanted = layout.script_steps(config.steps) if config.steps is not None else steps_default(toplevel, layout.FLOW_SCRIPT)
     candidates = layout.step_candidates(toplevel, os.path.expanduser("~"), layout.own_plugin_root())

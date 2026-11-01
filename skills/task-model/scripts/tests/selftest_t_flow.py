@@ -143,6 +143,11 @@ def test_config_flow_switches_step_candidates() -> None:
         mapped = tw_config.skill_steps(repo, layout.read_config(repo))
         check("スキルの全名で読む側には、台本の段をスキルの全名に読み替え、送り出しを末尾に足して渡す",
               [layout.step_short_name(s) for s in mapped] == ["implement", "accept", "ship"], repr(mapped))
+        run_task(repo, "config", "set", "flow", "skills")
+        back = tw_config.skill_steps(repo, layout.read_config(repo))
+        check("script で書いた短い名前の steps は、flow を skills に戻してもスキルの全名に読み替え、送り出しを足す",
+              [layout.step_short_name(s) for s in back] == ["implement", "accept", "ship"] and all("-step" in s for s in back),
+              repr(back))
         check("スキルの全名で書いた steps も台本の段の名前に読み替えられ、送り出しは落ちる",
               layout.script_steps(["tsukumo-workflow:implement-step", "tsukumo-workflow:ship-step", "retrospect"])
               == ["implement", "retrospect"])
