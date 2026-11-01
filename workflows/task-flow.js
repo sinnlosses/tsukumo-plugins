@@ -196,7 +196,7 @@ if (runs("accept")) {
     closed = await agent(
       `${COMMON}\n` +
         `受け入れ役が通した。\`tw accept ${taskId} --after-review\` を打って、整形・verify-check・accept の end を済ませる。` +
-        "出力に NOT_VERIFIED が出たら `tw verify` を打ってから打ち直す。最後の行を verifyCheckLine に、済んだら closed を true にして返す。",
+        "出力に NOT_VERIFIED が出たら `tw verify` を打ってから打ち直す。最後の行を verifyCheckLine に入れる。accept の end は出力に行が出ないので探さず、最後の行が `VERIFIED` か `VERIFIED_SAME` で始まれば closed を true にして返す（それ以外なら false）。",
       { agentType: "tsukumo-workflow:no-delegate", schema: ACCEPT_CLOSE, label: "accept-close", phase: "Accept" },
     )
     if (closed === null || !closed.closed) {
