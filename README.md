@@ -73,8 +73,11 @@ Claude Code 以外の環境（Codex など）へスキルを置く入口は、�
   plugin を入れ直したあとの読み込みは次のセッションの開始か `/reload-plugins` で効く
 - `args`: `taskId`（着手したタスクの ID）・`phaseCount`（`## やること` の段の数。実装の agent が `phase_result` の `count` に渡す）が要る。
   任意で `steps`（走らせる段。既定は `["implement", "accept", "retrospect"]`）・`model`（実装と直しの model）・`from`（呼び直すときに始める段）
-- 前提: `tw plan-check` が `PLAN_REGISTERED` を返すタスク。計画の書き直しは台本の外で済ませる
-- 戻り値: 通れば `{ stopped: false, implement, accept, retrospect }`。止まれば `{ stopped: true, phase, reason }`（`phase` は止まった段）。
+- 計画の準備: 実装の前に `tw plan-check` を打つ agent を起こす。`PLAN_REGISTERED`・`PLAN_FIRST` ならそのまま実装へ進む。
+  `PLAN_STALE`・`PLAN_NOT_FIRST`（計画が古い）なら、`tw brief implementer <ID> --rewrite` の決まりで `## やること` を書き直す agent を続けて起こし、書き直したあとの段の数を `phaseCount` に置き換えて実装へ進む
+- 実装の確認: 実装の agent は、最後の段より前の段ごとに `tw step` が `STEPPED` を出すまで次へ進まず、出た行を `stepLines` に返す。
+  台本は `STEPPED` の行が `phaseCount − 1` 行あるかを確かめ、足りなければ `stopped`（`phase: "implement"`）で返す。`conventionLines` は実装の報告の `- 規約:`（あれば `- 規約の指摘:`）の行
+- 戻り値: 通れば `{ stopped: false, plan?, conventionLines?, implement, accept, retrospect }`。止まれば `{ stopped: true, phase, reason }`（`phase` は止まった段）。
   止まったら呼び出し側が `tw relay <ID> 再開` に段を書いて `tw release` し、次の着手で `from` にその段を渡して呼び直す
 - 受け入れの道: `tw accept` の判定が `REVIEW` なら受け入れ役をレビューの依頼で起こし、通ったら締めの agent が `tw accept --after-review` を打つ。
   `SKIP`・`NOTHING`・`NO_RANGE` なら `tw accept` が `accept` を閉じているので締めの agent は起こさず、受け入れ役は目視と材料だけを見る。差し戻しの上限は2回

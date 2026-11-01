@@ -15,7 +15,8 @@ export const meta = {
 //   steps      走らせる段。既定は ["implement", "accept", "retrospect"]
 //   model      実装・直しの agent の model（haiku・sonnet・opus。省くとメインの model）
 //   from       呼び直すときに始める段（implement・accept・retrospect）
-// 戻り値: { stopped: false, implement, accept, retrospect } か { stopped: true, phase, reason }
+//   phaseCount は、計画が古くて書き直したときは書き直したあとの段の数に置き換わる
+// 戻り値: { stopped: false, plan?, conventionLines?, implement, accept, retrospect } か { stopped: true, phase, reason }
 
 const REJECT_LIMIT = 2
 const ALL_STEPS = ["implement", "accept", "retrospect"]
@@ -28,10 +29,33 @@ const IMPLEMENT = {
     verifyResult: { type: "string" },
     verifyPassed: { type: "boolean" },
     draftLines: { type: "array", items: { type: "string" } },
+    stepLines: { type: "array", items: { type: "string" } },
+    conventionLines: { type: "array", items: { type: "string" } },
     stopped: { type: "boolean" },
     reason: { type: "string" },
   },
-  required: ["changedFiles", "verifyCommand", "verifyResult", "verifyPassed", "stopped"],
+  required: ["changedFiles", "verifyCommand", "verifyResult", "verifyPassed", "stepLines", "conventionLines", "stopped"],
+}
+
+const PLAN_CHECK = {
+  type: "object",
+  properties: {
+    state: { type: "string", enum: ["ok", "rewrite", "stop"] },
+    line: { type: "string" },
+  },
+  required: ["state", "line"],
+}
+
+const PLAN_REWRITE = {
+  type: "object",
+  properties: {
+    rewritten: { type: "boolean" },
+    phaseCount: { type: "number" },
+    planLine: { type: "string" },
+    stopped: { type: "boolean" },
+    reason: { type: "string" },
+  },
+  required: ["rewritten", "phaseCount", "planLine", "stopped"],
 }
 
 const ACCEPT_PREPARE = {
@@ -83,7 +107,7 @@ if (!args || typeof args.taskId !== "string" || !Number.isInteger(args.phaseCoun
   throw new Error("args に taskId（文字列）と phaseCount（1以上の整数）が要る")
 }
 const taskId = args.taskId
-const phaseCount = args.phaseCount
+let phaseCount = args.phaseCount
 const steps = Array.isArray(args.steps) ? args.steps : ALL_STEPS
 const startAt = ALL_STEPS.includes(args.from) ? ALL_STEPS.indexOf(args.from) : 0
 const runs = (step) => steps.includes(step) && ALL_STEPS.indexOf(step) >= startAt
@@ -98,17 +122,50 @@ const result = { stopped: false }
 
 if (runs("implement")) {
   phase("Implement")
+  const planCheck = await agent(
+    `${COMMON}\n` +
+      `\`tw plan-check ${taskId}\` を打ち、最初の行の先頭語で state を決める: ` +
+      "`PLAN_REGISTERED`・`PLAN_FIRST` なら ok、`PLAN_STALE`・`PLAN_NOT_FIRST` なら rewrite、" +
+      "`NOT_OWNER` など着手の印が読めない行なら stop。最初の行を line に入れて返す。作業ツリーは書き換えない。",
+    { agentType: "tsukumo-workflow:no-delegate", schema: PLAN_CHECK, label: "plan-check", phase: "Implement" },
+  )
+  if (planCheck === null || planCheck.state === "stop") {
+    return { stopped: true, phase: "implement", reason: planCheck?.line ?? "計画の判定の agent が null を返した" }
+  }
+  if (planCheck.state === "rewrite") {
+    const rewrite = await agent(
+      `${COMMON}\n` +
+        `最初に \`tw brief implementer ${taskId} --rewrite\` を打ち、出力の2行目以降の決まりを読んで従う。` +
+        "登録時の `## やること` は古いので、いまの主ブランチで調べ直して書き直す（`tw edit` で節の中身だけを渡す。実装の作業はしない）。" +
+        `書き直したあと \`tw plan-check ${taskId}\` を打ち、\`PLAN_REGISTERED\`・\`PLAN_FIRST\` のいずれかであることを確かめる。` +
+        "返すのは、書き直したか（rewritten）・書き直したあとの `## やること` の段の数（phaseCount）・" +
+        "打った `tw plan-check` の最初の行（planLine）。書き直せず止めるなら stopped を true、reason に理由を入れる。",
+      { agentType: "tsukumo-workflow:no-delegate", schema: PLAN_REWRITE, label: "plan-rewrite", phase: "Implement", ...modelOpt },
+    )
+    if (rewrite === null || rewrite.stopped || !rewrite.rewritten) {
+      return { stopped: true, phase: "implement", reason: rewrite?.reason ?? "計画を書き直せなかった", rewrite }
+    }
+    if (!Number.isInteger(rewrite.phaseCount) || rewrite.phaseCount < 1) {
+      return { stopped: true, phase: "implement", reason: "書き直したあとの段の数が読めない", rewrite }
+    }
+    phaseCount = rewrite.phaseCount
+    result.plan = rewrite
+  }
   const implement = await agent(
     `${COMMON}\n` +
       `最初に \`tw brief implementer ${taskId}\` を打ち、出力の2行目以降の決まりを読んで従う。` +
       `\`tw show ${taskId}\` の ## やること の段 1 から ${phaseCount} までを、番号の順に1段ずつ実装する。` +
-      `段を1つ済ませるたびに、\`tw step ${taskId} <段の番号>\` を打ち、続けて phase_result を ` +
+      `最後の段より前の段を1つ済ませるたびに、\`tw step ${taskId} <段の番号>\` を打つ。` +
+      "`STEPPED` の行が出るまで次の段へ進まない。`STEP_CHECK_FAILED` など終了コードが 0 でないときは、続く出力の指摘を直して打ち直す。" +
+      `出た \`STEPPED\` の行は stepLines に1段1行で入れる（最後の段は \`tw verify\` で済むので \`STEPPED\` は要らない。行数は ${phaseCount - 1}）。` +
+      "続けて phase_result を " +
       `{ phase: <段の番号>, count: ${phaseCount}, outcome: "finished", summary: <その段でしたこと・分かったことを1〜2文> } で呼ぶ。` +
       "段が要らず飛ばすなら outcome を skipped にする（summary は付けない）。" +
       "判断が想定より要ると分かったら押し切らず、その段で phase_result を outcome: stopped（reason に理由）で呼んで止め、" +
       "schema の stopped を true、reason に理由を入れて返す。" +
       `最後の段のあと \`tw verify\` を打ち、打ったコマンド・結果の要点・通ったかを返す。` +
-      "返す欄は schema のとおり。draftLines には委譲先の報告に書く `- ドラフト:` の行があれば入れる。",
+      "返す欄は schema のとおり。draftLines には委譲先の報告に書く `- ドラフト:` の行があれば入れる。" +
+      "conventionLines には、`tw brief implementer` の決まりに従って報告に書く `- 規約:` の行（あれば `- 規約の指摘:` の行も）を1行1要素で入れる。",
     { agentType: "tsukumo-workflow:no-delegate", schema: IMPLEMENT, label: "implement", phase: "Implement", ...modelOpt },
   )
   if (implement === null) {
@@ -121,6 +178,16 @@ if (runs("implement")) {
   if (!implement.verifyPassed) {
     return { stopped: true, phase: "implement", reason: "tw verify が通っていない", implement }
   }
+  const stepped = implement.stepLines.filter((line) => line.startsWith("STEPPED")).length
+  if (stepped < phaseCount - 1) {
+    return {
+      stopped: true,
+      phase: "implement",
+      reason: `tw step の STEPPED が ${stepped} 行しかない（${phaseCount - 1} 行が要る）。途中の段の控えが欠けている`,
+      implement,
+    }
+  }
+  result.conventionLines = implement.conventionLines
 }
 
 if (runs("accept")) {
