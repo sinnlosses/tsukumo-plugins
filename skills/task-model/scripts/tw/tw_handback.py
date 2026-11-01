@@ -151,6 +151,9 @@ def cmd_lap(toplevel: str, task_id: str, stage: str, edge: str | None = None, mo
         close_open_lap(toplevel, shown, stage)
         print(f"LAPPED\t{shown}\t{stage}\t{edge}")
         return
+    if stage != "delegate" and stage in _open_laps(toplevel, shown):
+        print(f"LAPPED\t{shown}\t{stage}\t{edge}")
+        return
     extra = {"model": model} if model is not None else {}
     tw_base.record(toplevel, "lap", shown, stage=stage, edge=edge, **extra)
     if stage == "accept":
@@ -158,14 +161,19 @@ def cmd_lap(toplevel: str, task_id: str, stage: str, edge: str | None = None, mo
     print(f"LAPPED\t{shown}\t{stage}\t{edge}")
 
 
-def close_open_lap(toplevel: str, task_id: str, stage: str) -> None:
-    """最後の `claim` 以降で段 `stage` が開いていれば、その `end` を `flow/` に書く（何も出さない）。"""
-    shown = beads.to_task_id(beads.to_bd_id(task_id))
+def _open_laps(toplevel: str, shown: str) -> list[str]:
+    """最後の `claim` 以降で `start` だけの段。台帳が読めなければ空（開いていないとみなす）。"""
     try:
         events = metrics.read_events(ledger.ledger_root(cwd=toplevel))[0]
     except (OSError, gitinfo.GitCommandError):
-        return
-    if stage in metrics.open_stages(events, shown):
+        return []
+    return metrics.open_stages(events, shown)
+
+
+def close_open_lap(toplevel: str, task_id: str, stage: str) -> None:
+    """最後の `claim` 以降で段 `stage` が開いていれば、その `end` を `flow/` に書く（何も出さない）。"""
+    shown = beads.to_task_id(beads.to_bd_id(task_id))
+    if stage in _open_laps(toplevel, shown):
         tw_base.record(toplevel, "lap", shown, stage=stage, edge="end")
 
 

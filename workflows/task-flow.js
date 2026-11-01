@@ -207,10 +207,8 @@ if (runs("accept")) {
             "`REVIEW`（SNAPSHOT の行がある）なら kind を REVIEW に、" +
             "`SKIP`・`NOTHING`・`NO_RANGE` の行が出たなら同名の kind にする。" +
             "`NOT_LAST_STEP`・`FORMAT_FAILED`・`MISSING`・`INVALID`・`NOT_OWNER` など止まる行が出たら kind を STOP にして reason に行を入れる。"
-          : `受け入れ役が差し戻したので、\`tw lap ${taskId} review start\` を打ち、続けて \`tw accept ${taskId} --after-review\` を打つ。` +
-            "この出力には REVIEW・SKIP・NOTHING・NO_RANGE の行は出ない（整形と verify-check の行だけ）。" +
-            "verify-check の行が通っている（VERIFIED か VERIFIED_SAME）なら kind は REVIEW にする。" +
-            "NOT_VERIFIED・FORMAT_FAILED・MISSING・INVALID・NOT_OWNER など通っていない・止まる行が出たら kind を STOP にして reason に行を入れる。") +
+          : `受け入れ役が差し戻したので、\`tw lap ${taskId} review start\` を打つ。\`tw accept\` は打たない（\`accept\` の end は受け入れの締めの agent が \`--after-review\` で打つ。ここで打つと、受け入れ役の前に \`accept\` が閉じて、締めの agent が \`delegate\` の start を偽って書く）。` +
+            "kind は REVIEW にする。`NOT_CLAIMED`・`NOT_OWNER` など止まる行が出たら kind を STOP にして reason に行を入れる。") +
         (first
           ? "続けて、打った `tw accept` の出力を一時ファイルに書かず標準入力へ渡し、" +
             `\`tw brief acceptor ${taskId} --accept-file -\` を打つ（画面や見た目を確かめる完了条件があるタスクでは \`--visual\` も付ける）。`

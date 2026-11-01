@@ -83,7 +83,8 @@ Claude Code 以外の環境（Codex など）へスキルを置く入口は、�
   止まったら呼び出し側が `tw relay <ID> 再開` に段を書いて `tw release` し、次の着手で `from` にその段を渡して呼び直す
 - 受け入れの道: `tw accept` の判定が `REVIEW` なら受け入れ役をレビューの依頼で起こし、通ったら締めの agent が `tw accept --after-review` を打つ。
   `SKIP`・`NOTHING`・`NO_RANGE` なら `tw accept` が `accept` を閉じているので締めの agent は起こさず、受け入れ役は目視と材料だけを見る。差し戻しの上限は2回
-- 2周目以降: 受け入れ役の依頼文に、`tw brief acceptor --round` の出力へ前回の指摘の原文（`findings`）と材料の値（`friction`・`human`）を台本が足して渡す
+- 2周目以降: 受け入れ役の依頼文に、`tw brief acceptor --round` の出力へ前回の指摘の原文（`findings`）と材料の値（`friction`・`human`）を台本が足して渡す。2周目の準備の agent は `tw lap review start` だけを打ち、`tw accept` は打たない（`accept` の end は締めの agent の `--after-review` だけが打つ。先に閉じると、締めの agent を hook が実装の agent と数えて `delegate` の start を偽って書く）
+- `tw lap <ID> <段> start` は、その段が開いているあいだは書かない（`delegate` を除く）。`tw accept` を重ねて打っても `accept`・`review` の start は重ならない
 - hook は、`delegate` の start・`review` の end（`review` の start は `tw accept` と `tw lap review start` が書く）・`retro` の start と end の `lap` を書く。hook は入力の `cwd` の作業ツリーの着手の控えが1件のときだけ書くので、
   `Workflow` は着手した作業ツリーを cwd にしたセッションから呼ぶ（別のディレクトリ、たとえば vendor の plugin の中から呼ぶと、`lap` が欠けて `review` が開いたまま残る）
 - 台本の中で `Date.now()`・`Math.random()`・引数なしの `new Date()` は使えない。`isolation: 'worktree'` は使わない
