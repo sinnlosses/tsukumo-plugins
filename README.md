@@ -61,6 +61,24 @@ Claude Code 以外の環境（Codex など）へスキルを置く入口は、�
 
 開発中は `claude --plugin-dir .` でも読ませられ（その 1 セッションだけ）、`claude plugin validate .` で検査する。
 
+## 台本 `workflows/task-flow.js`
+
+着手の印が立ったタスク1件を、実装 → 受け入れ → 振り返りの段で進める Claude Code の dynamic workflows の台本。
+送り出し（`tw finish`）は台本の段にせず、完了の通知を受けた呼び出し側が打つ。
+`agent()` の `agentType` は、実装・直し・受け入れの準備と締めが `tsukumo-workflow:no-delegate`、受け入れが `tsukumo-workflow:acceptor`、
+振り返りが `tsukumo-workflow:retrospector`。`tw lap-hook` が agent の起動・停止から `delegate`・`review`・`retro` の `lap` を書く。
+
+- 呼び方（`Workflow` はメインのセッションから呼ぶ。委譲先には道具が無い）: 名前 `tsukumo-workflow:task-flow` か、`scriptPath` にこのファイルの絶対パスを渡す。
+  plugin の `workflows/` が名前で読めるかは確かめていない（読み込みは次のセッションの開始か `/reload-plugins` で効く）。読めなければ `scriptPath` で渡す
+- `args`: `taskId`（着手したタスクの ID）・`phaseCount`（`## やること` の段の数。実装の agent が `phase_result` の `count` に渡す）が要る。
+  任意で `steps`（走らせる段。既定は `["implement", "accept", "retrospect"]`）・`model`（実装と直しの model）・`from`（呼び直すときに始める段）
+- 前提: `tw plan-check` が `PLAN_REGISTERED` を返すタスク。計画の書き直しは台本の外で済ませる
+- 戻り値: 通れば `{ stopped: false, implement, accept, retrospect }`。止まれば `{ stopped: true, phase, reason }`（`phase` は止まった段）。
+  止まったら呼び出し側が `tw relay <ID> 再開` に段を書いて `tw release` し、次の着手で `from` にその段を渡して呼び直す
+- 受け入れの道: `tw accept` の判定が `REVIEW` なら受け入れ役をレビューの依頼で起こし、通ったら締めの agent が `tw accept --after-review` を打つ。
+  `SKIP`・`NOTHING`・`NO_RANGE` なら `tw accept` が `accept` を閉じているので締めの agent は起こさず、受け入れ役は目視と材料だけを見る。差し戻しの上限は2回
+- 台本の中で `Date.now()`・`Math.random()`・引数なしの `new Date()` は使えない。`isolation: 'worktree'` は使わない
+
 ## もう1つのプラグイン `tsukumo-figure`
 
 タスク運用とは関係なく、図を載せるためのプラグイン（`plugins/tsukumo-figure/`）。同じマーケットプレイスから入れる。

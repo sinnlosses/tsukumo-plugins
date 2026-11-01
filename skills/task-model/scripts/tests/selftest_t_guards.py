@@ -479,10 +479,11 @@ def test_agent_scoped_guard() -> None:
         start_matcher = next((m for e, m in lap_hooks if e == "SubagentStart"), None) or ""
         stop_matcher = next((m for e, m in lap_hooks if e == "SubagentStop"), None) or ""
         check("lap-hook の matcher は lap_hook の実装役・受け入れ役の名前（裸と plugin 付き）に当たり、ほかに当たらない",
-              all(re.search(start_matcher, f"{p}{t}") for t in lap_hook.IMPLEMENTER_TYPES for p in ("", "tsukumo-workflow:"))
+              all(re.search(start_matcher, f"{p}{t}")
+                  for t in (*lap_hook.IMPLEMENTER_TYPES, lap_hook.RETROSPECTOR_TYPE) for p in ("", "tsukumo-workflow:"))
               and all(re.search(stop_matcher, f"{p}{lap_hook.ACCEPTOR_TYPE}") for p in ("", "tsukumo-workflow:"))
               and not any(re.search(m, n) for m in (start_matcher, stop_matcher)
-                          for n in ("Explore", "", "tsukumo-workflow:acceptor-x", "no-delegate-x"))
+                          for n in ("Explore", "", "tsukumo-workflow:acceptor-x", "no-delegate-x", "retrospector-x"))
               and not re.search(stop_matcher, "tsukumo-workflow:no-delegate"),
               f"{start_matcher!r} {stop_matcher!r}")
         check("hooks/hooks.json は --agent-scoped 付きで commit-guard・handback-guard を呼ぶ hook を4つ持つ",
@@ -515,6 +516,20 @@ def test_agent_scoped_guard() -> None:
         check("hooks.json の SubagentStart の lap-hook は控え1件の作業ツリーに delegate の start を書き、stdout は空",
               r.returncode == 0 and r.stdout == "" and [(e["task"], e.get("edge")) for e in delegate_laps] == [("T-100", "start")],
               repr(delegate_laps) + r.stdout + r.stderr)
+        run_task(wt1, "lap", "T-100", "accept", "start")
+        run_lap_hook(tmp, wt1, _subagent_start("tsukumo-workflow:retrospector"))
+        check("accept が開いているあいだの retrospector の起動は retro を書かない",
+              not [e for e in flow_rows(wt1) if e["event"] == "lap" and e.get("stage") == "retro"])
+        run_lap_hook(tmp, wt1, _subagent_start("tsukumo-workflow:no-delegate"))
+        run_task(wt1, "lap", "T-100", "accept", "end")
+        run_lap_hook(tmp, wt1, _subagent_start("tsukumo-workflow:retrospector"))
+        run_lap_hook(tmp, wt1, _subagent_start("tsukumo-workflow:retrospector"))
+        retro_laps = [e for e in flow_rows(wt1) if e["event"] == "lap" and e.get("stage") == "retro"]
+        check("accept の end のあとの retrospector の起動は retro の start を1つだけ書き、delegate を足さない",
+              [(e["task"], e.get("edge")) for e in retro_laps] == [("T-100", "start")]
+              and [e.get("edge") for e in flow_rows(wt1) if e["event"] == "lap" and e.get("stage") == "delegate"] == ["start", "end"],
+              repr(flow_rows(wt1)[-6:]))
+        run_task(wt1, "lap", "T-100", "retro", "end")
         run_task(wt1, "lap", "T-100", "review", "start")
         stop_hook = next((argv for (e, _), argv in lap_hooks.items() if e == "SubagentStop"), ["/bin/false"])
         payload = {"hook_event_name": "SubagentStop", "cwd": wt1, "agent_id": "a-acc", "agent_type": "tsukumo-workflow:acceptor"}

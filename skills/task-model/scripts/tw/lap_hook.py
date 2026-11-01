@@ -1,6 +1,7 @@
 """`tw lap-hook`: Claude Code の hook の入力（stdin の JSON）から、オーケストレーターの段の頭の `lap` を台帳に書く。
 
 - `SubagentStart` で、`agent_type` の最後の `:` より後ろが `IMPLEMENTER_TYPES` のもの → 段 `delegate` の `start`
+- `SubagentStart` で、`agent_type` の最後の `:` より後ろが `retrospector` のもの → 段 `retro` の `start`（台本の振り返りの agent）
 - 主のセッション（入力に `agent_id` が無い）の `Skill` の `PreToolUse` で、`tool_input.skill` の最後の `:` より後ろが
   `retrospect` のもの → 段 `retro` の `start`
 - `SubagentStop` で、`agent_type` の最後の `:` より後ろが `acceptor` のもの → 段 `review` の `end`（開いているときだけ）
@@ -25,6 +26,7 @@ import tw_base
 
 IMPLEMENTER_TYPES = ("no-delegate", "general-purpose")
 ACCEPTOR_TYPE = "acceptor"
+RETROSPECTOR_TYPE = "retrospector"
 RETRO_SKILL = "retrospect"
 
 
@@ -54,6 +56,8 @@ def _stage(payload: dict) -> tuple[str, str] | None:
     event = payload.get("hook_event_name")
     if event == "SubagentStart" and _short_name(payload.get("agent_type")) in IMPLEMENTER_TYPES:
         return "delegate", "start"
+    if event == "SubagentStart" and _short_name(payload.get("agent_type")) == RETROSPECTOR_TYPE:
+        return "retro", "start"
     if event == "SubagentStop" and _short_name(payload.get("agent_type")) == ACCEPTOR_TYPE:
         return "review", "end"
     if event == "PreToolUse" and payload.get("tool_name") == "Skill" and agent_scope.agent_id(payload) is None:

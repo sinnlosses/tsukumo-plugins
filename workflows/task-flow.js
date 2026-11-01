@@ -1,0 +1,223 @@
+export const meta = {
+  name: "task-flow",
+  description: "着手の印が立ったタスク1件を、実装 → 受け入れ → 振り返りの段で進める（送り出しは呼んだ側が tw finish で行う）",
+  whenToUse: "tw claim が CLAIMED を返し、tw plan-check が PLAN_REGISTERED を返したタスク1件を進めるとき",
+  phases: [
+    { title: "Implement", detail: "no-delegate が ## やること の段を順に実装し、段ごとに phase_result を呼ぶ" },
+    { title: "Accept", detail: "tw accept の判定で道を分け、acceptor が判定する。差し戻しは上限2回" },
+    { title: "Retrospect", detail: "retrospector が retrospect スキルで兆候を判定する" },
+  ],
+}
+
+// args: { taskId, phaseCount, steps?, model?, from? }
+//   taskId     着手したタスクの ID（GH-123 など）
+//   phaseCount ## やること の段の数（実装の agent が phase_result の count に渡す）
+//   steps      走らせる段。既定は ["implement", "accept", "retrospect"]
+//   model      実装・直しの agent の model（haiku・sonnet・opus。省くとメインの model）
+//   from       呼び直すときに始める段（implement・accept・retrospect）
+// 戻り値: { stopped: false, implement, accept, retrospect } か { stopped: true, phase, reason }
+
+const REJECT_LIMIT = 2
+const ALL_STEPS = ["implement", "accept", "retrospect"]
+
+const IMPLEMENT = {
+  type: "object",
+  properties: {
+    changedFiles: { type: "array", items: { type: "string" } },
+    verifyCommand: { type: "string" },
+    verifyResult: { type: "string" },
+    verifyPassed: { type: "boolean" },
+    draftLines: { type: "array", items: { type: "string" } },
+    stopped: { type: "boolean" },
+    reason: { type: "string" },
+  },
+  required: ["changedFiles", "verifyCommand", "verifyResult", "verifyPassed", "stopped"],
+}
+
+const ACCEPT_PREPARE = {
+  type: "object",
+  properties: {
+    kind: { type: "string", enum: ["REVIEW", "SKIP", "NOTHING", "NO_RANGE", "STOP"] },
+    acceptLines: { type: "string" },
+    brief: { type: "string" },
+    tree: { type: "string" },
+    reason: { type: "string" },
+  },
+  required: ["kind", "acceptLines", "brief"],
+}
+
+const JUDGMENT = {
+  type: "object",
+  properties: {
+    verdict: { type: "string", enum: ["accept", "reject"] },
+    findings: { type: "array", items: { type: "string" } },
+    visual: { type: "string" },
+    friction: { type: "string" },
+    human: { type: "number" },
+    notes: { type: "string" },
+  },
+  required: ["verdict", "findings", "friction", "human"],
+}
+
+const ACCEPT_CLOSE = {
+  type: "object",
+  properties: {
+    verifyCheckLine: { type: "string" },
+    closed: { type: "boolean" },
+    reason: { type: "string" },
+  },
+  required: ["verifyCheckLine", "closed"],
+}
+
+const RETRO = {
+  type: "object",
+  properties: {
+    signal: { type: "string", enum: ["none", "some"] },
+    line: { type: "string" },
+    draftIds: { type: "array", items: { type: "string" } },
+  },
+  required: ["signal", "line", "draftIds"],
+}
+
+if (!args || typeof args.taskId !== "string" || !Number.isInteger(args.phaseCount) || args.phaseCount < 1) {
+  throw new Error("args に taskId（文字列）と phaseCount（1以上の整数）が要る")
+}
+const taskId = args.taskId
+const phaseCount = args.phaseCount
+const steps = Array.isArray(args.steps) ? args.steps : ALL_STEPS
+const startAt = ALL_STEPS.includes(args.from) ? ALL_STEPS.indexOf(args.from) : 0
+const runs = (step) => steps.includes(step) && ALL_STEPS.indexOf(step) >= startAt
+const modelOpt = typeof args.model === "string" ? { model: args.model } : {}
+
+const COMMON =
+  `タスク ${taskId} は着手の印が立っている。作業ツリーは今の cwd。ファイルの書き換えは Edit・Write で行う。` +
+  "tsukumo の phase_result がツール一覧に無いときは ToolSearch で select:mcp__tsukumo__phase_result を引く（それでも無ければ呼ばない）。"
+
+const result = { stopped: false }
+
+if (runs("implement")) {
+  phase("Implement")
+  const implement = await agent(
+    `${COMMON}\n` +
+      `最初に \`tw brief implementer ${taskId}\` を打ち、出力の2行目以降の決まりを読んで従う。` +
+      `\`tw show ${taskId}\` の ## やること の段 1 から ${phaseCount} までを、番号の順に1段ずつ実装する。` +
+      `段を1つ済ませるたびに、\`tw step ${taskId} <段の番号>\` を打ち、続けて phase_result を ` +
+      `{ phase: <段の番号>, count: ${phaseCount}, outcome: "finished", summary: <その段でしたこと・分かったことを1〜2文> } で呼ぶ。` +
+      "段が要らず飛ばすなら outcome を skipped にする（summary は付けない）。" +
+      "判断が想定より要ると分かったら押し切らず、その段で phase_result を outcome: stopped（reason に理由）で呼んで止め、" +
+      "schema の stopped を true、reason に理由を入れて返す。" +
+      `最後の段のあと \`tw verify\` を打ち、打ったコマンド・結果の要点・通ったかを返す。` +
+      "返す欄は schema のとおり。draftLines には委譲先の報告に書く `- ドラフト:` の行があれば入れる。",
+    { agentType: "tsukumo-workflow:no-delegate", schema: IMPLEMENT, label: "implement", phase: "Implement", ...modelOpt },
+  )
+  if (implement === null) {
+    return { stopped: true, phase: "implement", reason: "agent が null を返した" }
+  }
+  result.implement = implement
+  if (implement.stopped) {
+    return { stopped: true, phase: "implement", reason: implement.reason ?? "実装の agent が止めた", implement }
+  }
+  if (!implement.verifyPassed) {
+    return { stopped: true, phase: "implement", reason: "tw verify が通っていない", implement }
+  }
+}
+
+if (runs("accept")) {
+  phase("Accept")
+  let round = 0
+  let tree = ""
+  let judgment = null
+  let prepared = null
+  while (true) {
+    const first = round === 0
+    prepared = await agent(
+      `${COMMON}\n` +
+        (first
+          ? `\`tw accept ${taskId}\` を打つ。出力の最後の行で道を分ける: ` +
+            "`REVIEW`（SNAPSHOT の行がある）なら kind を REVIEW に、" +
+            "`SKIP`・`NOTHING`・`NO_RANGE` の行が出たなら同名の kind にする。" +
+            "`NOT_LAST_STEP`・`FORMAT_FAILED`・`MISSING`・`INVALID`・`NOT_OWNER` など止まる行が出たら kind を STOP にして reason に行を入れる。"
+          : `受け入れ役が差し戻したので、\`tw lap ${taskId} review start\` を打ち、続けて \`tw accept ${taskId} --after-review\` を打つ。` +
+            "出力の読み方は最初の回と同じ。") +
+        "続けて、打った `tw accept` の出力を一時ファイルに書かず標準入力へ渡し、" +
+        (first
+          ? `\`tw brief acceptor ${taskId} --accept-file -\``
+          : `\`tw brief acceptor ${taskId} --accept-file - --round ${round + 1} --since ${tree}\``) +
+        " を打つ（画面や見た目を確かめる完了条件があるタスクでは `--visual` も付ける）。" +
+        "kind が STOP のときは brief を空文字にしてよい。" +
+        "返すのは、kind・`tw accept` の出力全部（acceptLines）・`tw brief` の2行目以降の依頼文（brief）・" +
+        "`tw brief` の1行目の末尾の木の SHA があれば tree。",
+      { agentType: "tsukumo-workflow:no-delegate", schema: ACCEPT_PREPARE, label: `accept-prepare-${round + 1}`, phase: "Accept" },
+    )
+    if (prepared === null) {
+      return { stopped: true, phase: "accept", reason: "受け入れの準備の agent が null を返した" }
+    }
+    if (prepared.kind === "STOP") {
+      return { stopped: true, phase: "accept", reason: prepared.reason ?? prepared.acceptLines, prepared }
+    }
+    if (typeof prepared.tree === "string" && prepared.tree !== "") {
+      tree = prepared.tree
+    }
+    judgment = await agent(prepared.brief, {
+      agentType: "tsukumo-workflow:acceptor",
+      schema: JUDGMENT,
+      label: `acceptor-${round + 1}`,
+      phase: "Accept",
+    })
+    if (judgment === null) {
+      return { stopped: true, phase: "accept", reason: "受け入れ役が null を返した", prepared }
+    }
+    if (judgment.verdict === "accept") {
+      break
+    }
+    if (round >= REJECT_LIMIT) {
+      return { stopped: true, phase: "accept", reason: `差し戻しが上限（${REJECT_LIMIT}回）に達した`, judgment }
+    }
+    round += 1
+    const fix = await agent(
+      `${COMMON}\n受け入れ役の指摘を直す。指摘:\n${JSON.stringify(judgment.findings)}\n` +
+        `直したら作業ツリー（着手した側。別のリポジトリのタスクなら \`tw brief implementer ${taskId}\` が言う作業先の作業ツリー）でコミットし、\`tw verify\` を打つ。` +
+        "コミットのあとに打つ。打ったコマンド・結果の要点・通ったかを返す。",
+      { agentType: "tsukumo-workflow:no-delegate", schema: IMPLEMENT, label: `fix-${round}`, phase: "Accept", ...modelOpt },
+    )
+    if (fix === null) {
+      return { stopped: true, phase: "accept", reason: "直しの agent が null を返した" }
+    }
+    if (fix.stopped || !fix.verifyPassed) {
+      return { stopped: true, phase: "accept", reason: fix.reason ?? "直しのあとの tw verify が通っていない", fix }
+    }
+  }
+
+  let closed = null
+  if (prepared.kind === "REVIEW" || round > 0) {
+    closed = await agent(
+      `${COMMON}\n` +
+        `受け入れ役が通した。\`tw accept ${taskId} --after-review\` を打って、整形・verify-check・accept の end を済ませる。` +
+        "出力に NOT_VERIFIED が出たら `tw verify` を打ってから打ち直す。最後の行を verifyCheckLine に、済んだら closed を true にして返す。",
+      { agentType: "tsukumo-workflow:no-delegate", schema: ACCEPT_CLOSE, label: "accept-close", phase: "Accept" },
+    )
+    if (closed === null || !closed.closed) {
+      return { stopped: true, phase: "accept", reason: "受け入れの締めが済まなかった", closed }
+    }
+  }
+  result.accept = { rounds: round, kind: prepared.kind, judgment, closed }
+}
+
+if (runs("retrospect")) {
+  phase("Retrospect")
+  const friction = result.accept?.judgment?.friction ?? "missing"
+  const human = result.accept?.judgment?.human ?? 0
+  const retro = await agent(
+    `${COMMON}\n` +
+      `振り返りの段。tsukumo-workflow:retrospect スキルを Skill ツールで読み、タスク ${taskId}・friction=${friction}・human=${human} で従う。` +
+      "兆候が無ければ `- 振り返り: 兆候なし`、あれば物差しを通った候補を tw new --draft で積み、`- 振り返り:` の1行（積んだドラフトの ID を添える）を line に入れて返す。" +
+      "作業ツリーのファイルは書き換えない。",
+    { agentType: "tsukumo-workflow:retrospector", schema: RETRO, model: "haiku", label: "retrospect", phase: "Retrospect" },
+  )
+  if (retro === null) {
+    return { stopped: true, phase: "retrospect", reason: "振り返りの agent が null を返した" }
+  }
+  result.retrospect = retro
+}
+
+return result
