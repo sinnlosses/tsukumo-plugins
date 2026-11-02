@@ -3,7 +3,7 @@
 # 宣言が無いと Python 3.9 が、長い日本語の行の読み込み位置によって「Non-UTF-8 code」で落ちる。
 """Beads に置いたタスクの運用を操作する入口コマンド。
 
-使い方: tw <status|new|claim|release|hold|done|ship|finish|land|config|config-doctor|show|find|edit|plan-check|plan-phases|verify|verify-check|accept|brief|pause|step|lap|escalate-check|beat-watch|loop-check|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|ask-guard|lap-hook|ref-guard> ...
+使い方: tw <status|new|claim|release|hold|done|ship|finish|land|config|config-doctor|show|find|edit|plan-check|plan-phases|verify|verify-check|accept|brief|pause|step|lap|escalate-check|beat-watch|loop-check|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|work-repo-guard|ask-guard|lap-hook|ref-guard> ...
 
 plugin の `bin/tw` から呼ぶ。`commit-guard`・`handback-guard` の
 `--agent-scoped` は plugin の `hooks/hooks.json` が付け、入力に `agent_id` があるとき（サブエージェント）だけ関門を掛ける（`commit-guard` は主のセッションの書き込みの `bd` だけ例外）。
@@ -52,6 +52,7 @@ import tw_relay
 import tw_ship
 import tw_status
 import tw_verify
+import work_repo_guard
 
 
 HOOK_NOTE = """commit-guard・handback-guard・ask-guard は Claude Code の hook の取り決めに従う: 出力は TSV でなく JSON で、終了コードはいつも0。
@@ -284,6 +285,15 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
 """
         + HOOK_NOTE,
     ),
+    "work-repo-guard": (
+        "Claude Code の PreToolUse hook から呼ばれ、着手中のタスクの作業先（別のリポジトリ）の本体の作業ツリーへの Edit・Write・NotebookEdit を拒む。",
+        r"""Claude Code の `PreToolUse` hook（plugin の `hooks/hooks.json` の matcher `Edit|Write|NotebookEdit`。殻 `${CLAUDE_PLUGIN_ROOT}/bin/tw-hook` 越しに呼ぶ）から呼ばれる。`--agent-scoped` を持たず、主のセッションにもサブエージェントにも掛かる。入力の `cwd` の着手の印のタスクの `### 作業先` が別のリポジトリで、書き先がその本体の作業ツリーの中にあり、枝の名前がタスクIDの小文字の作業先の作業ツリーの中でないときに拒む。理由に `git worktree add` の1行を添える。着手した作業ツリーの中・どちらでもない場所・作業先が無いか同じリポジトリのタスク・着手の印が無い作業ツリー・タスクや作業ツリーが引けないときは通す。
+
+出力: 拒むときだけ JSON 1行（deny）。通すときは何も出さない
+
+"""
+        + HOOK_NOTE,
+    ),
     "ask-guard": (
         "Claude Code の PreToolUse hook から呼ばれ、`/loop` に載せたタスクの作業中の AskUserQuestion を拒む。",
         r"""Claude Code の `PreToolUse` hook（plugin の `hooks/hooks.json` の matcher `AskUserQuestion`。殻 `${CLAUDE_PLUGIN_ROOT}/bin/tw-hook` 越しに呼ぶ）から呼ばれる。`--agent-scoped` を持たず、名前（`agent_type`）を見ないので主のセッションにもサブエージェントにも掛かる。入力の `tool_name` が `AskUserQuestion` で、`cwd` の作業ツリーに `.tw/local/task-open-claims/` の控え（`commit-guard` と同じ読む順）があり、控えのタスクのどれかが `loopable: Y` で、作業の段の後でなければ拒む。作業の段の後とは、主のセッション（入力に `agent_id` が無い）で、台帳の `flow/` のそのタスクの最後の `claim` より後の最後の `lap` が `accept` の `end` か、段 `retro`・`land`・`sync` のとき（振り返りの lap を打たない流れでも受け入れの後は通す）。サブエージェント（`agent_id` がある）の質問は段によらず拒む。`tw` にも `bd` にも書かない（`bd` は読む）
@@ -451,6 +461,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_step.add_argument("task_id")
     p_step.add_argument("step")
     sub.add_parser("handback-guard").add_argument("--agent-scoped", dest="agent_scoped", action="store_true")
+    sub.add_parser("work-repo-guard")
     sub.add_parser("ask-guard")
     sub.add_parser("lap-hook")
     sub.add_parser("ref-guard").add_argument("state")
@@ -537,6 +548,9 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.command == "handback-guard":
         handback_guard.run(sys.stdin, sys.stdout, tw_handback.handback_refusal, args.agent_scoped)
+        return
+    if args.command == "work-repo-guard":
+        work_repo_guard.run(sys.stdin, sys.stdout)
         return
     if args.command == "ask-guard":
         ask_guard.run(sys.stdin, sys.stdout)

@@ -65,6 +65,7 @@ HOOK_COMMAND = "${CLAUDE_PLUGIN_ROOT}/bin/tw-hook"
 PLUGIN_HOOKS = (
     ("PreToolUse", "Bash", ("--fail-closed", "commit-guard", "--agent-scoped")),
     ("PreToolUse", "Edit|Write|NotebookEdit", ("--fail-closed", "handback-guard", "--agent-scoped")),
+    ("PreToolUse", "Edit|Write|NotebookEdit", ("--fail-closed", "work-repo-guard")),
     ("PreToolUse", "SubagentHandback", ("--fail-closed", "handback-guard", "--agent-scoped")),
     ("PreToolUse", "AskUserQuestion", ("--fail-closed", "ask-guard")),
     ("PreToolUse", "Skill", ("lap-hook",)),

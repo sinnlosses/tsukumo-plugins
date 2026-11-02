@@ -408,6 +408,73 @@ def test_commit_guard_other_repo() -> None:
               and run_guard(tmp, wt1, f"cd {work_tree} && ./check.sh") is None)
 
 
+def run_work_repo_guard(tmp: str, where: str, path: str, tool: str = "Write", extra: dict | None = None) -> str | None:
+    """`tw work-repo-guard` を git の外（`tmp`）から打つ。拒んだら理由、通したら `None`（落ちたら例外）。"""
+    key = "notebook_path" if tool == "NotebookEdit" else "file_path"
+    payload = json.dumps({"hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": {key: path}, "cwd": where, **(extra or {})})
+    r = run_task(tmp, "work-repo-guard", stdin=payload)
+    if r.returncode != 0:
+        raise RuntimeError(f"work-repo-guard が {r.returncode} で終わった: {r.stderr}")
+    if r.stdout == "":
+        return None
+    out = json.loads(r.stdout)["hookSpecificOutput"]
+    assert out["permissionDecision"] == "deny"
+    return out["permissionDecisionReason"]
+
+
+@weight(9)
+def test_work_repo_guard() -> None:
+    say("task.py work-repo-guard: 作業先が別のリポジトリなら、作業先の本体の作業ツリーへの Edit・Write・NotebookEdit を拒み、枝の作業ツリーなどは通す")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(os.path.join(tmp, "own"))
+        work_repo, _, _ = make_repo(os.path.join(tmp, "work"))
+        commit_task(main_path, taskfile.Task("T-100", "作業先で直す", "todo", "sonnet", "Y", (), BODY))
+        commit_task(main_path, taskfile.Task("T-101", "作業先の無いタスク", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-",
+                 stdin=f"### 1. 書く\n\n### 作業先\n- `{work_repo}`\n")
+        run_task(wt2, "claim", "T-101")
+        run_task(wt2, "edit", "T-101", "--section", "やること", "--body-file", "-", stdin="### 1. 書く\n")
+        work_tree = os.path.join(tmp, "work-t-100")
+        git(work_repo, "worktree", "add", "-q", "-b", "t-100", work_tree, "main")
+        elsewhere = os.path.join(tmp, "elsewhere")
+        os.makedirs(elsewhere)
+
+        reason = run_work_repo_guard(tmp, wt1, os.path.join(work_repo, "f.txt"))
+        check("作業先の本体の作業ツリーへの Write は、枝の名前と git worktree add の1行を添えて拒む",
+              reason is not None and "WORK_REPO_MAIN_TREE" in reason and "t-100" in reason
+              and f"git -C {os.path.realpath(work_repo)} worktree add" in reason, str(reason))
+        check("NotebookEdit も拒む", run_work_repo_guard(tmp, wt1, os.path.join(work_repo, "n.ipynb"), "NotebookEdit") is not None)
+        check("Edit も拒む", run_work_repo_guard(tmp, wt1, os.path.join(work_repo, "f.txt"), "Edit") is not None)
+        check("サブエージェント（agent_id あり）にも掛かる",
+              run_work_repo_guard(tmp, wt1, os.path.join(work_repo, "f.txt"), extra={"agent_id": "a-1"}) is not None)
+        check("相対パスは cwd から解いて拒む",
+              run_work_repo_guard(tmp, wt1, os.path.relpath(os.path.join(work_repo, "f.txt"), wt1)) is not None)
+        denials = [
+            line for name in os.listdir(os.path.join(gitinfo.git_common_dir(wt1), "hook-denials"))
+            for line in open(os.path.join(gitinfo.git_common_dir(wt1), "hook-denials", name), encoding="utf-8")
+        ]
+        check("拒否の記録にルール名 WORK_REPO_MAIN_TREE が残る",
+              any('"WORK_REPO_MAIN_TREE"' in line and '"tw-work-repo-guard"' in line for line in denials), str(denials))
+
+        for label, where, path in (
+            ("作業先の枝の作業ツリーの中", wt1, os.path.join(work_tree, "f.txt")),
+            ("着手した作業ツリーの中", wt1, os.path.join(wt1, "f.txt")),
+            ("どちらでもない場所", wt1, os.path.join(elsewhere, "f.txt")),
+            ("作業先が無い（同じリポジトリの）タスクの作業ツリーから作業先への書き込み", wt2, os.path.join(work_repo, "f.txt")),
+        ):
+            check(f"通す: {label}", run_work_repo_guard(tmp, where, path) is None)
+        run_task(wt2, "release", "T-101")
+        check("通す: 着手の印が無い作業ツリー", run_work_repo_guard(tmp, wt2, os.path.join(work_repo, "f.txt")) is None)
+        check("通す: 読めない入力は何も出さない", run_task(tmp, "work-repo-guard", stdin="not json").stdout == "")
+        check("通す: Bash など書き込みの道具でない入力",
+              run_work_repo_guard(tmp, wt1, os.path.join(work_repo, "f.txt"), "Read") is None)
+
+        run_task(wt1, "release", "T-100")
+        check("release のあとは作業先の本体の作業ツリーへも通す",
+              run_work_repo_guard(tmp, wt1, os.path.join(work_repo, "f.txt")) is None)
+
+
 HOOKS_JSON = os.path.join(HERE, "..", "..", "..", "..", "hooks", "hooks.json")
 
 
@@ -1464,6 +1531,7 @@ TESTS = (
     test_commit_guard_shell_edit,
     test_commit_guard_verify,
     test_commit_guard_other_repo,
+    test_work_repo_guard,
     test_agent_scoped_guard,
     test_readonly_git,
 )
