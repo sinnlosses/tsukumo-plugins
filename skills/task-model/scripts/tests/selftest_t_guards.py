@@ -408,11 +408,13 @@ def test_commit_guard_other_repo() -> None:
               and run_guard(tmp, wt1, f"cd {work_tree} && ./check.sh") is None)
 
 
-def run_work_repo_guard(tmp: str, where: str, path: str, tool: str = "Write", extra: dict | None = None) -> str | None:
+def run_work_repo_guard(
+    tmp: str, where: str, path: str, tool: str = "Write", extra: dict | None = None, env: dict[str, str] | None = None
+) -> str | None:
     """`tw work-repo-guard` を git の外（`tmp`）から打つ。拒んだら理由、通したら `None`（落ちたら例外）。"""
     key = "notebook_path" if tool == "NotebookEdit" else "file_path"
     payload = json.dumps({"hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": {key: path}, "cwd": where, **(extra or {})})
-    r = run_task(tmp, "work-repo-guard", stdin=payload)
+    r = run_task(tmp, "work-repo-guard", stdin=payload, env=env)
     if r.returncode != 0:
         raise RuntimeError(f"work-repo-guard が {r.returncode} で終わった: {r.stderr}")
     if r.stdout == "":
@@ -469,6 +471,15 @@ def test_work_repo_guard() -> None:
         check("通す: 読めない入力は何も出さない", run_task(tmp, "work-repo-guard", stdin="not json").stdout == "")
         check("通す: Bash など書き込みの道具でない入力",
               run_work_repo_guard(tmp, wt1, os.path.join(work_repo, "f.txt"), "Read") is None)
+
+        broken_bin = os.path.join(tmp, "broken-git-bin")
+        os.makedirs(broken_bin)
+        fake_git = write(os.path.join(broken_bin, "git"), '#!/bin/sh\ncase "$*" in *"worktree list"*) echo boom >&2; exit 1;; esac\nexec /usr/bin/git "$@"\n')
+        os.chmod(fake_git, 0o755)
+        broken = {"PATH": f"{broken_bin}:{os.environ['PATH']}"}
+        check("作業先の作業ツリーの一覧が取れなければ、枝の作業ツリーの中も本体の中も通す",
+              run_work_repo_guard(tmp, wt1, os.path.join(work_tree, "f.txt"), env=broken) is None
+              and run_work_repo_guard(tmp, wt1, os.path.join(work_repo, "f.txt"), env=broken) is None)
 
         run_task(wt1, "release", "T-100")
         check("release のあとは作業先の本体の作業ツリーへも通す",

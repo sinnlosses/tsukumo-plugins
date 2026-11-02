@@ -81,7 +81,7 @@ def _refusal(toplevel: str, task_id: str, target: pathlib.Path) -> str | None:
     main_tree = pathlib.Path(work_repo).resolve()
     if not target.is_relative_to(main_tree):
         return None
-    branch_trees = tw_handback.task_trees(toplevel, task_id)[1:]
+    branch_trees = tw_handback._trees_of(toplevel, task_id, work_repo)[1:]
     if any(target.is_relative_to(pathlib.Path(tree).resolve()) for tree in branch_trees):
         return None
     branch = task_id.lower()
