@@ -13,7 +13,7 @@ class FigureError(Exception):
 
 
 class FigureType:
-    """型が持つのは検査と配置だけ。色は theme の役、HTML への包みは page が持つ。"""
+    """型が持つのは検査と配置だけ。色は theme の役、HTML への外枠は page が持つ。"""
 
     name = ""
 

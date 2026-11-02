@@ -1,4 +1,4 @@
-"""spec（図の構造）から図の HTML を作る。型は registry に登録し、配色と HTML の包みは共通。"""
+"""spec（図の構造）から図の HTML を作る。型は registry に登録し、配色と HTML の外枠は共通。"""
 
 from __future__ import annotations
 

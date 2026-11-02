@@ -1,6 +1,6 @@
 # tsukumo-figure
 
-図の構造（節点と流れを書いた spec の JSON）から HTML を作り、図の部分だけを PNG に撮るプラグイン。使い方は `skills/figure-capture/SKILL.md`。
+図の構造（ノードと流れを書いた spec の JSON）から HTML を作り、図の部分だけを PNG に撮るプラグイン。使い方は `skills/figure-capture/SKILL.md`。
 
 ## 撮る段の前提
 

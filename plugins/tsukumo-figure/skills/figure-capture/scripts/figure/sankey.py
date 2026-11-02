@@ -10,9 +10,9 @@ spec:
   links: [{from, to, value, accent?}]            value は正の数。accent は図で1本だけ目立たせる流れ
 
 決まりごと:
-  - 流れは隣の列へだけつなぐ（列をまたぐ流れは中間の節点を足す）
-  - 流入と流出の両方を持つ節点は、2つの合計が一致していること（太さが数を表すので、ずれたら嘘になる）
-  - 帯と節点の太さは1つの尺度で決まり、4px 未満になる流れは図から外す（「その他」にまとめる）
+  - 流れは隣の列へだけつなぐ（列をまたぐ流れは中間のノードを足す）
+  - 流入と流出の両方を持つノードは、2つの合計が一致していること（太さが数を表すので、ずれたら嘘になる）
+  - 帯とノードの太さは1つの尺度で決まり、4px 未満になる流れは図から外す（「その他」にまとめる）
 """
 
 from __future__ import annotations
@@ -113,7 +113,7 @@ def _parse(spec: dict) -> Tuple[List[Node], List[Link], List[str]]:
             errors.append(f"links[{i}] の from・to が nodes に無い（{src!r} → {dst!r}）")
             continue
         if src == dst:
-            errors.append(f"links[{i}] が同じ節点 `{src}` へ戻っている")
+            errors.append(f"links[{i}] が同じノード `{src}` へ戻っている")
             continue
         if not _is_number(val) or val <= 0:
             errors.append(f"links[{i}]（{src} → {dst}）の value は正の数にする")
@@ -127,7 +127,7 @@ def _parse(spec: dict) -> Tuple[List[Node], List[Link], List[str]]:
     for i in ids:
         if sum_in[i] and sum_out[i] and abs(sum_in[i] - sum_out[i]) > 1e-9:
             errors.append(
-                f"節点 `{i}` の流入 {_fmt(sum_in[i])} と流出 {_fmt(sum_out[i])} が一致しない"
+                f"ノード `{i}` の流入 {_fmt(sum_in[i])} と流出 {_fmt(sum_out[i])} が一致しない"
             )
 
     columns = _columns(ids, links, raw_nodes, errors)
@@ -139,7 +139,7 @@ def _parse(spec: dict) -> Tuple[List[Node], List[Link], List[str]]:
         nid = raw["id"]
         value = max(sum_in[nid], sum_out[nid])
         if value == 0:
-            errors.append(f"節点 `{nid}` につながる流れが無い")
+            errors.append(f"ノード `{nid}` につながる流れが無い")
             continue
         sub = raw.get("sub")
         nodes.append(
@@ -177,13 +177,13 @@ def _columns(
         c = raw.get("column")
         if c is not None:
             if not isinstance(c, int) or isinstance(c, bool) or c < 0:
-                errors.append(f"節点 `{raw['id']}` の column は0以上の整数にする")
+                errors.append(f"ノード `{raw['id']}` の column は0以上の整数にする")
             else:
                 col[raw["id"]] = c
     for ln in links:
         if col[ln.dst] - col[ln.src] != 1:
             errors.append(
-                f"流れ `{ln.src}` → `{ln.dst}` が隣の列へつながっていない。中間の節点を足す"
+                f"流れ `{ln.src}` → `{ln.dst}` が隣の列へつながっていない。中間のノードを足す"
             )
     used = sorted(set(col.values()))
     if used and used != list(range(len(used))):
@@ -193,7 +193,7 @@ def _columns(
     for c in used:
         n = sum(1 for v in col.values() if v == c)
         if n > MAX_PER_COLUMN:
-            errors.append(f"列 {c + 1} の節点が {n} あり、{MAX_PER_COLUMN} を超える。「その他」にまとめる")
+            errors.append(f"列 {c + 1} のノードが {n} あり、{MAX_PER_COLUMN} を超える。「その他」にまとめる")
     if len(used) < 2:
         errors.append("列が1つしかない")
     return col
@@ -313,7 +313,7 @@ class Sankey(FigureType):
         thin = []
         for n in lay.nodes:
             if n.h < MIN_THICK:
-                thin.append(f"節点 `{n.id}` が {n.h:.1f}px で薄すぎる。小さい流れは「その他」にまとめる")
+                thin.append(f"ノード `{n.id}` が {n.h:.1f}px で薄すぎる。小さい流れは「その他」にまとめる")
         for l in lay.links:
             if l.thick < MIN_THICK:
                 thin.append(f"流れ `{l.src}` → `{l.dst}` が {l.thick:.1f}px で薄すぎる。「その他」にまとめる")
