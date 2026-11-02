@@ -1,6 +1,6 @@
 # COMMITS_SINCE_CLAIM の扱い
 
-   `claim` した時点より後に、委譲先が hook（`tw commit-guard`）をすり抜けて作ったコミットがあった合図。
+   `claim` した時点より後に、委譲先が hook（`tw commit-guard`）をすり抜けて作ったコミットがあった通知。
    すり抜けるのは、Bash の文字列に `git` が出ないコミットだけ。
    控えの無い古い印では出ない:
 

@@ -577,7 +577,7 @@ def config_entries(project_root: str | None, home: str | None = None, plugin: tu
     }
 
 
-# 台本（`workflows/task-flow.js`）の段。`flow` が `script` のときの `steps` の候補で、送り出しは台本の段にしない。
+# ワークフロースクリプト（`workflows/task-flow.js`）の段。`flow` が `script` のときの `steps` の候補で、送り出しはワークフロースクリプトの段にしない。
 SCRIPT_STEPS = (
     ("implement", "実装", "`## やること` の段を順に実装する"),
     ("accept", "受け入れ", "受け入れ役が判定し、差し戻しを回す"),
@@ -599,7 +599,7 @@ def step_short_name(step: str) -> str:
 
 
 def script_steps(steps: object) -> list[str]:
-    """並びを台本の段の名前（`SCRIPT_STEPS`）にする。スキルの全名で書いてあっても読み替え、送り出しと台本に無い段は落とし、重複は先の1つにする。"""
+    """並びをワークフロースクリプトの段の名前（`SCRIPT_STEPS`）にする。スキルの全名で書いてあっても読み替え、送り出しとワークフロースクリプトに無い段は落とし、重複は先の1つにする。"""
     known = {name for name, _, _ in SCRIPT_STEPS}
     names = [step_short_name(s) for s in steps or ()]
     return [n for i, n in enumerate(names) if n in known and n not in names[:i]]
@@ -624,7 +624,7 @@ def config_schema(
     plugin: tuple[str, str] | None = None,
     flow: str = FLOW_SKILLS,
 ) -> dict:
-    """`tw config --schema` が出す欄の形（schema 2）。既定の並びは `default_steps`。`flow` が `script` なら `steps` の候補は台本の段（`SCRIPT_STEPS`）。"""
+    """`tw config --schema` が出す欄の形（schema 2）。既定の並びは `default_steps`。`flow` が `script` なら `steps` の候補はワークフロースクリプトの段（`SCRIPT_STEPS`）。"""
     candidates = script_step_candidates() if flow == FLOW_SCRIPT else step_candidates(project_root, home, plugin)
     return {
         "schema": 2,
@@ -632,7 +632,7 @@ def config_schema(
             {
                 "key": FLOW_KEY,
                 "label": "流れ",
-                "description": "タスクの段を進める流れ。スキルの並びか、plugin の台本 task-flow か",
+                "description": "タスクの段を進める流れ。スキルの並びか、plugin のワークフロースクリプト task-flow か",
                 "kind": "choice",
                 "default": FLOW_SKILLS,
                 "values": [

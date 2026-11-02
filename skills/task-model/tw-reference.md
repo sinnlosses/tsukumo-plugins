@@ -25,7 +25,7 @@ PATH に無ければ plugin を入れる。どのディレクトリから打っ�
 | `backup` | Beads のバックアップを取るとき | `BACKUP\tOK\|FAILED` |
 | `jira-closed T-xxx…` | `jira:close` を外すとき | `CLEARED` |
 | `plan-check T-xxx` | `## やること` を作業より先に書いたかを読むだけで確かめるとき（受け入れと返却の前） | `PLAN_FIRST`・`PLAN_REGISTERED`・`PLAN_NOT_FIRST\t…\t<理由>`・`PLAN_STALE\tT-xxx\t<変わったファイル>\t<理由>`（理由は `legacy`・`uncovered`・`path-missing`・`no-identifier`・`touched:<語,…>`・`unreadable`。どれも終了コード0）、段が `- 満たす完了条件:` の欄で完了条件を覆わなければ続けて `PLAN_UNCOVERED\tT-xxx\t<n,…>`、並列の計画では続けて `PARALLEL`・`SERIAL`・`STEP`。字数表の文書は `DOC_BUDGET\t…\t<文書>\t<残り>\t<上限>`、`size_budget` があれば `SIZE_BUDGET\t…\t<パス>\t<残り>\t<上限>`。`NOT_OWNER` |
-| `plan-phases T-xxx [--through <段>] [--also <n,…>] [--skipped <段,…>]` | tsukumo の `work_plan` に渡す段の並びと位置を読むだけで出すとき（実装のあとの段は `steps` の並びの2つ目以降のスキルから組む。既定の並びなら「受け入れ」「振り返り」「送り出し」。`--skipped` は飛ばした段で、出力の `skippedPhases` に入る。使い方はオーケストレーターの「進み具合の帯（`work_plan`）」） | `PHASES\tT-xxx\t<JSON 1行>`。`NO_PHASE`（終了コード2）・`NOT_OWNER` |
+| `plan-phases T-xxx [--through <段>] [--also <n,…>] [--skipped <段,…>]` | tsukumo の `work_plan` に渡す段の並びと位置を読むだけで出すとき（実装のあとの段は `steps` の並びの2つ目以降のスキルから組む。既定の並びなら「受け入れ」「振り返り」「送り出し」。`--skipped` は飛ばした段で、出力の `skippedPhases` に入る。使い方はオーケストレーターの「進み具合のプログレスバー（`work_plan`）」） | `PHASES\tT-xxx\t<JSON 1行>`。`NO_PHASE`（終了コード2）・`NOT_OWNER` |
 | `verify [T-xxx]` | 検証コマンドを打つとき（主ブランチの取り込み・整形・中身の鍵の控えも担う。ID は基本付けない） | `FOLDED`（取り込んだとき先頭）・`VERIFIED`・`VERIFIED_UNSTAMPED`・`VERIFY_NOT_PASSED`・`FORMAT_FAILED`・`PLAN_MISSING`・`CONFLICT`・`GIT_READ_ONLY`・`NOTHING`。末尾40行のあとに判定行をもう一度出すので、`tail` で切っても最後の行（取り込んだときは最後の2行）で判定が取れる。task-model の自己テストは単独で約 6 分かかる。前景の上限（Bash 1回あたり 600 秒）を超えると背景に回るので、判定行が出るまで待ってから返す（待つあいだ別の `tw verify` を打たない） |
 | `verify-check` | 中身が `verify` の控えと同じかを読むだけで見るとき（同じなら検証を省く） | `VERIFIED_SAME`・`NOT_VERIFIED\t<理由>`（終了コード0）・`NOTHING` |
 | `accept T-xxx [--after-review]` | 受け入れの機械的な並び（機械的な判定と `verify-check`）を打つとき。判定の `REVIEW\tcode` は、差分に文書の拡張子でないパス、または設定 `review_code_globs`（WORKFLOW.md の設定の表）の glob に当たるパスがあるとき。全部文書なら `SKIP\tdocs-only`。テストの削除・skip・`expected/` だけの差分は判定の行のあとに `MARK\t<種類>\t<パス>` を足す（止めない。受け入れ役の依頼文へ印として渡す）。段が2つ以上の計画で途中の段の控えが欠ければ、lap の前に `NOT_LAST_STEP` で止まる（`loopable: N` は見ない）。作業先が別のリポジトリなら、判定（主ブランチから枝までの範囲つき）・木の控え・`verify-check` を作業先の作業ツリーで打ち、整形は打たず、作業先の本体の汚れを `claim` の控えと比べて `MAIN_DIRTY_*` の行で出す（読み方はオーケストレーターの、作業先が別のリポジトリのときの手順） | `REVIEW`・`SKIP`・`NOTHING`・`NO_RANGE`・`MARK`・`SNAPSHOT`・`FORMATTED`・`FORMAT_FAILED`・`NOT_LAST_STEP`・`MAIN_DIRTY_FROM_DELEGATE`・`MAIN_DIRTY_UNKNOWN`・`MAIN_DIRTY_BEFORE`・`MISSING`・`INVALID`・`NOT_CLAIMED`・`NOT_OWNER` |
@@ -53,7 +53,7 @@ PATH に無ければ plugin を入れる。どのディレクトリから打っ�
 
 | 終了コード | 先頭語 | 意味 | スキルがすること |
 | --- | --- | --- | --- |
-| 0 | 各成功語（`plan-check` の `PLAN_NOT_FIRST`・`PLAN_STALE`・`PLAN_UNCOVERED`・`verify-check` の `NOT_VERIFIED` を含む） | 成功（`PLAN_NOT_FIRST`・`PLAN_STALE`・`PLAN_UNCOVERED`・`NOT_VERIFIED` は止める合図ではなく、着手・受け入れで扱う知らせ） | 次へ |
+| 0 | 各成功語（`plan-check` の `PLAN_NOT_FIRST`・`PLAN_STALE`・`PLAN_UNCOVERED`・`verify-check` の `NOT_VERIFIED` を含む） | 成功（`PLAN_NOT_FIRST`・`PLAN_STALE`・`PLAN_UNCOVERED`・`NOT_VERIFIED` は止める通知ではなく、着手・受け入れで扱う知らせ） | 次へ |
 | 1 | （traceback） | 環境の故障 | エラー出力を報告して止まる。**手で代用しない** |
 | 2 | （stderr） | 渡した引数・本文の誤り | 直して打ち直す |
 | 3 | `INVALID` | データの不備（読めない課題〔label の語彙の外など〕、設定が読めない、主ブランチが決まらない、`--check` の重複、トラッカーの付け替え先が既にある） | 理由をそのまま報告して止まる。**直しに行かない** |
@@ -65,7 +65,7 @@ PATH に無ければ plugin を入れる。どのディレクトリから打っ�
 | 9 | `RACE` | `--ff-only` が3回続けて落ちた | 人に預ける |
 | 10 | `VERIFY_NOT_PASSED`・`FORMAT_FAILED`・`PLAN_MISSING`・`TRACKER\tFAILED`・`BACKUP\tFAILED`（後ろ2つは `sync`・`backup` だけ） | `verify` の検証コマンドが落ちた／整形コマンドが落ちた（検証は打っていない）／`## やること` が空のまま作業があるので打たなかった（どちらも控えは消えた）／トラッカー・バックアップに届かない | `VERIFY_NOT_PASSED`・`FORMAT_FAILED` は出力の末尾（全体はログ）を読んで直し、`PLAN_MISSING` は `## やること` を書いて `tw edit T-xxx --after-work` で渡し、打ち直す。`TRACKER`・`BACKUP` は行を添えて報告する（タスクの操作は済んでいる） |
 | 11 | `GIT_READ_ONLY` | `.git` に書けない（`EACCES`・`EPERM`・`EROFS`）のに、git に書く操作が要る（`ship`・`land`、追い付くか枝を切る `claim`、取り込む `verify`）。行は `GIT_READ_ONLY\t<書けない git dir>\t<次の一手>`。打つ前に確かめるので、作業ツリーも Beads も変わっていない | sandbox の外で同じコマンドを打ち直す（`README.md`「`.git` が読み取り専用の sandbox で打つとき」節）。打ち直せなければ行を添えて人に預ける |
-| 12 | `COMMITS_SINCE_CLAIM`（`finish` だけ） | `done` は済んだが、`claim` のあとに委譲先が作ったコミットの合図が出たので、コミットと `ship` を打たずに止めた | 送り出しの段の `COMMITS_SINCE_CLAIM` の扱いに従って判断し、同じ `--message` で `tw finish --resume` を打つ |
+| 12 | `COMMITS_SINCE_CLAIM`（`finish` だけ） | `done` は済んだが、`claim` のあとに委譲先が作ったコミットの通知が出たので、コミットと `ship` を打たずに止めた | 送り出しの段の `COMMITS_SINCE_CLAIM` の扱いに従って判断し、同じ `--message` で `tw finish --resume` を打つ |
 
 `/loop` を続けるかは、オーケストレーターの「`/loop` の続行判断」で決める（終了コードの一覧はここに持たない）。
 

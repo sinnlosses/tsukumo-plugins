@@ -61,14 +61,14 @@ Claude Code 以外の環境（Codex など）へスキルを置く入口は、�
 
 開発中は `claude --plugin-dir .` でも読ませられ（その 1 セッションだけ）、`claude plugin validate .` で検査する。
 
-## 台本 `workflows/task-flow.js`
+## ワークフロースクリプト `workflows/task-flow.js`
 
-着手の印が立ったタスク1件を、実装 → 受け入れ → 振り返りの段で進める Claude Code の dynamic workflows の台本。
-送り出し（`tw finish`）は台本の段にせず、完了の通知を受けた呼び出し側が打つ。
+着手の印が立ったタスク1件を、実装 → 受け入れ → 振り返りの段で進める Claude Code の dynamic workflows のワークフロースクリプト。
+送り出し（`tw finish`）はワークフロースクリプトの段にせず、完了の通知を受けた呼び出し側が打つ。
 `agent()` の `agentType` は、実装・直し・受け入れの準備と締めが `tsukumo-workflow:no-delegate`、受け入れが `tsukumo-workflow:acceptor`、
 振り返りが `tsukumo-workflow:retrospector`。`tw lap-hook` が agent の起動・停止から `delegate`・`review`・`retro` の `lap` を書く（`retro` は起動で `start`、`retrospector` の停止で `end`）。
 
-- 呼ぶ側: `/next-task` は、設定 `flow` が `script` のとき着手のあとにこの台本を呼び、完了の通知を受けて `ship-step` で送り出す（手順は `skills/next-task/script-flow.md`）。
+- 呼ぶ側: `/next-task` は、設定 `flow` が `script` のとき着手のあとにこのワークフロースクリプトを呼び、完了の通知を受けて `ship-step` で送り出す（手順は `skills/next-task/script-flow.md`）。
   既定の `skills` は今までどおり `task-workflow` を呼ぶ。切り戻しは `tw config set flow skills`
 - 呼び方（`Workflow` はメインのセッションから呼ぶ。委譲先には道具が無い）: 名前 `tsukumo-workflow:task-flow` か、`scriptPath` にこのファイルの絶対パスを渡す。
   名前での呼び出しは接頭辞つきの `tsukumo-workflow:task-flow` で通ることを確かめた。`task-flow` だけでは読めない（not found）。
@@ -78,16 +78,16 @@ Claude Code 以外の環境（Codex など）へスキルを置く入口は、�
 - 計画の準備: 実装の前に `tw plan-check` を打つ agent を起こす。`PLAN_REGISTERED`・`PLAN_FIRST` ならそのまま実装へ進む。
   `PLAN_STALE`・`PLAN_NOT_FIRST`（計画が古い）か `PLAN_UNCOVERED`（完了条件に覆われない行がある）が出たなら、`tw brief implementer <ID> --rewrite` の決まりで `## やること` を書き直す agent を続けて起こし、書き直したあとの段の数を `phaseCount` に置き換えて実装へ進む
 - 実装の確認: 実装の agent は、最後の段より前の段ごとに `tw step` が `STEPPED` を出すまで次へ進まず、出た行を `stepLines` に返す。
-  台本は `STEPPED` の行が `phaseCount − 1` 行あるかを確かめ、足りなければ `stopped`（`phase: "implement"`）で返す。`conventionLines` は実装の報告の `- 規約:`（あれば `- 規約の指摘:`）の行
+  ワークフロースクリプトは `STEPPED` の行が `phaseCount − 1` 行あるかを確かめ、足りなければ `stopped`（`phase: "implement"`）で返す。`conventionLines` は実装の報告の `- 規約:`（あれば `- 規約の指摘:`）の行
 - 戻り値: 通れば `{ stopped: false, plan?, conventionLines?, implement, accept, retrospect }`。止まれば `{ stopped: true, phase, reason }`（`phase` は止まった段）。
   止まったら呼び出し側が `tw relay <ID> 再開` に段を書いて `tw release` し、次の着手で `from` にその段を渡して呼び直す
 - 受け入れの道: `tw accept` の判定が `REVIEW` なら受け入れ役をレビューの依頼で起こし、通ったら締めの agent が `tw accept --after-review` を打つ。
   `SKIP`・`NOTHING`・`NO_RANGE` なら `tw accept` が `accept` を閉じているので締めの agent は起こさず、受け入れ役は目視と材料だけを見る。差し戻しの上限は2回
-- 2周目以降: 受け入れ役の依頼文に、`tw brief acceptor --round` の出力へ前回の指摘の原文（`findings`）と材料の値（`friction`・`human`）を台本が足して渡す。2周目の準備の agent は `tw lap review start` だけを打ち、`tw accept` は打たない（`accept` の end は締めの agent の `--after-review` だけが打つ。先に閉じると、締めの agent を hook が実装の agent と数えて `delegate` の start を偽って書く）
+- 2周目以降: 受け入れ役の依頼文に、`tw brief acceptor --round` の出力へ前回の指摘の原文（`findings`）と材料の値（`friction`・`human`）をワークフロースクリプトが足して渡す。2周目の準備の agent は `tw lap review start` だけを打ち、`tw accept` は打たない（`accept` の end は締めの agent の `--after-review` だけが打つ。先に閉じると、締めの agent を hook が実装の agent と数えて `delegate` の start を偽って書く）
 - `tw lap <ID> <段> start` は、その段が開いているあいだは書かない（`delegate` を除く）。`tw accept` を重ねて打っても `accept`・`review` の start は重ならない
 - hook は、`delegate` の start・`review` の end（`review` の start は `tw accept` と `tw lap review start` が書く）・`retro` の start と end の `lap` を書く。hook は入力の `cwd` の作業ツリーの着手の控えが1件のときだけ書くので、
   `Workflow` は着手した作業ツリーを cwd にしたセッションから呼ぶ（別のディレクトリ、たとえば vendor の plugin の中から呼ぶと、`lap` が欠けて `review` が開いたまま残る）
-- 台本の中で `Date.now()`・`Math.random()`・引数なしの `new Date()` は使えない。`isolation: 'worktree'` は使わない
+- ワークフロースクリプトの中で `Date.now()`・`Math.random()`・引数なしの `new Date()` は使えない。`isolation: 'worktree'` は使わない
 
 ## もう1つのプラグイン `tsukumo-figure`
 
@@ -198,7 +198,7 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
    後ろの2つは入口で、テストの本体は `selftest_t_*.py`・`selftest_b_*.py` にある。
    `bd` が無ければ非0で終わる）
 2. リポジトリの整合（`scripts/check_repo.py`。frontmatter、この README の由来一覧と `skills/` の一致、
-   参照先の実在、スキル間の依存の辺と `task-model` が役の名で書かれていること、
+   参照先の実在、スキル間の依存のエッジと `task-model` が役の名で書かれていること、
    プラグインの名前と `bin/tw`・`hooks/hooks.json`、エージェント定義）
 
 由来の一覧が索引なので、スキルを足したり消したりしたらここも直す（直し忘れは `./check.sh` が落とす）。

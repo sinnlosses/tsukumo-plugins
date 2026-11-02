@@ -338,7 +338,7 @@ def _reflection_of(result: str) -> str:
 def _print_commits_since_claim(toplevel: str, shown_id: str, head: str | None) -> None:
     """claim から今までに委譲先が作ったコミットがあれば `COMMITS_SINCE_CLAIM` の行で知らせる。
 
-    受け入れの段向けの合図で、`DONE` の判定・終了コードは変えない。
+    受け入れの段向けの通知で、`DONE` の判定・終了コードは変えない。
     """
     commits = tw_plan.commits_since_claim(toplevel, head)
     if commits:

@@ -20,7 +20,7 @@
 | 利用者と開発体制 | 今は作者1人。ただし他の人が自分の流れや部品を当てられる形を目標にする（2026-10-14 の作者の回答。近く差し替える予定は無い）。タスクはサブエージェントに委譲する運用で、スキルの文面が指示書そのもの | 作者の回答、`agents/no-delegate.md` |
 | テストできる範囲 | `tw` は `selftest_*.py` で自動。スキルの文面は `check_repo.py` の整合だけで、流れの正しさは実行するまで分からない | `README.md`「検証」 |
 
-### 現状の依存の辺
+### 現状の依存のエッジ
 
 スキルどうしは import ではなく文面の参照でつながるので、参照を数えた。
 
@@ -152,9 +152,9 @@ ship = "既定"                  # 既定は tw finish の手順
 - **`tw` が設定の口を2つ持つ。** `tw config --schema`（流れの種類・枠の名前・枠ごとの既定・`なし` を許すか、を JSON で出す）と `tw config set <キー> <値>`（検査してから書く）。オーケストレーターは今までどおり `tw config` で解けた値を読む
 - **tsukumo の画面は欄の形をもらって描き、`tw` 経由で書くだけ。** 枠に入れられる候補は、tsukumo が SDK から受け取るスキルとエージェントの一覧から出せる。tsukumo は名前も値も持たない。これは tsukumo のワークフローの契約（`docs/architecture/workflow-contract.md`）に「設定の口」を足すことになるので、tsukumo 側で ADR 0024・0025 を改訂してから入れる
 
-### 許す依存の辺
+### 許す依存のエッジ
 
-| 辺 | 可否 |
+| エッジ | 可否 |
 | --- | --- |
 | `next-task` → `task-workflow`（呼ぶ）・`task-model`（`tw`・規則） | 可 |
 | `task-workflow` → `task-model` | 可 |
@@ -202,7 +202,7 @@ ship = "既定"                  # 既定は tw finish の手順
 | 1. 正典を割る | ファイルを動かさず、`WORKFLOW.md` の「受け入れ役の契約」を `next-task` の副ファイルへ移す（「1サイクル」は先行のタスクが SKILL への1行にする） | `plan-tasks`・`list-tasks`・`setup-tasks`・`retrospect` から移した節への参照が0件。`./check.sh --full` が通る | 固い |
 | 2. パスで呼ぶのをやめる | `material.py` を `tw` のサブコマンドにし、`comment-audit` は名前で読ませる。tsukumo の `sdk-ask-guard.ts` を `bin/tw ask-guard` に替える。`check_repo.py` に兄弟の参照の検査を足す | `grep -rn 'CLAUDE_SKILL_DIR}/\.\./' skills` が `task-workflow`（段4の後は `task-model`）だけ。tsukumo の `pnpm run check` が通る | 固い |
 | 3. 関門を名前と段から外す | lap はオーケストレーターが打つと正典に書く。`ask-guard` の境を「lap `retro` の後」から「作業の段（委譲・受け入れ）を終えた後」に替える。`commit-guard`・`handback-guard` を `agent_type` の末尾ではなく「着手の控えがある作業ツリーで動くサブエージェント」に掛ける | 振り返りの lap を打たない流れでも受け入れの後の質問が通る selftest と、`no-delegate` 以外の名前の委譲先でも拒む selftest | 試す価値あり |
-| 4. 名前を組み替える | `task-workflow` を `task-model` に改名し、`next-task` の手順5〜8と副ファイルを新しい `task-workflow` へ、変種を `flows/`、パーツを `parts/` へ移す。`next-task` は印を立てたら `task-workflow` を呼ぶ | `next-task/SKILL.md` が手順0〜4だけ。実タスク1件を `/next-task` で送り出せる。tsukumo の `vendor/tsukumo-plugins` を上げて `pnpm run check --full` が通る | 試す価値あり（GH-779 で組み替えた。手順の番号4a〜8は `task-workflow/SKILL.md` に残し、`check_repo.py` に依存の辺と `task-model` の名指しの検査を足した。実タスクでの送り出しと tsukumo 側の追随は残り） |
+| 4. 名前を組み替える | `task-workflow` を `task-model` に改名し、`next-task` の手順5〜8と副ファイルを新しい `task-workflow` へ、変種を `flows/`、パーツを `parts/` へ移す。`next-task` は印を立てたら `task-workflow` を呼ぶ | `next-task/SKILL.md` が手順0〜4だけ。実タスク1件を `/next-task` で送り出せる。tsukumo の `vendor/tsukumo-plugins` を上げて `pnpm run check --full` が通る | 試す価値あり（GH-779 で組み替えた。手順の番号4a〜8は `task-workflow/SKILL.md` に残し、`check_repo.py` に依存のエッジと `task-model` の名指しの検査を足した。実タスクでの送り出しと tsukumo 側の追随は残り） |
 | 5. ふんわりした指定 | `next-task` が頼み文の語と `tw status` の summary・label から `READY` を絞り、1件に決まらなければ候補を見せて聞く（`/loop` からは使わない） | 「不具合修正のどれか」で候補が絞られる | 試す価値あり（GH-916 で、絞り込みをモデルの突き合わせから `tw find` の先頭語〔`FOUND`・`MANY`・`NONE`〕に移し、種類を label `kind:<種類>` で持つようにした） |
 | 6. 差し込みの設定 | `.tw/config.toml` に `flow` と `[parts]` を足し、`tw config` が解いて出す。`tw config --schema`・`tw config set` を足す。オーケストレーターは「名前で呼ぶ決まり」に沿って設定の名前で呼ぶ | 既定と違う受け入れ役を設定だけで当てられる。`--schema` の出力を selftest が固定する | 試す価値あり（GH-782 で入れた。`--schema` は版の欄 `schema` と、欄ごとの `label`・`description`・`candidates`〔`agent`／`skill`〕・`allow_none` を持つ1行の JSON で、説明文の正は `layout.py` の表。`set` は行で書き換え、ほかの行とコメントを変えない。流れの語彙は `tw` に持ち、`check_repo.py` が `flows/` と `SKILL.md` との対応を見る。`既定` の末尾一致が複数当たったら止めて `tw config set` で全名を選ばせる。実際に別の受け入れ役で1件送るのは残り） |
 | 7. tsukumo の設定画面 | tsukumo 側で ADR 0024・0025 と `workflow-contract.md` に「設定の口」を足し、歯車の設定に、`tw config --schema` から描いて `tw config set` で書く欄を置く | 画面で受け入れ役を替えると `.tw/config.toml` が変わり、次の `/next-task` で効く | 推測 |

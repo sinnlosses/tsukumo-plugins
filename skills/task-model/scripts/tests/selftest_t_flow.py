@@ -119,13 +119,13 @@ def _config_rows(repo: str) -> dict[str, list[str]]:
 
 
 def test_config_flow_switches_step_candidates() -> None:
-    say("自己テスト: 設定の欄 flow は既定 skills で、script にすると config --schema の steps の候補が台本の段になる")
+    say("自己テスト: 設定の欄 flow は既定 skills で、script にすると config --schema の steps の候補がワークフロースクリプトの段になる")
     with tempfile.TemporaryDirectory() as tmp:
         repo = _make_config_doctor_repo(tmp, "flow")
         flow = _schema_key(repo, "flow")
         check("flow の既定は skills で、選択肢は skills と script",
               flow["default"] == "skills" and [v["value"] for v in flow["values"]] == ["skills", "script"], repr(flow))
-        check("flow が skills の steps の候補は台本の段の名前でない",
+        check("flow が skills の steps の候補はワークフロースクリプトの段の名前でない",
               "implement" not in [v["value"] for v in _schema_key(repo, "steps")["values"]])
         check("tw config の flow の行は skills・default", _config_rows(repo)["flow"][1:] == ["skills", "default"])
         done = run_task(repo, "config", "set", "flow", "script")
@@ -136,12 +136,12 @@ def test_config_flow_switches_step_candidates() -> None:
               [v["value"] for v in steps["values"]] == ["implement", "accept", "retrospect"]
               and steps["default"] == ["implement", "accept", "retrospect"], repr(steps))
         set_steps = run_task(repo, "config", "set", "steps", '["implement","accept"]')
-        check("flow が script なら steps に台本の段の名前を書ける", set_steps.returncode == 0, set_steps.stdout + set_steps.stderr)
-        check("tw config の steps の行は台本の段の名前の配列", _config_rows(repo)["steps"][1] == '["implement","accept"]')
+        check("flow が script なら steps にワークフロースクリプトの段の名前を書ける", set_steps.returncode == 0, set_steps.stdout + set_steps.stderr)
+        check("tw config の steps の行はワークフロースクリプトの段の名前の配列", _config_rows(repo)["steps"][1] == '["implement","accept"]')
         bad = run_task(repo, "config", "set", "flow", "workflow")
         check("flow の値が skills・script の外なら終了コード2", bad.returncode == 2, bad.stdout + bad.stderr)
         mapped = tw_config.skill_steps(repo, layout.read_config(repo))
-        check("スキルの全名で読む側には、台本の段をスキルの全名に読み替え、送り出しを末尾に足して渡す",
+        check("スキルの全名で読む側には、ワークフロースクリプトの段をスキルの全名に読み替え、送り出しを末尾に足して渡す",
               [layout.step_short_name(s) for s in mapped] == ["implement", "accept", "ship"], repr(mapped))
         run_task(repo, "config", "set", "flow", "skills")
         back = tw_config.skill_steps(repo, layout.read_config(repo))
@@ -152,7 +152,7 @@ def test_config_flow_switches_step_candidates() -> None:
         check("切り戻したあとの tw config の steps の行も、スキルの全名で送り出しを足した並びで出る",
               [layout.step_short_name(s) for s in row] == ["implement", "accept", "ship"] and all("-step" in s for s in row),
               repr(row))
-        check("スキルの全名で書いた steps も台本の段の名前に読み替えられ、送り出しは落ちる",
+        check("スキルの全名で書いた steps もワークフロースクリプトの段の名前に読み替えられ、送り出しは落ちる",
               layout.script_steps(["tsukumo-workflow:implement-step", "tsukumo-workflow:ship-step", "retrospect"])
               == ["implement", "retrospect"])
 

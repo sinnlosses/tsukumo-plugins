@@ -77,7 +77,7 @@ def main() -> int:
           upward(brief, "このファイルの2つ上のディレクトリ（`task-workflow` の置き場）の `scripts/self_review.py`") == [])
     check("3つ上の `review-criteria.md` は届かないとして返す",
           len(upward(brief, "置き場（このファイルの3つ上のディレクトリ）の `review-criteria.md`")) == 1)
-    check("先のパスを読めない言及を返す", len(upward(brief, "このファイルの2つ上のディレクトリにある台本")) == 1)
+    check("先のパスを読めない言及を返す", len(upward(brief, "このファイルの2つ上のディレクトリにあるスクリプト")) == 1)
 
     mentions = check_repo.task_model_name_mentions
     agents = check_repo.agent_names()

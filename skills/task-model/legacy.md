@@ -9,4 +9,4 @@
 | `pending`（切り替え前の独自の状態）を `hold` と読む | `scripts/core/beads.py` の `LEGACY_HOLD_STATUS`・`HOLD_STATUSES`、`scripts/tw/tw_edit.py` | 書くのは常に `deferred` | Beads に `pending` の課題が残っていないとき |
 | 設定の `root` キー | `scripts/core/layout.py` の `IGNORED_KEYS` | 書いてあっても読み捨てる | 設定に `root` を書いたプロジェクトが無いとき |
 | 設定の `store` が `beads` 以外 | `scripts/core/layout.py` の `STORE_VALUES` | `files` を含め `INVALID` | 同上 |
-| `bd kv` の `task-workflow.project-items`（旧い1つの塊） | `scripts/core/tracker.py` の `LEGACY_ITEMS_KEY`・`_migrate_legacy_items` | 最初の読み込みで課題ごとのキーへ移して消す | 旧い塊を持つ Beads が無いとき |
+| `bd kv` の `task-workflow.project-items`（旧い1つの部品） | `scripts/core/tracker.py` の `LEGACY_ITEMS_KEY`・`_migrate_legacy_items` | 最初の読み込みで課題ごとのキーへ移して消す | 旧い部品を持つ Beads が無いとき |

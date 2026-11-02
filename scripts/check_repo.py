@@ -26,7 +26,7 @@
   （ほかのスキルは Skill ツールで名前を指して呼び、そのスキルの道具は置き場〔Base directory〕から打つ）
 - retrospect の本文を `retrospect/SKILL.md` で指す文言が無いこと（本文は `detail.md`）
 - 各スキルの `.md` がファイルを指す先（`skills/<名>/`・`<名>/<ファイル>.md|py`・`` `<名>` スキルの `…` ``・
-  `` `<名>` の `<ファイル>.md` ``）が、`DEPENDENCY_EDGES` の許す辺に収まること
+  `` `<名>` の `<ファイル>.md` ``）が、`DEPENDENCY_EDGES` の許すエッジに収まること
 - 「このファイルの N つ上のディレクトリ（…）の `<パス>`」が、このファイルのあるディレクトリから N 回上がった先の
   実在するファイルを指すこと（形を読めない言及も落とす）
 - `task-model` の `.md` が、ほかのスキル名とエージェント名を書いていないこと（データの名前の
@@ -662,7 +662,7 @@ def forbidden_edges(owner: str, text: str, names: list[str]) -> list[str]:
 
 
 def check_dependency_edges(names: list[str]) -> None:
-    """各スキルの `.md` がファイルを指す先のスキルが、`DEPENDENCY_EDGES` の許す辺に収まるか。"""
+    """各スキルの `.md` がファイルを指す先のスキルが、`DEPENDENCY_EDGES` の許すエッジに収まるか。"""
     for n in names:
         for md in markdown_files(n):
             for dep in forbidden_edges(n, read(md), names):

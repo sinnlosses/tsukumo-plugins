@@ -1,6 +1,6 @@
 ---
 name: retrospector
-description: "台本 `task-flow` の振り返りの段を行う。`retrospect` スキルで兆候を判定し、物差しを通った改善候補をドラフトの課題として積む。作業ツリーのファイルは書き換えない。`Agent` を持たない。"
+description: "ワークフロースクリプト `task-flow` の振り返りの段を行う。`retrospect` スキルで兆候を判定し、物差しを通った改善候補をドラフトの課題として積む。作業ツリーのファイルは書き換えない。`Agent` を持たない。"
 disallowedTools: Agent, Edit, Write, NotebookEdit
 ---
 

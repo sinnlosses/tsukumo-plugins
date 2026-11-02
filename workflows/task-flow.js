@@ -1,7 +1,7 @@
 export const meta = {
   name: "task-flow",
   description: "着手の印が立ったタスク1件を、実装 → 受け入れ → 振り返りの段で進める（送り出しは呼んだ側が tw finish で行う）",
-  whenToUse: "tw claim が CLAIMED を返したタスク1件を進めるとき（計画が古ければ台本の中で書き直す）",
+  whenToUse: "tw claim が CLAIMED を返したタスク1件を進めるとき（計画が古ければワークフロースクリプトの中で書き直す）",
   phases: [
     { title: "Implement", detail: "no-delegate が ## やること の段を順に実装し、段ごとに phase_result を呼ぶ" },
     { title: "Accept", detail: "tw accept の判定で道を分け、acceptor が判定する。差し戻しは上限2回" },

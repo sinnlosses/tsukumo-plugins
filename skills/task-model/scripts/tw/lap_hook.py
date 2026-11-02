@@ -1,7 +1,7 @@
 """`tw lap-hook`: Claude Code の hook の入力（stdin の JSON）から、オーケストレーターの段の頭の `lap` を台帳に書く。
 
 - `SubagentStart` で、`agent_type` の最後の `:` より後ろが `IMPLEMENTER_TYPES` のもの → 段 `delegate` の `start`
-- `SubagentStart` で、`agent_type` の最後の `:` より後ろが `retrospector` のもの → 段 `retro` の `start`（台本の振り返りの agent）
+- `SubagentStart` で、`agent_type` の最後の `:` より後ろが `retrospector` のもの → 段 `retro` の `start`（ワークフロースクリプトの振り返りの agent）
 - 主のセッション（入力に `agent_id` が無い）の `Skill` の `PreToolUse` で、`tool_input.skill` の最後の `:` より後ろが
   `retrospect` のもの → 段 `retro` の `start`
 - `SubagentStop` で、`agent_type` の最後の `:` より後ろが `acceptor` のもの → 段 `review` の `end`（開いているときだけ）

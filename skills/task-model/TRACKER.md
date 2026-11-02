@@ -123,7 +123,7 @@ Project・Status 欄・選択肢の ID は `bd kv` の `task-workflow.project` �
   `started_at` を書く。着手中でなければ空）で見て、印が今の着手の時刻と（秒で）違えば届いていない。
   印の無い課題（印を書く前に送ったもの）だけは、`task-workflow.github-synced.<番号>` の時刻が着手より前なら届いていないとする。
   戻せなければ `TRACKER\tFAILED` の行を足し、ほかの行（`CLOSED` など）と送りは続ける。
-  **取り込みはすべてこの包みを通す**
+  **取り込みはすべてこの外枠を通す**
 - **着手の印の控え**: 取り込みと上の戻しは別々の書き込みなので、間でプロセスが止まると書く直前の版は
   監査の出来事にしか残らず、次の取り込みからは戻せない。そこで `tw claim` は印（assignee・`started_at`・
   `task_*`・`difficulty`・`loopable` などの metadata）を `bd kv` の `task-workflow.claim.<Beads ID>` に

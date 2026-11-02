@@ -50,7 +50,7 @@ metadata:
 - 申し送り（`finished`・`skipped` で返す前に必ず書く）: `tw relay T-xxx 実装 --body-file -`。行の形と時機は task-model の WORKFLOW.md「段の申し送り」の
   「鍵 `実装` の書き方と読み方」
 - **委譲先で走る段**（委譲する流れ）: 委譲先が段ごとに `phase_result` を呼ぶ（手順3）。メインは返却のたびに、オーケストレーターの
-  「進み具合の帯（`work_plan`）」の表どおりに `work_plan` を呼ぶ（`phase_result` で済んだ段は `phaseSummary` を省けない）
+  「進み具合のプログレスバー（`work_plan`）」の表どおりに `work_plan` を呼ぶ（`phase_result` で済んだ段は `phaseSummary` を省けない）
 - **メインで走るとき**（近道・委譲しない流れ）: 段を終えるたびに `work_plan` で次の位置へ進め、`phaseSummary` に段のまとめを書く
-- `skipped`: `work_plan` の `skippedPhases` にこの段の名前（帯の段が `tw plan-phases` の並びにあるときだけ）を入れて進める
+- `skipped`: `work_plan` の `skippedPhases` にこの段の名前（プログレスバーの段が `tw plan-phases` の並びにあるときだけ）を入れて進める
 - `stopped`（委譲先が `phase_result` の `stopped` を返した（返却の先頭が `止めた:`）・`CONFLICT`・人に預けて `tw release` した）: `report` の `workPlanClosing` に `stopped` を渡し、後の段を呼ばない

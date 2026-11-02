@@ -275,7 +275,7 @@ def _apply_dep_edit(
     unknown = [d for d in add if d not in known]
     if unknown:
         refuse(f"--add-deps の {','.join(unknown)} が台帳に無い（解決済みなら足さない）")
-    # 辺を足す順に調べる。先に足した辺も道に入るので、追加どうしで閉じる循環も拾う。
+    # エッジを足す順に調べる。先に足したエッジも道に入るので、追加どうしで閉じる循環も拾う。
     edges = {**graph, task_id: tuple(d for d in current if d not in remove)}
     for d in add:
         if d in edges[task_id]:
@@ -288,7 +288,7 @@ def _apply_dep_edit(
 
 
 def _find_cycle(graph: Mapping[str, tuple[str, ...]], task_id: str, new_dep: str) -> list[str] | None:
-    """`task_id` が `new_dep` に依存する辺を足すと閉じる道（`A→B→A`）。閉じなければ None。自分自身は長さ1の循環。"""
+    """`task_id` が `new_dep` に依存するエッジを足すと閉じる道（`A→B→A`）。閉じなければ None。自分自身は長さ1の循環。"""
     if new_dep == task_id:
         return [task_id, task_id]
     seen = {new_dep}

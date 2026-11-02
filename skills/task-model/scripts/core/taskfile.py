@@ -575,7 +575,7 @@ STEP_IMPLEMENT = "implement-step"
 STEP_ACCEPT = "accept-step"
 STEP_RETRO = "retrospect-step"
 STEP_SHIP = "ship-step"
-# 並びのスキルの全名の `:` より後ろ。この4つのほかは名前がそのまま帯の段の名前になる
+# 並びのスキルの全名の `:` より後ろ。この4つのほかは名前がそのままプログレスバーの段の名前になる
 DEFAULT_STEP_NAMES = (STEP_IMPLEMENT, STEP_ACCEPT, STEP_RETRO, STEP_SHIP)
 
 FLOW_DELEGATE = "delegate"

@@ -12,7 +12,7 @@ import layout
 
 
 def step_candidates(project_root: str | None, flow: str = layout.FLOW_SKILLS) -> list[layout.StepCandidate]:
-    """並びの候補。`flow` が `script` なら台本の段、`skills` なら `workflow-step` の印のあるスキル。"""
+    """並びの候補。`flow` が `script` ならワークフロースクリプトの段、`skills` なら `workflow-step` の印のあるスキル。"""
     if flow == layout.FLOW_SCRIPT:
         return layout.script_step_candidates()
     return layout.step_candidates(project_root, os.path.expanduser("~"), layout.own_plugin_root())
@@ -24,7 +24,7 @@ def steps_default(toplevel: str, flow: str = layout.FLOW_SKILLS) -> list[str]:
 
 
 def skill_steps(toplevel: str, config: layout.Config) -> list[str]:
-    """スキルの全名で読む側（`tw brief`・`tw plan-phases`）の並び。`flow` が `script` のとき、または `skills` でも台本の段の短い名前で書いてあるとき（`script` で書いたまま切り戻したとき）は、スキルの全名に読み替えて送り出しの段を末尾に足す。"""
+    """スキルの全名で読む側（`tw brief`・`tw plan-phases`）の並び。`flow` が `script` のとき、または `skills` でもワークフロースクリプトの段の短い名前で書いてあるとき（`script` で書いたまま切り戻したとき）は、スキルの全名に読み替えて送り出しの段を末尾に足す。"""
     script_names = {name for name, _, _ in layout.SCRIPT_STEPS}
     script_written = config.steps is not None and any(s in script_names for s in config.steps)
     if config.flow != layout.FLOW_SCRIPT and not script_written:
@@ -54,7 +54,7 @@ def _flow_or_default(toplevel: str | None) -> str:
 
 
 def cmd_config_schema() -> None:
-    """欄の形（schema 2。流れ・並び・シェル書き込みの判定・コマンド型6欄・ブランチの扱い）を1行の JSON で出す（読むだけ）。候補は作業ツリー・`~`・`tw` と同じ plugin から走査し、設定の `flow` が `script` なら並びの候補は台本の段。"""
+    """欄の形（schema 2。流れ・並び・シェル書き込みの判定・コマンド型6欄・ブランチの扱い）を1行の JSON で出す（読むだけ）。候補は作業ツリー・`~`・`tw` と同じ plugin から走査し、設定の `flow` が `script` なら並びの候補はワークフロースクリプトの段。"""
     toplevel = _toplevel_or_none()
     schema = layout.config_schema(toplevel, os.path.expanduser("~"), layout.own_plugin_root(), _flow_or_default(toplevel))
     print(json.dumps(schema, ensure_ascii=False))

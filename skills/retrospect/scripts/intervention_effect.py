@@ -2,15 +2,15 @@
 
 介入に数えるのは、`## 介入` を持ち、閉じて label `cancelled` の無い課題。送り出しは `closed_at`、登録は `created_at`。
 期日は送り出しに `- 判定の期日:` の `<数>日`（無ければ `DEFAULT_DUE_DAYS`）を足した時刻で、出すのは期日が `(今 − days, 今]` に入ったもの。
-窓は基準線 `[登録 − WINDOW_DAYS, 登録)`、いま `[期日 − WINDOW_DAYS, 期日)`。
+集計期間は基準線 `[登録 − WINDOW_DAYS, 登録)`、いま `[期日 − WINDOW_DAYS, 期日)`。
 
 測る名前は `- 狙う兆候:` の行のバッククォートの語のうち表の名前に当たる最初の語、無ければ行頭の名前。表と取り方:
 
-- `tw metrics` の数: 窓の `metrics.column_between` の値。分母は窓の `shipped`。件数の数（`COUNT_METRICS`）は
-  窓の `shipped` で割った割合にし、割合・秒・1件あたりの数と、分母そのものの `shipped` は割らない
-- 判定の口の SIGNAL の種類（`material.SIGNAL_KINDS`）: 窓の中の `gate` の出来事を持つタスク（同じタスクは最後の1件）を分母、
+- `tw metrics` の数: 集計期間の `metrics.column_between` の値。分母は集計期間の `shipped`。件数の数（`COUNT_METRICS`）は
+  集計期間の `shipped` で割った割合にし、割合・秒・1件あたりの数と、分母そのものの `shipped` は割らない
+- 判定の口の SIGNAL の種類（`material.SIGNAL_KINDS`）: 集計期間の中の `gate` の出来事を持つタスク（同じタスクは最後の1件）を分母、
   その種類を含むタスクを分子にした割合
-- hook の規則のキー（拒否の記録に出た `rule`）: 窓の中のその `rule` の拒否の数を、窓の `shipped` で割った割合
+- hook の規則のキー（拒否の記録に出た `rule`）: 集計期間の中のその `rule` の拒否の数を、集計期間の `shipped` で割った割合
 
 判定の順: 名前が決まらない → `判定保留`（`測れない兆候`）、同じ名前の別の介入が比較の範囲
 `[登録 − WINDOW_DAYS, 期日)` の中で送り出された → `confounded`、どちらかの分母が `MIN_DENOMINATOR` 未満 → `判定保留`、
@@ -151,7 +151,7 @@ def _shipped(events: list[metrics.Event], start: datetime, end: datetime) -> int
 def measure(
     name: str, events: list[metrics.Event], denials: list[Denial], start: datetime, end: datetime
 ) -> Measure | None:
-    """窓 `[start, end)` の値。値が読めなければ `None`。"""
+    """集計期間 `[start, end)` の値。値が読めなければ `None`。"""
     if name in METRIC_NAMES:
         value = metrics.leading_number(metrics.column_between(events, start, end)[name])
         shipped = _shipped(events, start, end)

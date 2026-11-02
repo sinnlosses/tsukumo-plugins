@@ -257,7 +257,7 @@ def _structure_section_lines(body: str) -> list[str] | None:
 
 
 def _structure_line_ok(line: str) -> bool:
-    """graph の記法の1行か。囲み（`[群の名]`・`[]`）、印つきの辺（`->`・`-.>`）、矢印の無い印つきの節点。行末の色印 ` @a` は行の中身として見る。"""
+    """graph の記法の1行か。囲み（`[群の名]`・`[]`）、印つきのエッジ（`->`・`-.>`）、矢印の無い印つきのノード。行末の色印 ` @a` は行の中身として見る。"""
     if STRUCTURE_GROUP_LINE.fullmatch(line):
         return True
     if STRUCTURE_ARROW.search(line):
@@ -287,10 +287,10 @@ def handback_refusal(where: str, body: str | None = None) -> tuple[str, str] | N
     拒むのは `PLAN_OR_VERIFY_MISSING`（計画か検証が欠けた）だけ。構造の節が合わない次の4つの規則のキーは
     拒否ではなく、通したうえで知らせる文を理由に返す（呼び手の `handback_guard.decide` が `additionalContext` にする）。
     `STRUCTURE_SECTION_MISSING`（節が無い）・`_EMPTY`（空）・`_NO_MARK`（形に合わない最初の行の頭が `+ `・`- `・`~ ` でない）・
-    `_OTHER`（印はあるが、矢印の片側が空など辺の形に合わない）。
+    `_OTHER`（印はあるが、矢印の片側が空などエッジの形に合わない）。
 
     `body`（返却の本文。読める経路でだけ渡る）があり、計画・検証が揃った最後の段の返却（`tw step` の印も
-    `tw pause` の控えも使わず `verify-check` が `VERIFIED_SAME`）で、本文に `## 構造の変更` の節が無いか、中身が形（各行が `+|-|~ A -> B`・`+|-|~ A -.> B`・`+|-|~ A`〔節点だけ〕・`[群の名]`/`[]`〔囲み〕のどれかか、全体が `なし: <理由>` の1行）に合わなければ構造の規則のキーを返す。
+    `tw pause` の控えも使わず `verify-check` が `VERIFIED_SAME`）で、本文に `## 構造の変更` の節が無いか、中身が形（各行が `+|-|~ A -> B`・`+|-|~ A -.> B`・`+|-|~ A`〔ノードだけ〕・`[群の名]`/`[]`〔囲み〕のどれかか、全体が `なし: <理由>` の1行）に合わなければ構造の規則のキーを返す。
 
     控えのタスクごとに、その作業ツリー（`task_trees`）を1つずつ見る。作業ツリーを通すのは、作業が無い
     （着手した作業ツリーでは `claim` 時の `HEAD` より後のコミットも、変更も無い。

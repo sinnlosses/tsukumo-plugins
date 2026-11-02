@@ -158,7 +158,7 @@ _VERIFY_WAY = re.compile(r"^[ \t]*- 確かめ方:[ \t]*(.+?)[ \t]*$", re.MULTILI
 
 
 def _verify_ways(plan_body: str) -> str:
-    """計画の段の `- 確かめ方:` の欄（完了条件の行ごとのコマンドか台本）を ` / ` でつないだ1行。無ければ `無い`。"""
+    """計画の段の `- 確かめ方:` の欄（完了条件の行ごとのコマンドかスクリプト）を ` / ` でつないだ1行。無ければ `無い`。"""
     return " / ".join(_VERIFY_WAY.findall(plan_body)) or "無い"
 
 

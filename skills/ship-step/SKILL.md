@@ -34,6 +34,6 @@ metadata:
 この段はメインで走る。
 
 - `finished`（手順8の表で `SHIPPED`・`NOTHING`）: 並びの最後の段なら、オーケストレーターが完了報告の `report` に
-  `workPlanClosing: finished` を渡して帯を閉じる（`completion-report.md`）。後ろに段が残っていれば `work_plan` で次の位置へ進め、`phaseSummary` に送った結果を書く
+  `workPlanClosing: finished` を渡してプログレスバーを閉じる（`completion-report.md`）。後ろに段が残っていれば `work_plan` で次の位置へ進め、`phaseSummary` に送った結果を書く
 - `stopped`（`parts/ship/ship-stopped.md` の表に従っても送れずに止まったとき、`COMMITS_SINCE_CLAIM` で人に預けたとき）:
   `report` の `workPlanClosing` に `stopped` を渡し、後の段を呼ばない

@@ -3,7 +3,7 @@
 **merge commit は作らない**——
 取り込みは `git rebase`、送るのは `git merge --ff-only`（本体がある場合）か比較付きの
 `git update-ref`（無い場合）だけ。取り合い（`--ff-only`／`update-ref` の失敗）は
-「相手に先を越された」合図として、最大 `MAX_TRIES` 回まで rebase からやり直す。
+「相手に先を越された」通知として、最大 `MAX_TRIES` 回まで rebase からやり直す。
 
 クレームの後始末・出力の組み立て・終了コードは呼び出し側（`tw_ship.py` の `cmd_ship`）が持つ。
 ここは1回の `ship` にかかる git の手順だけを持つ。
