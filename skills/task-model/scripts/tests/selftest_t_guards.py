@@ -533,7 +533,7 @@ def test_agent_scoped_guard() -> None:
 
         all_hooks = _plugin_hooks()
         check("hooks/hooks.json の hook はすべて exec 形で ${CLAUDE_PLUGIN_ROOT}/bin/tw-hook を呼ぶ",
-              len(all_hooks) == 10 and all(argv[0] == "${CLAUDE_PLUGIN_ROOT}/bin/tw-hook" and len(argv) > 1 for _, _, argv in all_hooks),
+              len(all_hooks) == 11 and all(argv[0] == "${CLAUDE_PLUGIN_ROOT}/bin/tw-hook" and len(argv) > 1 for _, _, argv in all_hooks),
               str(all_hooks))
         hooks = [argv for _, _, argv in all_hooks if "--agent-scoped" in argv]
         ask_hooks = [argv for _, _, argv in all_hooks if "ask-guard" in argv]
@@ -559,6 +559,10 @@ def test_agent_scoped_guard() -> None:
         check("hooks/hooks.json は Edit・Write・NotebookEdit の PreToolUse で handback-guard を呼ぶ",
               any(e == "PreToolUse" and m == "Edit|Write|NotebookEdit" and "handback-guard" in argv and "--agent-scoped" in argv
                   for e, m, argv in all_hooks),
+              str(all_hooks))
+        check("hooks/hooks.json は Edit・Write・NotebookEdit の PreToolUse で --agent-scoped なしの work-repo-guard を1つ呼ぶ",
+              [(e, m, argv[1:]) for e, m, argv in all_hooks if "work-repo-guard" in argv]
+              == [("PreToolUse", "Edit|Write|NotebookEdit", ["--fail-closed", "work-repo-guard"])],
               str(all_hooks))
         check("hooks/hooks.json は --agent-scoped なしで ask-guard を呼ぶ hook を1つ持つ",
               len(ask_hooks) == 1 and "--agent-scoped" not in ask_hooks[0],
@@ -653,7 +657,7 @@ def test_agent_scoped_guard() -> None:
                 check(f"hooks.json の {event} の heartbeat は tw を呼ばないので、tw が落ちても終了コード0",
                       r.returncode == 0 and r.stdout == "" and "boom" not in r.stderr, r.stdout + r.stderr)
                 continue
-            blocks = event == "PreToolUse" and any(g in hook for g in ("commit-guard", "handback-guard", "ask-guard"))
+            blocks = event == "PreToolUse" and any(g in hook for g in ("commit-guard", "handback-guard", "ask-guard", "work-repo-guard"))
             r = _run_hook(hook, crashed, env, root=fake_root)
             check(f"hooks.json の {event}（matcher {matcher}）の {hook[1:]} は、サブエージェントで tw が落ちると"
                   f"終了コード {2 if blocks else 1}（{'止める' if blocks else '通す'}）",
