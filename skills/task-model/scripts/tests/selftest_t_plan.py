@@ -390,7 +390,47 @@ def test_plan_phases_ids() -> None:
     check("名前は {id, name} の name に残る", result is not None and result["phases"][0] == {"id": "impl-1", "name": "a"}, str(result))
 
 
+@weight(4)
+def test_warn_main_only_tool() -> None:
+    say("task.py new・edit: loopable Y で近道の印の無い計画の段にメインだけの道具の名があれば WARN_MAIN_ONLY_TOOL を出す")
+    tool_body = task_body([("確かめる", "`Workflow` と `ScheduleWakeup` と Workflow を使う")], ["shared.txt"])
+    plain_body = task_body([("書く", "x")], ["shared.txt"])
+
+    def warned(r: subprocess.CompletedProcess) -> bool:
+        return r.returncode == 0 and "WARN_MAIN_ONLY_TOOL\t" in r.stderr
+
+    with tempfile.TemporaryDirectory() as tmp:
+        _main_path, wt1, _wt2 = make_repo(tmp)
+        base = ("--summary", "x", "--difficulty", "sonnet")
+        r = run_task(wt1, "new", *base, "--loopable", "Y", "--body-file", "-", stdin=tool_body)
+        task_id = r.stdout.split("\t")[1]
+        check("loopable Y の new は名を出た順に重ねず標準エラーへ知らせ、拒まない",
+              warned(r) and f"WARN_MAIN_ONLY_TOOL\t{task_id}\tWorkflow,ScheduleWakeup\t" in r.stderr, r.stdout + r.stderr)
+        r = run_task(wt1, "new", *base, "--loopable", "N", "--body-file", "-", stdin=tool_body)
+        check("loopable N では出ない", r.returncode == 0 and "WARN_MAIN_ONLY_TOOL" not in r.stderr, r.stdout + r.stderr)
+        r = run_task(wt1, "new", "--summary", "x", "--difficulty", "haiku", "--loopable", "Y", "--direct",
+                     "--body-file", "-", stdin=tool_body)
+        check("近道の印があれば出ない", r.returncode == 0 and "WARN_MAIN_ONLY_TOOL" not in r.stderr, r.stdout + r.stderr)
+        r = run_task(wt1, "new", *base, "--loopable", "N", "--body-file", "-", stdin=plain_body)
+        plain_id = r.stdout.split("\t")[1]
+        r = run_task(wt1, "edit", plain_id, "--loopable", "Y")
+        check("名の無い計画の edit --loopable Y は出ない", r.returncode == 0 and "WARN_MAIN_ONLY_TOOL" not in r.stderr, r.stdout + r.stderr)
+        r = run_task(wt1, "edit", plain_id, "--body-file", "-", stdin=tool_body)
+        check("loopable Y の課題の ## やること を名のある計画に直す edit は出す", warned(r), r.stdout + r.stderr)
+        r = run_task(wt1, "edit", plain_id, "--loopable", "N")
+        check("edit --loopable N は出ない", r.returncode == 0 and "WARN_MAIN_ONLY_TOOL" not in r.stderr, r.stdout + r.stderr)
+        r = run_task(wt1, "edit", plain_id, "--loopable", "Y")
+        check("名のある計画を loopable Y に直す edit は出す", warned(r), r.stdout + r.stderr)
+
+    only_in_files = task_body([("書く", "x")], ["Monitor.md"], "/tmp/Workflow")
+    check("名指すファイル・作業先の小見出しの節にだけある名は数えない", taskfile.main_only_tools(only_in_files) == (),
+          str(taskfile.main_only_tools(only_in_files)))
+    parts = task_body([("書く", "WORKFLOW.md と Workflows と MonitorX と monitor と xWorkflow")], [])
+    check("語の一部・大文字小文字違いは数えない", taskfile.main_only_tools(parts) == (), str(taskfile.main_only_tools(parts)))
+
+
 TESTS = (
+    test_warn_main_only_tool,
     test_plan_phases_ids,
     test_edit_and_plan_check,
     test_edit_deps,

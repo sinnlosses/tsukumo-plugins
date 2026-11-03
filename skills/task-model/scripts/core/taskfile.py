@@ -960,6 +960,26 @@ def report_named_paths(body: str) -> tuple[str, ...]:
     return tuple(found)
 
 
+MAIN_ONLY_TOOLS = ("Workflow", "ScheduleWakeup", "Monitor")
+_MAIN_ONLY_TOOL = re.compile(rf"(?<![A-Za-z0-9])({'|'.join(MAIN_ONLY_TOOLS)})(?![A-Za-z0-9])")
+
+
+def main_only_tools(body: str) -> tuple[str, ...]:
+    """`## やること` の段の本文に出る、委譲先に無い道具の名（`MAIN_ONLY_TOOLS`）を出た順に重ねず返す。
+
+    `### 名指すファイル`・`### 作業先` の節は読まない。大文字小文字を区別し、英数字が隣に続く語の一部は数えない。
+    """
+    found: dict[str, None] = {}
+    skipping = False
+    for line in section_content(body, PLAN_HEADING).split("\n"):
+        if line.startswith("### "):
+            skipping = line.rstrip() in (PLAN_FILES_HEADING, PLAN_WORK_REPO_HEADING)
+        if not skipping:
+            for name in _MAIN_ONLY_TOOL.findall(line):
+                found[name] = None
+    return tuple(found)
+
+
 _ID_WORD = re.compile(rf"(?<![A-Za-z])ID(?![A-Za-z])|番号|(?<![A-Za-z0-9])(?!ADR-){layout.ANY_ID_FRAGMENT}(?![A-Za-z0-9])")
 _DOCS_WORD = re.compile(r"(?<![A-Za-z])ADR(?![A-Za-z])|(?<![A-Za-z])docs(?![A-Za-z])|ドキュメント|文書")
 

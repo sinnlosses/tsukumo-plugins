@@ -42,6 +42,18 @@ def warn_large_plan(task_id: str, body: str) -> None:
         print(f"WARN_LARGE_PLAN\t{task_id}\t{reason}", file=sys.stderr)
 
 
+def warn_main_only_tools(task_id: str, body: str, loopable: str, direct: str) -> None:
+    """`loopable: Y` で近道の印が無い計画の段に委譲先に無い道具の名があれば、標準エラーに `WARN_MAIN_ONLY_TOOL` を1行出す（拒まない）。"""
+    if loopable != "Y" or direct == "Y":
+        return
+    names = taskfile.main_only_tools(body)
+    if names:
+        print(
+            f"WARN_MAIN_ONLY_TOOL\t{task_id}\t{','.join(names)}\t委譲先には無い道具。メインで進めるなら --direct を付けるか loopable N にする",
+            file=sys.stderr,
+        )
+
+
 def refuse_direct(difficulty: str, body: str) -> None:
     reason = taskfile.direct_refusal(difficulty, body)
     if reason is not None:

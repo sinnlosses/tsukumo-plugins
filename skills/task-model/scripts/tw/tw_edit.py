@@ -156,6 +156,10 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
     ):
         tw_plan.warn_report_names(body)
         tw_plan.warn_id_in_docs(shown, body)
+    plan_edited = bool(body_files) and taskfile.section_changed(current, body, taskfile.PLAN_HEADING)
+    if plan_edited or args.loopable or args.direct:
+        loopable_values = beads.attribute_values(issue, beads.LOOPABLE_KEY)
+        tw_plan.warn_main_only_tools(shown, body, args.loopable or (loopable_values[0] if loopable_values else "N"), direct)
     if state == tw_plan.PLAN_AFTER_WORK:
         print(f"PLAN_AFTER_WORK\t{shown}\t作業の後に書いた")
     _print_direct_off(shown, direct_off)
