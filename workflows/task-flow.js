@@ -198,6 +198,13 @@ if (runs("accept")) {
   let tree = ""
   let judgment = null
   let prepared = null
+  const fixes = []
+  const reportSection = (heading, report) =>
+    report
+      ? `\n\n## ${heading}\n理由・所見: ${report.reason ?? "（なし）"}\n` +
+        `検証: ${report.verifyCommand ?? ""} ${report.verifyResult ?? ""}\n` +
+        `段の記録（stepLines）:\n${(report.stepLines ?? []).join("\n")}`
+      : ""
   while (true) {
     const first = round === 0
     prepared = await agent(
@@ -234,7 +241,14 @@ if (runs("accept")) {
       ? ""
       : `\n\n前回の受け入れ役の指摘の原文（直しが指摘に応えているかを照らす）:\n${JSON.stringify(judgment.findings)}\n` +
         `材料の値: friction=${judgment.friction} human=${judgment.human}（前回の判定の値）`
-    judgment = await agent(prepared.brief + carried, {
+    const reports =
+      reportSection("実装役の報告", result.implement) +
+      fixes.map((fix, i) => reportSection(`直しの報告（${i + 1}回目）`, fix)).join("") +
+      (first
+        ? ""
+        : "\n\n前の回と作業ツリーの木が同じ（直しがコードを変えず材料だけを返した）なら、diff が空でも差し戻さず、" +
+          "上の報告の材料（理由・所見、検証、stepLines）で前回の指摘に応えたかを見て判定する。")
+    judgment = await agent(prepared.brief + carried + reports, {
       agentType: "tsukumo-workflow:acceptor",
       schema: JUDGMENT,
       label: `acceptor-${round + 1}`,
@@ -262,6 +276,7 @@ if (runs("accept")) {
     if (fix.stopped || !fix.verifyPassed) {
       return { stopped: true, phase: "accept", reason: fix.reason ?? "直しのあとの tw verify が通っていない", fix }
     }
+    fixes.push(fix)
   }
 
   let closed = null
