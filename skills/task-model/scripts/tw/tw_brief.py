@@ -119,8 +119,9 @@ def cmd_brief_acceptor(
         "task_id": shown,
         "here": os.path.dirname(template_path),
         "worktree": tree,
-        "images": "\n".join(f"- `{p}`" for p in images),
+        "images": "\n".join(f"- `{p}`" for p in images) or "（報告に画像のパスが無い）",
     }
+    look = ["目視"] if images or visual else []
     if visual_wait:
         values["criteria"] = criteria
         _print_brief(shown, ROLE_ACCEPTOR, sections, ["目視待ち"], values)
@@ -128,12 +129,7 @@ def cmd_brief_acceptor(
     if round_number is not None:
         now = _snapshot(tree)
         values.update(round=str(round_number), since=since or "", now=now)
-        round_chosen = ["2回目以降"]
-        if images or visual:
-            round_chosen.append("目視")
-            if not images:
-                values["images"] = "（報告に画像のパスが無い）"
-        _print_brief(shown, ROLE_ACCEPTOR, sections, round_chosen, values, now)
+        _print_brief(shown, ROLE_ACCEPTOR, sections, ["2回目以降", *look], values, now)
         return
     chosen = ["常に"]
     if work is None:
@@ -144,10 +140,7 @@ def cmd_brief_acceptor(
     if verdict.startswith("REVIEW"):
         chosen.append("レビュー")
         values["tree"] = tree_sha or _snapshot(tree)
-    if images or visual:
-        chosen.append("目視")
-        if not images:
-            values["images"] = "（報告に画像のパスが無い）"
+    chosen.extend(look)
     rules = [os.path.join(tree, name) for name in RULE_FILES if os.path.isfile(os.path.join(tree, name))]
     values.update(
         criteria=criteria,
