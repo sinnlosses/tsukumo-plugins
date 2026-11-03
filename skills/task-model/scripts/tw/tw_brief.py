@@ -96,8 +96,8 @@ def cmd_brief_acceptor(
 ) -> None:
     if visual_wait and (round_number is not None or accept_file is not None):
         _usage("brief acceptor: --visual-wait は --round・--accept-file と一緒に打てない")
-    if visual and (visual_wait or round_number is not None):
-        _usage("brief acceptor: --visual は --accept-file と打つ（--visual-wait・--round とは一緒に打てない）")
+    if visual and visual_wait:
+        _usage("brief acceptor: --visual は --visual-wait とは一緒に打てない")
     if visual_wait and not images:
         _usage("brief acceptor: --visual-wait には --image が要る")
     if round_number is not None and (since is None or accept_file is not None):
@@ -128,7 +128,12 @@ def cmd_brief_acceptor(
     if round_number is not None:
         now = _snapshot(tree)
         values.update(round=str(round_number), since=since or "", now=now)
-        _print_brief(shown, ROLE_ACCEPTOR, sections, ["2回目以降"], values, now)
+        round_chosen = ["2回目以降"]
+        if images or visual:
+            round_chosen.append("目視")
+            if not images:
+                values["images"] = "（報告に画像のパスが無い）"
+        _print_brief(shown, ROLE_ACCEPTOR, sections, round_chosen, values, now)
         return
     chosen = ["常に"]
     if work is None:

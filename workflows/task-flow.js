@@ -32,6 +32,7 @@ const IMPLEMENT = {
     draftLines: { type: "array", items: { type: "string" } },
     stepLines: { type: "array", items: { type: "string" } },
     conventionLines: { type: "array", items: { type: "string" } },
+    images: { type: "array", items: { type: "string" } },
     stopped: { type: "boolean" },
     reason: { type: "string" },
   },
@@ -184,7 +185,8 @@ if (runs("implement")) {
       "schema の stopped を true、reason に理由を入れて返す。" +
       `最後の段のあと \`tw verify\` を打ち、打ったコマンド・結果の要点・通ったかを返す。` +
       "返す欄は schema のとおり。draftLines には委譲先の報告に書く `- ドラフト:` の行があれば入れる。" +
-      "conventionLines には、`tw brief implementer` の決まりに従って報告に書く `- 規約:` の行（あれば `- 規約の指摘:` の行も）を1行1要素で入れる。",
+      "conventionLines には、`tw brief implementer` の決まりに従って報告に書く `- 規約:` の行（あれば `- 規約の指摘:` の行も）を1行1要素で入れる。" +
+      "画面や見た目を撮ったら、その画像の絶対パスを images に入れる。撮らなければ空配列。",
     { agentType: "tsukumo-workflow:no-delegate", schema: IMPLEMENT, label: "implement", phase: implementTitle, ...modelOpt },
   )
   if (implement === null) {
@@ -224,6 +226,10 @@ if (runs("accept")) {
       : ""
   while (true) {
     const first = round === 0
+    const imagePaths = [...new Set([result.implement, ...fixes].flatMap((report) => report?.images ?? []))]
+    const imageSentence =
+      "画面や見た目を確かめる完了条件があるタスクでは、次の画像のパスを全部 `--image <パス>` で並べて `tw brief acceptor` に付ける。" +
+      `画像が無ければ \`--visual\` を付ける: ${imagePaths.length > 0 ? imagePaths.join(" ") : "（画像のパスは無い）"}`
     prepared = await agent(
       `${COMMON}\n` +
         (first
@@ -235,9 +241,8 @@ if (runs("accept")) {
             "kind は REVIEW にする。`NOT_CLAIMED`・`NOT_OWNER` など止まる行が出たら kind を STOP にして reason に行を入れる。") +
         (first
           ? "続けて、打った `tw accept` の出力を一時ファイルに書かず標準入力へ渡し、" +
-            `\`tw brief acceptor ${taskId} --accept-file -\` を打つ（画面や見た目を確かめる完了条件があるタスクでは \`--visual\` も付ける）。`
-          : `続けて \`tw brief acceptor ${taskId} --round ${round + 1} --since ${tree}\` を打つ。` +
-            "`--accept-file` と `--visual` は `--round` と組めない（終了コード2）ので付けない。") +
+            `\`tw brief acceptor ${taskId} --accept-file -\` を打つ。${imageSentence}`
+          : `続けて \`tw brief acceptor ${taskId} --round ${round + 1} --since ${tree}\` を打つ（\`--accept-file\` は付けない）。${imageSentence}`) +
         "kind が STOP のときは brief を空文字にしてよい。" +
         "返すのは、kind・`tw accept` の出力全部（acceptLines）・`tw brief` の2行目以降の依頼文（brief）・tree。" +
         (first
@@ -284,7 +289,8 @@ if (runs("accept")) {
     const fix = await agent(
       `${COMMON}\n受け入れ役の指摘を直す。指摘:\n${JSON.stringify(judgment.findings)}\n` +
         `直したら作業ツリー（着手した側。別のリポジトリのタスクなら \`tw brief implementer ${taskId}\` が言う作業先の作業ツリー）でコミットし、\`tw verify\` を打つ。` +
-        "コミットのあとに打つ。打ったコマンド・結果の要点・通ったかを返す。",
+        "コミットのあとに打つ。打ったコマンド・結果の要点・通ったかを返す。" +
+        "画面や見た目を撮ったら、その画像の絶対パスを images に入れる。撮らなければ空配列。",
       { agentType: "tsukumo-workflow:no-delegate", schema: IMPLEMENT, label: `fix-${round}`, phase: acceptTitle, ...modelOpt },
     )
     if (fix === null) {

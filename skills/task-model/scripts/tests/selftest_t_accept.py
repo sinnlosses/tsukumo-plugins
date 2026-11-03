@@ -236,7 +236,30 @@ def test_accept_does_not_duplicate_open_laps() -> None:
               edges(wt1, "accept") == ["start", "end"], repr(edges(wt1, "accept")))
 
 
+def test_brief_acceptor_round_with_images() -> None:
+    say("task.py brief acceptor --round: --image・--visual があれば 2回目以降 に続けて 目視 を選ぶ")
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1 = _claimed_repo(tmp)
+        since = "0" * 40
+        base = ("brief", "acceptor", "T-100", "--round", "2", "--since", since)
+        r = run_task(wt1, *base, "--image", "/abs/a.png")
+        head = r.stdout.splitlines()[0] if r.stdout else ""
+        check("--round に --image なら節が 2回目以降,目視 で画像のパスが載る",
+              r.returncode == 0 and head.startswith("BRIEF\tT-100\tacceptor\t2回目以降,目視\t") and "/abs/a.png" in r.stdout,
+              r.stdout + r.stderr)
+        r = run_task(wt1, *base, "--visual")
+        check("--round に --visual だけなら「報告に画像のパスが無い」が載る",
+              r.returncode == 0 and "報告に画像のパスが無い" in r.stdout, r.stdout + r.stderr)
+        r = run_task(wt1, *base)
+        head = r.stdout.splitlines()[0] if r.stdout else ""
+        check("--round だけなら節は 2回目以降 のみ",
+              r.returncode == 0 and head.startswith("BRIEF\tT-100\tacceptor\t2回目以降\t"), r.stdout + r.stderr)
+        r = run_task(wt1, *base, "--visual-wait", "--image", "/abs/a.png")
+        check("--round と --visual-wait の組は終了コード2", r.returncode == 2, r.stdout + r.stderr)
+
+
 TESTS = (
+    test_brief_acceptor_round_with_images,
     test_accept_does_not_duplicate_open_laps,
     test_accept_not_last_step,
     test_accept_bundles_acceptance_steps,
