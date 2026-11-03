@@ -492,6 +492,15 @@ HOOKS_JSON = os.path.join(HERE, "..", "..", "..", "..", "hooks", "hooks.json")
 PLUGIN_ROOT = os.path.abspath(os.path.join(HERE, "..", "..", "..", ".."))
 
 
+def _plugin_hooks_expected() -> tuple:
+    """hook の件数の正典 `scripts/check_repo.py` の PLUGIN_HOOKS（読み込むだけでは検査は走らない）。"""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("check_repo", os.path.join(PLUGIN_ROOT, "scripts", "check_repo.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.PLUGIN_HOOKS
+
+
 def _plugin_hooks() -> list[tuple[str, str | None, list[str]]]:
     """hooks.json の hook ごとの（イベント, matcher, exec 形の argv）。argv の `${CLAUDE_PLUGIN_ROOT}` は置き換えない。"""
     with open(HOOKS_JSON, encoding="utf-8") as f:
@@ -543,8 +552,9 @@ def test_agent_scoped_guard() -> None:
               r.returncode == 0 and r.stdout != "", r.stdout + r.stderr)
 
         all_hooks = _plugin_hooks()
+        expected_hooks = _plugin_hooks_expected()
         check("hooks/hooks.json の hook はすべて exec 形で ${CLAUDE_PLUGIN_ROOT}/bin/tw-hook を呼ぶ",
-              len(all_hooks) == 11 and all(argv[0] == "${CLAUDE_PLUGIN_ROOT}/bin/tw-hook" and len(argv) > 1 for _, _, argv in all_hooks),
+              len(all_hooks) == len(expected_hooks) and all(argv[0] == "${CLAUDE_PLUGIN_ROOT}/bin/tw-hook" and len(argv) > 1 for _, _, argv in all_hooks),
               str(all_hooks))
         hooks = [argv for _, _, argv in all_hooks if "--agent-scoped" in argv]
         ask_hooks = [argv for _, _, argv in all_hooks if "ask-guard" in argv]
@@ -564,8 +574,8 @@ def test_agent_scoped_guard() -> None:
                           for n in ("Explore", "", "tsukumo-workflow:acceptor-x", "no-delegate-x", "retrospector-x"))
               and not re.search(stop_matcher, "tsukumo-workflow:no-delegate"),
               f"{start_matcher!r} {stop_matcher!r}")
-        check("hooks/hooks.json は --agent-scoped 付きで commit-guard・handback-guard を呼ぶ hook を4つ持つ",
-              len(hooks) == 4 and all(a in ("commit-guard", "handback-guard") for a in (argv[-2] for argv in hooks)),
+        check("hooks/hooks.json は --agent-scoped 付きで commit-guard・handback-guard を呼ぶ hook を PLUGIN_HOOKS の数だけ持つ",
+              len(hooks) == sum("--agent-scoped" in args for _, _, args in expected_hooks) and all(a in ("commit-guard", "handback-guard") for a in (argv[-2] for argv in hooks)),
               str(all_hooks))
         check("hooks/hooks.json は Edit・Write・NotebookEdit の PreToolUse で handback-guard を呼ぶ",
               any(e == "PreToolUse" and m == "Edit|Write|NotebookEdit" and "handback-guard" in argv and "--agent-scoped" in argv
