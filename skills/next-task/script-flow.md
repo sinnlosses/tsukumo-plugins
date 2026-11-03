@@ -7,12 +7,13 @@
 1. **再開の位置を読む**: `tw relay T-xxx 再開` が `NONE` でなければ、本文の段の名前（`implement`・`accept`・`retrospect`）をワークフロースクリプトの `from` に渡す。
    本文がワークフロースクリプトの段の名前でなければ（`flow` を切り替える前のスキルの全名）、`from` は渡さず最初から始める。
 
-2. **プログレスバーを渡す**: `tw plan-phases T-xxx` の第3列の JSON をそのまま `work_plan` に渡す（`delegatedRange` つき）。
+2. **プログレスバーを渡す**: `tw plan-phases T-xxx` の第3列の JSON をそのまま `work_plan` に渡す（`delegatedRange` つき）。`phases` の要素は段の id と名前の `{id, name}` で、id は `tw plan-phases` だけが生む。同じ JSON の `phases` を手順3で Workflow の `phaseIds` にも渡す（メインが id を作らない・書き換えない）。
    再開なら `--through` で `from` の手前の段までを済ませた位置にする（`accept` なら `実装`、`retrospect` なら `受け入れ`）。
 
 3. **ワークフロースクリプトを呼ぶ**: `Workflow` に、plugin の名前を接頭辞にしたワークフロースクリプトの名前（plugin の README「ワークフロースクリプト」の「呼び方」）を渡す。読めなければ `scriptPath` に、この plugin の `workflows/task-flow.js` の絶対パスを渡す。`args`:
    - `taskId`: タスクの ID
    - `phaseCount`: 手順2の JSON の `delegatedRange.count`（無ければ 1。ワークフロースクリプトが計画を書き直したときはワークフロースクリプトが置き換える）
+   - `phaseIds`: 手順2の JSON の `phases`（そのまま。ワークフロースクリプトは `phase()` の題と `agent()` の `phase` をこの id からだけ作る。欠けていると起動が拒まれる）
    - `steps`: `tw config` の `steps` の行（`flow` が `script` ならワークフロースクリプトの段の名前で出る）
    - `model`: `tw show T-xxx` の `difficulty`
    - `from`: 手順1で決めたとき

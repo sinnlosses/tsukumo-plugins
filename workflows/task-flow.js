@@ -9,8 +9,9 @@ export const meta = {
   ],
 }
 
-// args: { taskId, phaseCount, steps?, model?, from? }
+// args: { taskId, phaseCount, phaseIds, steps?, model?, from? }
 //   taskId     着手したタスクの ID（GH-123 など）
+//   phaseIds   tw plan-phases の JSON の phases（{ id, name } の並び。並列は配列）。phase() の題と agent() の phase は、この id からだけ作る
 //   phaseCount ## やること の段の数（実装の agent が phase_result の count に渡す）
 //   steps      走らせる段。既定は ["implement", "accept", "retrospect"]
 //   model      実装・直しの agent の model（haiku・sonnet・opus。省くとメインの model）
@@ -107,6 +108,12 @@ if (!args || typeof args.taskId !== "string" || !Number.isInteger(args.phaseCoun
   throw new Error("args に taskId（文字列）と phaseCount（1以上の整数）が要る")
 }
 const taskId = args.taskId
+// 段の id は tw plan-phases だけが生む。題は id からしか作らない（直書きは scripts/check_repo.py が禁じる）
+const phaseIds = (Array.isArray(args.phaseIds) ? args.phaseIds : [])
+  .flat()
+  .map((p) => (typeof p === "string" ? p : p?.id))
+  .filter((id) => typeof id === "string" && id !== "")
+const findId = (match) => phaseIds.find(match)
 let phaseCount = args.phaseCount
 const steps = Array.isArray(args.steps) ? args.steps : ALL_STEPS
 const startAt = ALL_STEPS.includes(args.from) ? ALL_STEPS.indexOf(args.from) : 0
@@ -115,20 +122,31 @@ const modelOpt = typeof args.model === "string" ? { model: args.model } : {}
 
 const COMMON =
   `タスク ${taskId} は着手の印が立っている。作業ツリーは今の cwd。ファイルの書き換えは Edit・Write で行う。` +
-  "tsukumo の phase_result がツール一覧に無いときは ToolSearch で select:mcp__tsukumo__phase_result を引く（それでも無ければ呼ばない）。" +
+  "tsukumo の phase_result がツール一覧に無いときは ToolSearch で select:mcp__tsukumo__phase_result を引いてから呼ぶ。" +
   "`vendor/tsukumo-plugins` は読み込み元なので、`git submodule update`・`git checkout` などで動かさない（`tw` が submodule のずれで止まっても、そのまま報告する）。"
 
 const result = { stopped: false }
 
+const titleOf = (step, match) => {
+  const id = findId(match)
+  if (id === undefined) {
+    throw new Error(`args.phaseIds に ${step} の段の id が無い（tw plan-phases の phases をそのまま渡す）`)
+  }
+  return id
+}
+const implementTitle = runs("implement") ? titleOf("implement", (id) => id === "impl" || id.startsWith("impl-")) : ""
+const acceptTitle = runs("accept") ? titleOf("accept", (id) => id === "accept") : ""
+const retrospectTitle = runs("retrospect") ? titleOf("retrospect", (id) => id === "retrospect") : ""
+
 if (runs("implement")) {
-  phase("Implement")
+  phase(implementTitle)
   const planCheck = await agent(
     `${COMMON}\n` +
       `\`tw plan-check ${taskId}\` を打ち、出力の全行を読んで state を決める: ` +
       "`PLAN_STALE`・`PLAN_NOT_FIRST` の行、または `PLAN_UNCOVERED` の行が1つでもあれば rewrite、" +
       "`NOT_OWNER` など着手の印が読めない行なら stop、そうでなく `PLAN_REGISTERED`・`PLAN_FIRST` の行があれば ok。" +
       "決め手になった行を line に入れて返す。作業ツリーは書き換えない。",
-    { agentType: "tsukumo-workflow:no-delegate", schema: PLAN_CHECK, label: "plan-check", phase: "Implement" },
+    { agentType: "tsukumo-workflow:no-delegate", schema: PLAN_CHECK, label: "plan-check", phase: implementTitle },
   )
   if (planCheck === null || planCheck.state === "stop") {
     return { stopped: true, phase: "implement", reason: planCheck?.line ?? "計画の判定の agent が null を返した" }
@@ -142,7 +160,7 @@ if (runs("implement")) {
         "`PLAN_STALE`・`PLAN_NOT_FIRST`・`PLAN_UNCOVERED` の行が続かないことを確かめる（足りなければ `tw edit` で書き直して打ち直す）。" +
         "返すのは、書き直したか（rewritten）・書き直したあとの `## やること` の段の数（phaseCount）・" +
         "打った `tw plan-check` の `PLAN_FIRST`・`PLAN_REGISTERED` の行（planLine）。書き直せず止めるなら stopped を true、reason に理由を入れる。",
-      { agentType: "tsukumo-workflow:no-delegate", schema: PLAN_REWRITE, label: "plan-rewrite", phase: "Implement", ...modelOpt },
+      { agentType: "tsukumo-workflow:no-delegate", schema: PLAN_REWRITE, label: "plan-rewrite", phase: implementTitle, ...modelOpt },
     )
     if (rewrite === null || rewrite.stopped || !rewrite.rewritten) {
       return { stopped: true, phase: "implement", reason: rewrite?.reason ?? "計画を書き直せなかった", rewrite }
@@ -160,7 +178,7 @@ if (runs("implement")) {
       `最後の段より前の段を1つ済ませるたびに、\`tw step ${taskId} <段の番号>\` を打つ。` +
       "`STEPPED` の行が出るまで次の段へ進まない。`STEP_CHECK_FAILED` など終了コードが 0 でないときは、続く出力の指摘を直して打ち直す。" +
       `出た \`STEPPED\` の行は stepLines に1段1行で入れる（最後の段は \`tw verify\` で済むので \`STEPPED\` は要らない。行数は ${phaseCount - 1}）。` +
-      "続けて phase_result を " +
+      "各段に入るたびに（済ませた・飛ばした・止めたの結果が出るたびに、必ず）phase_result を呼ぶ。呼ばずに次の段へ進まない。" +
       `{ phase: <段の番号>, count: ${phaseCount}, outcome: "finished", summary: <その段でしたこと・分かったことを1〜2文> } で呼ぶ。` +
       "段が要らず飛ばすなら outcome を skipped にする（summary は付けない）。" +
       "判断が想定より要ると分かったら押し切らず、その段で phase_result を outcome: stopped（reason に理由）で呼んで止め、" +
@@ -168,7 +186,7 @@ if (runs("implement")) {
       `最後の段のあと \`tw verify\` を打ち、打ったコマンド・結果の要点・通ったかを返す。` +
       "返す欄は schema のとおり。draftLines には委譲先の報告に書く `- ドラフト:` の行があれば入れる。" +
       "conventionLines には、`tw brief implementer` の決まりに従って報告に書く `- 規約:` の行（あれば `- 規約の指摘:` の行も）を1行1要素で入れる。",
-    { agentType: "tsukumo-workflow:no-delegate", schema: IMPLEMENT, label: "implement", phase: "Implement", ...modelOpt },
+    { agentType: "tsukumo-workflow:no-delegate", schema: IMPLEMENT, label: "implement", phase: implementTitle, ...modelOpt },
   )
   if (implement === null) {
     return { stopped: true, phase: "implement", reason: "agent が null を返した" }
@@ -193,7 +211,7 @@ if (runs("implement")) {
 }
 
 if (runs("accept")) {
-  phase("Accept")
+  phase(acceptTitle)
   let round = 0
   let tree = ""
   let judgment = null
@@ -226,7 +244,7 @@ if (runs("accept")) {
         (first
           ? "tree は `tw accept` の出力の `SNAPSHOT` の行の木の SHA（その行が無ければ空）。"
           : "tree は `tw brief` の1行目の末尾の木の SHA。"),
-      { agentType: "tsukumo-workflow:no-delegate", schema: ACCEPT_PREPARE, label: `accept-prepare-${round + 1}`, phase: "Accept" },
+      { agentType: "tsukumo-workflow:no-delegate", schema: ACCEPT_PREPARE, label: `accept-prepare-${round + 1}`, phase: acceptTitle },
     )
     if (prepared === null) {
       return { stopped: true, phase: "accept", reason: "受け入れの準備の agent が null を返した" }
@@ -252,7 +270,7 @@ if (runs("accept")) {
       agentType: "tsukumo-workflow:acceptor",
       schema: JUDGMENT,
       label: `acceptor-${round + 1}`,
-      phase: "Accept",
+      phase: acceptTitle,
     })
     if (judgment === null) {
       return { stopped: true, phase: "accept", reason: "受け入れ役が null を返した", prepared }
@@ -268,7 +286,7 @@ if (runs("accept")) {
       `${COMMON}\n受け入れ役の指摘を直す。指摘:\n${JSON.stringify(judgment.findings)}\n` +
         `直したら作業ツリー（着手した側。別のリポジトリのタスクなら \`tw brief implementer ${taskId}\` が言う作業先の作業ツリー）でコミットし、\`tw verify\` を打つ。` +
         "コミットのあとに打つ。打ったコマンド・結果の要点・通ったかを返す。",
-      { agentType: "tsukumo-workflow:no-delegate", schema: IMPLEMENT, label: `fix-${round}`, phase: "Accept", ...modelOpt },
+      { agentType: "tsukumo-workflow:no-delegate", schema: IMPLEMENT, label: `fix-${round}`, phase: acceptTitle, ...modelOpt },
     )
     if (fix === null) {
       return { stopped: true, phase: "accept", reason: "直しの agent が null を返した" }
@@ -285,7 +303,7 @@ if (runs("accept")) {
       `${COMMON}\n` +
         `受け入れ役が通した。\`tw accept ${taskId} --after-review\` を打って、整形・verify-check・accept の end を済ませる。` +
         "出力に NOT_VERIFIED が出たら `tw verify` を打ってから打ち直す。最後の行を verifyCheckLine に入れる。accept の end は出力に行が出ないので探さず、最後の行が `VERIFIED` か `VERIFIED_SAME` で始まれば closed を true にして返す（それ以外なら false）。",
-      { agentType: "tsukumo-workflow:no-delegate", schema: ACCEPT_CLOSE, label: "accept-close", phase: "Accept" },
+      { agentType: "tsukumo-workflow:no-delegate", schema: ACCEPT_CLOSE, label: "accept-close", phase: acceptTitle },
     )
     if (closed === null || !closed.closed) {
       return { stopped: true, phase: "accept", reason: "受け入れの締めが済まなかった", closed }
@@ -295,7 +313,7 @@ if (runs("accept")) {
 }
 
 if (runs("retrospect")) {
-  phase("Retrospect")
+  phase(retrospectTitle)
   const friction = result.accept?.judgment?.friction ?? "missing"
   const human = result.accept?.judgment?.human ?? 0
   const retro = await agent(
@@ -303,7 +321,7 @@ if (runs("retrospect")) {
       `振り返りの段。tsukumo-workflow:retrospect スキルを Skill ツールで読み、タスク ${taskId}・friction=${friction}・human=${human} で従う。` +
       "兆候が無ければ `- 振り返り: 兆候なし`、あれば物差しを通った候補を tw new --draft で積み、`- 振り返り:` の1行（積んだドラフトの ID を添える）を line に入れて返す。" +
       "作業ツリーのファイルは書き換えない。",
-    { agentType: "tsukumo-workflow:retrospector", schema: RETRO, model: "haiku", label: "retrospect", phase: "Retrospect" },
+    { agentType: "tsukumo-workflow:retrospector", schema: RETRO, model: "haiku", label: "retrospect", phase: retrospectTitle },
   )
   if (retro === null) {
     return { stopped: true, phase: "retrospect", reason: "振り返りの agent が null を返した" }

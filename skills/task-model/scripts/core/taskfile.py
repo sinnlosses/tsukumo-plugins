@@ -571,6 +571,15 @@ PHASE_SHIP = "送り出し"
 PHASE_FIX = "直す"
 PHASE_VERIFY = "検証"
 
+ID_PLAN = "plan"
+ID_IMPLEMENT = "impl"
+ID_IMPLEMENT_STEP = "impl-"
+ID_ACCEPT = "accept"
+ID_RETRO = "retrospect"
+ID_SHIP = "ship"
+ID_FIX = "fix"
+ID_VERIFY = "verify"
+
 STEP_IMPLEMENT = "implement-step"
 STEP_ACCEPT = "accept-step"
 STEP_RETRO = "retrospect-step"
@@ -611,7 +620,7 @@ def work_plan_phases(
     steps: tuple[str, ...] = (),
     skipped: tuple[str, ...] = (),
 ) -> tuple[dict | None, str | None]:
-    """`work_plan` の引数（`phases`・`current`・`finishedInGroup`・あれば `delegatedRange`・`skippedPhases`）。形が決まらなければ `(None, 理由)`。
+    """`work_plan` の引数（`phases`＝段の id と名前の `{id, name}`〔並列は配列〕・`current`・`finishedInGroup`・あれば `delegatedRange`・`skippedPhases`）。形が決まらなければ `(None, 理由)`。
 
     `flow` は `FLOW_DELEGATE`・`FLOW_MAIN`・`FLOW_DIRECT`。振り返りの段は `steps` に `retrospect-step` があるときだけ。`through` はその段までと、それ以前を済ませた位置（省略は何も済んでいない）。
     `also` は並列のまとまりの中で、`through` の後ろにあるが先に済んだ段の番号。
@@ -620,38 +629,46 @@ def work_plan_phases(
     direct = flow == FLOW_DIRECT
     entries: list[str | list[str]] = []
     keys: list[list[str]] = []
+    ids: list[list[str]] = []
     range_out: dict | None = None
     for step in [s.rsplit(":", 1)[-1] for s in steps] or list(DEFAULT_STEP_NAMES):
         if step == STEP_IMPLEMENT and direct:
             entries += [PHASE_FIX, PHASE_VERIFY]
             keys += [[PHASE_FIX], [PHASE_VERIFY]]
+            ids += [[ID_FIX], [ID_VERIFY]]
         elif step == STEP_IMPLEMENT:
             if plan_state != PLAN_REGISTERED_STATE:
                 entries.append(PHASE_PLAN)
                 keys.append([PHASE_PLAN])
+                ids.append([ID_PLAN])
             first = len(entries)
             if plan_state == PLAN_MISSING_STATE:
                 entries.append(PHASE_IMPLEMENT)
                 keys.append([PHASE_IMPLEMENT])
+                ids.append([ID_IMPLEMENT])
                 range_out = {"first": first}
             else:
                 for group in _step_groups(specs):
                     names = [specs[n - 1].name for n in group]
                     entries.append(names if len(group) > 1 else names[0])
                     keys.append([f"#{n}" for n in group])
+                    ids.append([f"{ID_IMPLEMENT_STEP}{n}" for n in group])
                 range_out = {"first": first, "count": len(specs)}
         elif step == STEP_ACCEPT:
             if not direct:
                 entries.append(PHASE_ACCEPT)
                 keys.append([PHASE_ACCEPT])
+                ids.append([ID_ACCEPT])
         elif step == STEP_RETRO:
             if not direct:
                 entries.append(PHASE_RETRO)
                 keys.append([PHASE_RETRO])
+                ids.append([ID_RETRO])
         else:
             phase = PHASE_SHIP if step == STEP_SHIP else step
             entries.append(phase)
             keys.append([phase])
+            ids.append([ID_SHIP if step == STEP_SHIP else step])
     if flow != "delegate":
         range_out = None
     if not entries:
@@ -691,7 +708,13 @@ def work_plan_phases(
             return None, f"飛ばした段 {name} は並びに無い"
         if key_of[name] not in finished:
             return None, f"飛ばした段 {name} はまだ済んでいない"
-    result: dict = {"phases": entries}
+    phases_out = [
+        [{"id": i, "name": n} for i, n in zip(entry_ids, entry)]
+        if isinstance(entry, list)
+        else {"id": entry_ids[0], "name": entry}
+        for entry, entry_ids in zip(entries, ids)
+    ]
+    result: dict = {"phases": phases_out}
     if range_out is not None:
         result["delegatedRange"] = range_out
     result["current"] = current

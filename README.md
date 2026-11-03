@@ -73,7 +73,7 @@ Claude Code 以外の環境（Codex など）へスキルを置く入口は、�
 - 呼び方（`Workflow` はメインのセッションから呼ぶ。委譲先には道具が無い）: 名前 `tsukumo-workflow:task-flow` か、`scriptPath` にこのファイルの絶対パスを渡す。
   名前での呼び出しは接頭辞つきの `tsukumo-workflow:task-flow` で通ることを確かめた。`task-flow` だけでは読めない（not found）。
   plugin を入れ直したあとの読み込みは次のセッションの開始か `/reload-plugins` で効く
-- `args`: `taskId`（着手したタスクの ID）・`phaseCount`（`## やること` の段の数。実装の agent が `phase_result` の `count` に渡す）が要る。
+- `args`: `taskId`（着手したタスクの ID）・`phaseCount`（`## やること` の段の数。実装の agent が `phase_result` の `count` に渡す）・`phaseIds`（`tw plan-phases` の JSON の `phases`。`phase()` の題と `agent()` の `phase` はこの id からだけ作り、直書きは `scripts/check_repo.py` が禁じる）が要る。
   任意で `steps`（走らせる段。既定は `["implement", "accept", "retrospect"]`）・`model`（実装と直しの model）・`from`（呼び直すときに始める段）
 - 計画の準備: 実装の前に `tw plan-check` を打つ agent を起こす。`PLAN_REGISTERED`・`PLAN_FIRST` ならそのまま実装へ進む。
   `PLAN_STALE`・`PLAN_NOT_FIRST`（計画が古い）か `PLAN_UNCOVERED`（完了条件に覆われない行がある）が出たなら、`tw brief implementer <ID> --rewrite` の決まりで `## やること` を書き直す agent を続けて起こし、書き直したあとの段の数を `phaseCount` に置き換えて実装へ進む

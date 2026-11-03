@@ -859,6 +859,22 @@ def check_workflow_steps(names: list[str]) -> None:
             fail(f"{n}/SKILL.md: {p}")
 
 
+def hardcoded_phase_titles(text: str) -> list[str]:
+    """`phase("…")` と、`label:` と同じ行の `phase: "…"`（`agent()` の選択肢に題を直書きする形）の行。題は args の `phaseIds` からだけ作る。
+    `{ stopped: true, phase: "accept" }` の戻り値の `phase` は段の名前で、題ではない。"""
+    pat = re.compile(r"""\bphase\(\s*["'`]|\blabel:[^\n]*\bphase:\s*["'`]""")
+    return [line.strip() for line in text.splitlines() if pat.search(line)]
+
+
+def check_workflow_phase_titles() -> None:
+    """ワークフロースクリプトが `phase()` の題・`agent()` の `phase` を文字列で直書きしていないか。"""
+    path = os.path.join(ROOT, "workflows", "task-flow.js")
+    if not os.path.exists(path):
+        return
+    for line in hardcoded_phase_titles(read(path)):
+        fail(f"workflows/task-flow.js: 段の題を直書きしている（args.phaseIds から作る）: {line}")
+
+
 def main() -> None:
     names = skill_names()
     check_frontmatter(names)
@@ -883,6 +899,7 @@ def main() -> None:
     check_selftest_body_literal()
     check_agent_frontmatter(agent_names())
     check_workflow_steps(names)
+    check_workflow_phase_titles()
 
     if problems:
         for p in problems:

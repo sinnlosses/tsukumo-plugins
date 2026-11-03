@@ -376,7 +376,22 @@ def test_edit_deps() -> None:
               r.stdout + r.stderr)
 
 
+@weight(1)
+def test_plan_phases_ids() -> None:
+    say("taskfile.work_plan_phases: 段の id が impl-1…・accept・retrospect の順で並ぶ")
+    specs = (
+        taskfile.PlanStep("a", (), ("x",)),
+        taskfile.PlanStep("b", (1,), ("y",)),
+    )
+    result, error = taskfile.work_plan_phases(specs, taskfile.FLOW_DELEGATE, taskfile.PLAN_REGISTERED_STATE, None, ())
+    ids = [p["id"] for p in result["phases"]] if result else []
+    check("実装の段が impl-n、後の段が accept・retrospect・ship の順", ids == ["impl-1", "impl-2", "accept", "retrospect", "ship"],
+          f"{ids} {error}")
+    check("名前は {id, name} の name に残る", result is not None and result["phases"][0] == {"id": "impl-1", "name": "a"}, str(result))
+
+
 TESTS = (
+    test_plan_phases_ids,
     test_edit_and_plan_check,
     test_edit_deps,
     test_edit_section,
