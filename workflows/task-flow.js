@@ -108,7 +108,6 @@ if (!args || typeof args.taskId !== "string" || !Number.isInteger(args.phaseCoun
   throw new Error("args に taskId（文字列）と phaseCount（1以上の整数）が要る")
 }
 const taskId = args.taskId
-// 段の id は tw plan-phases だけが生む。題は id からしか作らない（直書きは scripts/check_repo.py が禁じる）
 const phaseIds = (Array.isArray(args.phaseIds) ? args.phaseIds : [])
   .flat()
   .map((p) => (typeof p === "string" ? p : p?.id))

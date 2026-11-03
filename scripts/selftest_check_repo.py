@@ -122,6 +122,17 @@ def main() -> int:
     check("frontmatter の中の語は本文に数えない",
           len(contract('---\nname: s\ndescription: "`work_plan`"\n---\n' + f"{outcomes}\n")) == 1)
 
+    hard = check_repo.hardcoded_phase_titles
+    check("phase() の直書きを拾う", len(hard('phase("Implement")\n')) == 1)
+    check("1行の選択肢で label より前の phase: 直書きを拾う",
+          len(hard('await agent(p, { agentType: "a", phase: "Accept", label: "x" })\n')) == 1)
+    check("複数行の選択肢で独立した行の phase: 直書きを拾う",
+          len(hard('await agent(p, {\n  agentType: "a",\n  label: "x",\n  phase: "Accept",\n})\n')) == 1)
+    check("識別子の phase: は通す",
+          hard('await agent(p, {\n  agentType: "a",\n  phase: acceptTitle,\n})\n') == [])
+    check("戻り値の phase: 文字列は通す",
+          hard('return { stopped: true, phase: "accept", reason: "x" }\n') == [])
+
     if failures:
         print(f"\n{len(failures)} 件落ちた: {', '.join(failures)}")
         return 1

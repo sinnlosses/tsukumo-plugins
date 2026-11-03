@@ -860,10 +860,35 @@ def check_workflow_steps(names: list[str]) -> None:
 
 
 def hardcoded_phase_titles(text: str) -> list[str]:
-    """`phase("…")` と、`label:` と同じ行の `phase: "…"`（`agent()` の選択肢に題を直書きする形）の行。題は args の `phaseIds` からだけ作る。
-    `{ stopped: true, phase: "accept" }` の戻り値の `phase` は段の名前で、題ではない。"""
-    pat = re.compile(r"""\bphase\(\s*["'`]|\blabel:[^\n]*\bphase:\s*["'`]""")
-    return [line.strip() for line in text.splitlines() if pat.search(line)]
+    """`phase("…")` と、`agentType:` を持つ選択肢の `phase:` が文字列の直書きの形の行。題は args の `phaseIds` からだけ作る。
+    `{ stopped: true, phase: "accept" }` の戻り値の `phase` は `agentType:` を持たず、段の名前で、題ではない。"""
+    out = [m.group(0).strip() for m in re.finditer(r"""[^\n]*\bphase\(\s*["'`][^\n]*""", text)]
+    for m in re.finditer(r"""\bphase:\s*["'`]""", text):
+        depth, start = 0, None
+        for i in range(m.start() - 1, -1, -1):
+            if text[i] == "}":
+                depth += 1
+            elif text[i] == "{":
+                if depth == 0:
+                    start = i
+                    break
+                depth -= 1
+        if start is None:
+            continue
+        depth, end = 0, len(text)
+        for i in range(start, len(text)):
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+        if re.search(r"\bagentType:", text[start:end]):
+            line_start = text.rfind("\n", 0, m.start()) + 1
+            line_end = text.find("\n", m.start())
+            out.append(text[line_start:line_end if line_end != -1 else len(text)].strip())
+    return out
 
 
 def check_workflow_phase_titles() -> None:
