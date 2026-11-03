@@ -17,7 +17,21 @@
    - `model`: `tw show T-xxx` の `difficulty`
    - `from`: 手順1で決めたとき
 
-4. **完了の通知を受ける**: 先にプログレスバーの位置を確かめて `work_plan` を渡す（渡すまで作業のツールは拒まれる）。位置は `tw plan-phases T-xxx --through <走った最後の段>`
+3a. **進み具合を5分おきに確かめる**: `Workflow` を起こした同じ応答で、背景の Bash（`run_in_background: true`・`timeout: 7200000`）に次を渡す。
+   `<dir>` は `Workflow` の戻りの `Transcript dir`、`<前の行>` は前に知らせた行（初回は空）。5分おきに `journal.jsonl` の済んだ agent の数といま走っている役（label）を読み、前の行と変わったときだけ1行出して終わる:
+
+   ```bash
+   J='<dir>/journal.jsonl'; prev='<前の行>'
+   while :; do sleep 300
+     cur="済み $(grep -c '"type":"result"' "$J"; true)・いまの役 $(grep '"type":"started"' "$J" | tail -1 | sed -n 's/.*"label":"\([^"]*\)".*/\1/p')"
+     [ "$cur" != "$prev" ] && { echo "$cur"; break; }
+   done
+   ```
+
+   終わりの知らせで起きたら、出力の1行を自分の言葉で一言にして知らせ、同じ応答で `<前の行>` をその行にして打ち直す。agent の会話の中身（`agent-*.jsonl`）は読まない。
+   `Monitor` は使わない（知らせでメインは起きるが、tsukumo はその知らせを新しい事実と数えず、知らせの一言を差し戻す）。`ScheduleWakeup` は `/loop` の中でしか使えない。
+
+4. **完了の通知を受ける**: 先にプログレスバーの位置を確かめて `work_plan` を渡し（渡すまで作業のツールは拒まれる）、続けて手順3aの走っている確かめを `TaskStop` で止める。位置は `tw plan-phases T-xxx --through <走った最後の段>`
    （`振り返り`・`受け入れ`・`実装` のうち、ワークフロースクリプトが走らせた最後のもの）。`phaseSummary` は戻り値から書く。
    - 戻り値が `{ stopped: true, phase }`: `tw relay T-xxx 再開 --body-file -` に `phase` を書き、`tw release T-xxx` を打って、`workPlanClosing: stopped` の `report` を渡す
    - 通ったとき: 申し送りをワークフロースクリプトの戻り値から書く（形は `task-model` の `WORKFLOW.md`「段の申し送り」）。
