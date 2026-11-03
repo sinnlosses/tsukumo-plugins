@@ -155,6 +155,21 @@ def test_accept_other_repo_main_dirty() -> None:
         )
 
 
+def test_accept_other_repo_lagging_branch() -> None:
+    say("task.py accept: 作業先の枝が主ブランチより遅れていて枝に差が無いとき、逆向きの差でレビューを起こさない")
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1, work_main, work_tree = _other_repo_claimed(tmp)
+        run_task(work_tree, "verify")
+        _commit(work_main, "later.py", "x = 1\n")
+        r = run_task(wt1, "accept", "T-100")
+        lines = r.stdout.splitlines()
+        check(
+            "主ブランチだけに進んだコードは REVIEW・MARK を出さず NOTHING",
+            "NOTHING" in lines and not any(l.startswith(("REVIEW", "MARK")) for l in lines),
+            r.stdout + r.stderr,
+        )
+
+
 THREE_STEPS = (("書く", "x"), ("試す", "x"), ("直す", "x"))
 
 
@@ -227,6 +242,7 @@ TESTS = (
     test_accept_bundles_acceptance_steps,
     test_accept_stops_on_stop_lines,
     test_accept_other_repo_main_dirty,
+    test_accept_other_repo_lagging_branch,
 )
 
 

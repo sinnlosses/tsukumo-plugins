@@ -148,7 +148,7 @@ def _review_gate(toplevel: str, task_id: str, issue: beads.Issue | None, other: 
     """レビューが要るなら `lap review` と木の控えを出して `True`。要らなければ判定の行だけ出して `False`。"""
     difficulty = _difficulty(issue)
     tree = toplevel if other is None else other.tree
-    span = () if other is None else (f"{other.base}..{other.branch}",)
+    span = () if other is None else (f"{other.base}...{other.branch}",)
     decided = _review_script(tree, "review_needed.py", "--difficulty", difficulty, *span)
     print(decided)
     if not decided.startswith("REVIEW"):
