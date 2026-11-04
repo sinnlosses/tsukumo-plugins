@@ -637,7 +637,7 @@ def config_schema(
                 "default": FLOW_SKILLS,
                 "values": [
                     {"value": FLOW_SKILLS, "label": "スキルの並び", "description": "task-workflow が並びのスキルを順に呼ぶ"},
-                    {"value": FLOW_SCRIPT, "label": "台本", "description": "plugin の workflows/task-flow.js を Workflow で呼ぶ"},
+                    {"value": FLOW_SCRIPT, "label": "ワークフロースクリプト", "description": "plugin の workflows/task-flow.js を Workflow で呼ぶ"},
                 ],
             },
             {

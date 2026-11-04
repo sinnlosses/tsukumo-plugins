@@ -7,7 +7,7 @@
 1. **再開の位置を読む**: `tw relay T-xxx 再開` が `NONE` でなければ、本文の段の名前（`implement`・`accept`・`retrospect`）をワークフロースクリプトの `from` に渡す。
    本文がワークフロースクリプトの段の名前でなければ（`flow` を切り替える前のスキルの全名）、`from` は渡さず最初から始める。
 
-1a. **計画を確かめ、必要なら書き直す**（ワークフロースクリプトを起こす前に、メインの手順で済ませる。台本の中で書き直すと、段の数が tsukumo に届かず実装の段が番号を持たない）:
+1a. **計画を確かめ、必要なら書き直す**（ワークフロースクリプトを起こす前に、メインの手順で済ませる。ワークフロースクリプトの中で書き直すと、段の数が tsukumo に届かず実装の段が番号を持たない）:
    `tw plan-check T-xxx` を打つ。
    - `PLAN_REGISTERED`・`PLAN_FIRST`: そのまま手順2へ進む
    - `PLAN_STALE`・`PLAN_NOT_FIRST`・`PLAN_UNCOVERED`: まず `tw plan-phases T-xxx` の第3列の JSON（範囲は `pending`）を `work_plan` に渡す。
@@ -17,7 +17,7 @@
      返却を受けたら、`tw plan-phases T-xxx --through 計画` の JSON をそのまま `work_plan` に渡す（`phaseSummary` に書き直しの要点を書く）。ここで範囲の数と段の名前が確定する。書き直せず止まったときは `tw release T-xxx` を打ち、`workPlanClosing: stopped` の `report` を渡して終える。
    - `NOT_OWNER` など着手の印が読めない行: 進めず、その行を報告して止める
 
-2. **プログレスバーを渡す**: 手順1a で計画を書き直したなら、確定した `tw plan-phases T-xxx --through 計画` の JSON を手順3に使う（手順1a で `work_plan` に渡し済みなので、渡し直さない）。書き直していなければ、`tw plan-phases T-xxx` の第3列の JSON をそのまま `work_plan` に渡す（`delegatedRange` つき）。`phases` の要素は段の id と名前の `{id, name}` で、id は `tw plan-phases` だけが生む。同じ JSON の `phases` を手順3で Workflow の `phaseIds` にも渡す（メインが id を作らない・書き換えない）。ここで `phases` に `impl-` で始まる id が無く `impl` だけなら、計画の範囲が未確定なので手順1a へ戻る（台本の起動も拒まれる）。
+2. **プログレスバーを渡す**: 手順1a で計画を書き直したなら、確定した `tw plan-phases T-xxx --through 計画` の JSON を手順3に使う（手順1a で `work_plan` に渡し済みなので、渡し直さない）。書き直していなければ、`tw plan-phases T-xxx` の第3列の JSON をそのまま `work_plan` に渡す（`delegatedRange` つき）。`phases` の要素は段の id と名前の `{id, name}` で、id は `tw plan-phases` だけが生む。同じ JSON の `phases` を手順3で Workflow の `phaseIds` にも渡す（メインが id を作らない・書き換えない）。ここで `phases` に `impl-` で始まる id が無く `impl` だけなら、計画の範囲が未確定なので手順1a へ戻る（ワークフロースクリプトの起動も拒まれる）。
    再開なら `--through` で `from` の手前の段までを済ませた位置にする（`accept` なら `実装`、`retrospect` なら `受け入れ`）。
 
 3. **ワークフロースクリプトを呼ぶ**: `Workflow` に、plugin の名前を接頭辞にしたワークフロースクリプトの名前（plugin の README「ワークフロースクリプト」の「呼び方」）を渡す。読めなければ `scriptPath` に、この plugin の `workflows/task-flow.js` の絶対パスを渡す。`args`:
