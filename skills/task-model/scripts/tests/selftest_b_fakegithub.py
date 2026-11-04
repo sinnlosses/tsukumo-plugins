@@ -3,6 +3,10 @@
 GitHub には繋がない。本物の `bd` の `bd github push`・`pull` を `GITHUB_API_URL` で
 偽の HTTP サーバ（`FakeGitHub`。REST の Issue と Project の GraphQL）へ向ける。`gh` は PATH の先頭に置いた
 偽のコマンドが `api` を同じサーバへ転送する。
+
+`bd` 1.3.3 以降は、課題の URL が `GITHUB_API_URL` の host に属するときだけ、その課題を自分の課題として
+送る・取り込む。偽の Issue の `html_url` は `https://github.com/...` なので、`GITHUB_API_URL` は
+`http://github.com`（host が `github.com`）にして、`HTTP_PROXY` で偽のサーバへ流す。
 """
 
 from __future__ import annotations
@@ -66,7 +70,7 @@ class FakeGitHub:
                 n = int(self.headers.get("Content-Length") or 0)
                 body = json.loads(self.rfile.read(n).decode() or "null") if n else None
                 with fake.lock:
-                    key = f"{self.command} {self.path.split('?')[0]}"
+                    key = f"{self.command} {urlparse(self.path).path}"
                     fake.requests[key] = fake.requests.get(key, 0) + 1
                     code, obj = fake.route(self.command, self.path, body)
                 if not fake.delay_post_only or self.command == "POST":
@@ -184,12 +188,13 @@ def _fake_bin(tmp: str) -> str:
     write(os.path.join(bin_dir, "gh"), f"""#!{sys.executable}
 import json, os, sys, urllib.request
 args = sys.argv[1:]
-server = os.environ["GITHUB_API_URL"]
+server = os.environ["FAKE_GITHUB_URL"]
+opener = urllib.request.build_opener(urllib.request.ProxyHandler({{}}))
 def call(method, path, body=None):
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(server + path, data=data, method=method, headers={{"Content-Type": "application/json"}})
     try:
-        return json.load(urllib.request.urlopen(req, timeout=10))
+        return json.load(opener.open(req, timeout=10))
     except OSError as e:
         sys.stderr.write(f"fake gh: {{e}}\\n")
         sys.exit(1)
@@ -223,7 +228,12 @@ else:
 def _with_fakes(tmp: str, fake: FakeGitHub) -> dict[str, str]:
     env = dict(os.environ)
     env["PATH"] = _fake_bin(tmp) + os.pathsep + env.get("PATH", "")
-    env["GITHUB_API_URL"] = fake.url
+    env["FAKE_GITHUB_URL"] = fake.url
+    env["GITHUB_API_URL"] = "http://github.com"
+    for name in ("HTTP_PROXY", "http_proxy"):
+        env[name] = fake.url
+    for name in ("NO_PROXY", "no_proxy"):
+        env[name] = ""
     env.pop("GITHUB_TOKEN", None)
     return env
 
