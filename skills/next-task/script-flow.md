@@ -48,6 +48,6 @@
    - 通ったとき: 申し送りをワークフロースクリプトの戻り値から書く（形は `task-model` の `WORKFLOW.md`「段の申し送り」）。
      `tw relay T-xxx 実装` に `conventionLines`、`tw relay T-xxx 受け入れ` に `accept.judgment` の判定と `findings`（`- 指摘:`）・`visual`（`- 目視:`）・`notes`、
      `tw relay T-xxx 振り返り` に `retrospect.line`。ワークフロースクリプトが走らせなかった段の鍵は書かない。
-     `### 作業先` が別のリポジトリなら、`skills/task-workflow/other-repo.md` の「合流」（`tw lap` の囲みと `tw land <枝> --fold`、先頭語の表）を打ち、`LANDED` を確かめてから送り出しへ進む。続けて Skill ツールで `tsukumo-workflow:ship-step` に ID を渡して呼ぶ
+     `### 作業先` が別のリポジトリなら、`task-workflow` の置き場の other-repo の「合流」（`tw lap` の囲みと `tw land <枝> --fold`、先頭語の表）を打ち、`LANDED` を確かめてから送り出しへ進む。続けて Skill ツールで `tsukumo-workflow:ship-step` に ID を渡して呼ぶ
 
 5. **完了報告**は `task-workflow` と同じ決まり（完了報告の節。`/loop` の続行判断も同じ）で書く。
