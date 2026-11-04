@@ -10,6 +10,7 @@ from selftest_support import RESULT_FULL, check, git, refuse_direct_run, say, wr
 import beads  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
+from selftest_body import task_body  # noqa: E402
 from selftest_fixtures import BODY, commit_task, flow_rows, make_repo, run_task  # noqa: E402
 
 RESULT = RESULT_FULL
@@ -283,7 +284,51 @@ def test_finish_closes_open_accept() -> None:
         check("accept が無ければ何も書かない", _accept_edges(wt1) == [], r.stdout + r.stderr)
 
 
+def _other_repo_claimed(tmp: str, unmerged_branch: bool) -> tuple[str, str, str]:
+    """着手側の作業ツリー・作業先の本体。`unmerged_branch` なら作業先に主ブランチへ未合流の枝 `t-100` がある。"""
+    own_main, wt1, _ = make_repo(os.path.join(tmp, "own"), branch="切らない", verify="`true`")
+    work_main, _, _ = make_repo(os.path.join(tmp, "work"), verify="`true`")
+    commit_task(own_main, taskfile.Task("T-100", "作業先で直す", "todo", "sonnet", "Y", (), task_body((("書く", "x"),), ["a.txt"], work_main)))
+    run_task(wt1, "claim", "T-100")
+    if unmerged_branch:
+        work_tree = os.path.join(tmp, "work-t-100")
+        git(work_main, "worktree", "add", "-q", "-b", "t-100", work_tree, "main")
+        write(os.path.join(work_tree, "a.txt"), "x")
+        git(work_tree, "add", "a.txt")
+        git(work_tree, "commit", "-q", "-m", "a")
+    return wt1, work_main, own_main
+
+
+def _status_of(wt: str) -> str:
+    return next((l for l in run_task(wt, "show", "T-100").stdout.splitlines() if l.startswith("status:")), "")
+
+
+def test_finish_stops_on_unlanded_work_branch() -> None:
+    say("task.py finish: 作業先の枝が主ブランチへ未合流なら WORK_NOT_LANDED で何も書かずに止まる")
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1, work_main, _own = _other_repo_claimed(tmp, True)
+        before = _status_of(wt1)
+        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT)
+        check(
+            "未合流の枝は WORK_NOT_LANDED（終了コード4）で、DONE を打たず status も変えない",
+            r.returncode == 4 and r.stdout == f"WORK_NOT_LANDED\tT-100\t{work_main}\tt-100\n" and _status_of(wt1) == before,
+            r.stdout + r.stderr,
+        )
+        r = run_task(wt1, "finish", "T-100", "--dropped", "--result-file", "-", "--message", "x", stdin=RESULT)
+        check("--dropped は枝を見ない", "WORK_NOT_LANDED" not in r.stdout and "DONE\t" in r.stdout, r.stdout + r.stderr)
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1, work_main, _own = _other_repo_claimed(tmp, True)
+        git(work_main, "merge", "-q", "--ff-only", "t-100")
+        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT)
+        check("ff で合流したあとは通る", "WORK_NOT_LANDED" not in r.stdout and "DONE\t" in r.stdout, r.stdout + r.stderr)
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1, _work_main, _own = _other_repo_claimed(tmp, False)
+        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT)
+        check("作業先に枝が無ければ通る", "WORK_NOT_LANDED" not in r.stdout and "DONE\t" in r.stdout, r.stdout + r.stderr)
+
+
 TESTS = (
+    test_finish_stops_on_unlanded_work_branch,
     test_finish_closes_open_accept,
     test_finish_without_add_commits_changes,
     test_finish_resume_after_commits_since_claim,

@@ -1,7 +1,8 @@
 """`tw finish`: `tw done`・コミット・`tw ship` を1回で打つ。
 
 各部品の出力の行はそのまま並べ、止まる行（`tw done` の `NOT_OWNER`・`ALREADY_DONE` と `COMMITS_SINCE_CLAIM`、
-`tw ship` の `SHIPPED`・`NOTHING` 以外）が出たら以降を打たない。コミットは対象のファイルを個別に `git add` した1つだけで、
+`tw ship` の `SHIPPED`・`NOTHING` 以外）が出たら以降を打たない。
+最初に、`--dropped` でなければ、作業先が別のリポジトリでその枝が主ブランチへ合流していないとき `WORK_NOT_LANDED`（終了コード4）で何も書かずに止まる。コミットは対象のファイルを個別に `git add` した1つだけで、
 差分が無ければ打たない。対象は `--add` で渡したファイル。渡さなければ作業ツリーの変更のうち通常のファイルで、`.tw/local`・symlink・サブモジュールは除く。
 件名の `T-xxx:` は tw が付ける。
 """
@@ -20,6 +21,7 @@ import gitinfo
 import ledger
 import metrics
 import tw_base
+import tw_brief
 import tw_claim
 import tw_handback
 import tw_ship
@@ -41,6 +43,11 @@ def cmd_finish(
 ) -> None:
     bd_id = tw_base.bd_task_id(task_id)
     shown = beads.to_task_id(beads.to_bd_id(task_id))
+    if not dropped:
+        unlanded = tw_brief.unlanded_work_branch(toplevel, shown, tw_handback._claimed_plan_body(toplevel, shown))
+        if unlanded is not None:
+            print(f"WORK_NOT_LANDED\t{shown}\t{unlanded[0]}\t{unlanded[1]}")
+            raise SystemExit(4)
     marked = _my_ship_mark(toplevel, bd_id) if resume else None
     if marked is not None:
         print(f"RESUMED\t{shown}\t{marked}")

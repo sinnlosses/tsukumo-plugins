@@ -202,6 +202,40 @@ def _friction_value(toplevel: str, shown: str) -> str:
     return "missing"
 
 
+def other_repo_root(toplevel: str, plan_body: str) -> str | None:
+    """`### 作業先` が名指す、着手した作業ツリーとは別のリポジトリの根。同じリポジトリか無ければ `None`。読めなければ `GitCommandError`。"""
+    root, _ = taskfile.plan_work_repo(plan_body)
+    if root is None or not os.path.isdir(root):
+        return None
+    if gitinfo.git_common_dir(root) == gitinfo.git_common_dir(toplevel):
+        return None
+    return root
+
+
+def unlanded_work_branch(toplevel: str, shown: str, plan_body: str) -> tuple[str, str] | None:
+    """別のリポジトリの作業先に枝（タスクIDの小文字）があり、主ブランチへ合流していなければ `(作業先, 枝)`。
+
+    作業先が無い・同じリポジトリ・枝が無い・合流済み・読めないときは `None`。
+    """
+    try:
+        root = other_repo_root(toplevel, plan_body)
+        if root is None:
+            return None
+        branch = shown.lower()
+        base = gitinfo.base_branch(root)
+        found = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"], cwd=root, capture_output=True, check=False
+        )
+        if found.returncode != 0:
+            return None
+    except gitinfo.GitCommandError:
+        return None
+    merged = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", branch, base], cwd=root, capture_output=True, check=False
+    )
+    return (root, branch) if merged.returncode == 1 else None
+
+
 def work_repo(toplevel: str, shown: str, plan_body: str) -> WorkRepo | None:
     """`### 作業先` が別のリポジトリなら、その作業先と枝と作業ツリーの道。同じリポジトリか無ければ `None`。
 
@@ -209,11 +243,9 @@ def work_repo(toplevel: str, shown: str, plan_body: str) -> WorkRepo | None:
     `<着手した作業ツリーの親の親>/<作業先の名前>/<枝>`、本体なら `<作業先の親>/<作業先の名前>-<枝>`。
     決めた道に別のものがある・作業先の中に入るなら `INVALID`（終了コード3）。
     """
-    root, _ = taskfile.plan_work_repo(plan_body)
-    if root is None or not os.path.isdir(root):
-        return None
     try:
-        if gitinfo.git_common_dir(root) == gitinfo.git_common_dir(toplevel):
+        root = other_repo_root(toplevel, plan_body)
+        if root is None:
             return None
         branch = shown.lower()
         existing = [w.path for w in gitinfo.list_worktrees(cwd=root) if w.branch == branch]
