@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import contextlib
 import io
-import os
 import re
 import sys
 from datetime import datetime, timezone
@@ -27,8 +26,6 @@ import tw_handback
 import tw_ship
 
 STRAY_COMMITS_EXIT = 12
-LOCAL_DIR = ".tw/local"
-GITMODULES = ".gitmodules"
 
 
 def cmd_finish(
@@ -99,36 +96,6 @@ def _done_found_stray_commits(
     return any(line.startswith("COMMITS_SINCE_CLAIM\t") for line in buffer.getvalue().splitlines())
 
 
-def _is_local(path: str) -> bool:
-    return path == LOCAL_DIR or path.startswith(LOCAL_DIR + "/")
-
-
-def _submodule_paths(toplevel: str) -> set[str]:
-    """索引か `HEAD` がサブモジュール（モード 160000）として持つパス。"""
-    paths: set[str] = set()
-    for args in (["ls-files", "-s", "-z"], ["ls-tree", "-r", "-z", "HEAD"]):
-        out = tw_base.run_git(toplevel, args)
-        for entry in out.stdout.split("\0"):
-            meta, _, path = entry.partition("\t")
-            if meta.startswith("160000 ") and path:
-                paths.add(path)
-    return paths
-
-
-def _skipped_kind(toplevel: str, path: str, submodules: set[str]) -> str | None:
-    """`--add` 省略時に対象から外す種類（`symlink`／`submodule`）。通常のファイルなら `None`。
-
-    サブモジュールは、指す先のずれ・中の変更・削除・移動（索引か `HEAD` に載るパス）と、
-    追加前の入れ子のリポジトリ（`git status` が末尾 `/` のディレクトリで出す）、
-    それらの設定の `.gitmodules`（追加・削除・移動・URL の変更のどれでも）。
-    """
-    if path.rstrip("/") in submodules or path.endswith("/") or path == GITMODULES:
-        return "submodule"
-    if os.path.islink(os.path.join(toplevel, path)):
-        return "symlink"
-    return None
-
-
 _ID_IN_TEXT = re.compile(r"\b(?:T-\d{3,}|GH-\d+|[A-Z][A-Z0-9_]+-\d+)\b", re.IGNORECASE)
 _REVERT_WORDS = ("戻す", "撤去", "revert")
 _REVERTS_SHA = re.compile(r"This reverts commit ([0-9a-f]{7,40})")
@@ -165,20 +132,13 @@ def _commit(toplevel: str, message: str, files: list[str]) -> str | None:
     """コミットを作ったらその sha、差分が無ければ `None`。"""
     targets = files
     if not files:
-        targets = []
-        submodules = _submodule_paths(toplevel)
+        submodules = tw_base.submodule_paths(toplevel)
         for path in sorted(submodules):
             tw_base.run_git(toplevel, ["reset", "-q", "--", path])
-        for path in gitinfo.dirty_paths(cwd=toplevel):
-            if _is_local(path):
-                continue
-            kind = _skipped_kind(toplevel, path, submodules)
-            if kind is not None:
-                path = path.rstrip("/")
-                print(f"SKIPPED\t{path}\t{kind}")
-                tw_base.run_git(toplevel, ["reset", "-q", "--", path])
-                continue
-            targets.append(path)
+        targets, skipped = tw_base.split_dirty(toplevel, submodules)
+        for path, kind in skipped:
+            print(f"SKIPPED\t{path}\t{kind}")
+            tw_base.run_git(toplevel, ["reset", "-q", "--", path])
     for path in targets:
         _git_ok(toplevel, ["add", "--", path])
     sha = None
@@ -189,7 +149,7 @@ def _commit(toplevel: str, message: str, files: list[str]) -> str | None:
         sha = tw_base.run_git(toplevel, ["rev-parse", "HEAD"]).stdout.strip()
         print(f"COMMITTED\t{sha}")
     for path in gitinfo.dirty_paths(cwd=toplevel):
-        if not _is_local(path):
+        if not tw_base.is_local(path):
             print(f"UNADDED\t{path}")
     return sha
 

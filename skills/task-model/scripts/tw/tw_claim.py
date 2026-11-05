@@ -126,6 +126,9 @@ def cmd_release(toplevel: str, task_id: str, force: bool) -> None:
     for path in owner_paths:
         _clear_open_claim_in(path, shown)
     print(f"RELEASED\t{shown}")
+    leftover = tw_base.leftover_paths(toplevel)
+    if leftover:
+        print(f"LEFTOVER\t{shown}\t{len(leftover)}")
     tw_base.record(toplevel, "release", shown, issue)
     tw_base.print_lines(pulled + trk.after([bd_id]))
 

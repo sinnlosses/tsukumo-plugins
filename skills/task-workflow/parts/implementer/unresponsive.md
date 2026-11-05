@@ -20,7 +20,8 @@
       長いコマンドの実行中は委譲先がメッセージを受け取れず返らないので、止める判断は動きの有無に寄せる。
    4. 止めたら最後の状態と `git diff` を読み、**完了条件を満たしていれば手順6で受け入れる**。
    5. 途中なら、済んだことと残りを明示して**別のサブエージェントに引き継ぐ**。`tw release` で
-      捨てるのは差分が使えないときだけ。
+      捨てるのは差分が使えないときだけ。release の前に、作業ツリーの未コミットの変更を patch にして外へ退避し、作業ツリーを戻し、
+      patch のパスを `tw relay T-xxx 再開` に書く（順は `git status --short` で見る → `git add -N` と `git diff` で外へ保存 → 保存を確かめて `git restore`・`git rm -q -f` で戻す → relay → release。`LEFTOVER` が出たら退避の漏れ）。
    6. **見張りに `ESCALATE_SUGGEST\tT-xxx\t<引き金>\t<詳細>\t<次のモデル>` が出たら、止めずに、上のモデルへ引き上げるか待つかを決める**。
       引き金は `edit-churn`（同じファイルを5回書き換えた）・`verify-failed-streak`（`verify` が2回続けて落ちた）・
       `slow-delegation`（経過が同じ difficulty の委譲の中央値の3倍を超えた。基準は `tw metrics --stages` と同じ元〔直近28日〕を、打つたびに引く）。次のモデルは、分業の委譲なら `--model` で渡したモデルの上。

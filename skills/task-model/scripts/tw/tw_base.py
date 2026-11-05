@@ -29,6 +29,59 @@ def run_git(toplevel: str, args: list[str]) -> subprocess.CompletedProcess:
     return gitcmd.run(args, toplevel)
 
 
+GITMODULES = ".gitmodules"
+
+
+def is_local(path: str) -> bool:
+    return path == layout.LOCAL_DIR or path.startswith(layout.LOCAL_DIR + "/")
+
+
+def submodule_paths(toplevel: str) -> set[str]:
+    """索引か `HEAD` がサブモジュール（モード 160000）として持つパス。"""
+    paths: set[str] = set()
+    for args in (["ls-files", "-s", "-z"], ["ls-tree", "-r", "-z", "HEAD"]):
+        out = run_git(toplevel, args)
+        for entry in out.stdout.split("\0"):
+            meta, _, path = entry.partition("\t")
+            if meta.startswith("160000 ") and path:
+                paths.add(path)
+    return paths
+
+
+def skipped_kind(toplevel: str, path: str, submodules: set[str]) -> str | None:
+    """`--add` 省略時に対象から外す種類（`symlink`／`submodule`）。通常のファイルなら `None`。
+
+    サブモジュールは、指す先のずれ・中の変更・削除・移動（索引か `HEAD` に載るパス）と、
+    追加前の入れ子のリポジトリ（`git status` が末尾 `/` のディレクトリで出す）、
+    それらの設定の `.gitmodules`（追加・削除・移動・URL の変更のどれでも）。
+    """
+    if path.rstrip("/") in submodules or path.endswith("/") or path == GITMODULES:
+        return "submodule"
+    if os.path.islink(os.path.join(toplevel, path)):
+        return "symlink"
+    return None
+
+
+def split_dirty(toplevel: str, submodules: set[str]) -> tuple[list[str], list[tuple[str, str]]]:
+    """未コミットの変更のあるパスを、対象（`.tw/local` を除く）と、外す（パス・種類）に分ける。"""
+    targets: list[str] = []
+    skipped: list[tuple[str, str]] = []
+    for path in gitinfo.dirty_paths(cwd=toplevel):
+        if is_local(path):
+            continue
+        kind = skipped_kind(toplevel, path, submodules)
+        if kind is not None:
+            skipped.append((path.rstrip("/"), kind))
+        else:
+            targets.append(path)
+    return targets, skipped
+
+
+def leftover_paths(toplevel: str) -> list[str]:
+    """`tw finish` の `--add` 省略時の対象と同じ範囲の、未コミットの変更のあるパス。"""
+    return split_dirty(toplevel, submodule_paths(toplevel))[0]
+
+
 def history_ids_at_base(toplevel: str) -> set[str]:
     base = gitinfo.base_branch(toplevel)
     r = run_git(toplevel, ["show", f"{base}:{layout.HISTORY_TASKS_PATH}"])

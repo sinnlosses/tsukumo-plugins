@@ -83,7 +83,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
         "印（`bd unclaim`）と `task-open-claims/T-xxx` の控えを消すだけ（本文は戻さない）。",
         r"""印（`bd unclaim`）と `task-open-claims/T-xxx` の控えを消すだけ（本文は戻さない）。`--force` は人が取り残しを片付けるときで、控えは印の持ち主の作業ツリーのものを消す（その作業ツリーが消えていれば何もしない）。担当者が無い `in_progress` の印も `--force` で外せる（status を `open` に戻す）。着手の印の控え（`bd kv` の `task-workflow.claim.<Beads ID>`。TRACKER.md の「GitHub との双方向」）も消すので、外した印は控えから戻らない
 
-出力: `RELEASED`・`NOT_CLAIMED`・`NOT_OWNER`""",
+出力: `RELEASED`（未コミットの変更が残れば続けて `LEFTOVER\tT-xxx\t<件数>`。作業ツリーは書き換えない）・`NOT_CLAIMED`・`NOT_OWNER`""",
     ),
     "hold": (
         "判断待ちのタスクを着手から外して `hold` にし、`## 注意` に論点を足して、`/loop` が続けられるかを出す。",

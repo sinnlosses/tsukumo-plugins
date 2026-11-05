@@ -104,6 +104,29 @@ def test_claim_and_release_single_worktree() -> None:
 
         r = run_task(wt1, "release", "T-100")
         check("releaseでRELEASED", r.returncode == 0 and r.stdout.strip() == "RELEASED\tT-100", r.stdout)
+        check("変更が無いreleaseにLEFTOVERは出ない", "LEFTOVER" not in r.stdout, r.stdout)
+
+        run_task(wt1, "claim", "T-100")
+        tracked = "leftover.txt"
+        tracked_path = write(os.path.join(wt1, tracked), "leftover\n")
+        before = git(wt1, "status", "--short").stdout
+        r = run_task(wt1, "release", "T-100")
+        check(
+            "未コミットの変更が残るreleaseはRELEASEDのあとLEFTOVERを出す",
+            r.returncode == 0 and r.stdout.splitlines()[:2] == ["RELEASED\tT-100", "LEFTOVER\tT-100\t1"],
+            r.stdout,
+        )
+        check("releaseは作業ツリーを書き換えない", git(wt1, "status", "--short").stdout == before)
+        with open(tracked_path, encoding="utf-8") as f:
+            check("追跡ファイルの中身が残る", f.read().endswith("leftover\n"))
+        os.remove(tracked_path)
+
+        run_task(wt1, "claim", "T-100")
+        write(os.path.join(wt1, ".tw", "local", "note.txt"), "x\n")
+        os.symlink(tracked, os.path.join(wt1, "link-only"))
+        r = run_task(wt1, "release", "T-100")
+        check(".tw/local と symlink だけならLEFTOVERは出ない", "LEFTOVER" not in r.stdout, r.stdout)
+        os.remove(os.path.join(wt1, "link-only"))
 
         r = run_task(wt1, "release", "T-100")
         check(

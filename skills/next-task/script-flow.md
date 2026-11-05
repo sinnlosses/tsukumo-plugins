@@ -44,7 +44,13 @@
 
 4. **完了の通知を受ける**: 先にプログレスバーの位置を確かめて `work_plan` を渡し（渡すまで作業のツールは拒まれる）、続けて手順3aの走っている確かめを `TaskStop` で止める。位置は `tw plan-phases T-xxx --through <走った最後の段>`
    （`振り返り`・`受け入れ`・`実装` のうち、ワークフロースクリプトが走らせた最後のもの）。`phaseSummary` は戻り値から書く。
-   - 戻り値が `{ stopped: true, phase }`: `tw relay T-xxx 再開 --body-file -` に `phase` を書き、`tw release T-xxx` を打って、`workPlanClosing: stopped` の `report` を渡す
+   - 戻り値が `{ stopped: true, phase }`: 次の順で進める。委譲先の未コミットの変更が作業ツリーに残ったまま release すると、次の周の `tw claim` が `DIRTY` で止まるため、先に退避する（作業ツリーを触るのは自分の作業ツリーだけ）
+     1. `git status --short` で未コミットの変更を見る
+     2. あれば、新規ファイルを `git add -N <パス>` で入れ、`git diff` を作業ツリーの外の絶対パス（`${TMPDIR}` かスクラッチの `<ID>-stopped.patch`）へ保存する
+     3. 保存を確かめてから、`git restore` で追跡済みの変更を戻し、新規ファイルを `git rm -q -f` で消す（`git status --short` が空になる）
+     4. `tw relay T-xxx 再開 --body-file -` に `phase` と patch のパス（`git apply <パス>` で読み戻せる）を書く
+     5. `tw release T-xxx` を打つ。`LEFTOVER` が出たら退避の漏れなので 2 へ戻る
+     6. `workPlanClosing: stopped` の `report` を渡す
    - 通ったとき: 申し送りをワークフロースクリプトの戻り値から書く（形は `task-model` の `WORKFLOW.md`「段の申し送り」）。
      `tw relay T-xxx 実装` に `conventionLines`、`tw relay T-xxx 受け入れ` に `accept.judgment` の判定と `findings`（`- 指摘:`）・`visual`（`- 目視:`）・`notes`、
      `tw relay T-xxx 振り返り` に `retrospect.line`。ワークフロースクリプトが走らせなかった段の鍵は書かない。
