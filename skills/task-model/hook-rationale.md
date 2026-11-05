@@ -34,3 +34,16 @@ plugin のサブエージェントは frontmatter の `hooks`・`permissionMode`
 `## 構造の変更` の節の欠けは `graph` の見栄えにしか効かず、作業の安全に効かないので、拒まず通して `PreToolUse` の `additionalContext` で知らせ、`hook-denials/` に `mode: "log-only"` の行で残す（`ledger.record_denial` の `mode`。tsukumo の `hook-denial-tally` は数えず `hook-denial-replay` が拾い、`material.py` と `intervention_effect.py` の `read_denials` も除く）。
 確かめた範囲: 公式 docs（https://code.claude.com/docs/en/hooks ）は `PreToolUse` が `additionalContext` を受けると書く。入るのは `SubagentHandback` を呼んだエージェントの文脈と読める（docs が明記しているわけではない）。
 確かめていないこと: 生きた環境で主に届くか、`SubagentHandback` は呼ぶと走りが終わるので呼んだ側が読めるか、`permissionDecision` を省いた `PreToolUse` 単独で通るか。
+
+#### `commit-guard`・`handback-guard` の判定の細部
+
+`tw-reference.md` の表の行から外した細部。正典は `tw commit-guard --help`・`tw handback-guard --help`。
+
+- `commit-guard` が通す形: コミットを作る git のサブコマンドは、その作業ツリーで `ref-guard` が効いていれば git の hook に任せる。`ref-guard` を外す書き方でも読むだけのコマンドは通す。設定 `shell_write_guard = "project"` ならシェルでの書き換えは見ない。検証コマンドは `--plan`・`--help`・`-h` を含む打ち方（段を流さない読むだけの旗）なら通す。作業先が別のリポジトリのときは、作業先の作業ツリー（枝の名前がタスクIDの小文字）での書き換えと検証コマンドの直打ちも拒み、そこでのコミットは拒まない。
+- 委譲先への拒否の例外: `git stash` は `list`・`show`・`--help` を通す。`git add` は `--` の後ろの `-A` をファイル名として通し、`-n`/`--dry-run` も通す。`git push` は `-n`/`--dry-run` を除いて拒む。`tw land`・`tw ship` は Python から git を打つので Bash の hook を通らず、対象外。
+- 書き込みの `bd`（`update`・`close`・`create`・`reclaim`・`unclaim`・`reopen`・`delete`・`label`・`dep add|remove`・`kv set|clear`・`config set` など）は主のセッションにも拒む。`show`・`list`・`ready`・`kv get`・`dep list`・`--readonly` 付きは通し、コマンドに `bd` の語があるときだけ解析する。
+- 受け入れ役（`agent_type` の最後の `:` より後ろが受け入れ役のエージェント名、または手で付ける `--acceptor`）には、`tw` を打つ単純コマンドと検証コマンドの直打ちを拒む。判定は書き方の文字列で、`sh -c '…'` の中は見ない。受け入れ役への拒否では `tw verify` は案内しない（出力を読んで判定だけを返させるため）。
+- `agent_type` を見ない理由: `agent_type` は `--agent` で起こした主のセッションにも入る。だから掛かるかどうかは `agent_id` の有無で決め、`agent_type` は受け入れ役の規則を足すときだけ使う。
+- `handback-guard` が `## 構造の変更` の節の欠けを見るのは、最後の段の返却の本文（`SubagentHandback`）だけ。
+- `handback-guard` の印は `agent_id` ごとの `.tw/local/task-agent-writers/<agent_id>` に残り、着手の控えが無くなると消える。外への書き込みは印を残さない。受け入れ役の返却には掛からない。
+- `handback-guard` が通す返却: 作業の無い返却（前提が誤り・`dropped`・計画だけの回）。作業先で `tw verify` が `MISSING`・`INVALID` を返すか、設定に検証コマンドが無ければ、検証を求めずに通す。段の控えの数えは、作業先の作業ツリーの判定では着手した作業ツリーの段の控えも含める。
