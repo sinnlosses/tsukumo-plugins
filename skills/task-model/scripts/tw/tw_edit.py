@@ -160,6 +160,7 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
     if plan_edited or args.loopable or args.direct:
         loopable_values = beads.attribute_values(issue, beads.LOOPABLE_KEY)
         tw_plan.warn_main_only_tools(shown, body, args.loopable or (loopable_values[0] if loopable_values else "N"), direct)
+        tw_plan.warn_red_steps(shown, body)
     if state == tw_plan.PLAN_AFTER_WORK:
         print(f"PLAN_AFTER_WORK\t{shown}\t作業の後に書いた")
     _print_direct_off(shown, direct_off)
@@ -437,6 +438,7 @@ def _print_plan_check(
         print(f"PLAN_NOT_FIRST\t{shown}\t{'missing' if not has_plan else (mark or 'unrecorded')}")
     if not specs:
         return
+    tw_plan.warn_red_steps(shown, body)
     uncovered, unknown = taskfile.plan_coverage(body)
     if uncovered or unknown:
         listed = [str(n) for n in uncovered] + [f"{n}?" for n in unknown]

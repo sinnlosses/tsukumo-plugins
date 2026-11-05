@@ -165,6 +165,7 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
         tw_plan.warn_report_names(body)
         tw_plan.warn_id_in_docs(beads.to_task_id(bd_id), body)
         tw_plan.warn_large_plan(beads.to_task_id(bd_id), body)
+        tw_plan.warn_red_steps(beads.to_task_id(bd_id), body)
         tw_plan.warn_main_only_tools(beads.to_task_id(bd_id), body, args.loopable, "Y" if args.direct else "N")
         tw_base.print_lines(lines)
         return
@@ -180,6 +181,7 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
     tw_plan.warn_report_names(body)
     tw_plan.warn_id_in_docs(beads.to_task_id(bd_id), body)
     tw_plan.warn_large_plan(beads.to_task_id(bd_id), body)
+    tw_plan.warn_red_steps(beads.to_task_id(bd_id), body)
     tw_plan.warn_main_only_tools(beads.to_task_id(bd_id), body, args.loopable, "Y" if args.direct else "N")
     tw_base.print_lines(trk.push_created([bd_id]))
 
@@ -323,6 +325,7 @@ def cmd_new_batch(toplevel: str, path: str) -> None:
         tw_plan.warn_report_names(checked.body)
         tw_plan.warn_id_in_docs(beads.to_task_id(final), checked.body)
         tw_plan.warn_large_plan(beads.to_task_id(final), checked.body)
+        tw_plan.warn_red_steps(beads.to_task_id(final), checked.body)
         tw_plan.warn_main_only_tools(
             beads.to_task_id(final), checked.body, entry_args.loopable, "Y" if entry_args.direct else "N"
         )
@@ -435,5 +438,6 @@ def cmd_adopt(toplevel: str, args: argparse.Namespace) -> None:
     tw_plan.warn_report_names(body)
     tw_plan.warn_id_in_docs(beads.to_task_id(new_id), body)
     tw_plan.warn_large_plan(beads.to_task_id(new_id), body)
+    tw_plan.warn_red_steps(beads.to_task_id(new_id), body)
     tw_plan.warn_main_only_tools(beads.to_task_id(new_id), body, args.loopable, "Y" if args.direct else "N")
     tw_base.print_lines(pulled + trk.after([new_id]))

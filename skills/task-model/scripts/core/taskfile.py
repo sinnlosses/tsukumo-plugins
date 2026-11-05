@@ -960,6 +960,28 @@ def report_named_paths(body: str) -> tuple[str, ...]:
     return tuple(found)
 
 
+_RED_WORD = re.compile(r"赤になる|赤のまま")
+_GREEN_WORD = re.compile(r"緑|通す|通るまで")
+
+
+def red_steps(body: str) -> tuple[int, ...]:
+    """`## やること` の最後でない段のうち、赤で終わる旨の語があり、緑にする旨の語が無い段の番号。
+
+    語の組は少なく保つ（見逃しを許し、誤検出を避ける）。`### 名指すファイル`・`### 作業先` の節は読まない。
+    """
+    chunks: list[tuple[int, list[str]]] = []
+    for line in section_content(body, PLAN_HEADING).split("\n"):
+        m = _PLAN_STEP_LINE.match(line.rstrip())
+        if m is not None:
+            chunks.append((int(m.group(1)), [line]))
+        elif line.startswith("### "):
+            chunks.append((0, []))
+        elif chunks:
+            chunks[-1][1].append(line)
+    steps = [(n, "\n".join(lines)) for n, lines in chunks if n > 0]
+    return tuple(n for n, text in steps[:-1] if _RED_WORD.search(text) and not _GREEN_WORD.search(text))
+
+
 MAIN_ONLY_TOOLS = ("Workflow", "ScheduleWakeup", "Monitor")
 _MAIN_ONLY_TOOL = re.compile(rf"(?<![A-Za-z0-9])({'|'.join(MAIN_ONLY_TOOLS)})(?![A-Za-z0-9])")
 

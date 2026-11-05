@@ -54,6 +54,16 @@ def warn_main_only_tools(task_id: str, body: str, loopable: str, direct: str) ->
         )
 
 
+def warn_red_steps(task_id: str, body: str) -> None:
+    """最後でない段が赤のテストを残して終わる書き方なら、標準エラーに `WARN_RED_STEP` を1行出す（拒まない）。"""
+    numbers = taskfile.red_steps(body)
+    if numbers:
+        print(
+            f"WARN_RED_STEP\t{task_id}\t{','.join(map(str, numbers))}\t段の終わりに赤のテストを残すと tw step が STEP_CHECK_FAILED で止まる。同じ段で緑にするか、赤にならない形にする",
+            file=sys.stderr,
+        )
+
+
 def refuse_direct(difficulty: str, body: str) -> None:
     reason = taskfile.direct_refusal(difficulty, body)
     if reason is not None:
