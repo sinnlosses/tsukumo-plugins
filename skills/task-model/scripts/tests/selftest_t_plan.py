@@ -431,7 +431,7 @@ def test_warn_main_only_tool() -> None:
 
 @weight(2)
 def test_warn_red_step() -> None:
-    say("task.py new・plan-check: 最後でない段が赤で終わる書き方なら WARN_RED_STEP を出す")
+    say("task.py new・edit・plan-check: 最後でない段が赤で終わる書き方なら WARN_RED_STEP を出す")
     red = task_body([("検査を足す", "先に検査を足す（この時点では赤になる）"), ("部品を足す", "部品を並べる")], ["shared.txt"])
     same_step = task_body([("検査と部品", "先にテストを書いて赤のままでないか確かめ、緑にする"), ("確かめる", "x")], ["shared.txt"])
     last_only = task_body([("書く", "x"), ("検査", "赤のまま残さない")], ["shared.txt"])
@@ -448,6 +448,17 @@ def test_warn_red_step() -> None:
               r.returncode == 0 and f"WARN_RED_STEP\t{task_id}\t1\t" in r.stderr, r.stdout + r.stderr)
         r = run_task(wt1, "new", *base, "--body-file", "-", stdin=same_step)
         check("緑にする語のある計画では出ない", r.returncode == 0 and "WARN_RED_STEP" not in r.stderr, r.stdout + r.stderr)
+
+        calm = run_task(wt1, "new", *base, "--body-file", "-", stdin=same_step)
+        calm_id = calm.stdout.split("\t")[1]
+        run_task(wt1, "claim", calm_id)
+        r = run_task(wt1, "edit", calm_id, "--body-file", "-", stdin=red)
+        check("edit は ## やること を赤で終わる書き方に変えると知らせ、拒まない",
+              r.returncode == 0 and f"WARN_RED_STEP\t{calm_id}\t1\t" in r.stderr, r.stdout + r.stderr)
+        r = run_task(wt1, "plan-check", calm_id)
+        check("plan-check は標準エラーに知らせ、終了コードは0のまま",
+              r.returncode == 0 and f"WARN_RED_STEP\t{calm_id}\t1\t" in r.stderr and "WARN_RED_STEP" not in r.stdout,
+              r.stdout + r.stderr)
 
 
 TESTS = (
