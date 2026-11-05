@@ -49,7 +49,7 @@
      2. あれば、新規ファイルを `git add -N <パス>` で入れ、`git diff` を作業ツリーの外の絶対パス（`${TMPDIR}` かスクラッチの `<ID>-stopped.patch`）へ保存する
      3. 保存を確かめてから、`git restore` で追跡済みの変更を戻し、新規ファイルを `git rm -q -f` で消す（`git status --short` が空になる）
      4. `tw relay T-xxx 再開 --body-file -` に `phase` と patch のパス（`git apply <パス>` で読み戻せる）を書く
-     5. `tw release T-xxx` を打つ。`LEFTOVER` が出たら退避の漏れなので 2 へ戻る
+     5. `tw release T-xxx` を打つ。`LEFTOVER` が出たら退避の漏れ。release のあとは着手の印が外れていて `tw relay` を書けない（`NOT_OWNER`）ので、2・3 の手順で残りを別の patch へ退避し、そのパスを 6 の `report` に書く
      6. `workPlanClosing: stopped` の `report` を渡す
    - 通ったとき: 申し送りをワークフロースクリプトの戻り値から書く（形は `task-model` の `WORKFLOW.md`「段の申し送り」）。
      `tw relay T-xxx 実装` に `conventionLines`、`tw relay T-xxx 受け入れ` に `accept.judgment` の判定と `findings`（`- 指摘:`）・`visual`（`- 目視:`）・`notes`、
