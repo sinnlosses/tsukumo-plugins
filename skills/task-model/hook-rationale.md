@@ -45,5 +45,6 @@ plugin のサブエージェントは frontmatter の `hooks`・`permissionMode`
 - 受け入れ役（`agent_type` の最後の `:` より後ろが受け入れ役のエージェント名、または手で付ける `--acceptor`）には、`tw` を打つ単純コマンドと検証コマンドの直打ちを拒む。判定は書き方の文字列で、`sh -c '…'` の中は見ない。受け入れ役への拒否では `tw verify` は案内しない（出力を読んで判定だけを返させるため）。
 - `agent_type` を見ない理由: `agent_type` は `--agent` で起こした主のセッションにも入る。だから掛かるかどうかは `agent_id` の有無で決め、`agent_type` は受け入れ役の規則を足すときだけ使う。
 - `handback-guard` が `## 構造の変更` の節の欠けを見るのは、最後の段の返却の本文（`SubagentHandback`）だけ。
+- `handback-guard` は、作業のある返却（途中の段も含む）の本文（`SubagentHandback`）に `friction log:` の箇条が1行も無いと `FRICTION_LOG_MISSING` で拒む。書き忘れを機械で落とすため。作業の無い返却と本文が読めない `SubagentStop` は通す。書き方は `implementer-brief.md` の `## friction log`。
 - `handback-guard` の印は `agent_id` ごとの `.tw/local/task-agent-writers/<agent_id>` に残り、着手の控えが無くなると消える。外への書き込みは印を残さない。受け入れ役の返却には掛からない。
 - `handback-guard` が通す返却: 作業の無い返却（前提が誤り・`dropped`・計画だけの回）。作業先で `tw verify` が `MISSING`・`INVALID` を返すか、設定に検証コマンドが無ければ、検証を求めずに通す。段の控えの数えは、作業先の作業ツリーの判定では着手した作業ツリーの段の控えも含める。

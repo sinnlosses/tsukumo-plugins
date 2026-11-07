@@ -920,6 +920,34 @@ def test_handback_guard_parallel_steps() -> None:
               all(s.task_id == "T-100" for s in stamps.read_step_stamps(cwd=wt1)))
 
 
+@weight(6)
+def test_handback_guard_friction_log() -> None:
+    say("task.py handback-guard: 作業のある返却の本文に friction log の行が無ければ拒む")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp, verify="`true`")
+        commit_task(main_path, taskfile.Task("T-100", "友の記録", "todo", "sonnet", "Y", (), BODY))
+        run_task(wt1, "claim", "T-100")
+        run_task(wt1, "edit", "T-100", "--section", "やること", "--body-file", "-", stdin="### 1. 書く\n")
+
+        def handback(body: str) -> dict | None:
+            return run_handback_guard(tmp, wt1, "PreToolUse", "SubagentHandback", body=body)
+
+        def passed(out: dict | None) -> bool:
+            return out is None or "permissionDecision" not in out.get("hookSpecificOutput", {})
+
+        check("作業の無い返却（計画だけの回）は本文に行が無くても通す", passed(handback("終わった\n")))
+
+        write(os.path.join(wt1, "work.txt"), "x\n")
+        r = run_task(wt1, "verify")
+        out = handback("終わった\n")
+        reason = out["hookSpecificOutput"]["permissionDecisionReason"] if out is not None else ""
+        check("作業があり friction log の行が無い本文は FRICTION_LOG_MISSING で拒む",
+              r.returncode == 0 and out is not None and "friction log" in reason, r.stdout + r.stderr + reason)
+        check("`- friction log: なし` がある本文は通す", passed(handback("終わった\n- friction log: なし\n")))
+        check("色つきの行がある本文も通す", passed(handback("終わった\n- 黄: 検証が1回落ちた（tw verify）\n")))
+        check("本文が読めない SubagentStop は通す", run_handback_guard(tmp, wt1) is None)
+
+
 @weight(18)
 def test_handback_guard_other_repo() -> None:
     say("task.py step・pause・handback-guard: 作業先が別のリポジトリなら、枝の名前がタスクIDの作業ツリーも見る")
@@ -1551,6 +1579,7 @@ TESTS = (
     test_handback_guard_parallel_steps,
     test_handback_guard_step,
     test_handback_guard_skipped_steps,
+    test_handback_guard_friction_log,
     test_commit_guard,
     test_ask_guard,
     test_commit_guard_shell_edit,

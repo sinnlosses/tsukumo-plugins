@@ -230,6 +230,9 @@ def _claimed_plan_body(toplevel: str, task_id: str) -> str:
 STRUCTURE_HEADING = "## 構造の変更"
 
 
+FRICTION_LOG_LINE = re.compile(r"^\s*[-*] *(?:friction log|赤|黄) *[:：]", re.MULTILINE)
+
+
 STRUCTURE_RULE_PREFIX = "STRUCTURE_SECTION"
 
 
@@ -284,7 +287,8 @@ def _structure_section_problem(body: str) -> tuple[str, str] | None:
 def handback_refusal(where: str, body: str | None = None) -> tuple[str, str] | None:
     """`where` の作業ツリーから委譲先が返すのを拒む `(規則のキー, 理由)`。通すなら `None`。
 
-    拒むのは `PLAN_OR_VERIFY_MISSING`（計画か検証が欠けた）だけ。構造の節が合わない次の4つの規則のキーは
+    拒むのは `PLAN_OR_VERIFY_MISSING`（計画か検証が欠けた）と `FRICTION_LOG_MISSING`（作業のある返却の本文、途中の段も含めて
+    `friction log:` で始まる箇条が1行も無い。作業の無い返却と本文が読めない経路は通す）だけ。構造の節が合わない次の4つの規則のキーは
     拒否ではなく、通したうえで知らせる文を理由に返す（呼び手の `handback_guard.decide` が `additionalContext` にする）。
     `STRUCTURE_SECTION_MISSING`（節が無い）・`_EMPTY`（空）・`_NO_MARK`（形に合わない最初の行の頭が `+ `・`- `・`~ ` でない）・
     `_OTHER`（印はあるが、矢印の片側が空などエッジの形に合わない）。
@@ -307,8 +311,15 @@ def handback_refusal(where: str, body: str | None = None) -> tuple[str, str] | N
         return None
     toplevel = gitinfo.git_toplevel(where)
     last_stage: list[str] = []
-    gaps = [line for task_id in claims for line in _handback_gaps(toplevel, task_id, last_stage)]
+    worked: list[str] = []
+    gaps = [line for task_id in claims for line in _handback_gaps(toplevel, task_id, last_stage, worked)]
     if not gaps:
+        if body is not None and worked and FRICTION_LOG_LINE.search(body) is None:
+            return "FRICTION_LOG_MISSING", (
+                f"返却の本文に friction log の行が無い（着手の印 {','.join(claims)}）。"
+                "段ごとの返却に `- friction log: なし`（何も無ければ）か `- <色>: <何が起きたか>（<根拠の場所>）` を"
+                "1行以上書く（implementer-brief.md の `## friction log`）"
+            )
         found = _structure_section_problem(body) if body is not None and last_stage else None
         if found is not None:
             rule, problem = found
@@ -328,10 +339,13 @@ def handback_refusal(where: str, body: str | None = None) -> tuple[str, str] | N
     )
 
 
-def _handback_gaps(toplevel: str, task_id: str, last_stage: list[str] | None = None) -> list[str]:
+def _handback_gaps(
+    toplevel: str, task_id: str, last_stage: list[str] | None = None, worked: list[str] | None = None
+) -> list[str]:
     """作業がある作業ツリーの、通っていない `plan-check`・`verify-check` の行。作業が無ければ空。
 
     `last_stage` を渡すと、`verify-check` が `VERIFIED_SAME` で通った作業ツリーをそこへ足す。
+    `worked` を渡すと、作業がある作業ツリー（計画だけの回・作業なしで早く抜けた作業ツリーは除く）をそこへ足す。
 
     作業先の作業ツリーの `verify-check` の行には、その作業ツリーのパスを添える。
     """
@@ -346,6 +360,8 @@ def _handback_gaps(toplevel: str, task_id: str, last_stage: list[str] | None = N
         work_head = head if tree == toplevel else _fork_point(tree)
         if tw_plan.plan_state(tree, work_head, ()) == tw_plan.PLAN_FIRST:
             continue
+        if worked is not None:
+            worked.append(tree)
         stamped = _current_stamp_kinds(toplevel, tree, task_id)
         if "pause" in stamped:
             continue
