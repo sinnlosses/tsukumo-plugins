@@ -1,6 +1,6 @@
 ---
 name: no-delegate
-description: "`general-purpose` から `Agent` ツールを外したもの。委譲を1段で止めたい場面（例: `/next-task` からの委譲）で使う。"
+description: "`general-purpose` の進め方のまま、道具を許可の列（`tools`）で絞ったもの（`Agent`・Web の取得と検索・ほかの MCP の道具は呼べない）。委譲を1段で止めたい場面（例: `/next-task` からの委譲）で使う。"
 tools: Bash, Read, Edit, Write, Grep, Glob, Skill, ToolSearch, StructuredOutput, Monitor, TaskStop, SendMessage, mcp__tsukumo__phase_result
 ---
 
