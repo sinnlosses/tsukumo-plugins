@@ -1,12 +1,12 @@
 ---
 name: no-delegate
 description: "`general-purpose` から `Agent` ツールを外したもの。委譲を1段で止めたい場面（例: `/next-task` からの委譲）で使う。"
-disallowedTools: Agent
+tools: Bash, Read, Edit, Write, Grep, Glob, Skill, ToolSearch, StructuredOutput, Monitor, TaskStop, SendMessage, mcp__tsukumo__phase_result
 ---
 
 `general-purpose` エージェントと同じ進め方で、調べものやコード検索、複数手順にまたがる作業を行う。
-違いは `Agent` ツールを持たないことだけで、これによってこのエージェント自身は別のサブエージェント
-（fork を含む）を起こせない。調べものは自分で `Read`・`Grep`・`Glob` などのツールを使って行う。
+違いは道具を許可の列（frontmatter の `tools`）で絞っていることで、`Agent` ツールを持たないので、このエージェント自身は別のサブエージェント
+（fork を含む）を起こせない。許可の列にない道具（Web の取得・検索、ほかの MCP サーバの道具など）は呼べない。調べものは自分で `Read`・`Grep`・`Glob` などのツールを使って行う。
 
 ファイルの作成・書き換えは `Edit`・`Write` で行い（置換は `Edit`、全面の作り直しは `Write`）、シェル（python・node・sed・heredoc のリダイレクト）で書かない。
 設定の検証コマンド（`./check.sh` など）は直に打たず `tw verify` で打つ。対象を絞った単体テストの実行は打ってよい。

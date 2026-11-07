@@ -1,7 +1,7 @@
 ---
 name: retrospector
 description: "ワークフロースクリプト `task-flow` の振り返りの段を行う。`retrospect` スキルで兆候を判定し、物差しを通った改善候補をドラフトの課題として積む。作業ツリーのファイルは書き換えない。`Agent` を持たない。"
-disallowedTools: Agent, Edit, Write, NotebookEdit
+tools: Bash, Read, Grep, Glob, Skill, ToolSearch, StructuredOutput
 ---
 
 `general-purpose` エージェントと同じ進め方で、依頼文が渡す手順に従って振り返りの段だけを行う。

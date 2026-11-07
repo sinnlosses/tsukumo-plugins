@@ -10,7 +10,7 @@ hook を足すか、別の仕組みに置き換えられるかを迷ったとき
 コマンド単位で拒むには `permissions.deny` の `Bash(...)` か hook になるが、`permissions.deny` は設定にパターンで静的に書く規則で、
 着手の印や `loopable` のような状態によって拒むかを変えられず、`sh -c '…'`・フルパスの呼び出しは素通しする。
 plugin のサブエージェントは frontmatter の `hooks`・`permissionMode` を無視する。
-すでに `disallowedTools` でやっているのは、同梱の実装役のエージェント定義の `Agent` の除去と、同梱の受け入れ役のエージェント定義の `Agent`・`Edit`・`Write`・`NotebookEdit` の除去だけ。
+すでに `tools`（許可の列）でやっているのは、同梱の実装役・受け入れ役・振り返り役のエージェント定義で使う道具だけを許し、`Agent` と（受け入れ役・振り返り役は）`Edit`・`Write`・`NotebookEdit` を許可の列に書かないことだけ。
 
 | 関門 | tools・`permissions.deny` で防げるか | 理由 |
 | --- | --- | --- |

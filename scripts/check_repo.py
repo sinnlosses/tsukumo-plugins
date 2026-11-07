@@ -151,10 +151,12 @@ def check_agent_frontmatter(names: list[str]) -> None:
         fm = frontmatter(text) or {}
         if str(fm.get("model", "")).strip() != "opus":
             fail("agents/acceptor.md: frontmatter の model が opus でない")
-        denied = {t.strip() for t in str(fm.get("disallowedTools", "")).split(",")}
+        if not fm.get("tools"):
+            fail("agents/acceptor.md: frontmatter の tools（許可の列）が無い")
+        allowed = {t.strip() for t in str(fm.get("tools", "")).split(",")}
         for tool in ACCEPTOR_DISALLOWED_TOOLS:
-            if tool not in denied:
-                fail(f"agents/acceptor.md: disallowedTools に {tool} が無い")
+            if tool in allowed:
+                fail(f"agents/acceptor.md: tools（許可の列）に {tool} がある")
         if "hooks:" in head:
             fail("agents/acceptor.md: frontmatter に hooks を持たせない")
 
