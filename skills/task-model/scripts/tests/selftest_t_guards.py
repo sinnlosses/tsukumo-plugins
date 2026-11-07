@@ -944,6 +944,9 @@ def test_handback_guard_friction_log() -> None:
         check("作業があり friction log の行が無い本文は FRICTION_LOG_MISSING で拒む",
               r.returncode == 0 and out is not None and "friction log" in reason, r.stdout + r.stderr + reason)
         check("`- friction log: なし` がある本文は通す", passed(handback("終わった\n- friction log: なし\n")))
+        out = handback("終わった\nfriction log: なし\n")
+        check("箇条の無い `friction log: なし` の本文は FRICTION_LOG_MISSING で拒む",
+              out is not None and "friction log" in out["hookSpecificOutput"].get("permissionDecisionReason", ""), str(out))
         check("色つきの行がある本文も通す", passed(handback("終わった\n- 黄: 検証が1回落ちた（tw verify）\n")))
         check("本文が読めない SubagentStop は通す", run_handback_guard(tmp, wt1) is None)
 
