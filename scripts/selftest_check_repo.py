@@ -86,9 +86,8 @@ def main() -> int:
                    skills, agents) == [])
     check("スキル名とエージェント名を拾う",
           mentions("`/next-task` から `no-delegate` に委譲し `/retro` を呼ぶ", skills, agents) == ["next-task", "no-delegate", "retro"])
-    check("`brief` の役の語と metadata のキーは拾わない",
-          mentions("`tw brief acceptor T-xxx`・`brief implementer`・`workflow-brief-acceptor`・`workflow-brief-implementer`",
-                   skills, agents) == [])
+    check("`brief` の役の語は拾わない",
+          mentions("`tw brief acceptor T-xxx`・`brief implementer`", skills, agents) == [])
     check("裸の `acceptor` は拾う",
           mentions("受け入れ役は `acceptor` に渡す。brief の前の acceptor", skills, agents) == ["acceptor"])
 

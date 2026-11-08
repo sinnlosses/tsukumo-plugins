@@ -121,7 +121,7 @@ Codex のように、書けるのが作業ツリーと一時ディレクトリ�
 作業ツリーの根の `.tw/local/` に、中身の鍵の object は一時ディレクトリに書くので、`.git` には書かない。git に書くコマンドは
 `GIT_READ_ONLY`（終了コード11）で止まるので、sandbox の外で同じコマンドを打ち直す。Claude Code なら `settings.json` に
 `"sandbox": {"excludedCommands": ["tw"]}` を足すと `tw` が sandbox の外で動く。Codex なら sandbox の外での実行を承認して打ち直す。
-共有の台帳（共有の git dir の `task-workflow/`）も書けないので、`flow/` の記録を残すなら `TW_STATE_DIR` を書ける場所（Codex の writable roots、
+共有の台帳（共有の git dir の下の台帳ディレクトリ）も書けないので、`flow/` の記録を残すなら `TW_STATE_DIR` を書ける場所（Codex の writable roots、
 Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくても記録が落ちるだけで、サブコマンドは止まらない。
 `tw metrics` と横断の振り返りが同じ記録を読むよう、同じリポジトリを使うセッションは `TW_STATE_DIR` をそろえる）。
 `.beads`（本体の根）も書ける場所に足す
