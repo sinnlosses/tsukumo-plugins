@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import os
 import sys
 from datetime import datetime
@@ -20,6 +22,8 @@ import tw_handback
 import tw_plan
 
 
+STUCK_LIMIT = 2
+STUCK_UNLOCK = "止まった理由を人が読み、計画を直すか分けたら `todo` に戻す"
 REFLECTION_VALUES = ("none", "some", "skipped")
 REFLECTION_SKIPPED_LINE ="- 振り返り: 近道（省いた）"
 REFLECTION_OFF_LINE = "- 振り返り: 設定で外した"
@@ -54,6 +58,10 @@ def cmd_claim(toplevel: str, task_id: str) -> None:
     blocked = [beads.to_task_id(d) for d in issue.dependencies if not _resolved(toplevel, d)]
     if blocked:
         print(f"NOT_READY\t{shown}\tBLOCKED:{','.join(blocked)}")
+        raise SystemExit(4)
+    stuck = _stuck_count(toplevel, shown)
+    if stuck >= STUCK_LIMIT:
+        _hold_stuck(toplevel, bd_id, shown, stuck)
         raise SystemExit(4)
 
     # `bd update --claim` は依存を見ないので、上で依存を確かめてから取る。取り合いの勝ち負けは Beads が決める。
@@ -134,6 +142,32 @@ def cmd_release(toplevel: str, task_id: str, force: bool) -> None:
     stuck = {"stuck": True} if _stuck_release(toplevel, bd_id, issue) else {}
     tw_base.record(toplevel, "release", shown, issue, **stuck)
     tw_base.print_lines(pulled + trk.after([bd_id]))
+
+
+def _stuck_count(toplevel: str, shown: str) -> int:
+    """最後の `done`・`hold` より後ろの、止まった `release`（台帳で `stuck` が付いたもの）の数。"""
+    events, _ = metrics.read_events(ledger.ledger_root(toplevel))
+    count = 0
+    for e in events:
+        if e.task != shown:
+            continue
+        if e.kind in ("done", "hold"):
+            count = 0
+        elif e.kind == "release" and e.fields.get("stuck"):
+            count += 1
+    return count
+
+
+def _hold_stuck(toplevel: str, bd_id: str, shown: str, stuck: int) -> None:
+    import tw_hold
+
+    relay = beads.last_relay(beads.comments(toplevel, bd_id), "再開") or "止まりの申し送りが読めなかった"
+    reason = "\n".join(f" {l}" if l.startswith("## ") else l for l in relay.split("\n"))
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        tw_hold.hold_task(toplevel, shown, reason, STUCK_UNLOCK)
+    print(f"HELD_STUCK\t{shown}\t{stuck}")
+    print(out.getvalue(), end="")
 
 
 def _stuck_release(toplevel: str, bd_id: str, issue: beads.Issue) -> bool:

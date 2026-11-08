@@ -19,13 +19,20 @@ def cmd_hold(toplevel: str, task_id: str, reason_path: str, unlock_path: str | N
 
     出力の最後は `HELD\\tT-xxx` と、取り直した一覧での `CONTINUE\\tY|N\\t<READY かつ loopable: Y の件数>`。
     """
-    bd_id = tw_base.bd_task_id(task_id)
-    shown = beads.to_task_id(bd_id)
+    shown = beads.to_task_id(tw_base.bd_task_id(task_id))
     reason = tw_base.read_body(reason_path).strip()
     error = "--reason-file の中身が空（空白だけ）" if not reason else taskfile.check_section_content(reason)
     if error is not None:
         print(f"usage: {error}。書き換えない", file=sys.stderr)
         raise SystemExit(2)
+    unlock = tw_base.read_body(unlock_path).strip() if unlock_path is not None else None
+    hold_task(toplevel, shown, reason, unlock)
+
+
+def hold_task(toplevel: str, task_id: str, reason: str, unlock: str | None) -> None:
+    """`cmd_hold` の書く側。`reason` は検査済みの論点、`unlock` は `## 解除の条件` に置く文（`None` ならいまの節を残す）。"""
+    bd_id = tw_base.bd_task_id(task_id)
+    shown = beads.to_task_id(bd_id)
     issue = beads.show(toplevel, bd_id)
     if issue is None:
         print(f"NOT_READY\t{shown}\t存在しない")
@@ -36,7 +43,6 @@ def cmd_hold(toplevel: str, task_id: str, reason_path: str, unlock_path: str | N
     if issue.status not in ("open", "in_progress", *beads.HOLD_STATUSES):
         print(f"NOT_READY\t{shown}\t{issue.status}")
         raise SystemExit(4)
-    unlock = tw_base.read_body(unlock_path).strip() if unlock_path is not None else None
     error = taskfile.check_section_content(unlock) if unlock else None
     if error is None:
         error = taskfile.unlock_refusal(_with_unlock(beads.issue_body(issue), unlock))

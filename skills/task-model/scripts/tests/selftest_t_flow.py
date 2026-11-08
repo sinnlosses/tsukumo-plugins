@@ -263,11 +263,46 @@ def test_flow_result_writes_relays_and_releases() -> None:
               and _relay_out(wt1, "T-105", "振り返り").startswith("NONE"), r.stdout + r.stderr)
 
 
+def test_claim_holds_task_stopped_twice() -> None:
+    say("tw claim: 再開 つきで2回止まったタスクは掴まず hold にして HELD_STUCK・終了コード4。手で外すだけの release は数えない")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp)
+        for n in (107, 108):
+            commit_task(main_path, taskfile.Task(f"T-{n}", f"既存タスク{n}", "todo", "sonnet", "Y", (), BODY))
+
+        def stop(task_id: str, phase: str) -> None:
+            text = json.dumps({"stopped": True, "phase": phase, "reason": "r"}, ensure_ascii=False)
+            run_task(wt1, "flow-result", task_id, "--json-file", "-", stdin=text)
+
+        r = run_task(wt1, "claim", "T-107")
+        stop("T-107", "implement")
+        r = run_task(wt1, "claim", "T-107")
+        check("1回止まったタスクは CLAIMED で掴める", r.stdout.startswith("CLAIMED\tT-107"), r.stdout + r.stderr)
+        stop("T-107", "accept")
+        r = run_task(wt1, "claim", "T-107")
+        check("2回止まったあとは HELD_STUCK\\tT-107\\t2・終了コード4",
+              r.returncode == 4 and r.stdout.startswith("HELD_STUCK\tT-107\t2\n"), r.stdout + r.stderr)
+        shown = run_task(wt1, "show", "T-107").stdout
+        check("status が hold で、解除の条件と最後の止まりの 再開 が書かれる",
+              "status: hold" in shown and "止まった理由を人が読み、計画を直すか分けたら `todo` に戻す" in shown
+              and "accept" in shown.split("## 注意")[-1], shown)
+        check("着手の印は立たない", run_task(wt1, "release", "T-107").stdout.startswith("NOT_CLAIMED\tT-107"))
+        run_task(wt1, "edit", "T-107", "--status", "todo")
+        r = run_task(wt1, "claim", "T-107")
+        check("todo に戻したあとは数え直して CLAIMED", r.stdout.startswith("CLAIMED\tT-107"), r.stdout + r.stderr)
+
+        for _ in range(3):
+            r = run_task(wt1, "claim", "T-108")
+            run_task(wt1, "release", "T-108")
+        check("止まらず release だけを繰り返したタスクは3回目も CLAIMED", r.stdout.startswith("CLAIMED\tT-108"), r.stdout + r.stderr)
+
+
 TESTS = (
     test_unregistered_tests_named,
     test_all_tests_registered,
     test_config_flow_switches_step_candidates,
     test_flow_result_writes_relays_and_releases,
+    test_claim_holds_task_stopped_twice,
 )
 
 
