@@ -297,11 +297,163 @@ def test_claim_holds_task_stopped_twice() -> None:
         check("止まらず release だけを繰り返したタスクは3回目も CLAIMED", r.stdout.startswith("CLAIMED\tT-108"), r.stdout + r.stderr)
 
 
+_RUN_START = datetime(2026, 11, 8, 1, 0, 0, tzinfo=timezone.utc)
+
+
+def _iso(seconds: float, base: datetime = _RUN_START) -> str:
+    return (base + timedelta(seconds=seconds)).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def _write_run(root: str, agents: list[tuple[str, str, object, tuple[float, float] | None]], noise: bool = False) -> str:
+    """作り物の run の記録。`agents` は `(agentId, label, result, (始めの秒, 終わりの秒))`。
+    `result` が `None` なら `started` だけ、時刻が `None` なら transcript を置かない。"""
+    os.makedirs(root)
+    lines = [json.dumps({"type": "launched"})]
+    for agent_id, label, result, span in agents:
+        phase = "accept" if label.startswith(("accept", "fix")) else label
+        lines.append(json.dumps({"type": "started", "key": agent_id, "agentId": agent_id, "label": label, "phase": phase}))
+        if noise:
+            lines.append("{壊れた行")
+        if result is not None:
+            lines.append(json.dumps({"type": "result", "key": agent_id, "agentId": agent_id, "result": result,
+                                     "toolsUsed": []}, ensure_ascii=False))
+        if span is not None:
+            write(os.path.join(root, f"agent-{agent_id}.jsonl"),
+                  "".join(json.dumps({"timestamp": _iso(t), "message": "秘密の会話ABC"}, ensure_ascii=False) + "\n"
+                          for t in span))
+    write(os.path.join(root, "journal.jsonl"), "\n".join(lines) + "\n")
+    return root
+
+
+_PASSED_RUN = [
+    ("a1", "implement", {"stopped": False}, (0, 120.5)),
+    ("a2", "accept-prepare-1", {"kind": "code"}, (130, 140)),
+    ("a3", "acceptor-1", {"verdict": "reject", "notes": "秘密の本文XYZ"}, (150, 210)),
+    ("a4", "fix-1", {"stopped": False}, (220, 250)),
+    ("a5", "acceptor-2", {"verdict": "accept"}, (260, 300)),
+    ("a6", "retrospect", {"line": "- 振り返り: x"}, (310, 325)),
+]
+
+
+def test_flow_result_writes_journal_stages() -> None:
+    say("tw flow-result --transcript-dir: run の journal から段の区間・差し戻し・止まった段を台帳に書き、本文は写さない")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp)
+        for n in range(110, 115):
+            commit_task(main_path, taskfile.Task(f"T-{n}", f"既存タスク{n}", "todo", "sonnet", "Y", (), BODY))
+
+        def flow(task_id: str, payload: dict, *extra: str):
+            return run_task(wt1, "flow-result", task_id, "--json-file", "-", *extra, stdin=json.dumps(payload))
+
+        def stages_of(task_id: str) -> list[dict]:
+            return [r for r in flow_rows(wt1) if r.get("event") == "flow_stage" and r.get("task") == task_id]
+
+        run_task(wt1, "claim", "T-110")
+        passed = _write_run(os.path.join(tmp, "run-passed"), _PASSED_RUN)
+        r = flow("T-110", {"stopped": False}, "--transcript-dir", passed)
+        check("通った戻り値は FINISH_READY", r.returncode == 0 and r.stdout.splitlines()[-1] == "FINISH_READY\tT-110",
+              r.stdout + r.stderr)
+        rows = stages_of("T-110")
+        check("flow_stage は journal の順に delegate・review・delegate・review・retro（受け入れの準備は書かない）",
+              [(row["stage"], row["label"]) for row in rows]
+              == [("delegate", "implement"), ("review", "acceptor-1"), ("delegate", "fix-1"), ("review", "acceptor-2"),
+                  ("retro", "retrospect")], repr(rows))
+        check("seconds は transcript の先頭行と末尾行の時刻の差（秒未満は切り捨て）",
+              [row["seconds"] for row in rows] == [120, 60, 30, 40, 15], repr(rows))
+        check("start・end は transcript の時刻、source は journal",
+              rows[0]["start"] == _iso(0) and rows[0]["end"] == _iso(120.5) and all(row["source"] == "journal" for row in rows),
+              repr(rows[0]))
+        check("verdict は受け入れ役の行だけで reject・accept（差し戻し1回）",
+              [row.get("verdict") for row in rows] == [None, "reject", None, "accept", None], repr(rows))
+        ledger_text = json.dumps(flow_rows(wt1), ensure_ascii=False)
+        check("台帳に agent の戻り値の本文も transcript の本文も出ない",
+              "秘密の本文XYZ" not in ledger_text and "秘密の会話ABC" not in ledger_text, ledger_text)
+        run_task(wt1, "release", "T-110")
+
+        run_task(wt1, "claim", "T-111")
+        stopped = _write_run(os.path.join(tmp, "run-stopped"), _PASSED_RUN[:4] + [
+            ("a5", "acceptor-2", {"verdict": "reject"}, (260, 300)),
+            ("a6", "fix-2", None, (310, 320)),
+        ])
+        r = flow("T-111", {"stopped": True, "phase": "accept", "reason": "差し戻し"}, "--transcript-dir", stopped)
+        check("止まった戻り値は RELEASED", r.stdout.splitlines()[-1] == "RELEASED\tT-111\taccept\t差し戻し", r.stdout + r.stderr)
+        stops = [row for row in flow_rows(wt1) if row.get("event") == "flow_stopped" and row.get("task") == "T-111"]
+        check("flow_stopped に phase と result の無い最後の agent の label",
+              [(row["phase"], row["label"]) for row in stops] == [("accept", "fix-2")], repr(stops))
+        check("止まっても届いた段は書き、result の無い fix-2 は区間にしない",
+              [row["label"] for row in stages_of("T-111")] == ["implement", "acceptor-1", "fix-1", "acceptor-2"],
+              repr(stages_of("T-111")))
+
+        run_task(wt1, "claim", "T-112")
+        before = len(flow_rows(wt1))
+        r = flow("T-112", {"stopped": False}, "--transcript-dir", os.path.join(tmp, "無いディレクトリ"))
+        check("--transcript-dir のディレクトリが無ければ終了コード2で台帳に何も書かない",
+              r.returncode == 2 and len(flow_rows(wt1)) == before, r.stdout + r.stderr)
+        r = flow("T-112", {"stopped": False})
+        check("--transcript-dir の無い旧い呼び方は flow_stage を書かない",
+              r.returncode == 0 and stages_of("T-112") == [], r.stdout + r.stderr)
+        run_task(wt1, "release", "T-112")
+
+        run_task(wt1, "claim", "T-113")
+        noisy = _write_run(os.path.join(tmp, "run-noisy"), [
+            ("a1", "implement", {"stopped": False}, (0, 10)),
+            ("a2", "acceptor-1", {"verdict": "accept"}, None),
+            ("a3", "acceptor-2", "文字列の戻り値", (20, 30)),
+            ("a4", "retrospect", {}, (40, 45)),
+        ], noise=True)
+        write(os.path.join(noisy, "agent-a4.jsonl"), "{壊れた行\n")
+        r = flow("T-113", {"stopped": False}, "--transcript-dir", noisy)
+        check("壊れた行・transcript の無い agent・時刻の読めない transcript を混ぜても落ちず、読めた段だけ書く",
+              r.returncode == 0 and [(row["label"], row.get("verdict")) for row in stages_of("T-113")]
+              == [("implement", None), ("acceptor-2", "other")], r.stdout + r.stderr + repr(stages_of("T-113")))
+
+
+def test_metrics_counts_flow_stage_once() -> None:
+    say("tw metrics --stages: flow_stage のある着手は委譲・レビューを flow_stage だけから1回ずつ数え、旧い着手は lap から数える")
+    base = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(hours=1)
+
+    def _event(offset: float, kind: str, task: str, **fields: object) -> metrics.Event:
+        return metrics.Event(base + timedelta(seconds=offset), kind, task, {"difficulty": "opus", **fields})
+
+    new_run = [
+        _event(0, "claim", "T-1"),
+        _event(10, "lap", "T-1", stage="delegate", edge="start"),
+        _event(100, "lap", "T-1", stage="delegate", edge="end"),
+        _event(110, "lap", "T-1", stage="review", edge="start"),
+        _event(300, "flow_stage", "T-1", stage="delegate", start=_iso(10, base), end=_iso(95.5, base), seconds=85),
+        _event(301, "flow_stage", "T-1", stage="review", start=_iso(120, base), end=_iso(180, base), seconds=60,
+               verdict="accept"),
+        _event(400, "ship", "T-1", result="SHIPPED"),
+    ]
+    old_run = [
+        _event(0, "claim", "T-2"),
+        _event(10, "lap", "T-2", stage="delegate", edge="start"),
+        _event(70, "lap", "T-2", stage="delegate", edge="end"),
+        _event(80, "lap", "T-2", stage="review", edge="start"),
+        _event(200, "ship", "T-2", result="SHIPPED"),
+    ]
+    durations, opens = metrics.stage_durations(new_run, 7)
+    check("新しい着手の委譲は flow_stage の1回だけ（lap と足して2回にならない）",
+          durations.get(("委譲", "opus", "normal")) == [85.0], repr(durations))
+    check("新しい着手のレビューは flow_stage の1回だけ", durations.get(("レビュー", "opus", "normal")) == [60.0], repr(durations))
+    check("新しい着手の計画は claim から最初の lap までのまま", durations.get(("計画", "opus", "normal")) == [10.0], repr(durations))
+    check("新しい着手では lap の閉じ残り（review の start）を OPEN に数えない", opens == {}, repr(opens))
+    durations, opens = metrics.stage_durations(old_run, 7)
+    check("flow_stage の無い旧い着手は lap の対から委譲を数える", durations.get(("委譲", "opus", "normal")) == [60.0], repr(durations))
+    check("旧い着手は lap の閉じ残りを OPEN に数える", opens == {"レビュー": 1}, repr(opens))
+    spans = metrics.task_stage_spans(new_run, "T-1")
+    check("task_stage_spans も委譲の区間を flow_stage の1つだけ返す",
+          spans is not None and [p for p in spans[0] if p[0] == "委譲"] == [
+              ("委譲", base + timedelta(seconds=10), base + timedelta(seconds=95))], repr(spans))
+
+
 TESTS = (
     test_unregistered_tests_named,
     test_all_tests_registered,
     test_config_flow_switches_step_candidates,
     test_flow_result_writes_relays_and_releases,
+    test_flow_result_writes_journal_stages,
+    test_metrics_counts_flow_stage_once,
     test_claim_holds_task_stopped_twice,
 )
 
