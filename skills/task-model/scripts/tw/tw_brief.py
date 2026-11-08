@@ -125,7 +125,7 @@ def cmd_brief_acceptor(
         "worktree": tree,
         "images": "\n".join(f"- `{p}`" for p in images) or "（報告に画像のパスが無い）",
     }
-    look = ["目視"] if images or visual else []
+    look = ["目視"] if images or visual or taskfile.visual_required(criteria) else []
     if visual_wait:
         values["criteria"] = criteria
         _print_brief(shown, ROLE_ACCEPTOR, sections, ["目視待ち"], values)

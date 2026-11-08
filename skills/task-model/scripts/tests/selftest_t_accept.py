@@ -12,9 +12,9 @@ from selftest_body import task_body  # noqa: E402
 from selftest_fixtures import PLANNED_BODY, commit_task, flow_rows, make_repo, run_task  # noqa: E402
 
 
-def _claimed_repo(tmp: str, format_command: str = "`true`") -> str:
+def _claimed_repo(tmp: str, format_command: str = "`true`", body: str = PLANNED_BODY) -> str:
     main_path, wt1, _wt2 = make_repo(tmp, branch="切らない", verify="`true`", format_command=format_command)
-    commit_task(main_path, taskfile.Task("T-100", "受け入れ", "todo", "sonnet", "Y", (), PLANNED_BODY))
+    commit_task(main_path, taskfile.Task("T-100", "受け入れ", "todo", "sonnet", "Y", (), body))
     run_task(wt1, "claim", "T-100")
     return wt1
 
@@ -281,7 +281,24 @@ def test_brief_acceptor_round_with_images() -> None:
         check("--round と --visual-wait の組は終了コード2", r.returncode == 2, r.stdout + r.stderr)
 
 
+def test_brief_acceptor_visual_criterion_without_images() -> None:
+    say("task.py brief acceptor: 完了条件に印 [目視] があれば、画像も --visual も無くても 目視 の節を選ぶ")
+    body = task_body([("書く", "x")], ["shared.txt"], acceptance="1. [目視] 狭い幅で崩れない")
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1 = _claimed_repo(tmp, body=body)
+        r = run_task(wt1, "brief", "acceptor", "T-100", "--accept-file", "-", stdin="SKIP\tdocs-only\n")
+        head = r.stdout.splitlines()[0] if r.stdout else ""
+        check("1周目は節の末尾に 目視 が付き「報告に画像のパスが無い」が載る",
+              r.returncode == 0 and head.split("\t")[3].endswith(",目視") and "報告に画像のパスが無い" in r.stdout,
+              r.stdout + r.stderr)
+        r = run_task(wt1, "brief", "acceptor", "T-100", "--round", "2", "--since", "0" * 40)
+        head = r.stdout.splitlines()[0] if r.stdout else ""
+        check("2周目以降も節が 2回目以降,目視 になる",
+              r.returncode == 0 and head.startswith("BRIEF\tT-100\tacceptor\t2回目以降,目視\t"), r.stdout + r.stderr)
+
+
 TESTS = (
+    test_brief_acceptor_visual_criterion_without_images,
     test_brief_acceptor_round_with_images,
     test_accept_does_not_duplicate_open_laps,
     test_delegate_closed_by_review_start_and_done,
