@@ -28,11 +28,6 @@ LIMITS: dict[str, int] = {
 }
 
 
-def limit_key(path: str) -> str:
-    """リポジトリの根からの相対パスを表のキーにする。"""
-    return path
-
-
 def same_repo(root: str) -> bool:
     """`root` がこのファイルの置き場と同じリポジトリ（作業ツリー違いは同じとみなす）か。git でなければ偽。"""
     here = os.path.dirname(os.path.abspath(__file__))
@@ -44,12 +39,11 @@ def same_repo(root: str) -> bool:
 
 def remaining(root: str, path: str) -> tuple[int, int] | None:
     """`(上限 - 実バイト数, 上限)`。超過なら残りは負。表に無い・読めないとき `None`。"""
-    key = limit_key(path)
-    if key not in LIMITS:
+    if path not in LIMITS:
         return None
     try:
         with open(os.path.join(root, path), "rb") as f:
             size = len(f.read())
     except OSError:
         return None
-    return LIMITS[key] - size, LIMITS[key]
+    return LIMITS[path] - size, LIMITS[path]

@@ -12,7 +12,7 @@ export const meta = {
 // args: { taskId, phaseCount, phaseIds, steps?, model?, from? }
 //   taskId     着手したタスクの ID（GH-123 など）
 //   phaseIds   tw plan-phases の JSON の phases（{ id, name } の並び。並列は配列）。phase() の題と agent() の phase は、この id からだけ作る
-//   phaseCount tw plan-phases の delegatedRange.count（範囲の段の数。phase_result の count に渡す）。flow が script なら実装の段に受け入れ・振り返りを足した数
+//   phaseCount tw plan-phases の delegatedRange.count（範囲の段の数。phase_result の count に渡す）。実装の段に受け入れ・振り返りを足した数
 //   steps      走らせる段。既定は ["implement", "accept", "retrospect"]
 //   model      実装・直しの agent の model（haiku・sonnet・opus。省くとメインの model）
 //   from       呼び直すときに始める段（implement・accept・retrospect）

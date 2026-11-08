@@ -56,5 +56,5 @@ plugin のサブエージェントは frontmatter の `hooks`・`permissionMode`
 - 確かめた範囲（2026-11-08）: `SubagentStart` の hook が返す `hookSpecificOutput.additionalContext` は、`claude -p` の `Agent` で起こした `general-purpose` の最初の文脈に届いた。ワークフローの agent の transcript の先頭には `SubagentStart` の `hook_success` が1件ずつある。受け入れ役の transcript では `StructuredOutput` の行が `SubagentStop` の行より前にあり、`SubagentStop` の入力には `agent_transcript_path`・`stop_hook_active` が入る。
 - 確かめていないこと: ワークフローの agent に `additionalContext` が届くか（`Agent` の起動では届いた）、`SubagentStop` の起動時点で transcript の書き込みが済んでいるか（読めなければ 0.5 秒おきに最大4回読み直し、それでも読めなければ締めを打たない）、同じイベントの hook が `hooks.json` の順に走るか（`accept-hook` を `lap-hook` の前に置く）。
 - 届かないときの形: 受け入れ役は判定の行を見つけられず `acceptKind` を `STOP` で返し、ワークフロースクリプトは `stopped` で止まる。
-- `skills` の流れでは打たない: メインが同じ部品を打ち、同じ型の受け入れ役を起こすので、二重になる。
+- 設定 `flow` は見ない: 並びはワークフロースクリプトだけで、`skills` の値は `script` として読む。
 - やめる条件: hook の失敗で受け入れが止まる run が出続けるなら、準備・締めの agent に戻す。
