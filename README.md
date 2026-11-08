@@ -73,17 +73,22 @@ Claude Code 以外の環境（Codex など）へスキルを置く入口は、�
 - 呼び方（`Workflow` はメインのセッションから呼ぶ。委譲先には道具が無い）: 名前 `tsukumo-workflow:task-flow` か、`scriptPath` にこのファイルの絶対パスを渡す。
   名前での呼び出しは接頭辞つきの `tsukumo-workflow:task-flow` で通ることを確かめた。`task-flow` だけでは読めない（not found）。
   plugin を入れ直したあとの読み込みは次のセッションの開始か `/reload-plugins` で効く
-- `args`: `taskId`（着手したタスクの ID）・`phaseCount`（`## やること` の段の数。実装の agent が `phase_result` の `count` に渡す）・`phaseIds`（`tw plan-phases` の JSON の `phases`。`phase()` の題と `agent()` の `phase` はこの id からだけ作り、直書きは `scripts/check_repo.py` が禁じる）が要る。
+- `args`: `taskId`（着手したタスクの ID）・`phaseCount`（`tw plan-phases` の `delegatedRange.count`。範囲の段の数で、実装の段の数ではない。設定 `flow` が `script` なら実装の段に受け入れ・振り返りを足した数で、各 agent が `phase_result` の `count` に渡す）・`phaseIds`（`tw plan-phases` の JSON の `phases`。`phase()` の題と `agent()` の `phase` はこの id からだけ作り、直書きは `scripts/check_repo.py` が禁じる）が要る。
   任意で `steps`（走らせる段。既定は `["implement", "accept", "retrospect"]`）・`model`（実装と直しの model）・`from`（呼び直すときに始める段）
 - 計画の準備はワークフロースクリプトの外: 呼ぶ側（メイン）が起こす前に `tw plan-check` を打ち、`PLAN_STALE`・`PLAN_NOT_FIRST`（計画が古い）か `PLAN_UNCOVERED`（完了条件に覆われない行がある）なら
   `tw brief implementer <ID> --rewrite` の決まりで書き直させ、`tw plan-phases <ID> --through 計画` の JSON を `work_plan` に渡して範囲の数と段の名前を確定させる（`skills/next-task/script-flow.md` の手順1a）。
   ワークフロースクリプトは計画を確かめず、`phaseIds` に `impl-` の id が無く `impl` だけ（範囲が未確定）なら起動を拒む
 - 実装の確認: 実装の agent は、最後の段より前の段ごとに `tw step` が `STEPPED` を出すまで次へ進まず、出た行を `stepLines` に返す。
-  ワークフロースクリプトは `STEPPED` の行が `phaseCount − 1` 行あるかを確かめ、足りなければ `stopped`（`phase: "implement"`）で返す。`conventionLines` は実装の報告の `- 規約:`（あれば `- 規約の指摘:`）の行
+  ワークフロースクリプトは `STEPPED` の行が「実装の段の数（`phaseIds` の `impl-` の id の数）− 1」行あるかを確かめ、足りなければ `stopped`（`phase: "implement"`）で返す。`conventionLines` は実装の報告の `- 規約:`（あれば `- 規約の指摘:`）の行
 - 戻り値: 通れば `{ stopped: false, conventionLines?, implement, accept, retrospect }`。止まれば `{ stopped: true, phase, reason }`（`phase` は止まった段）。
   止まったら呼び出し側が戻り値を `tw flow-result <ID> --json-file -` に渡し（`再開` に段を書いて release まで `tw` が行う）、次の着手で `from` にその段を渡して呼び直す
 - 受け入れの道: `tw accept` の判定が `REVIEW` なら受け入れ役をレビューの依頼で起こし、通ったら締めの agent が `tw accept --after-review` を打つ。
   `SKIP`・`NOTHING`・`NO_RANGE` なら `tw accept` が `accept` を閉じているので締めの agent は起こさず、受け入れ役は目視と材料だけを見る。差し戻しの上限は2回
+- 範囲の段の `phase_result`: 受け入れ・振り返りが範囲（`phaseCount`）に入っていれば、受け入れは締めの agent が通ったあとに `finished` で、
+  締めを起こさない道（`SKIP`・`NOTHING`・`NO_RANGE`）では振り返りの agent が自分の段の前に `skipped` で、振り返りは振り返りの agent が `finished` で、どれも1回呼ぶ。
+  呼ばれない道がある。`steps` に振り返りが無い並び（`["implement", "accept"]` など）で `tw accept` が `SKIP`・`NOTHING`・`NO_RANGE` を返した道では、`skipped` を呼ぶ振り返りの agent が起きないので受け入れの `phase_result` は呼ばれない。
+  受け入れの段が `stopped` で返る道（差し戻しの上限、`tw accept` の STOP、直しのあとの verify の失敗など）でも、締めの agent が通ったあとの `finished` まで届かないので受け入れの `phase_result` は呼ばれない。どの道も帯は、メインが完了の通知のあとに渡す `work_plan`（`skills/next-task/script-flow.md` の手順4）で追いつく。
+  受け入れ役は呼ばない。範囲内の agent は返そうとして `phase_result` の関門に1回止められうるので、依頼文に「自分の段の `phase_result` 以外は呼ばず、同じ返却を返し直す」と足す
 - 2周目以降: 受け入れ役の依頼文に、`tw brief acceptor --round` の出力へ前回の指摘の原文（`findings`）と材料の値（`friction`・`human`）をワークフロースクリプトが足して渡す。2周目の準備の agent は `tw lap review start` だけを打ち、`tw accept` は打たない（`accept` の end は締めの agent の `--after-review` だけが打つ。先に閉じると、締めの agent を hook が実装の agent と数えて `delegate` の start を偽って書く）
 - `tw lap <ID> <段> start` は、その段が開いているあいだは書かない（`delegate` を除く）。`tw accept` を重ねて打っても `accept`・`review` の start は重ならない
 - hook は、`delegate` の start・`review` の end（`review` の start は `tw accept` と `tw lap review start` が書く）・`retro` の start と end の `lap` を書く。hook は入力の `cwd` の作業ツリーの着手の控えが1件のときだけ書くので、

@@ -227,6 +227,7 @@ def cmd_plan_phases(
         also_numbers,
         steps,
         skipped_names,
+        widen_range=config.flow == layout.FLOW_SCRIPT,
     )
     if result is None:
         print(f"NO_PHASE\t{shown}\t{error}")
