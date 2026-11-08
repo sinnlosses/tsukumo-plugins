@@ -619,18 +619,21 @@ def work_plan_phases(
     also: tuple[int, ...],
     steps: tuple[str, ...] = (),
     skipped: tuple[str, ...] = (),
+    widen_range: bool = False,
 ) -> tuple[dict | None, str | None]:
     """`work_plan` の引数（`phases`＝段の id と名前の `{id, name}`〔並列は配列〕・`current`・`finishedInGroup`・あれば `delegatedRange`・`skippedPhases`）。形が決まらなければ `(None, 理由)`。
 
     `flow` は `FLOW_DELEGATE`・`FLOW_MAIN`・`FLOW_DIRECT`。振り返りの段は `steps` に `retrospect-step` があるときだけ。`through` はその段までと、それ以前を済ませた位置（省略は何も済んでいない）。
     `also` は並列のまとまりの中で、`through` の後ろにあるが先に済んだ段の番号。
     `steps` は並びのスキルの全名で、空なら `DEFAULT_STEP_NAMES` の順。`skipped` は済んだ段のうち飛ばした段の名前。
+    `widen_range` が真なら、範囲が確定しているとき、実装の直後に続く受け入れ・振り返りの段も `delegatedRange` の `count` に数える。
     """
     direct = flow == FLOW_DIRECT
     entries: list[str | list[str]] = []
     keys: list[list[str]] = []
     ids: list[list[str]] = []
     range_out: dict | None = None
+    widening = False
     for step in [s.rsplit(":", 1)[-1] for s in steps] or list(DEFAULT_STEP_NAMES):
         if step == STEP_IMPLEMENT and direct:
             entries += [PHASE_FIX, PHASE_VERIFY]
@@ -654,17 +657,23 @@ def work_plan_phases(
                     keys.append([f"#{n}" for n in group])
                     ids.append([f"{ID_IMPLEMENT_STEP}{n}" for n in group])
                 range_out = {"first": first, "count": len(specs)}
+                widening = widen_range
         elif step == STEP_ACCEPT:
             if not direct:
                 entries.append(PHASE_ACCEPT)
                 keys.append([PHASE_ACCEPT])
                 ids.append([ID_ACCEPT])
+                if widening and range_out is not None:
+                    range_out["count"] += 1
         elif step == STEP_RETRO:
             if not direct:
                 entries.append(PHASE_RETRO)
                 keys.append([PHASE_RETRO])
                 ids.append([ID_RETRO])
+                if widening and range_out is not None:
+                    range_out["count"] += 1
         else:
+            widening = False
             phase = PHASE_SHIP if step == STEP_SHIP else step
             entries.append(phase)
             keys.append([phase])

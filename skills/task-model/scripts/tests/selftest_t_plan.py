@@ -390,6 +390,51 @@ def test_plan_phases_ids() -> None:
     check("名前は {id, name} の name に残る", result is not None and result["phases"][0] == {"id": "impl-1", "name": "a"}, str(result))
 
 
+@weight(1)
+def test_plan_phases_widen_range() -> None:
+    say("taskfile.work_plan_phases: widen_range で実装の直後に続く受け入れ・振り返りも delegatedRange の count に数える")
+    serial = (
+        taskfile.PlanStep("a", (), ("x",)),
+        taskfile.PlanStep("b", (1,), ("y",)),
+    )
+    parallel = (
+        taskfile.PlanStep("a", (), ("x",)),
+        taskfile.PlanStep("b", (), ("y",)),
+        taskfile.PlanStep("c", (1, 2), ("z",)),
+    )
+    registered = taskfile.PLAN_REGISTERED_STATE
+    delegate = taskfile.FLOW_DELEGATE
+
+    def run(specs, flow=delegate, state=registered, steps=(), widen=True):
+        result, error = taskfile.work_plan_phases(specs, flow, state, None, (), steps, widen_range=widen)
+        return result or {"error": error}
+
+    def flat_ids(result):
+        return [p["id"] for entry in result["phases"] for p in (entry if isinstance(entry, list) else [entry])]
+
+    narrow = run(serial, widen=False)
+    wide = run(serial)
+    check("widen_range 無しは実装の段だけ", narrow.get("delegatedRange") == {"first": 0, "count": 2}, str(narrow))
+    check("既定の並びは受け入れ・振り返りの2つを足す", wide.get("delegatedRange") == {"first": 0, "count": 4}, str(wide))
+    check("phases の id の並びは widen_range で変わらない", flat_ids(narrow) == flat_ids(wide), f"{narrow} {wide}")
+    written = run(serial, state=taskfile.PLAN_WRITTEN_STATE)
+    check("計画の段がある並びは first が 1", written.get("delegatedRange") == {"first": 1, "count": 4}, str(written))
+    grouped = run(parallel)
+    check("並列の群は平らにした要素の数で数える",
+          grouped.get("delegatedRange") == {"first": 0, "count": 5} and isinstance(grouped["phases"][0], list), str(grouped))
+    accept_only = run(serial, steps=(taskfile.STEP_IMPLEMENT, taskfile.STEP_ACCEPT, taskfile.STEP_SHIP))
+    check("受け入れだけの並びは1つ足す", accept_only.get("delegatedRange") == {"first": 0, "count": 3}, str(accept_only))
+    retro_only = run(serial, steps=(taskfile.STEP_IMPLEMENT, taskfile.STEP_RETRO, taskfile.STEP_SHIP))
+    check("振り返りだけの並びは1つ足す", retro_only.get("delegatedRange") == {"first": 0, "count": 3}, str(retro_only))
+    broken = run(serial, steps=(taskfile.STEP_IMPLEMENT, "other-step", taskfile.STEP_ACCEPT))
+    check("間に別のスキルの段が入れば数えない", broken.get("delegatedRange") == {"first": 0, "count": 2}, str(broken))
+    missing = run((), state=taskfile.PLAN_MISSING_STATE)
+    check("計画が未確定なら count を出さない", missing.get("delegatedRange") == {"first": 1}, str(missing))
+    for flow in (taskfile.FLOW_MAIN, taskfile.FLOW_DIRECT):
+        other = run(serial, flow=flow)
+        check(f"{flow} の流れは範囲を出さない", "delegatedRange" not in other, str(other))
+
+
 @weight(4)
 def test_warn_main_only_tool() -> None:
     say("task.py new・edit: loopable Y で近道の印の無い計画の段にメインだけの道具の名があれば WARN_MAIN_ONLY_TOOL を出す")
@@ -465,6 +510,7 @@ TESTS = (
     test_warn_red_step,
     test_warn_main_only_tool,
     test_plan_phases_ids,
+    test_plan_phases_widen_range,
     test_edit_and_plan_check,
     test_edit_deps,
     test_edit_section,
