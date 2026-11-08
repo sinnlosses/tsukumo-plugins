@@ -156,7 +156,7 @@ def cmd_lap(toplevel: str, task_id: str, stage: str, edge: str | None = None, mo
         return
     extra = {"model": model} if model is not None else {}
     tw_base.record(toplevel, "lap", shown, stage=stage, edge=edge, **extra)
-    if stage == "accept":
+    if stage in ("accept", "review"):
         close_open_lap(toplevel, shown, "delegate")
     print(f"LAPPED\t{shown}\t{stage}\t{edge}")
 

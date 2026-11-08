@@ -236,6 +236,29 @@ def test_accept_does_not_duplicate_open_laps() -> None:
               edges(wt1, "accept") == ["start", "end"], repr(edges(wt1, "accept")))
 
 
+def test_delegate_closed_by_review_start_and_done() -> None:
+    say("task.py lap・done: 開いた delegate は review の start と done（dropped）で閉じ、開いていなければ end を書かない")
+    edges = lambda wt, stage: [e.get("edge") for e in flow_rows(wt) if e["event"] == "lap" and e.get("stage") == stage]
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1 = _claimed_repo(tmp)
+        for args in (("accept", "start"), ("accept", "end"), ("delegate", "start")):
+            run_task(wt1, "lap", "T-100", *args)
+        run_task(wt1, "lap", "T-100", "review", "start")
+        check("accept が閉じたあとの delegate は review の start で閉じる",
+              edges(wt1, "delegate") == ["start", "end"], repr(edges(wt1, "delegate")))
+        run_task(wt1, "lap", "T-100", "review", "end")
+        run_task(wt1, "lap", "T-100", "review", "start")
+        check("開いていない delegate には end を書かない",
+              edges(wt1, "delegate") == ["start", "end"], repr(edges(wt1, "delegate")))
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1 = _claimed_repo(tmp)
+        run_task(wt1, "lap", "T-100", "delegate", "start")
+        r = run_task(wt1, "done", "T-100", "--dropped", "--result-file", "-", stdin="- 理由: 見送る\n")
+        check("delegate が開いたまま tw done --dropped で閉じると end が書かれる",
+              r.returncode == 0 and edges(wt1, "delegate") == ["start", "end"],
+              r.stdout + r.stderr + repr(edges(wt1, "delegate")))
+
+
 def test_brief_acceptor_round_with_images() -> None:
     say("task.py brief acceptor --round: --image・--visual があれば 2回目以降 に続けて 目視 を選ぶ")
     with tempfile.TemporaryDirectory() as tmp:
@@ -261,6 +284,7 @@ def test_brief_acceptor_round_with_images() -> None:
 TESTS = (
     test_brief_acceptor_round_with_images,
     test_accept_does_not_duplicate_open_laps,
+    test_delegate_closed_by_review_start_and_done,
     test_accept_not_last_step,
     test_accept_bundles_acceptance_steps,
     test_accept_stops_on_stop_lines,

@@ -106,7 +106,7 @@ hook 5種（Claude Code の hook 4種と git の hook `ref-guard`）の仕様の
 | 段 | start を書くもの | end を書くもの |
 | --- | --- | --- |
 | `direct` | メイン（`tw lap`。端なし） | — |
-| `delegate` | `lap-hook`（委譲先の起動）。委譲しないメインの流れはメイン。委譲先のモデルが `difficulty` と違う分業と、そこから戻す引き上げでは、メインが委譲の直前に `--model` 付きで打つ（hook はモデルを知らず、開いた段には書かない） | `accept` の start（`tw accept` が打つものも手で打つものも） |
+| `delegate` | `lap-hook`（委譲先の起動）。委譲しないメインの流れはメイン。委譲先のモデルが `difficulty` と違う分業と、そこから戻す引き上げでは、メインが委譲の直前に `--model` 付きで打つ（hook はモデルを知らず、開いた段には書かない） | `accept` の start（`tw accept` が打つものも手で打つものも）・`review` の start・`tw done`（`dropped` を含む） |
 | `accept` | `tw accept`（作業先が別のリポジトリのタスクも） | `tw accept`・`tw finish`（`done` の前。開いているときだけなので1つ） |
 | `review` | 1回目は `tw accept`、2回目からはメイン | `lap-hook`（受け入れ役の停止。開いているときだけ） |
 | `retro` | `lap-hook`（振り返りのスキルの呼び出し、または振り返りの agent の起動） | `tw finish`（`done` の前）、または `lap-hook`（振り返りの agent の停止。開いているときだけ） |
