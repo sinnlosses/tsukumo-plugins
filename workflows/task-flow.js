@@ -57,12 +57,16 @@ const JUDGMENT = {
   properties: {
     verdict: { type: "string", enum: ["accept", "reject"] },
     findings: { type: "array", items: { type: "string" } },
+    findingKinds: {
+      type: "array",
+      items: { type: "string", enum: ["完了条件", "正しさ", "規約", "簡素化"] },
+    },
     visual: { type: "string" },
     friction: { type: "string" },
     human: { type: "number" },
     notes: { type: "string" },
   },
-  required: ["verdict", "findings", "friction", "human"],
+  required: ["verdict", "findings", "findingKinds", "friction", "human"],
 }
 
 const ACCEPT_CLOSE = {

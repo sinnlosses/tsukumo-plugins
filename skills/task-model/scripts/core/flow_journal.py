@@ -1,7 +1,8 @@
 """ワークフローの run の記録（`journal.jsonl` と `agent-<agentId>.jsonl`）から、段の区間を読む。
 
-読むのは journal の `type`・`label`・`agentId`・`result.verdict` と、transcript の先頭行・末尾行の `timestamp` だけ。
-agent の戻り値の本文と会話の中身は読まない・返さない。
+読むのは journal の `type`・`label`・`agentId`・`result.verdict`・`result.findings` の長さ・`result.findingKinds` と、
+transcript の先頭行・末尾行の `timestamp` だけ。
+agent の戻り値の本文（指摘の文を含む）と会話の中身は読まない・返さない。
 """
 
 from __future__ import annotations
@@ -14,6 +15,8 @@ from datetime import datetime
 
 JOURNAL_NAME = "journal.jsonl"
 VERDICTS = ("accept", "reject")
+FINDING_KINDS = ("完了条件", "正しさ", "規約", "簡素化")
+UNKNOWN_KIND = "不明"
 _TAIL_BYTES = 65536
 
 
@@ -25,6 +28,8 @@ class Stage:
     end: str
     seconds: int
     verdict: str | None
+    findings: int | None
+    kinds: dict[str, str] | None
 
 
 def stage_of(label: str) -> str | None:
@@ -93,6 +98,21 @@ def _verdict(result: object) -> str:
     return value if value in VERDICTS else "other"
 
 
+def _finding_counts(result: object) -> tuple[int, dict[str, str]]:
+    """差し戻しの指摘の件数と、種類ごとの件数。語彙に無い・欄が足りない指摘は `不明` に入る。"""
+    if not isinstance(result, dict):
+        return 0, {}
+    findings = result.get("findings")
+    count = len(findings) if isinstance(findings, list) else 0
+    kinds = result.get("findingKinds")
+    given = kinds if isinstance(kinds, list) else []
+    tally: dict[str, int] = {}
+    for i in range(count):
+        kind = given[i] if i < len(given) and given[i] in FINDING_KINDS else UNKNOWN_KIND
+        tally[kind] = tally.get(kind, 0) + 1
+    return count, {kind: str(n) for kind, n in tally.items()}
+
+
 def read_stages(transcript_dir: str) -> list[Stage]:
     """`result` まで届いた agent のうち、段になる label のものを journal の順で返す。読めない行・agent は飛ばす。"""
     rows = _journal_rows(transcript_dir)
@@ -112,8 +132,9 @@ def read_stages(transcript_dir: str) -> list[Stage]:
         if begin is None or end is None:
             continue
         verdict = _verdict(results[row["agentId"]]) if stage == "review" else None
+        findings, kinds = _finding_counts(results[row["agentId"]]) if verdict == "reject" else (None, None)
         seconds = max(0, int((end - begin).total_seconds()))
-        stages.append(Stage(stage, label, span[0], span[1], seconds, verdict))
+        stages.append(Stage(stage, label, span[0], span[1], seconds, verdict, findings, kinds))
     return stages
 
 

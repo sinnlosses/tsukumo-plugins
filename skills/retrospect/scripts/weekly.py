@@ -21,6 +21,9 @@
   `FLAKY\t<名前>\t<回数>`（上位5件）と、3回以上の `候補\t<名前>\t<回数>`。無ければ `EMPTY`
 - **規則の棚卸し**: 設定の `hook_tally` のコマンドをリポジトリの根で `sh -c` で打った標準出力を
   そのまま。無い・落ちた・60秒で終わらないときは `-\t<理由>`
+- **差し戻しの指摘の種類**: 直近28日の受け入れ役の `flow_stage` から
+  `REJECTED_RUNS\t<差し戻しのあった着手の数>\t<受け入れまで届いた着手の数>` と、
+  `FINDING_KIND\t<完了条件|正しさ|規約|簡素化|不明>\t<件数>`（0 の行も出す）。無ければ `EMPTY`
 - **期日を過ぎた介入**: 期日が期間の中に来た介入ごとに
   `INTERVENTION\t<ID>\t<測った名前|->\t<基準線>\t<いま>\t<判定>\t<理由|->`、続けて `no observed effect`・`hurt` の介入ごとに
   `REVERT\t<ID>\t<観点|->\t<判定>\t<出し先の種類>`（判定の決まりは `intervention_effect.py`）
@@ -95,6 +98,9 @@ def main() -> None:
 
     section("規則の棚卸し")
     print_hook_tally(root)
+
+    section("差し戻しの指摘の種類（直近28日）")
+    print_finding_kinds(root, now)
 
     intervention_effect.print_section(root, now, days)
 
@@ -201,6 +207,16 @@ def print_flaky_tests(root: str, now: datetime) -> None:
         print("-\t台帳が読めない（git のリポジトリでない）")
         return
     print("\n".join(flaky_rows(events, now)) or "EMPTY")
+
+
+def print_finding_kinds(root: str, now: datetime) -> None:
+    try:
+        events, _ = metrics.read_events(ledger.ledger_root(cwd=root))
+    except (gitinfo.GitCommandError, OSError):
+        print("-\t台帳が読めない（git のリポジトリでない）")
+        return
+    lines = metrics.finding_kind_lines(events, now - timedelta(days=MAX_DAYS), now + timedelta(seconds=1))
+    print("\n".join(lines) or "EMPTY")
 
 
 def print_changes(root: str, start: datetime) -> None:

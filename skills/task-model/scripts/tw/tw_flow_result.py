@@ -54,6 +54,8 @@ def _fail_usage(message: str) -> None:
 def _record_stages(toplevel: str, task_id: str, transcript_dir: str) -> None:
     for stage in flow_journal.read_stages(transcript_dir):
         verdict = {} if stage.verdict is None else {"verdict": stage.verdict}
+        if stage.findings is not None and stage.kinds is not None:
+            verdict = {**verdict, "findings": stage.findings, "kinds": stage.kinds}
         tw_base.record(
             toplevel,
             "flow_stage",
