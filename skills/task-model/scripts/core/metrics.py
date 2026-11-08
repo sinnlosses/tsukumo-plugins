@@ -255,6 +255,28 @@ def flaky_tests(events: list[Event], start: datetime, end: datetime) -> dict[str
     return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
 
 
+def finding_kind_lines(events: list[Event], start: datetime, end: datetime) -> list[str]:
+    """`[start, end)` の受け入れ役の `flow_stage` から、差し戻しのあった着手の数と、指摘の種類ごとの件数の行を返す。
+
+    `kinds` の欄が無い旧い `flow_stage` は種類の件数に数えない。受け入れ役の `flow_stage` が無ければ空の一覧。
+    """
+    reviews = [e for e in events if e.kind == "flow_stage" and e.fields.get("stage") == "review" and start <= e.at < end]
+    if not reviews:
+        return []
+    rejected = {e.task for e in reviews if e.fields.get("verdict") == "reject"}
+    counts = {kind: 0 for kind in (*flow_journal.FINDING_KINDS, flow_journal.UNKNOWN_KIND)}
+    for e in reviews:
+        kinds = e.fields.get("kinds")
+        if not isinstance(kinds, dict):
+            continue
+        for kind, n in kinds.items():
+            if kind in counts and str(n).isdigit():
+                counts[kind] += int(n)
+    lines = [f"REJECTED_RUNS\t{len(rejected)}\t{len({e.task for e in reviews})}"]
+    lines.extend(f"FINDING_KIND\t{kind}\t{n}" for kind, n in counts.items())
+    return lines
+
+
 def _has_stage_value(verify: Event, value: str) -> bool:
     """`verify` の記録の `stages`（段名→4値）に `value` の段があるか。欄の無い旧い行・形の違う欄は偽。"""
     stages = verify.fields.get("stages")

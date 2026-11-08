@@ -327,7 +327,8 @@ def _write_run(root: str, agents: list[tuple[str, str, object, tuple[float, floa
 
 _PASSED_RUN = [
     ("a1", "implement", {"stopped": False}, (0, 120.5)),
-    ("a3", "acceptor-1", {"verdict": "reject", "notes": "秘密の本文XYZ"}, (150, 210)),
+    ("a3", "acceptor-1", {"verdict": "reject", "notes": "秘密の本文XYZ", "findings": ["秘密の指摘P", "秘密の指摘Q"],
+                          "findingKinds": ["正しさ", "規約"]}, (150, 210)),
     ("a4", "fix-1", {"stopped": False}, (220, 250)),
     ("a5", "acceptor-2", {"verdict": "accept"}, (260, 300)),
     ("a6", "retrospect", {"line": "- 振り返り: x"}, (310, 325)),
@@ -364,9 +365,13 @@ def test_flow_result_writes_journal_stages() -> None:
               repr(rows[0]))
         check("verdict は受け入れ役の行だけで reject・accept（差し戻し1回）",
               [row.get("verdict") for row in rows] == [None, "reject", None, "accept", None], repr(rows))
+        check("差し戻しの行だけ findings（件数）と kinds（種類ごとの件数）を持ち、accept などは持たない",
+              [(row.get("findings"), row.get("kinds")) for row in rows]
+              == [(None, None), (2, {"正しさ": "1", "規約": "1"}), (None, None), (None, None), (None, None)], repr(rows))
         ledger_text = json.dumps(flow_rows(wt1), ensure_ascii=False)
-        check("台帳に agent の戻り値の本文も transcript の本文も出ない",
-              "秘密の本文XYZ" not in ledger_text and "秘密の会話ABC" not in ledger_text, ledger_text)
+        check("台帳に agent の戻り値の本文も指摘の文も transcript の本文も出ない",
+              all(secret not in ledger_text for secret in ("秘密の本文XYZ", "秘密の指摘P", "秘密の指摘Q", "秘密の会話ABC")),
+              ledger_text)
         run_task(wt1, "release", "T-110")
 
         run_task(wt1, "claim", "T-111")
@@ -382,6 +387,24 @@ def test_flow_result_writes_journal_stages() -> None:
         check("止まっても届いた段は書き、result の無い fix-2 は区間にしない",
               [row["label"] for row in stages_of("T-111")] == ["implement", "acceptor-1", "fix-1", "acceptor-2"],
               repr(stages_of("T-111")))
+
+        run_task(wt1, "claim", "T-114")
+        odd = _write_run(os.path.join(tmp, "run-odd-kinds"), [
+            ("b1", "acceptor-1", {"verdict": "reject", "findings": ["x", "y", "z"],
+                                  "findingKinds": ["正しさ", "謎の種類"]}, (0, 10)),
+            ("b2", "acceptor-2", {"verdict": "reject", "findings": ["x", "y"], "findingKinds": ["規約", "簡素化", "完了条件"]},
+             (20, 30)),
+            ("b3", "acceptor-3", {"verdict": "reject", "findings": ["x", "y"]}, (40, 50)),
+            ("b4", "acceptor-4", {"verdict": "reject"}, (60, 70)),
+        ])
+        flow("T-114", {"stopped": False}, "--transcript-dir", odd)
+        odd_rows = stages_of("T-114")
+        check("語彙外・足りない種類は不明に入り、超えた種類は数えず、kinds の合計は findings に等しい",
+              [(row["findings"], row["kinds"]) for row in odd_rows[:2]]
+              == [(3, {"正しさ": "1", "不明": "2"}), (2, {"規約": "1", "簡素化": "1"})], repr(odd_rows))
+        check("findingKinds の無い差し戻しは件数がすべて不明、findings も無ければ 0 件と空の kinds",
+              [(row["findings"], row["kinds"]) for row in odd_rows[2:]] == [(2, {"不明": "2"}), (0, {})], repr(odd_rows))
+        run_task(wt1, "release", "T-114")
 
         run_task(wt1, "claim", "T-112")
         before = len(flow_rows(wt1))
@@ -444,6 +467,31 @@ def test_metrics_counts_flow_stage_once() -> None:
     check("task_stage_spans も委譲の区間を flow_stage の1つだけ返す",
           spans is not None and [p for p in spans[0] if p[0] == "委譲"] == [
               ("委譲", base + timedelta(seconds=10), base + timedelta(seconds=95))], repr(spans))
+
+
+def test_metrics_counts_finding_kinds() -> None:
+    say("finding_kind_lines: 期間内の受け入れ役の flow_stage から差し戻しの着手の数と種類ごとの件数を出し、旧い行・期間外は種類に数えない")
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    start, end = now - timedelta(days=28), now + timedelta(seconds=1)
+
+    def _review(days_ago: float, task: str, verdict: str, **fields: object) -> metrics.Event:
+        return metrics.Event(now - timedelta(days=days_ago), "flow_stage", task, {"stage": "review", "verdict": verdict, **fields})
+
+    events = [
+        _review(1, "T-1", "reject", findings=3, kinds={"正しさ": "2", "規約": "1"}),
+        _review(1, "T-1", "reject", findings=1, kinds={"不明": "1"}),
+        _review(1, "T-1", "accept"),
+        _review(2, "T-2", "accept"),
+        _review(3, "T-3", "reject"),
+        _review(40, "T-4", "reject", findings=5, kinds={"簡素化": "5"}),
+        metrics.Event(now - timedelta(days=1), "flow_stage", "T-5", {"stage": "delegate", "kinds": {"規約": "9"}}),
+    ]
+    check("差し戻しの着手の数と届いた着手の数、種類は4種類と不明の順で0の行も出す",
+          metrics.finding_kind_lines(events, start, end) == [
+              "REJECTED_RUNS\t2\t3", "FINDING_KIND\t完了条件\t0", "FINDING_KIND\t正しさ\t2", "FINDING_KIND\t規約\t1",
+              "FINDING_KIND\t簡素化\t0", "FINDING_KIND\t不明\t1"], repr(metrics.finding_kind_lines(events, start, end)))
+    check("flow_stage が無い・期間に受け入れ役の行が無ければ空の一覧",
+          metrics.finding_kind_lines([], start, end) == [] and metrics.finding_kind_lines(events[5:], start, end) == [])
 
 
 def test_metrics_counts_reverts() -> None:
@@ -531,6 +579,7 @@ TESTS = (
     test_flow_result_writes_relays_and_releases,
     test_flow_result_writes_journal_stages,
     test_metrics_counts_flow_stage_once,
+    test_metrics_counts_finding_kinds,
     test_metrics_counts_reverts,
     test_metrics_escapes_lists_candidates,
     test_claim_holds_task_stopped_twice,
