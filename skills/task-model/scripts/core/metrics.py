@@ -7,12 +7,17 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import statistics
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
+import beads
 import flow_journal
+import gitcmd
+import gitinfo
 import ledger
 
 DAYS_DEFAULT = 7
@@ -31,6 +36,7 @@ HIGHER_IS_WORSE = (
     "ship_verify_failed",
     "reclaim",
     "fix_within_7d",
+    "revert_within_7d",
     "long_delegation",
     "long_handback",
     "escalate_suggest",
@@ -120,6 +126,104 @@ def fix_tasks(events: list[Event], shipped: list[Event]) -> set[str]:
     }
 
 
+@dataclass(frozen=True)
+class Revert:
+    task: str
+    sha: str
+    at: datetime
+
+
+REVERT_LINE = re.compile(r"This reverts commit ([0-9a-f]{40})")
+TASK_SUBJECT = re.compile(r"([A-Z]+-[0-9]+)[:,]")
+
+
+def read_reverts(cwd: str, base: str) -> list[Revert]:
+    """主ブランチ `base` の revert のコミットと、元のコミットの件名の先頭の課題の ID。件名から引けない revert は読み飛ばす。"""
+    r = gitcmd.run(["log", base, "-E", "--grep=^This reverts commit", "--format=%H%x1f%cI%x1f%B%x1e"], cwd)
+    if r.returncode != 0:
+        return []
+    reverts: list[Revert] = []
+    for record in r.stdout.split("\x1e"):
+        parts = record.strip().split("\x1f", 2)
+        if len(parts) != 3:
+            continue
+        sha, committed, body = parts
+        origin = REVERT_LINE.search(body)
+        if origin is None:
+            continue
+        subject = gitcmd.run(["log", "-1", "--format=%s", origin.group(1)], cwd)
+        match = TASK_SUBJECT.match(subject.stdout.strip()) if subject.returncode == 0 else None
+        try:
+            at = datetime.fromisoformat(committed)
+        except ValueError:
+            continue
+        if match:
+            reverts.append(Revert(match.group(1), sha, at))
+    return reverts
+
+
+def reverts_of(cwd: str) -> list[Revert] | None:
+    """`cwd` のリポジトリの主ブランチの revert。主ブランチが決まらなければ `None`（`revert_within_7d` は `-`）。"""
+    try:
+        return read_reverts(cwd, gitinfo.base_branch(cwd))
+    except (gitinfo.NoBaseBranch, gitinfo.GitCommandError):
+        return None
+
+
+def revert_tasks(shipped: list[Event], reverts: list[Revert]) -> set[str]:
+    """`shipped` のうち、送り出しから7日以内に revert されたタスク。1つの元が何度 revert されても1本。"""
+    return {
+        s.task for s in shipped for r in reverts if r.task == s.task and s.at <= r.at <= s.at + FIX_WINDOW
+    }
+
+
+def linked_pairs(events: list[Event]) -> set[tuple[str, str]]:
+    """台帳の `new` の `fixes` で結ばれた `(直しのタスク, 元のタスク)`。"""
+    return {
+        (n.task, origin)
+        for n in events
+        if n.kind == "new"
+        for origin in str(n.fields.get("fixes", "")).split(",")
+        if origin
+    }
+
+
+def escape_candidates(
+    events: list[Event],
+    files_of: Callable[[str], set[str]],
+    kind_of: Callable[[str], str | None],
+    linked: set[tuple[str, str]],
+    days: int,
+    reverts: list[Revert] | None = None,
+    now: datetime | None = None,
+) -> list[str]:
+    """直近 `days` 日に送り出した元ごとの、`fixes` の候補の `ESCAPE` の行。結ぶかは決めない。
+
+    `ESCAPE\trevert\t<元>\t<SHA>`（7日以内の revert）と
+    `ESCAPE\tbug\t<元>\t<bug>\t<共通のファイル,…>`（元の送り出しのあと7日以内に送った、
+    元と同じファイルを変えた種類 `bug` のタスクで、まだ元と結ばれていないもの）。
+    """
+    now = now or datetime.now(timezone.utc)
+    ships = [e for e in events if e.kind == "ship" and e.fields.get("result") == "SHIPPED"]
+    lines: list[str] = []
+    for origin in ships:
+        if not now - timedelta(days=days) <= origin.at <= now:
+            continue
+        for r in reverts or []:
+            if r.task == origin.task and origin.at <= r.at <= origin.at + FIX_WINDOW:
+                lines.append(f"ESCAPE\trevert\t{origin.task}\t{r.sha}")
+        origin_files = files_of(origin.task)
+        for later in ships:
+            if later.task == origin.task or not origin.at < later.at <= origin.at + FIX_WINDOW:
+                continue
+            if (later.task, origin.task) in linked or kind_of(later.task) != "bug":
+                continue
+            common = sorted(origin_files & files_of(later.task))
+            if common:
+                lines.append(f"ESCAPE\tbug\t{origin.task}\t{later.task}\t{','.join(common)}")
+    return list(dict.fromkeys(lines))
+
+
 def verify_cause(events: list[Event], failed: Event) -> str:
     """落ちた `verify` の内訳（`real`・`flaky`・`infra`）。書かれた `cause` が `infra` ならそれ、
     同じタスクの次の `claim` までに同じ `key` で通った回があれば `flaky`、ほかは `real`。"""
@@ -157,8 +261,10 @@ def _has_stage_value(verify: Event, value: str) -> bool:
     return isinstance(stages, dict) and value in stages.values()
 
 
-def column_between(events: list[Event], start: datetime, end: datetime) -> dict[str, str]:
-    """`[start, end)` の流れの数（`tw metrics` の1列）。"""
+def column_between(
+    events: list[Event], start: datetime, end: datetime, reverts: list[Revert] | None = None
+) -> dict[str, str]:
+    """`[start, end)` の流れの数（`tw metrics` の1列）。`reverts` が `None` なら `revert_within_7d` は `-`。"""
     inside = [e for e in events if start <= e.at < end]
     shipped = [e for e in inside if e.kind == "ship" and e.fields.get("result") == "SHIPPED"]
     leads = [s for s in (lead_seconds(events, e) for e in shipped) if s is not None]
@@ -191,6 +297,7 @@ def column_between(events: list[Event], start: datetime, end: datetime) -> dict[
         "reclaim": str(len(reclaims)),
         "reflection_none_ratio": f"{round(100 * len(clean) / len(dones))}% ({len(clean)}/{len(dones)})" if dones else "-",
         "fix_within_7d": f"{round(100 * len(fixes) / len(shipped))}% ({len(fixes)}/{len(shipped)})" if shipped else "-",
+        "revert_within_7d": "-" if reverts is None else str(len(revert_tasks(shipped, reverts))),
         "long_delegation": str(sum(1 for e in inside if e.kind == "long-delegation")),
         "long_handback": str(sum(1 for e in inside if e.kind == "long-handback")),
         "escalate_suggest": str(sum(1 for e in inside if e.kind == "escalate-suggest")),
@@ -428,11 +535,16 @@ def open_total_lines(opens: dict[str, int]) -> list[str]:
     return lines
 
 
-def columns(events: list[Event], days: int) -> tuple[dict[str, str], dict[str, str]]:
+def columns(
+    events: list[Event], days: int, reverts: list[Revert] | None = None
+) -> tuple[dict[str, str], dict[str, str]]:
     """`(直近 days 日の数, その前の同じ長さの期間の数)`。"""
     now = datetime.now(timezone.utc)
     span = timedelta(days=days)
-    return column_between(events, now - span, now + timedelta(seconds=1)), column_between(events, now - 2 * span, now - span)
+    return (
+        column_between(events, now - span, now + timedelta(seconds=1), reverts),
+        column_between(events, now - 2 * span, now - span, reverts),
+    )
 
 
 def worse(name: str, current: str, previous: str) -> bool:
@@ -459,7 +571,7 @@ def cmd_metrics(toplevel: str, days: int) -> None:
         if skipped:
             print(f"SKIPPED\t{skipped}")
         return
-    current, previous = columns(events, days)
+    current, previous = columns(events, days, reverts_of(toplevel))
     print(f"PERIOD\t{days}d\tcurrent\tprevious")
     for name, value in current.items():
         print(f"{name}\t{value}\t{previous[name]}")
@@ -470,5 +582,32 @@ def cmd_metrics(toplevel: str, days: int) -> None:
 def cmd_metrics_stages(toplevel: str, days: int) -> None:
     events, skipped = _read_for_days(toplevel, days)
     print("\n".join(stage_lines(events, days)) or "EMPTY")
+    if skipped:
+        print(f"SKIPPED\t{skipped}")
+
+
+def cmd_metrics_escapes(toplevel: str, days: int) -> None:
+    events, skipped = _read_for_days(toplevel, days)
+    issues: dict[str, beads.Issue | None] = {}
+
+    def issue_of(task: str) -> beads.Issue | None:
+        if task not in issues:
+            issues[task] = beads.show(toplevel, beads.to_bd_id(task))
+        return issues[task]
+
+    def files_of(task: str) -> set[str]:
+        issue = issue_of(task)
+        shipped = beads.shipped_range(issue) if issue else None
+        if shipped is None:
+            return set()
+        r = gitcmd.run(["diff", "--name-only", f"{shipped[0]}..{shipped[1]}"], toplevel)
+        return set(r.stdout.split("\n")) - {""} if r.returncode == 0 else set()
+
+    def kind_of(task: str) -> str | None:
+        issue = issue_of(task)
+        return beads.kind_of(issue) if issue else None
+
+    lines = escape_candidates(events, files_of, kind_of, linked_pairs(events), days, reverts_of(toplevel))
+    print("\n".join(lines) or "NOTHING")
     if skipped:
         print(f"SKIPPED\t{skipped}")

@@ -133,7 +133,7 @@ def print_flow(root: str, days: int) -> bool:
     if not events:
         print("EMPTY")
         return False
-    current, previous = metrics.columns(events, days)
+    current, previous = metrics.columns(events, days, metrics.reverts_of(root))
     for name, value in current.items():
         print(f"{name}\t{value}\t{previous[name]}")
     worse = [name for name in current if metrics.worse(name, current[name], previous[name])]

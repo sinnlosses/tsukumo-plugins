@@ -447,6 +447,84 @@ def test_metrics_counts_flow_stage_once() -> None:
               ("委譲", base + timedelta(seconds=10), base + timedelta(seconds=95))], repr(spans))
 
 
+def test_metrics_counts_reverts() -> None:
+    say("tw metrics: revert_within_7d は送り出しから7日以内に revert されたタスクを1本ずつ数え、reverts が無ければ - を返す")
+    tmp = tempfile.mkdtemp()
+    try:
+        repo = os.path.join(tmp, "repo")
+        os.makedirs(repo)
+        git(repo, "init", "-q", "-b", "main")
+        git(repo, "config", "user.email", "test@example.com")
+        git(repo, "config", "user.name", "test")
+        for name, subject in (("a", "T-1: a"), ("b", "no task id here"), ("c", "T-3, c")):
+            write(os.path.join(repo, name), name)
+            git(repo, "add", name)
+            git(repo, "commit", "-q", "-m", subject)
+        shas = git(repo, "log", "--format=%H", "--reverse").stdout.split()
+        for sha in shas:
+            git(repo, "revert", "--no-edit", sha)
+        reverts = metrics.read_reverts(repo, "main")
+        check("revert の元の件名の先頭の課題の ID を引く（引けない件名は読み飛ばす）",
+              sorted(r.task for r in reverts) == ["T-1", "T-3"] and all(len(r.sha) == 40 for r in reverts),
+              repr(reverts))
+    finally:
+        shutil.rmtree(tmp)
+
+    base = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(days=30)
+
+    def _ship(task: str, days: float) -> metrics.Event:
+        return metrics.Event(base + timedelta(days=days), "ship", task, {"result": "SHIPPED"})
+
+    def _revert(task: str, days: float) -> metrics.Revert:
+        return metrics.Revert(task, "0" * 40, base + timedelta(days=days))
+
+    shipped = [_ship("T-1", 0), _ship("T-2", 0), _ship("T-3", 1)]
+    got = metrics.revert_tasks(
+        shipped, [_revert("T-1", 2), _revert("T-1", 3), _revert("T-2", 8), _revert("T-9", 1)]
+    )
+    check("7日以内の revert だけ数え、何度 revert されても1本で、送っていないタスクは数えない", got == {"T-1"}, repr(got))
+    start, end = base - timedelta(days=1), base + timedelta(days=5)
+    check("column_between は reverts が None なら revert_within_7d を - にする",
+          metrics.column_between(list(shipped), start, end)["revert_within_7d"] == "-")
+    check("column_between は reverts があれば revert_within_7d に本数を出す",
+          metrics.column_between(list(shipped), start, end, [_revert("T-1", 2)])["revert_within_7d"] == "1")
+
+
+def test_metrics_escapes_lists_candidates() -> None:
+    say("tw metrics --escapes: 元の送り出しから7日以内の bug で同じファイルを変えたもの・revert を候補に出し、結び済みなどは出さない")
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    base = now - timedelta(days=20)
+
+    def _ship(task: str, days: float) -> metrics.Event:
+        return metrics.Event(base + timedelta(days=days), "ship", task, {"result": "SHIPPED"})
+
+    files = {
+        "T-1": {"a.py", "b.py"},
+        "T-2": {"b.py", "z.py"},
+        "T-3": {"b.py"},
+        "T-4": {"y.py"},
+        "T-5": {"a.py"},
+        "T-6": {"a.py"},
+    }
+    kinds = {"T-2": "bug", "T-3": "feature", "T-4": "bug", "T-5": "bug", "T-6": "bug"}
+    events = [_ship("T-1", 0), _ship("T-2", 1), _ship("T-3", 2), _ship("T-4", 3), _ship("T-5", 4), _ship("T-6", 14)]
+
+    def run(linked: set[tuple[str, str]], reverts: list[metrics.Revert] | None = None, days: int = 28) -> list[str]:
+        return metrics.escape_candidates(
+            events, lambda t: files.get(t, set()), lambda t: kinds.get(t), linked, days, reverts, now
+        )
+
+    got = run({("T-5", "T-1")})
+    check("同じファイルを変えた7日以内の bug だけ出す（7日超・bug でない・ファイルが重ならない・結び済みは出さない）",
+          got == ["ESCAPE\tbug\tT-1\tT-2\tb.py"], repr(got))
+    check("結ばれていなければ別の bug の候補も出る", "ESCAPE\tbug\tT-1\tT-5\ta.py" in run(set()), repr(run(set())))
+    revert = metrics.Revert("T-1", "f" * 40, base + timedelta(days=2))
+    check("7日以内の revert を ESCAPE revert で出す",
+          f"ESCAPE\trevert\tT-1\t{'f' * 40}" in run({("T-5", "T-1")}, [revert]), repr(run(set(), [revert])))
+    check("何も無ければ空（呼ぶ側が NOTHING を出す）", metrics.escape_candidates([], lambda t: set(), lambda t: None, set(), 28, [], now) == [])
+    check("期間の外の元は候補にしない", run(set(), days=1) == [], repr(run(set(), days=1)))
+
+
 TESTS = (
     test_unregistered_tests_named,
     test_all_tests_registered,
@@ -454,6 +532,8 @@ TESTS = (
     test_flow_result_writes_relays_and_releases,
     test_flow_result_writes_journal_stages,
     test_metrics_counts_flow_stage_once,
+    test_metrics_counts_reverts,
+    test_metrics_escapes_lists_candidates,
     test_claim_holds_task_stopped_twice,
 )
 
