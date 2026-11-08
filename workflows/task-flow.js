@@ -32,11 +32,12 @@ const IMPLEMENT = {
     draftLines: { type: "array", items: { type: "string" } },
     stepLines: { type: "array", items: { type: "string" } },
     conventionLines: { type: "array", items: { type: "string" } },
+    frictionLines: { type: "array", items: { type: "string" } },
     images: { type: "array", items: { type: "string" } },
     stopped: { type: "boolean" },
     reason: { type: "string" },
   },
-  required: ["changedFiles", "verifyCommand", "verifyResult", "verifyPassed", "stepLines", "conventionLines", "stopped"],
+  required: ["changedFiles", "verifyCommand", "verifyResult", "verifyPassed", "stepLines", "conventionLines", "frictionLines", "stopped"],
 }
 
 const ACCEPT_PREPARE = {
@@ -140,6 +141,9 @@ if (runs("implement")) {
       `最後の段のあと \`tw verify\` を打ち、打ったコマンド・結果の要点・通ったかを返す。` +
       "返す欄は schema のとおり。draftLines には委譲先の報告に書く `- ドラフト:` の行があれば入れる。" +
       "conventionLines には、`tw brief implementer` の決まりに従って報告に書く `- 規約:` の行（あれば `- 規約の指摘:` の行も）を1行1要素で入れる。" +
+      "frictionLines には、段ごとに `tw brief implementer` の決まりの `## friction log` の書き方で1行ずつ入れる" +
+      `（1段1行。何も起きなかった段は \`- 実装 段<n>: friction log: なし\`、起きた段はその段の色つきの行）。` +
+      "段を skipped にしたときは、飛ばしたわけの1行を入れる。frictionLines は空にしない。" +
       "画面や見た目を撮ったら、その画像の絶対パスを images に入れる。撮らなければ空配列。",
     { agentType: "tsukumo-workflow:no-delegate", schema: IMPLEMENT, label: "implement", phase: implementTitle, ...modelOpt },
   )
@@ -159,6 +163,14 @@ if (runs("implement")) {
       stopped: true,
       phase: "implement",
       reason: `tw step の STEPPED が ${stepped} 行しかない（${phaseCount - 1} 行が要る）。途中の段の控えが欠けている`,
+      implement,
+    }
+  }
+  if (implement.frictionLines.length === 0) {
+    return {
+      stopped: true,
+      phase: "implement",
+      reason: "frictionLines が空（段ごとの friction log の行が返っていない）。受け入れへ進まない",
       implement,
     }
   }
@@ -186,6 +198,13 @@ if (runs("accept")) {
       `画像が無ければ \`--visual\` を付ける: ${imagePaths.length > 0 ? imagePaths.join(" ") : "（画像のパスは無い）"}`
     prepared = await agent(
       `${COMMON}\n` +
+        (first && result.implement
+          ? `最初に、\`tw relay ${taskId} 実装 --body-file -\` の標準入力へ次の行を、この順に1行1要素で書く（実装の申し送り。tw accept より前に書き終える）。` +
+            `frictionLines:\n${result.implement.frictionLines.join("\n")}\n` +
+            `draftLines:\n${(result.implement.draftLines ?? []).join("\n")}\n` +
+            `conventionLines:\n${result.implement.conventionLines.join("\n")}\n` +
+            "（見出しの `frictionLines:` などは書かず、各配列の行だけを並べる。空の配列は行を足さない）。書いたあと、"
+          : "") +
         (first
           ? `\`tw accept ${taskId}\` を打つ。出力の最後の行で道を分ける: ` +
             "`REVIEW`（SNAPSHOT の行がある）なら kind を REVIEW に、" +
@@ -244,6 +263,7 @@ if (runs("accept")) {
       `${COMMON}\n受け入れ役の指摘を直す。指摘:\n${JSON.stringify(judgment.findings)}\n` +
         `直したら作業ツリー（着手した側。別のリポジトリのタスクなら \`tw brief implementer ${taskId}\` が言う作業先の作業ツリー）でコミットし、\`tw verify\` を打つ。` +
         "コミットのあとに打つ。打ったコマンド・結果の要点・通ったかを返す。" +
+        "frictionLines には、この直しで気づいた点を `- <色>: <何が起きたか>（<根拠の場所>）` で1行以上入れる（何も無ければ `- 直し: friction log: なし`）。" +
         "画面や見た目を撮ったら、その画像の絶対パスを images に入れる。撮らなければ空配列。",
       { agentType: "tsukumo-workflow:no-delegate", schema: IMPLEMENT, label: `fix-${round}`, phase: acceptTitle, ...modelOpt },
     )

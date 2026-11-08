@@ -52,7 +52,7 @@
      5. `tw release T-xxx` を打つ。`LEFTOVER` が出たら退避の漏れ。release のあとは着手の印が外れていて `tw relay` を書けない（`NOT_OWNER`）ので、2・3 の手順で残りを別の patch へ退避し、そのパスを 6 の `report` に書く
      6. `workPlanClosing: stopped` の `report` を渡す
    - 通ったとき: 申し送りをワークフロースクリプトの戻り値から書く（形は `task-model` の `WORKFLOW.md`「段の申し送り」）。
-     `tw relay T-xxx 実装` に `conventionLines`、`tw relay T-xxx 受け入れ` に `accept.judgment` の判定と `findings`（`- 指摘:`）・`visual`（`- 目視:`）・`notes`、
+     `実装` はワークフロースクリプトの受け入れの準備が `tw accept` の前に書くので、ここでは書かない。`tw relay T-xxx 受け入れ` に `accept.judgment` の判定と `findings`（`- 指摘:`）・`visual`（`- 目視:`）・`notes`、
      `tw relay T-xxx 振り返り` に `retrospect.line`。ワークフロースクリプトが走らせなかった段の鍵は書かない。
      `### 作業先` が別のリポジトリなら、`task-workflow` の置き場の other-repo の「合流」（`tw lap` の囲みと `tw land <枝> --fold`、先頭語の表）を打ち、`LANDED` を確かめてから送り出しへ進む。続けて Skill ツールで `tsukumo-workflow:ship-step` に ID を渡して呼ぶ
 
