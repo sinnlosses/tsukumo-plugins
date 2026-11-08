@@ -86,8 +86,8 @@ Claude Code 以外の環境（Codex など）へスキルを置く入口は、�
   `SKIP`・`NOTHING`・`NO_RANGE` なら `tw accept` が `accept` を閉じているので締めの agent は起こさず、受け入れ役は目視と材料だけを見る。差し戻しの上限は2回
 - 範囲の段の `phase_result`: 受け入れ・振り返りが範囲（`phaseCount`）に入っていれば、受け入れは締めの agent が通ったあとに `finished` で、
   締めを起こさない道（`SKIP`・`NOTHING`・`NO_RANGE`）では振り返りの agent が自分の段の前に `skipped` で、振り返りは振り返りの agent が `finished` で、どれも1回呼ぶ。
-  呼ばれない道が2つある。`steps` に振り返りが無い並び（`["implement", "accept"]` など）で `tw accept` が `SKIP`・`NOTHING`・`NO_RANGE` を返した道では、`skipped` を呼ぶ振り返りの agent が起きないので受け入れの `phase_result` は呼ばれない。
-  差し戻しが上限に達して `stopped` で返る道でも、締めの agent を起こさないので受け入れの `phase_result` は呼ばれない。どちらも帯は、メインが完了の通知のあとに渡す `work_plan`（`skills/next-task/script-flow.md` の手順4）で追いつく。
+  呼ばれない道がある。`steps` に振り返りが無い並び（`["implement", "accept"]` など）で `tw accept` が `SKIP`・`NOTHING`・`NO_RANGE` を返した道では、`skipped` を呼ぶ振り返りの agent が起きないので受け入れの `phase_result` は呼ばれない。
+  受け入れの段が `stopped` で返る道（差し戻しの上限、`tw accept` の STOP、直しのあとの verify の失敗など）でも、締めの agent が通ったあとの `finished` まで届かないので受け入れの `phase_result` は呼ばれない。どの道も帯は、メインが完了の通知のあとに渡す `work_plan`（`skills/next-task/script-flow.md` の手順4）で追いつく。
   受け入れ役は呼ばない。範囲内の agent は返そうとして `phase_result` の関門に1回止められうるので、依頼文に「自分の段の `phase_result` 以外は呼ばず、同じ返却を返し直す」と足す
 - 2周目以降: 受け入れ役の依頼文に、`tw brief acceptor --round` の出力へ前回の指摘の原文（`findings`）と材料の値（`friction`・`human`）をワークフロースクリプトが足して渡す。2周目の準備の agent は `tw lap review start` だけを打ち、`tw accept` は打たない（`accept` の end は締めの agent の `--after-review` だけが打つ。先に閉じると、締めの agent を hook が実装の agent と数えて `delegate` の start を偽って書く）
 - `tw lap <ID> <段> start` は、その段が開いているあいだは書かない（`delegate` を除く）。`tw accept` を重ねて打っても `accept`・`review` の start は重ならない
