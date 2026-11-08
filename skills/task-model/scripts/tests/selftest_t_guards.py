@@ -16,7 +16,6 @@ from selftest_body import task_body  # noqa: E402
 import accept_hook  # noqa: E402
 import beads  # noqa: E402
 import commit_guard  # noqa: E402
-import escalation  # noqa: E402
 import gitinfo  # noqa: E402
 import handback_guard  # noqa: E402
 import lap_hook  # noqa: E402
@@ -25,7 +24,6 @@ import metrics  # noqa: E402
 import ref_guard  # noqa: E402
 import stamps  # noqa: E402
 import taskfile  # noqa: E402
-import tw_escalate  # noqa: E402
 import tw_handback  # noqa: E402
 import tw_plan  # noqa: E402
 from selftest_fixtures import BODY, commit_task, disarm_ref_guard, flow_rows, hook_env, make_repo, metadata, readonly_git, run_guard, run_handback_guard, run_task, snapshot  # noqa: E402
@@ -785,22 +783,6 @@ def test_agent_scoped_guard() -> None:
         check("hooks.json の SubagentStop の matcher は retrospector の停止にも当たる",
               all(re.search(stop_matcher, f"{p}{lap_hook.RETROSPECTOR_TYPE}") for p in ("", "tsukumo-workflow:")),
               repr(stop_matcher))
-        beat_hooks = [(e, m, argv) for e, m, argv in all_hooks if "heartbeat" in argv]
-        check("hooks/hooks.json は PostToolUse・PostToolUseFailure で matcher の無い heartbeat を1つずつ呼ぶ",
-              sorted(e for e, _, _ in beat_hooks) == ["PostToolUse", "PostToolUseFailure"]
-              and all(m is None and argv[1:] == ["heartbeat"] for _, m, argv in beat_hooks),
-              str(beat_hooks))
-        beats = os.path.join(wt1, ".tw", "local", ledger.AGENT_BEATS_DIR_NAME)
-        for event, _, hook in beat_hooks:
-            tool = {"hook_event_name": event, "tool_name": "Read", "cwd": wt1}
-            agent = f"a-beat-{event}"
-            r = _run_hook(hook, {**tool, "agent_id": agent}, env, cwd=wt1)
-            check(f"hooks.json の {event} の heartbeat は agent_id 付きなら控えのある作業ツリーに鼓動を書く",
-                  r.returncode == 0 and r.stdout == "" and os.path.isfile(os.path.join(beats, agent)), r.stdout + r.stderr)
-            before = sorted(os.listdir(beats))
-            r = _run_hook(hook, tool, env, cwd=wt1)
-            check(f"hooks.json の {event} の heartbeat は agent_id が無ければ書かない",
-                  r.returncode == 0 and r.stdout == "" and sorted(os.listdir(beats)) == before, r.stdout + r.stderr)
         fake_root = tempfile.mkdtemp(dir=tmp)
         os.makedirs(os.path.join(fake_root, "bin"))
         shutil.copy2(os.path.join(PLUGIN_ROOT, "bin", "tw-hook"), os.path.join(fake_root, "bin", "tw-hook"))
@@ -809,11 +791,6 @@ def test_agent_scoped_guard() -> None:
         os.chmod(fake_tw, 0o755)
         crashed = {"hook_event_name": "PreToolUse", "cwd": wt1, "agent_id": "a-writer-1"}
         for event, matcher, hook in all_hooks:
-            if hook[1:] == ["heartbeat"]:
-                r = _run_hook(hook, crashed, env, root=fake_root, cwd=wt1)
-                check(f"hooks.json の {event} の heartbeat は tw を呼ばないので、tw が落ちても終了コード0",
-                      r.returncode == 0 and r.stdout == "" and "boom" not in r.stderr, r.stdout + r.stderr)
-                continue
             blocks = event == "PreToolUse" and any(g in hook for g in ("commit-guard", "handback-guard", "ask-guard", "work-repo-guard"))
             r = _run_hook(hook, crashed, env, root=fake_root)
             check(f"hooks.json の {event}（matcher {matcher}）の {hook[1:]} は、サブエージェントで tw が落ちると"

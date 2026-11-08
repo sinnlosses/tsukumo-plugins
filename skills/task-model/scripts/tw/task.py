@@ -3,7 +3,7 @@
 # 宣言が無いと Python 3.9 が、長い日本語の行の読み込み位置によって「Non-UTF-8 code」で落ちる。
 """Beads に置いたタスクの運用を操作する入口コマンド。
 
-使い方: tw <status|new|claim|release|hold|done|ship|finish|land|config|config-doctor|show|find|edit|plan-check|plan-phases|verify|verify-check|accept|brief|pause|step|lap|escalate-check|beat-watch|loop-check|flow-result|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|work-repo-guard|ask-guard|lap-hook|accept-hook|ref-guard> ...
+使い方: tw <status|new|claim|release|hold|done|ship|finish|land|config|config-doctor|show|find|edit|plan-check|plan-phases|verify|verify-check|accept|brief|pause|step|lap|loop-check|flow-result|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|work-repo-guard|ask-guard|lap-hook|accept-hook|ref-guard> ...
 
 plugin の `bin/tw` から呼ぶ。`commit-guard`・`handback-guard` の
 `--agent-scoped` は plugin の `hooks/hooks.json` が付け、入力に `agent_id` があるとき（サブエージェント）だけ関門を掛ける（`commit-guard` は主のセッションの書き込みの `bd` だけ例外）。
@@ -42,7 +42,6 @@ import tw_brief
 import tw_claim
 import tw_config
 import tw_edit
-import tw_escalate
 import tw_finish
 import tw_flow_result
 import tw_handback
@@ -166,18 +165,6 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
 
 出力: `LAPPED\tT-xxx\t<段>`（第3引数を付けたときは末尾に `\t<start|end>`）・`NOT_CLAIMED\tT-xxx`""",
     ),
-    "escalate-check": (
-        "開いている委譲が長引いていたら、difficulty を上げる提案の行を出す（止めない）。",
-        r"""台帳の `flow/` から、最後の `claim` 以降で開いている `delegate` の引き金を読む: `edit-churn`（同じファイルを5回書き換えた。`handback-guard` が残す）・`verify-failed-streak`（`verify` が2回続けて落ちた。`infra` の落ちは数えない）・`slow-delegation`（経過が直近28日の 委譲・同じ difficulty・normal の中央値〔`tw metrics --stages` と同じ元。標本5件未満なら見ない〕の3倍を超えた）。新しく立った引き金だけを出し、`escalate-suggest` を台帳へ残す（同じ委譲で同じ引き金は1回）。見張りの `beat-watch` が30秒ごとに同じ判定を読む（手で打つのは確かめるときだけ）。着手の印が無い・読めないときは何も出さない
-
-出力: 引き金ごとに `ESCALATE_SUGGEST\tT-xxx\t<引き金>\t<詳細>\t<次のモデル>`（次のモデルは `haiku`→`sonnet`、`sonnet`→`opus`、`opus` は `-`）。終了コードはいつも0""",
-    ),
-    "beat-watch": (
-        "委譲先の鼓動を読み、無音が続いたら `SILENT` の行を出す見張り（止めるまで回る）。",
-        r"""メインが委譲を投げた直後に `Monitor` で起こす。引数は タスクID・`Agent` の戻りの `agentId`・無音の秒数。5秒ごとに、plugin の hook（`PostToolUse`・`PostToolUseFailure` の `tw-hook heartbeat`）が委譲先のツール呼び出しのたびに書く `.tw/local/task-agent-beats/<agent_id>` の epoch 秒を読み、起こした時刻と鼓動の大きいほうからの無音が秒数以上になったら1回だけ出す（鼓動が進めば次の無音でまた出す）。30秒ごとに `escalate-check` と同じ提案を同じプロセスで出す。`agent_id` がファイル名に使えないか秒数が正の整数でなければ終了コード2
-
-出力: `SILENT <n>s`・`ESCALATE_SUGGEST\tT-xxx\t<引き金>\t<詳細>\t<次のモデル>`（行ごとに flush）""",
-    ),
     "loop-check": (
         "`/loop` を続けてよいかを、台帳の今日の出来事から数えて返す（読むだけ）。",
         r"""台帳の `flow/` のうちローカル日付の今日の出来事から、停止規則を順に見る: `max_ships`（`ship` が `SHIPPED` の件数が設定 `loop_max_ships`〔既定12〕に達した）・`hold_streak`（`SHIPPED`・`NOTHING` を挟まずに `hold` が3件続いた）・`verify_failed`（直近3件の `ship` のうち `VERIFY_FAILED` が2件以上）。複数当たればこの順の最初の理由を返す
@@ -291,7 +278,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
         "Claude Code の hook から呼ばれ、作業があるのに計画・検証が欠けた返却と、friction log の行が無い返却を拒む。",
         r"""Claude Code の hook（plugin の `hooks/hooks.json` だけが掛ける。`SubagentStop` と、`SubagentHandback` の `PreToolUse`）から呼ばれる。`--agent-scoped` の扱いは `commit-guard` と同じで、さらに `Edit`・`Write`・`NotebookEdit` を一度でも使ったサブエージェントの返却だけを判定する（`hooks/hooks.json` が matcher `Edit|Write|NotebookEdit` の `PreToolUse` でも呼び、`cwd` の作業ツリーに着手の控えがあれば `agent_id` ごとの印 `.tw/local/task-agent-writers/<agent_id>` を書いて何も出さない。書き先 `file_path`・`notebook_path` が作業ツリーとタスクの作業先の外なら書かず、書き先が読めない入力・タスクや作業ツリーが引けないときは書く側に倒す。印は着手の控えが無くなると消える。書き換えない受け入れ役の返却は判定しない）。入力の `cwd` の作業ツリーに `.tw/local/task-open-claims/` の控え（`commit-guard` と同じ読む順。`verify`・`step`・`pause` の控えも同じ）があり、控えのタスクのどれかに作業（`claim` した時点の `HEAD` より後のコミットか、タスク自身のファイル以外の変更）があって、`plan-check` が `PLAN_FIRST`・`PLAN_REGISTERED` でないか、`verify-check` が `VERIFIED_SAME`・`NOTHING` でなく `step` の控えも効かず、`pause` の控え（段の印の `pause` を含む）もいまの中身と違えば拒む。段の印はどれか1つが効けば通すので、並列の段の担当が `tw step` を打ち忘れて返しても、ほかの並列の段の効いている印で通る（担当を見分けないため。メインが返却の本文と差分で受け入れる）。タスクの `### 作業先` が別のリポジトリなら、枝の名前がタスクIDの小文字の作業ツリーにも同じ判定を当てる（作業は主ブランチとの分かれ目より後のコミットか変更で、`verify-check`・`step`・`pause` の控えはその作業ツリーのもの。作業先に `.tw/config.toml` を置けば、`.beads` が無くても作業先の作業ツリーで `tw verify` が打てて控えが効く。作業先の作業ツリーで `tw verify` が設定の判定（`MISSING`・`INVALID`）で打てないとき、または設定に検証コマンドが無いときは、`verify-check` を `NOTHING` と同じに扱って通す。その作業ツリーがまだ無ければ見ない）。`verify-check` が `VERIFIED_SAME` で通る返却でも、計画の段が2つ以上でその作業ツリーにも着手した作業ツリーにも `tw step` の控え（`.tw/local/task-step-stamps/<ID>.<n>`）が1つも無ければ、段を飛ばしたとして拒む（`1..N-1` の全部まではそろえさせない）。計画・検証が揃った作業のある返却でも、読める経路（`SubagentHandback`）で本文に `friction log:` の箇条（`- friction log: なし` か色つきの行）が1行も無ければ `FRICTION_LOG_MISSING` で拒む（途中の段の返却も同じ）。作業の無い返却（前提が誤り・`dropped`・計画だけの回）と本文が読めない `SubagentStop` は通す。並列の段の印は段ごとに残り、並列の組になる段の触るファイルの書き換えでは崩れない（止める返却は `tw pause T-xxx <n>` で段の印にする）。この関門は `hooks/hooks.json` の 1 か所から走り、殻 `${CLAUDE_PLUGIN_ROOT}/bin/tw-hook` 越しに `bin/tw` を呼ぶ。控えた `tw` と照らす `tw` の版が違うと中身の鍵の `scheme` が合わず `NOT_VERIFIED scheme <照らした側のチェックアウトの `tw_verify.py` のパス>` で止まる。クローンと取り込みを同じチェックアウトに揃え、第3列のチェックアウトの `bin/tw`（またはそこへ解決される PATH の `tw`）で `tw verify` を打ち直す。`bd` を呼ぶ
 
-出力: 拒むときだけ JSON 1行（`SubagentStop` は `{"decision":"block","reason":…}`、`PreToolUse` は deny。理由は欠けた `plan-check`・`verify-check` の行と次の一手。作業先の作業ツリーの行にはそのパスを添える）。通すとき・ほかのイベントやツールには何も出さない。ただし拒まない記録が付く。`Edit`・`Write`・`NotebookEdit` の `PreToolUse` では、同じ書き先の5回目の書き換えで着手の控えがちょうど1件なら `flow/` に `edit-churn`（`edits`・`agent`。`tw escalate-check` が読む）を1行足す。通す返却では: `SubagentStop` で入力の `agent_transcript_path` の歩数（`usage` を持つ assistant メッセージの id の種類数）が100を超えていれば、着手の控えがちょうど1件のとき台帳の `flow/` に `long-delegation`（`steps`・`agent`）を1行足す（`tw metrics` の `long_delegation`）。`SubagentHandback` の本文が約2,000トークン（ASCII 4文字＝1、ほかの1文字＝1と数えた近似）を超えていれば、同じく着手の控えがちょうど1件のとき `flow/` に `long-handback`（`tokens`・`agent`）を1行足す（`tw metrics` の `long_handback`。出力も終了コードも通す判定も変えない）
+出力: 拒むときだけ JSON 1行（`SubagentStop` は `{"decision":"block","reason":…}`、`PreToolUse` は deny。理由は欠けた `plan-check`・`verify-check` の行と次の一手。作業先の作業ツリーの行にはそのパスを添える）。通すとき・ほかのイベントやツールには何も出さない。ただし拒まない記録が付く。通す返却では: `SubagentStop` で入力の `agent_transcript_path` の歩数（`usage` を持つ assistant メッセージの id の種類数）が100を超えていれば、着手の控えがちょうど1件のとき台帳の `flow/` に `long-delegation`（`steps`・`agent`）を1行足す（`tw metrics` の `long_delegation`）。`SubagentHandback` の本文が約2,000トークン（ASCII 4文字＝1、ほかの1文字＝1と数えた近似）を超えていれば、同じく着手の控えがちょうど1件のとき `flow/` に `long-handback`（`tokens`・`agent`）を1行足す（`tw metrics` の `long_handback`。出力も終了コードも通す判定も変えない）
 
 """
         + HOOK_NOTE,
@@ -459,11 +446,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_lap.add_argument("stage")
     p_lap.add_argument("edge", nargs="?", default=None)
     p_lap.add_argument("--model", choices=taskfile.DIFFICULTY_VALUES, default=None)
-    sub.add_parser("escalate-check").add_argument("task_id")
-    p_beat = sub.add_parser("beat-watch")
-    p_beat.add_argument("task_id")
-    p_beat.add_argument("agent_id")
-    p_beat.add_argument("seconds")
     sub.add_parser("loop-check")
     p_relay = sub.add_parser("relay")
     p_relay.add_argument("task_id")
@@ -693,10 +675,6 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
             tw_handback.cmd_step(toplevel, args.task_id, args.step)
         elif args.command == "lap":
             tw_handback.cmd_lap(toplevel, args.task_id, args.stage, args.edge, args.model)
-        elif args.command == "escalate-check":
-            tw_escalate.cmd_escalate_check(toplevel, args.task_id)
-        elif args.command == "beat-watch":
-            tw_escalate.cmd_beat_watch(toplevel, args.task_id, args.agent_id, args.seconds)
         elif args.command == "loop-check":
             tw_loop.cmd_loop_check(toplevel)
         elif args.command == "relay":

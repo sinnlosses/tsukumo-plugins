@@ -12,7 +12,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -62,99 +61,6 @@ def run(hook: str, args: list[str], stdin: str, tw_exit: int, cwd: str | None = 
     path = "/usr/bin:/bin" if path_prefix is None else f"{path_prefix}:/usr/bin:/bin"
     env = {"PATH": path, "FAKE_TW_EXIT": str(tw_exit)}
     return subprocess.run([hook, *args], input=stdin, capture_output=True, text=True, env=env, cwd=cwd)
-
-
-def check_heartbeat_spares_python(tmp: str, hook: str) -> None:
-    repo = os.path.join(tmp, "repo-spy")
-    os.makedirs(repo)
-    subprocess.run(["git", "init", "-q", repo], check=True)
-    spy = os.path.join(tmp, "spy-bin")
-    os.makedirs(spy)
-    mark = os.path.join(tmp, "python-called")
-    with open(os.path.join(spy, "python3"), "w", encoding="utf-8") as f:
-        f.write(f'#!/bin/sh\n: > "{mark}"\nexec /usr/bin/python3 "$@"\n')
-    os.chmod(os.path.join(spy, "python3"), 0o755)
-    payload = json.dumps({"hook_event_name": "PostToolUse", "tool_name": "Read", "cwd": repo, "agent_id": "a-spy"})
-
-    r = run(hook, ["heartbeat"], payload, 1, cwd=repo, path_prefix=spy)
-    check("heartbeat は着手の控えが無い作業ツリーでは python3 を起こさない",
-          r.returncode == 0 and not os.path.exists(mark), repr((r.returncode, r.stderr)))
-
-    claims = os.path.join(repo, ".tw", "local", "task-open-claims")
-    os.makedirs(claims)
-    with open(os.path.join(claims, "T-1"), "w", encoding="utf-8"):
-        pass
-    r = run(hook, ["heartbeat"], payload, 1, cwd=repo, path_prefix=spy)
-    check("heartbeat は控えがあるときだけ python3 で最上位の agent_id を読んで書く",
-          r.returncode == 0 and os.path.exists(mark)
-          and os.path.isfile(os.path.join(repo, ".tw", "local", "task-agent-beats", "a-spy")),
-          repr((r.returncode, r.stderr)))
-
-
-def check_heartbeat(tmp: str, hook: str) -> None:
-    repo = os.path.join(tmp, "repo")
-    os.makedirs(repo)
-    subprocess.run(["git", "init", "-q", repo], check=True)
-    local = os.path.join(repo, ".tw", "local")
-    beats = os.path.join(local, "task-agent-beats")
-
-    def beat(payload: dict | str, where: str = repo) -> subprocess.CompletedProcess[str]:
-        return run(hook, ["heartbeat"], payload if isinstance(payload, str) else json.dumps(payload), 1, cwd=where)
-
-    tool = {"hook_event_name": "PostToolUse", "tool_name": "Read", "cwd": repo}
-    r = beat({**tool, "agent_id": "a-1"})
-    check("heartbeat は着手の控えが無ければ書かず、.tw/local も作らない",
-          r.returncode == 0 and r.stdout == "" and not os.path.exists(local), repr((r.returncode, r.stdout, r.stderr)))
-
-    os.makedirs(os.path.join(local, "task-open-claims"))
-    with open(os.path.join(local, "task-open-claims", "T-1"), "w", encoding="utf-8"):
-        pass
-    before = int(time.time())
-    r = beat({**tool, "agent_id": "a-1"})
-    after = int(time.time())
-    try:
-        with open(os.path.join(beats, "a-1"), encoding="utf-8") as f:
-            written = f.read().strip()
-    except OSError:
-        written = ""
-    check("heartbeat は控えがあり agent_id 付きなら task-agent-beats/<agent_id> に今の epoch 秒を書き、tw を呼ばない",
-          r.returncode == 0 and r.stdout == "" and "fake tw" not in r.stderr
-          and written.isdigit() and before - 5 <= int(written) <= after + 5,
-          repr((r.returncode, r.stdout, r.stderr, written)))
-
-    for label, payload in (
-        ("agent_id の無い入力（主のセッション）", tool),
-        ("文字列の中にしか agent_id が無い入力", {**tool, "tool_input": {"command": 'echo "agent_id": "a-evil"'}}),
-        ("ファイル名に使えない agent_id", {**tool, "agent_id": "../x"}),
-        ("入れ子のキーにしか agent_id が無い入力（主のセッション）", {**tool, "tool_response": {"agent_id": "a-nested"}}),
-        ("入れ子のキーが前後に複数あり最上位に無い入力",
-         {"tool_input": {"items": [{"agent_id": "a-n1"}]}, **tool, "tool_response": {"agent_id": "a-n2", "x": {"agent_id": "a-n3"}}}),
-        ("最上位の agent_id が文字列でない入力", {**tool, "agent_id": 5, "tool_response": {"agent_id": "a-n4"}}),
-    ):
-        r = beat(payload)
-        names = sorted(os.listdir(beats))
-        check(f"heartbeat は {label}では書かない", r.returncode == 0 and r.stdout == "" and names == ["a-1"],
-              repr((r.returncode, r.stdout, names)))
-
-    nested = {"tool_input": {"agent_id": "a-n1"}, "tool_response": {"agent_id": "a-n2", "list": [{"agent_id": "a-n3"}]}}
-    for label, name, payload in (
-        ("入れ子のキーより後ろにある最上位", "a-top-after", json.dumps({**tool, **nested, "agent_id": "a-top-after"})),
-        ("入れ子のキーより前にある最上位", "a-top-before", json.dumps({"agent_id": "a-top-before", **tool, **nested})),
-        ("入れ子が前後に複数ある間の最上位", "a-top-mid",
-         json.dumps({"tool_input": {"agent_id": "a-n1"}, "agent_id": "a-top-mid", **tool, "tool_response": {"agent_id": "a-n2"}})),
-        ("整形済み（改行と字下げ）の入力の最上位", "a-top-pretty", json.dumps({**tool, **nested, "agent_id": "a-top-pretty"}, indent=2)),
-    ):
-        r = beat(payload)
-        names = sorted(os.listdir(beats))
-        check(f"heartbeat は {label}の agent_id だけで書く",
-              r.returncode == 0 and r.stdout == "" and name in names and not any(n.startswith("a-n") for n in names),
-              repr((r.returncode, r.stdout, r.stderr, names)))
-
-    outside = os.path.join(tmp, "not-git")
-    os.makedirs(outside)
-    r = beat({**tool, "agent_id": "a-2", "cwd": outside}, where=outside)
-    check("heartbeat は git の外では何も書かず 0", r.returncode == 0 and r.stdout == "" and os.listdir(outside) == [],
-          repr((r.returncode, r.stdout, r.stderr)))
 
 
 def main() -> int:
@@ -209,9 +115,6 @@ def main() -> int:
         r = run(missing, guard, SUBAGENT, 0)
         check("(d) bin/tw が無い（127）なら agent_id ありでも案内して 0",
               r.returncode == 0 and "前提が欠けている" in r.stderr, repr((r.returncode, r.stderr)))
-
-        check_heartbeat(tmp, hook)
-        check_heartbeat_spares_python(tmp, hook)
 
     if failures:
         print(f"NG: {len(failures)} 件")

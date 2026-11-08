@@ -44,10 +44,8 @@ PATH に無ければ plugin を入れる。どのディレクトリから打っ�
 | `lap T-xxx <段> [start\|end] [--model <モデル>]` | オーケストレーターの段の頭と終わりを記録するとき（メイン。段は `direct`・`delegate`・`accept`・`review`・`retro`・`land`・`sync`。`end` は段が開いているときだけ記録する。`--model` は `delegate start` にだけ付け、分業と引き上げの委譲の直前に打つ） | `LAPPED`・`NOT_CLAIMED` |
 | `relay T-xxx <鍵> [--body-file <path\|->]` | 段の結果を後の段へ申し送りとして書くとき（`--body-file` 付き。着手の印の持ち主だけ）と、前の段の申し送りを鍵で引くとき（欄と鍵は WORKFLOW.md「段の申し送り」） | `RELAYED`・`RELAY`（次の行から本文）・`NONE`・`NOT_OWNER`・`NOT_READY` |
 | `flow-result T-xxx --json-file <path\|-> [--patch <path>] [--transcript-dir <dir>]` | ワークフロースクリプトの戻り値の JSON から、申し送りを書き、止まっていれば release までを行うとき（着手の印の持ち主だけ。通れば `受け入れ`・`振り返り`、止まれば `再開`〔1行目 `phase`、`--patch` があれば2行目 `- patch: <パス>`〕を書く。`実装` は書かない。patch の退避はせず、渡されたパスを書くだけ。`--transcript-dir` があれば run の `journal.jsonl` から段ごとに台帳へ `flow_stage`、止まったときは `flow_stopped` を書く〔読むのは journal の `type`・`label`・`agentId`・`result.verdict`・`findings` の長さ・`findingKinds` と transcript の先頭行・末尾行の時刻だけ。差し戻しの `flow_stage` は `findings`・`kinds` も持つ。`flow_stopped` の `phase` は戻り値の JSON から取る〕） | `RELAYED`・`FINISH_READY`・`RELEASED\t<ID>\t<phase>\t<reason>`・`LEFTOVER`・`NOT_OWNER`。終了コード2は壊れた JSON か、無い `--transcript-dir` |
-| `escalate-check T-xxx` | `beat-watch` が30秒ごとに読む（手で打たない）。開いている委譲の引き上げの提案 | `ESCALATE_SUGGEST`（引き金・詳細・次のモデル）。止めず終了コード0 |
-| `beat-watch T-xxx <agentId> <秒数>` | 委譲の直後に `Monitor` で起こす見張り（メイン） | `SILENT <n>s`・`ESCALATE_SUGGEST`。不正な引数は2 |
 | `loop-check` | `/loop` の入口の段と、続行判断（`tw ship`・`tw hold` のあと）で打つ。今日の台帳から停止規則（送った件数が `loop_max_ships` に達した・`hold` が3件連続・直近3件の `ship` で `VERIFY_FAILED` が2件）を見る | `CONTINUE`／`STOP`（`max_ships`・`hold_streak`・`verify_failed`）、続けて `SHIPPED_TODAY`（件数・ID）。終了コード0 |
-| `handback-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むとき（と構造の節の欠けを知らせるとき）だけ JSON 1行（`SubagentStop` は `block`、`PreToolUse` は deny か `additionalContext`）。ただし同じファイルの5回目の書き換えで `edit-churn` を残し、通す返却で、委譲の歩数が100超なら `flow/` に `long-delegation`、本文が約2,000トークン超なら `long-handback`（`tw metrics` の `long_delegation`・`long_handback`） |
+| `handback-guard [--agent-scoped]` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むとき（と構造の節の欠けを知らせるとき）だけ JSON 1行（`SubagentStop` は `block`、`PreToolUse` は deny か `additionalContext`）。ただし通す返却で、委譲の歩数が100超なら `flow/` に `long-delegation`、本文が約2,000トークン超なら `long-handback`（`tw metrics` の `long_delegation`・`long_handback`） |
 | `ask-guard` | hook が呼ぶ（手で打たない）。拒むものは下の「hook の関門」節 | 拒むときだけ deny の JSON 1行（理由はタスクIDと次の一手）。通すときは何も出さない |
 | `lap-hook` | hook が呼ぶ（手で打たない）。段の頭と終わりを書く記録で、拒まない（下の lap の段落） | 何も出さない |
 | `accept-hook` | hook が呼ぶ。受け入れの準備と締め（`hook-rationale.md`） | JSON |
@@ -77,7 +75,7 @@ PATH に無ければ plugin を入れる。どのディレクトリから打っ�
 
 ### hook の関門
 
-hook 5種（Claude Code の hook 4種と git の hook `ref-guard`）の仕様の正典はこの節。判定の細部は `tw commit-guard --help`・`tw handback-guard --help`・`tw ask-guard --help`・`tw ref-guard --help` が持つ。同じ `hooks/hooks.json` から呼ぶ `lap-hook`（下の lap の段落）・`accept-hook`（`hook-rationale.md`）と `heartbeat`（委譲先の鼓動 `.tw/local/task-agent-beats/<agent_id>` を書く。`bin/tw-hook`）は関門に数えない。
+hook 5種（Claude Code の hook 4種と git の hook `ref-guard`）の仕様の正典はこの節。判定の細部は `tw commit-guard --help`・`tw handback-guard --help`・`tw ask-guard --help`・`tw ref-guard --help` が持つ。同じ `hooks/hooks.json` から呼ぶ `lap-hook`（下の lap の段落）・`accept-hook`（`hook-rationale.md`）は関門に数えない。
 
 | hook | 掛かる場面 | 拒むもの | 拒まれた側の次の一手 |
 | --- | --- | --- | --- |

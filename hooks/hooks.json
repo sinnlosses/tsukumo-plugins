@@ -64,20 +64,6 @@
           { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/tw-hook", "args": ["accept-hook"] }
         ]
       }
-    ],
-    "PostToolUse": [
-      {
-        "hooks": [
-          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/tw-hook", "args": ["heartbeat"] }
-        ]
-      }
-    ],
-    "PostToolUseFailure": [
-      {
-        "hooks": [
-          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/tw-hook", "args": ["heartbeat"] }
-        ]
-      }
     ]
   }
 }

@@ -21,7 +21,6 @@ ALL = "ALL"
 
 SCOPED_TW = {
     "tw_accept.py": ("selftest_t_accept",),
-    "tw_escalate.py": ("selftest_t_guards",),
     "tw_finish.py": ("selftest_t_finish",),
     "tw_flow_result.py": ("selftest_t_flow",),
     "tw_handback.py": ("selftest_t_guards", "selftest_t_verify"),
