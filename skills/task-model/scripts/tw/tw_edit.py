@@ -217,7 +217,7 @@ def cmd_plan_phases(
             print(f"NO_PHASE\t{shown}\t--also は段の番号のコンマ区切り: {also}")
             raise SystemExit(2)
         also_numbers = tuple(int(x) for x in also.split(","))
-    steps = tuple(tw_config.skill_steps(toplevel, config))
+    steps = (*tw_config.script_steps(config), taskfile.STEP_SHIP)
     skipped_names = tuple(x.strip() for x in skipped.split(",") if x.strip()) if skipped else ()
     result, error = taskfile.work_plan_phases(
         specs,
@@ -227,7 +227,7 @@ def cmd_plan_phases(
         also_numbers,
         steps,
         skipped_names,
-        widen_range=config.flow == layout.FLOW_SCRIPT,
+        widen_range=True,
     )
     if result is None:
         print(f"NO_PHASE\t{shown}\t{error}")

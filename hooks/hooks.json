@@ -30,12 +30,6 @@
         "hooks": [
           { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/tw-hook", "args": ["--fail-closed", "ask-guard"] }
         ]
-      },
-      {
-        "matcher": "Skill",
-        "hooks": [
-          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/tw-hook", "args": ["lap-hook"] }
-        ]
       }
     ],
     "SubagentStop": [

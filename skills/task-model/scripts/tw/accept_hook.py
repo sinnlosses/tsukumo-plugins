@@ -57,8 +57,6 @@ def run(stdin: IO[str], stdout: IO[str]) -> None:
         if len(claims) != 1:
             return
         toplevel = gitinfo.git_toplevel(cwd)
-        if layout.read_config(toplevel).flow != layout.FLOW_SCRIPT:
-            return
         if event == "SubagentStart":
             out: dict | None = {
                 "hookSpecificOutput": {"hookEventName": "SubagentStart", "additionalContext": _prepare(toplevel, claims[0])}

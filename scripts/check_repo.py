@@ -65,7 +65,6 @@ PLUGIN_HOOKS = (
     ("PreToolUse", "Edit|Write|NotebookEdit", ("--fail-closed", "work-repo-guard")),
     ("PreToolUse", "SubagentHandback", ("--fail-closed", "handback-guard", "--agent-scoped")),
     ("PreToolUse", "AskUserQuestion", ("--fail-closed", "ask-guard")),
-    ("PreToolUse", "Skill", ("lap-hook",)),
     ("SubagentStop", None, ("handback-guard", "--agent-scoped")),
     ("SubagentStop", "(^|:)acceptor$", ("accept-hook",)),
     ("SubagentStop", "(^|:)(acceptor|retrospector)$", ("lap-hook",)),

@@ -580,11 +580,11 @@ ID_SHIP = "ship"
 ID_FIX = "fix"
 ID_VERIFY = "verify"
 
-STEP_IMPLEMENT = "implement-step"
-STEP_ACCEPT = "accept-step"
-STEP_RETRO = "retrospect-step"
-STEP_SHIP = "ship-step"
-# 並びのスキルの全名の `:` より後ろ。この4つのほかは名前がそのままプログレスバーの段の名前になる
+STEP_IMPLEMENT = "implement"
+STEP_ACCEPT = "accept"
+STEP_RETRO = "retrospect"
+STEP_SHIP = "ship"
+# ワークフロースクリプトの段の名前。この4つのほかは名前がそのままプログレスバーの段の名前になる
 DEFAULT_STEP_NAMES = (STEP_IMPLEMENT, STEP_ACCEPT, STEP_RETRO, STEP_SHIP)
 
 FLOW_DELEGATE = "delegate"
@@ -623,9 +623,9 @@ def work_plan_phases(
 ) -> tuple[dict | None, str | None]:
     """`work_plan` の引数（`phases`＝段の id と名前の `{id, name}`〔並列は配列〕・`current`・`finishedInGroup`・あれば `delegatedRange`・`skippedPhases`）。形が決まらなければ `(None, 理由)`。
 
-    `flow` は `FLOW_DELEGATE`・`FLOW_MAIN`・`FLOW_DIRECT`。振り返りの段は `steps` に `retrospect-step` があるときだけ。`through` はその段までと、それ以前を済ませた位置（省略は何も済んでいない）。
+    `flow` は `FLOW_DELEGATE`・`FLOW_MAIN`・`FLOW_DIRECT`。振り返りの段は `steps` に `retrospect` があるときだけ。`through` はその段までと、それ以前を済ませた位置（省略は何も済んでいない）。
     `also` は並列のまとまりの中で、`through` の後ろにあるが先に済んだ段の番号。
-    `steps` は並びのスキルの全名で、空なら `DEFAULT_STEP_NAMES` の順。`skipped` は済んだ段のうち飛ばした段の名前。
+    `steps` は段の名前（旧いスキルの全名も短い名前に読む）で、空なら `DEFAULT_STEP_NAMES` の順。`skipped` は済んだ段のうち飛ばした段の名前。
     `widen_range` が真なら、範囲が確定しているとき、実装の直後に続く受け入れ・振り返りの段も `delegatedRange` の `count` に数える。
     """
     direct = flow == FLOW_DIRECT
@@ -634,7 +634,7 @@ def work_plan_phases(
     ids: list[list[str]] = []
     range_out: dict | None = None
     widening = False
-    for step in [s.rsplit(":", 1)[-1] for s in steps] or list(DEFAULT_STEP_NAMES):
+    for step in [layout.step_short_name(s) for s in steps] or list(DEFAULT_STEP_NAMES):
         if step == STEP_IMPLEMENT and direct:
             entries += [PHASE_FIX, PHASE_VERIFY]
             keys += [[PHASE_FIX], [PHASE_VERIFY]]

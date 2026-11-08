@@ -2,8 +2,6 @@
 
 - `SubagentStart` で、`agent_type` の最後の `:` より後ろが `IMPLEMENTER_TYPES` のもの → 段 `delegate` の `start`
 - `SubagentStart` で、`agent_type` の最後の `:` より後ろが `retrospector` のもの → 段 `retro` の `start`（ワークフロースクリプトの振り返りの agent）
-- 主のセッション（入力に `agent_id` が無い）の `Skill` の `PreToolUse` で、`tool_input.skill` の最後の `:` より後ろが
-  `retrospect` のもの → 段 `retro` の `start`
 - `SubagentStop` で、`agent_type` の最後の `:` より後ろが `acceptor` のもの → 段 `review` の `end`（開いているときだけ）
 - `SubagentStop` で、`agent_type` の最後の `:` より後ろが `retrospector` のもの → 段 `retro` の `end`（開いているときだけ）
 
@@ -20,7 +18,6 @@ import json
 import os
 from typing import IO
 
-import agent_scope
 import gitinfo
 import ledger
 import metrics
@@ -29,7 +26,6 @@ import tw_base
 IMPLEMENTER_TYPES = ("no-delegate", "general-purpose")
 ACCEPTOR_TYPE = "acceptor"
 RETROSPECTOR_TYPE = "retrospector"
-RETRO_SKILL = "retrospect"
 
 
 def run(stdin: IO[str]) -> None:
@@ -64,11 +60,6 @@ def _stage(payload: dict) -> tuple[str, str] | None:
         return "review", "end"
     if event == "SubagentStop" and _short_name(payload.get("agent_type")) == RETROSPECTOR_TYPE:
         return "retro", "end"
-    if event == "PreToolUse" and payload.get("tool_name") == "Skill" and agent_scope.agent_id(payload) is None:
-        tool_input = payload.get("tool_input")
-        skill = tool_input.get("skill") if isinstance(tool_input, dict) else None
-        if _short_name(skill) == RETRO_SKILL:
-            return "retro", "start"
     return None
 
 

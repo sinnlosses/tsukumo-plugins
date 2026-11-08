@@ -11,30 +11,9 @@ import gitinfo
 import layout
 
 
-def step_candidates(project_root: str | None, flow: str = layout.FLOW_SKILLS) -> list[layout.StepCandidate]:
-    """並びの候補。`flow` が `script` ならワークフロースクリプトの段、`skills` なら `workflow-step` の印のあるスキル。"""
-    if flow == layout.FLOW_SCRIPT:
-        return layout.script_step_candidates()
-    return layout.step_candidates(project_root, os.path.expanduser("~"), layout.own_plugin_root())
-
-
-def steps_default(toplevel: str, flow: str = layout.FLOW_SKILLS) -> list[str]:
-    """`steps` を書いていないときの並び（schema 2 の `default`）。"""
-    return layout.default_steps(step_candidates(toplevel, flow))
-
-
-def skill_steps(toplevel: str, config: layout.Config) -> list[str]:
-    """スキルの全名で読む側（`tw brief`・`tw plan-phases`）の並び。`flow` が `script` のとき、または `skills` でもワークフロースクリプトの段の短い名前で書いてあるとき（`script` で書いたまま切り戻したとき）は、スキルの全名に読み替えて送り出しの段を末尾に足す。"""
-    script_names = {name for name, _, _ in layout.SCRIPT_STEPS}
-    script_written = config.steps is not None and any(s in script_names for s in config.steps)
-    if config.flow != layout.FLOW_SCRIPT and not script_written:
-        return list(config.steps) if config.steps is not None else steps_default(toplevel)
-    wanted = layout.script_steps(config.steps) if config.steps is not None else steps_default(toplevel, layout.FLOW_SCRIPT)
-    candidates = layout.step_candidates(toplevel, os.path.expanduser("~"), layout.own_plugin_root())
-    by_name: dict[str, str] = {}
-    for c in sorted(candidates, key=lambda c: not c.own):
-        by_name.setdefault(layout.step_short_name(c.value), c.value)
-    return [by_name[n] for n in [*wanted, "ship"] if n in by_name]
+def script_steps(config: layout.Config) -> list[str]:
+    """設定の `steps`（無ければ既定の並び）を、ワークフロースクリプトの段の名前にしたもの。"""
+    return layout.script_steps(config.steps) if config.steps is not None else layout.default_steps()
 
 
 def _toplevel_or_none() -> str | None:
@@ -44,20 +23,9 @@ def _toplevel_or_none() -> str | None:
         return None
 
 
-def _flow_or_default(toplevel: str | None) -> str:
-    if toplevel is None:
-        return layout.FLOW_SKILLS
-    try:
-        return layout.read_config(toplevel).flow
-    except layout.ConfigError:
-        return layout.FLOW_SKILLS
-
-
 def cmd_config_schema() -> None:
-    """欄の形（schema 2。流れ・並び・シェル書き込みの判定・コマンド型6欄・ブランチの扱い）を1行の JSON で出す（読むだけ）。候補は作業ツリー・`~`・`tw` と同じ plugin から走査し、設定の `flow` が `script` なら並びの候補はワークフロースクリプトの段。"""
-    toplevel = _toplevel_or_none()
-    schema = layout.config_schema(toplevel, os.path.expanduser("~"), layout.own_plugin_root(), _flow_or_default(toplevel))
-    print(json.dumps(schema, ensure_ascii=False))
+    """欄の形（schema 2。流れ・並び・シェル書き込みの判定・コマンド型6欄・ブランチの扱い）を1行の JSON で出す（読むだけ。設定にはよらない）。並びの候補はワークフロースクリプトの段。"""
+    print(json.dumps(layout.config_schema(), ensure_ascii=False))
 
 
 def cmd_config_entries() -> None:
@@ -79,7 +47,7 @@ def cmd_config_set(toplevel: str, key: str, value: str) -> None:
         new_text = layout.config_text_with(text, key, value)
         if key == layout.STEPS_KEY:
             items = json.loads(value)
-            allowed = {c.value for c in step_candidates(toplevel, config.flow)} | set(config.steps or ())
+            allowed = {c.value for c in layout.script_step_candidates()} | set(config.steps or ())
             unknown = [i for i in items if i not in allowed]
             if unknown:
                 raise layout.ConfigValueError(f"steps の候補にも今の値にも無い名前: {', '.join(unknown)}")

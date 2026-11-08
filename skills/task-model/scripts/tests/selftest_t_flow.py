@@ -16,7 +16,6 @@ import ledger  # noqa: E402
 import metrics  # noqa: E402
 import taskfile  # noqa: E402
 import tw_base  # noqa: E402
-import tw_config  # noqa: E402
 from selftest_fixtures import BODY, PLANNED_BODY, commit_task, flow_rows, make_repo, run_task  # noqa: E402
 
 
@@ -47,30 +46,13 @@ def _compact_json_array(items: list[str]) -> str:
     return json.dumps(items, ensure_ascii=False, separators=(",", ":"))
 
 
-def _skill(root: str, name: str, mark: str | None, description: str = "説明", order: str | None = None,
-           title: str | None = None) -> str:
-    """`root/<name>/SKILL.md` を書く。`mark` は `metadata` に置く `workflow-step` の値（None なら metadata を置かない）。
-    `order` は `workflow-step-order`、`title` は `workflow-step-title` の値（None なら置かない）。"""
-    meta = f'metadata:\n  workflow-step: "{mark}"\n' if mark is not None else ""
-    if mark is not None and order is not None:
-        meta += f'  workflow-step-order: "{order}"\n'
-    if mark is not None and title is not None:
-        meta += f'  workflow-step-title: "{title}"\n'
-    return write(
-        os.path.join(root, name, "SKILL.md"),
-        f"---\nname: {name}\ndescription: >\n  {description}\n  続き\n{meta}---\n本文\n",
-    )
-
-
 READONLY_KEYS = ("store", "tracker", "github_project", "backup", "base_branch", "loop_max_ships")
 
 
-def _entry_skill(root: str, name: str, mark: str, title: str | None = None, step: bool = False) -> str:
+def _entry_skill(root: str, name: str, mark: str, title: str | None = None) -> str:
     meta = f'  workflow-entry: "{mark}"\n'
     if title is not None:
         meta += f'  workflow-entry-title: "{title}"\n'
-    if step:
-        meta += '  workflow-step: "true"\n'
     return write(
         os.path.join(root, name, "SKILL.md"),
         f"---\nname: {name}\ndescription: 入口の説明\nmetadata:\n{meta}---\n本文\n",
@@ -118,43 +100,39 @@ def _config_rows(repo: str) -> dict[str, list[str]]:
     return {r.split("\t")[0]: r.split("\t") for r in run_task(repo, "config").stdout.splitlines() if "\t" in r}
 
 
-def test_config_flow_switches_step_candidates() -> None:
-    say("自己テスト: 設定の欄 flow は既定 skills で、script にすると config --schema の steps の候補がワークフロースクリプトの段になる")
+def test_config_flow_is_script_only() -> None:
+    say("自己テスト: 設定の欄 flow の既定と値は script だけで、skills は script として読み、set は拒む。steps の候補は常にワークフロースクリプトの段")
     with tempfile.TemporaryDirectory() as tmp:
         repo = _make_config_doctor_repo(tmp, "flow")
         flow = _schema_key(repo, "flow")
-        check("flow の既定は skills で、選択肢は skills と script",
-              flow["default"] == "skills" and [v["value"] for v in flow["values"]] == ["skills", "script"], repr(flow))
-        check("flow が skills の steps の候補はワークフロースクリプトの段の名前でない",
-              "implement" not in [v["value"] for v in _schema_key(repo, "steps")["values"]])
-        check("tw config の flow の行は skills・default", _config_rows(repo)["flow"][1:] == ["skills", "default"])
+        check("flow の既定は script で、選択肢は script だけ",
+              flow["default"] == "script" and [v["value"] for v in flow["values"]] == ["script"], repr(flow))
+        steps = _schema_key(repo, "steps")
+        check("steps の候補と既定は implement・accept・retrospect",
+              [v["value"] for v in steps["values"]] == ["implement", "accept", "retrospect"]
+              and steps["default"] == ["implement", "accept", "retrospect"], repr(steps))
+        check("tw config の flow の行は script・default", _config_rows(repo)["flow"][1:] == ["script", "default"])
+        check("tw config の steps の行は既定の3段", json.loads(_config_rows(repo)["steps"][1]) == ["implement", "accept", "retrospect"])
         done = run_task(repo, "config", "set", "flow", "script")
         check("flow を script にできる", done.returncode == 0 and done.stdout.strip() == "SET\tflow\tscript",
               done.stdout + done.stderr)
-        steps = _schema_key(repo, "steps")
-        check("flow が script の steps の候補と既定は implement・accept・retrospect",
-              [v["value"] for v in steps["values"]] == ["implement", "accept", "retrospect"]
-              and steps["default"] == ["implement", "accept", "retrospect"], repr(steps))
         set_steps = run_task(repo, "config", "set", "steps", '["implement","accept"]')
-        check("flow が script なら steps にワークフロースクリプトの段の名前を書ける", set_steps.returncode == 0, set_steps.stdout + set_steps.stderr)
+        check("steps にワークフロースクリプトの段の名前を書ける", set_steps.returncode == 0, set_steps.stdout + set_steps.stderr)
         check("tw config の steps の行はワークフロースクリプトの段の名前の配列", _config_rows(repo)["steps"][1] == '["implement","accept"]')
-        bad = run_task(repo, "config", "set", "flow", "workflow")
-        check("flow の値が skills・script の外なら終了コード2", bad.returncode == 2, bad.stdout + bad.stderr)
-        mapped = tw_config.skill_steps(repo, layout.read_config(repo))
-        check("スキルの全名で読む側には、ワークフロースクリプトの段をスキルの全名に読み替え、送り出しを末尾に足して渡す",
-              [layout.step_short_name(s) for s in mapped] == ["implement", "accept", "ship"], repr(mapped))
-        run_task(repo, "config", "set", "flow", "skills")
-        back = tw_config.skill_steps(repo, layout.read_config(repo))
-        check("script で書いた短い名前の steps は、flow を skills に戻してもスキルの全名に読み替え、送り出しを足す",
-              [layout.step_short_name(s) for s in back] == ["implement", "accept", "ship"] and all("-step" in s for s in back),
-              repr(back))
-        row = json.loads(_config_rows(repo)["steps"][1])
-        check("切り戻したあとの tw config の steps の行も、スキルの全名で送り出しを足した並びで出る",
-              [layout.step_short_name(s) for s in row] == ["implement", "accept", "ship"] and all("-step" in s for s in row),
-              repr(row))
-        check("スキルの全名で書いた steps もワークフロースクリプトの段の名前に読み替えられ、送り出しは落ちる",
-              layout.script_steps(["tsukumo-workflow:implement-step", "tsukumo-workflow:ship-step", "retrospect"])
-              == ["implement", "retrospect"])
+        for value in ("skills", "workflow"):
+            bad = run_task(repo, "config", "set", "flow", value)
+            check(f"flow を {value} にする set は終了コード2", bad.returncode == 2, bad.stdout + bad.stderr)
+        config_path = os.path.join(repo, ".tw", "config.toml")
+        with open(config_path, encoding="utf-8") as f:
+            text = f.read()
+        write(config_path, text.replace('flow = "script"', 'flow = "skills"'))
+        legacy = layout.read_config(repo)
+        check("設定に flow = \"skills\" が残っていても script として読む", legacy.flow == "script", repr(legacy.flow))
+        check("そのときの tw config も落ちず、flow の行は script",
+              _config_rows(repo)["flow"][1] == "script", repr(_config_rows(repo).get("flow")))
+        old_name = lambda step: "tsukumo-workflow:" + step + "-step"
+        check("旧いスキルの全名で書いた steps もワークフロースクリプトの段の名前に読み替えられ、送り出しは落ちる",
+              layout.script_steps([old_name("implement"), old_name("ship"), "retrospect"]) == ["implement", "retrospect"])
 
 
 def _relay_out(wt: str, task_id: str, key: str) -> str:
@@ -575,7 +553,7 @@ def test_metrics_escapes_lists_candidates() -> None:
 TESTS = (
     test_unregistered_tests_named,
     test_all_tests_registered,
-    test_config_flow_switches_step_candidates,
+    test_config_flow_is_script_only,
     test_flow_result_writes_relays_and_releases,
     test_flow_result_writes_journal_stages,
     test_metrics_counts_flow_stage_once,

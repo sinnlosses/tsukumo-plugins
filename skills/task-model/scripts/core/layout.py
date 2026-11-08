@@ -54,9 +54,9 @@ STEPS_KEY = "steps"
 REVIEW_CODE_GLOBS_KEY = "review_code_globs"
 SHELL_WRITE_GUARD_KEY = "shell_write_guard"
 FLOW_KEY = "flow"
-FLOW_SKILLS = "skills"
+FLOW_SKILLS = "skills"  # 旧い値。読むときは `FLOW_SCRIPT` として扱う
 FLOW_SCRIPT = "script"
-FLOW_VALUES = (FLOW_SKILLS, FLOW_SCRIPT)
+FLOW_VALUES = (FLOW_SCRIPT,)
 SHELL_WRITE_GUARD_TW = "tw"
 SHELL_WRITE_GUARD_PROJECT = "project"
 SHELL_WRITE_GUARD_VALUES = (SHELL_WRITE_GUARD_TW, SHELL_WRITE_GUARD_PROJECT)
@@ -143,7 +143,7 @@ class Config:
     steps: tuple[str, ...] | None = None
     review_code_globs: tuple[str, ...] = ()
     shell_write_guard: str = SHELL_WRITE_GUARD_TW
-    flow: str = FLOW_SKILLS
+    flow: str = FLOW_SCRIPT
     loop_max_ships: int = DEFAULT_LOOP_MAX_SHIPS
     written: frozenset = frozenset()
 
@@ -330,7 +330,7 @@ def build_config(source: str | None, values: dict[str, str | None]) -> Config:
         steps=tuple(json.loads(values["steps"])) if values.get("steps") else None,
         review_code_globs=tuple(json.loads(values.get(REVIEW_CODE_GLOBS_KEY) or "[]")),
         shell_write_guard=values.get(SHELL_WRITE_GUARD_KEY) or defaults.shell_write_guard,
-        flow=values.get(FLOW_KEY) or defaults.flow,
+        flow=FLOW_SCRIPT if values.get(FLOW_KEY) == FLOW_SKILLS else values.get(FLOW_KEY) or defaults.flow,
         loop_max_ships=_loop_max_ships(source, values.get("loop_max_ships"), defaults.loop_max_ships),
         written=frozenset(values),
     )
@@ -339,7 +339,7 @@ def build_config(source: str | None, values: dict[str, str | None]) -> Config:
             f"{source}: {SHELL_WRITE_GUARD_KEY} の値 {config.shell_write_guard!r} は {' / '.join(SHELL_WRITE_GUARD_VALUES)} のどちらか"
         )
     if config.flow not in FLOW_VALUES:
-        raise ConfigError(f"{source}: {FLOW_KEY} の値 {config.flow!r} は {' / '.join(FLOW_VALUES)} のどちらか")
+        raise ConfigError(f"{source}: {FLOW_KEY} の値 {config.flow!r} は {' / '.join(FLOW_VALUES)} だけ")
     if config.github_project is not None and config.project_owner_number is None:
         raise ConfigError(f"{source}: github_project の値 {config.github_project!r} が \"<owner>/<番号>\" の形でない")
     if config.tracker == "github" and config.github_project is None:
@@ -357,11 +357,8 @@ class ConfigValueError(ValueError):
     """`set` に渡したキー・値が書けない（呼ぶ側が引数の誤り・終了コード2にする）。"""
 
 
-# --- 並び（`steps`）。候補は frontmatter の `metadata` に `workflow-step: "true"` を持つスキル ---
+# --- 並び（`steps`）の候補はワークフロースクリプトの段（`SCRIPT_STEPS`）。入口の候補は frontmatter の `metadata` に印を持つスキル ---
 
-STEP_MARK_KEY = "workflow-step"
-STEP_ORDER_KEY = "workflow-step-order"  # 既定の並びでの位置（整数の文字）。`tw` と同じ plugin のスキルだけが使う
-STEP_TITLE_KEY = "workflow-step-title"
 ENTRY_MARK_KEY = "workflow-entry"  # タスクの実行の入口にできるスキル（ID を渡すと着手する）の印
 ENTRY_TITLE_KEY = "workflow-entry-title"
 PLUGIN_MANIFEST_PATH = os.path.join(".claude-plugin", "plugin.json")
@@ -374,7 +371,7 @@ class StepCandidate:
     description: str
     own: bool  # `tw` と同じチェックアウトの plugin のスキルか
     order: int | None = None
-    title: str = ""  # 日本語の段の名前。`workflow-step-title` が無ければ `label` と同じ
+    title: str = ""  # 日本語の段の名前。無ければ `label` と同じ
 
 
 def _scalar(text: str) -> str:
@@ -439,9 +436,6 @@ def _skill_dirs(skills_root: str) -> list[str]:
 class _Skill:
     name: str
     description: str
-    step_marked: bool
-    order: int | None  # 既定の並びでの位置。整数でなければ `None`
-    step_title: str | None
     entry_marked: bool
     entry_title: str | None
 
@@ -456,18 +450,11 @@ def _read_skill(skill_dir: str) -> _Skill | None:
     name = front.get("name")
     description = front.get("description")
     metadata = front.get("metadata")
-    marked = isinstance(metadata, dict) and metadata.get(STEP_MARK_KEY) == "true"
-    order_text = metadata.get(STEP_ORDER_KEY) if isinstance(metadata, dict) else None
-    order = int(order_text) if isinstance(order_text, str) and re.fullmatch(r"-?[0-9]+", order_text) else None
-    title_text = metadata.get(STEP_TITLE_KEY) if isinstance(metadata, dict) else None
     entry_marked = isinstance(metadata, dict) and metadata.get(ENTRY_MARK_KEY) == "true"
     entry_title = metadata.get(ENTRY_TITLE_KEY) if isinstance(metadata, dict) else None
     return _Skill(
         name=name if isinstance(name, str) and name else os.path.basename(skill_dir),
         description=description if isinstance(description, str) else "",
-        step_marked=marked,
-        order=order,
-        step_title=title_text if isinstance(title_text, str) and title_text else None,
         entry_marked=entry_marked,
         entry_title=entry_title if isinstance(entry_title, str) and entry_title else None,
     )
@@ -530,18 +517,6 @@ def _marked_skills(
     return found
 
 
-def step_candidates(
-    project_root: str | None,
-    home: str | None,
-    plugin: tuple[str, str] | None,
-) -> list[StepCandidate]:
-    """並びに置ける候補（`workflow-step` の印のあるスキル）。走査の決まりは `_marked_skills`。"""
-    return [
-        StepCandidate(value, skill.name, skill.description, own, skill.order, skill.step_title or skill.name)
-        for value, own, skill in _marked_skills(project_root, home, plugin, lambda s: s.step_marked)
-    ]
-
-
 def entry_candidates(
     project_root: str | None,
     home: str | None,
@@ -580,7 +555,7 @@ def script_step_candidates() -> list[StepCandidate]:
 
 
 def step_short_name(step: str) -> str:
-    """並びの名前を段の短い名前にする（`tsukumo-workflow:implement-step` も `implement` も `implement`）。"""
+    """並びの名前を段の短い名前にする（旧いスキルの全名も短い名前も同じ段の名前になる）。"""
     name = step.rsplit(":", 1)[-1]
     return name[: -len("-step")] if name.endswith("-step") else name
 
@@ -592,10 +567,9 @@ def script_steps(steps: object) -> list[str]:
     return [n for i, n in enumerate(names) if n in known and n not in names[:i]]
 
 
-def default_steps(candidates: list[StepCandidate]) -> list[str]:
-    """既定の並び。`tw` と同じ plugin の候補を `workflow-step-order` の小さい順に、位置の無いものはその後ろに走査順で並べる。"""
-    own = [c for c in candidates if c.own]
-    return [c.value for c in sorted(own, key=lambda c: (c.order is None, c.order or 0))]
+def default_steps() -> list[str]:
+    """`steps` を書いていないときの並び（ワークフロースクリプトの段を `SCRIPT_STEPS` の順に）。"""
+    return [name for name, _, _ in SCRIPT_STEPS]
 
 
 BRANCH_FIELD_DESCRIPTIONS = {
@@ -605,37 +579,30 @@ BRANCH_FIELD_DESCRIPTIONS = {
 }
 
 
-def config_schema(
-    project_root: str | None,
-    home: str | None = None,
-    plugin: tuple[str, str] | None = None,
-    flow: str = FLOW_SKILLS,
-) -> dict:
-    """`tw config --schema` が出す欄の形（schema 2）。既定の並びは `default_steps`。`flow` が `script` なら `steps` の候補はワークフロースクリプトの段（`SCRIPT_STEPS`）。"""
-    candidates = script_step_candidates() if flow == FLOW_SCRIPT else step_candidates(project_root, home, plugin)
+def config_schema() -> dict:
+    """`tw config --schema` が出す欄の形（schema 2）。`steps` の候補と既定の並びはワークフロースクリプトの段（`SCRIPT_STEPS`）。"""
     return {
         "schema": 2,
         "keys": [
             {
                 "key": FLOW_KEY,
                 "label": "流れ",
-                "description": "タスクの段を進める流れ。スキルの並びか、plugin のワークフロースクリプト task-flow か",
+                "description": "タスクの段を進める流れ。plugin のワークフロースクリプト task-flow",
                 "kind": "choice",
-                "default": FLOW_SKILLS,
+                "default": FLOW_SCRIPT,
                 "values": [
-                    {"value": FLOW_SKILLS, "label": "スキルの並び", "description": "task-workflow が並びのスキルを順に呼ぶ"},
                     {"value": FLOW_SCRIPT, "label": "ワークフロースクリプト", "description": "plugin の workflows/task-flow.js を Workflow で呼ぶ"},
                 ],
             },
             {
                 "key": STEPS_KEY,
                 "label": "並び",
-                "description": "タスクを進めるスキルの並び（上から順に呼ぶ）",
+                "description": "タスクを進める段の並び（上から順に進める）",
                 "kind": "steps",
-                "default": default_steps(candidates),
+                "default": default_steps(),
                 "values": [
                     {"value": c.value, "label": c.label, "title": c.title, "description": c.description}
-                    for c in candidates
+                    for c in script_step_candidates()
                 ],
             },
             {
@@ -720,7 +687,7 @@ def config_text_with(text: str, key: str, value: str, label: str = CONFIG_PATH) 
         quoted = json.dumps(value)
     elif key == FLOW_KEY:
         if value not in FLOW_VALUES:
-            raise ConfigValueError(f"{key} の値は {' / '.join(FLOW_VALUES)} のどちらか: {value!r}")
+            raise ConfigValueError(f"{key} の値は {' / '.join(FLOW_VALUES)} だけ: {value!r}")
         quoted = json.dumps(value)
     else:
         try:

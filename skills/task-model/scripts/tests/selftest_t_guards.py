@@ -120,10 +120,6 @@ def _subagent_stop(agent_type: object) -> dict:
     return stop if agent_type is None else {**stop, "agent_type": agent_type}
 
 
-def _skill_call(skill: str, **extra: str) -> dict:
-    return {"hook_event_name": "PreToolUse", "session_id": "s-1", "tool_name": "Skill", "tool_input": {"skill": skill}, **extra}
-
-
 def run_accept_hook(tmp: str, where: str, payload: dict) -> dict | None:
     """`tw accept-hook` を git の外（`tmp`）から打つ。出した JSON（何も出さなければ `None`）。終了コードが0でなければ例外。"""
     r = run_task(tmp, "accept-hook", stdin=json.dumps({"cwd": where, **payload}))
@@ -140,8 +136,8 @@ def _accept_rounds(wt: str) -> list[tuple[object, object]]:
     return [(e.get("round"), e.get("tree")) for e in flow_rows(wt) if e["event"] == accept_hook.ROUND_EVENT]
 
 
-def _accept_hook_repo(tmp: str, steps: tuple = (("書く", "x"),), flow: str = "script") -> tuple[str, str]:
-    main_path, wt1, wt2 = make_repo(tmp, branch="切らない", verify="`true`", format_command="`true`", extra=f'flow = "{flow}"\n')
+def _accept_hook_repo(tmp: str, steps: tuple = (("書く", "x"),)) -> tuple[str, str]:
+    main_path, wt1, wt2 = make_repo(tmp, branch="切らない", verify="`true`", format_command="`true`")
     commit_task(main_path, taskfile.Task("T-100", "受け入れ", "todo", "sonnet", "Y", (), task_body(steps, ["shared.txt"])))
     run_task(wt1, "claim", "T-100")
     return wt1, wt2
@@ -196,13 +192,6 @@ def test_accept_hook_prepare() -> None:
         context = _accept_context(run_accept_hook(tmp, wt1, start))
         check("1周目で NOT_LAST_STEP なら additionalContext が STOP\\t<行> で始まり、周回を書かない",
               context.startswith("STOP\tNOT_LAST_STEP\tT-100\t1,2/3") and _accept_rounds(wt1) == [], context)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        wt1, _wt2 = _accept_hook_repo(tmp, flow="skills")
-        write(os.path.join(wt1, "code.py"), "x = 1\n")
-        check("設定 flow が skills なら（メインが受け入れの部品を打つ）何も出さず、tw accept も打たない",
-              run_accept_hook(tmp, wt1, start) is None and not [e for e in flow_rows(wt1) if e["event"] == "lap"],
-              repr(flow_rows(wt1)))
 
 
 def _acceptor_transcript(tmp: str, name: str, verdict: str | None) -> str:
@@ -311,7 +300,7 @@ def test_ask_guard() -> None:
             ("手打ちの delegate start", lambda: run_task(wt1, "lap", "T-100", "delegate", "start"), True),
             ("tw accept", lambda: run_task(wt1, "accept", "T-100"), False),
             ("受け入れの後の hook の delegate（委譲し直し）", lambda: run_lap_hook(tmp, wt1, _subagent_start("no-delegate")), True),
-            ("hook の retro", lambda: run_lap_hook(tmp, wt1, _skill_call("retrospect")), False),
+            ("hook の retro", lambda: run_lap_hook(tmp, wt1, _subagent_start("tsukumo-workflow:retrospector")), False),
         ):
             act()
             check(f"hook と手打ちを混ぜた並びでも、{label} のあとは{'拒む' if refused else '通す'}",
@@ -697,9 +686,8 @@ def test_agent_scoped_guard() -> None:
         hooks = [argv for _, _, argv in all_hooks if "--agent-scoped" in argv]
         ask_hooks = [argv for _, _, argv in all_hooks if "ask-guard" in argv]
         lap_hooks = {(event, matcher): argv for event, matcher, argv in all_hooks if "lap-hook" in argv}
-        check("hooks/hooks.json は SubagentStart・SubagentStop と Skill の PreToolUse で --agent-scoped なしの lap-hook を1つずつ呼ぶ",
-              sorted(e for e, _ in lap_hooks) == ["PreToolUse", "SubagentStart", "SubagentStop"]
-              and ("PreToolUse", "Skill") in lap_hooks
+        check("hooks/hooks.json は SubagentStart・SubagentStop で --agent-scoped なしの lap-hook を1つずつ呼ぶ",
+              sorted(e for e, _ in lap_hooks) == ["SubagentStart", "SubagentStop"]
               and all(argv[1:] == ["lap-hook"] for argv in lap_hooks.values()),
               str(lap_hooks))
         start_matcher = next((m for e, m in lap_hooks if e == "SubagentStart"), None) or ""
