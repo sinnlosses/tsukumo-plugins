@@ -219,7 +219,7 @@ if (runs("accept")) {
         (first
           ? "tree は `tw accept` の出力の `SNAPSHOT` の行の木の SHA（その行が無ければ空）。"
           : "tree は `tw brief` の1行目の末尾の木の SHA。"),
-      { agentType: "tsukumo-workflow:no-delegate", schema: ACCEPT_PREPARE, label: `accept-prepare-${round + 1}`, phase: acceptTitle },
+      { agentType: "tsukumo-workflow:no-delegate", schema: ACCEPT_PREPARE, model: "haiku", effort: "low", label: `accept-prepare-${round + 1}`, phase: acceptTitle },
     )
     if (prepared === null) {
       return { stopped: true, phase: "accept", reason: "受け入れの準備の agent が null を返した" }
@@ -280,7 +280,7 @@ if (runs("accept")) {
       `${COMMON}\n` +
         `受け入れ役が通した。\`tw accept ${taskId} --after-review\` を打って、整形・verify-check・accept の end を済ませる。` +
         "出力に NOT_VERIFIED が出たら `tw verify` を打ってから打ち直す。最後の行を verifyCheckLine に入れる。accept の end は出力に行が出ないので探さず、最後の行が `VERIFIED` か `VERIFIED_SAME` で始まれば closed を true にして返す（それ以外なら false）。",
-      { agentType: "tsukumo-workflow:no-delegate", schema: ACCEPT_CLOSE, label: "accept-close", phase: acceptTitle },
+      { agentType: "tsukumo-workflow:no-delegate", schema: ACCEPT_CLOSE, model: "haiku", effort: "low", label: "accept-close", phase: acceptTitle },
     )
     if (closed === null || !closed.closed) {
       return { stopped: true, phase: "accept", reason: "受け入れの締めが済まなかった", closed }
