@@ -1,6 +1,6 @@
 """ワークフローの run の記録（`journal.jsonl` と `agent-<agentId>.jsonl`）から、段の区間を読む。
 
-読むのは journal の `type`・`agentId`・`label`・`result.verdict` と、transcript の先頭行・末尾行の `timestamp` だけ。
+読むのは journal の `type`・`label`・`agentId`・`result.verdict` と、transcript の先頭行・末尾行の `timestamp` だけ。
 agent の戻り値の本文と会話の中身は読まない・返さない。
 """
 
