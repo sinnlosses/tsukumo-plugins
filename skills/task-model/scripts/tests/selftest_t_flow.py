@@ -157,10 +157,114 @@ def test_config_flow_switches_step_candidates() -> None:
               == ["implement", "retrospect"])
 
 
+def _relay_out(wt: str, task_id: str, key: str) -> str:
+    return run_task(wt, "relay", task_id, key).stdout
+
+
+def _flow_passed(accept: bool = True) -> dict:
+    result: dict = {"stopped": False, "conventionLines": ["- 規約: x"], "implement": {"ok": True}}
+    if accept:
+        result["accept"] = {
+            "rounds": 1,
+            "kind": "ok",
+            "closed": True,
+            "judgment": {
+                "verdict": "ok",
+                "findings": ["画面が狭い", "- 指摘: 余白が足りない"],
+                "visual": "撮った画は崩れていない",
+                "friction": "なし",
+                "human": "不要",
+                "notes": "- 補足: 一行目\n- 補足: 二行目",
+            },
+        }
+        result["retrospect"] = {"signal": "none", "line": "- 振り返り: 兆候なし", "draftIds": []}
+    return result
+
+
+def test_flow_result_writes_relays_and_releases() -> None:
+    say("tw flow-result: 通れば受け入れ・振り返りを書いて FINISH_READY、止まれば 再開 を書いて release し RELEASED に段と理由を足す")
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, wt2 = make_repo(tmp)
+        for n in range(100, 107):
+            commit_task(main_path, taskfile.Task(f"T-{n}", f"既存タスク{n}", "todo", "sonnet", "Y", (), BODY))
+
+        def flow(wt: str, task_id: str, payload: object, *extra: str):
+            text = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False)
+            return run_task(wt, "flow-result", task_id, "--json-file", "-", *extra, stdin=text)
+
+        run_task(wt1, "claim", "T-100")
+        r = flow(wt1, "T-100", _flow_passed())
+        check("通った戻り値は終了コード0で最後の行が FINISH_READY",
+              r.returncode == 0 and r.stdout.splitlines()[-1] == "FINISH_READY\tT-100", r.stdout + r.stderr)
+        accepted = _relay_out(wt1, "T-100", "受け入れ")
+        check("受け入れに判定・材料・指摘2行・目視・notes が書かれる",
+              accepted.startswith("RELAY\tT-100\t受け入れ\n判定: 受け入れ\n- 材料: friction=なし human=不要\n")
+              and "- 指摘: 画面が狭い\n- 指摘: 余白が足りない\n" in accepted
+              and "- 目視: 撮った画は崩れていない\n" in accepted
+              and accepted.rstrip().endswith("- 補足: 一行目\n- 補足: 二行目"), accepted)
+        check("振り返りに retrospect.line が書かれる",
+              _relay_out(wt1, "T-100", "振り返り") == "RELAY\tT-100\t振り返り\n- 振り返り: 兆候なし\n",
+              _relay_out(wt1, "T-100", "振り返り"))
+        check("実装・再開は書かれない",
+              _relay_out(wt1, "T-100", "実装").startswith("NONE") and _relay_out(wt1, "T-100", "再開").startswith("NONE"))
+        again = run_task(wt1, "relay", "T-100", "受け入れ", "--body-file", "-", stdin="x")
+        check("通ったあとも着手の印は残る", again.stdout.startswith("RELAYED\tT-100"), again.stdout + again.stderr)
+        run_task(wt1, "release", "T-100")
+
+        run_task(wt1, "claim", "T-101")
+        r = flow(wt1, "T-101", _flow_passed(accept=False))
+        check("accept・retrospect が無い戻り値も FINISH_READY",
+              r.returncode == 0 and r.stdout.splitlines()[-1] == "FINISH_READY\tT-101", r.stdout)
+        check("走らなかった段の鍵は書かない",
+              _relay_out(wt1, "T-101", "受け入れ").startswith("NONE") and _relay_out(wt1, "T-101", "振り返り").startswith("NONE"))
+        run_task(wt1, "release", "T-101")
+
+        run_task(wt1, "claim", "T-102")
+        patch = os.path.join(tmp, "stopped.patch")
+        r = flow(wt1, "T-102", {"stopped": True, "phase": "accept", "reason": "差し戻し\t3回"}, "--patch", patch)
+        check("受け入れで止まると最後の行が段と理由つきの RELEASED",
+              r.returncode == 0 and r.stdout.splitlines()[-1] == "RELEASED\tT-102\taccept\t差し戻し 3回", r.stdout + r.stderr)
+        check("再開は1行目が段、2行目が patch のパス",
+              _relay_out(wt1, "T-102", "再開") == f"RELAY\tT-102\t再開\naccept\n- patch: {patch}\n",
+              _relay_out(wt1, "T-102", "再開"))
+        check("止まった戻り値は受け入れを書かない", _relay_out(wt1, "T-102", "受け入れ").startswith("NONE"))
+        released = run_task(wt1, "release", "T-102")
+        check("止まったあとは release 済みで、もう一度の release は NOT_CLAIMED",
+              released.stdout.startswith("NOT_CLAIMED\tT-102"), released.stdout)
+
+        run_task(wt1, "claim", "T-103")
+        r = flow(wt1, "T-103", {"stopped": True, "phase": "implement", "reason": "判断が要る"})
+        check("実装で止まると RELEASED に implement と理由",
+              r.stdout.splitlines()[-1] == "RELEASED\tT-103\timplement\t判断が要る", r.stdout + r.stderr)
+        check("patch が無ければ再開は段の1行だけ",
+              _relay_out(wt1, "T-103", "再開") == "RELAY\tT-103\t再開\nimplement\n", _relay_out(wt1, "T-103", "再開"))
+
+        run_task(wt1, "claim", "T-104")
+        write(os.path.join(wt1, "leftover.txt"), "leftover\n")
+        r = flow(wt1, "T-104", {"stopped": True, "phase": "retrospect", "reason": "r"})
+        rows = r.stdout.splitlines()
+        check("未コミットの変更があれば RELEASED の前に LEFTOVER が出て、最後の行は RELEASED",
+              len(rows) >= 2 and rows[-2] == "LEFTOVER\tT-104\t1" and rows[-1] == "RELEASED\tT-104\tretrospect\tr", r.stdout)
+        os.remove(os.path.join(wt1, "leftover.txt"))
+
+        run_task(wt1, "claim", "T-105")
+        r = flow(wt1, "T-105", "{ここは JSON でない")
+        check("壊れた JSON は終了コード2で何も書かない",
+              r.returncode == 2 and _relay_out(wt1, "T-105", "再開").startswith("NONE")
+              and _relay_out(wt1, "T-105", "受け入れ").startswith("NONE"), r.stdout + r.stderr)
+        check("壊れた JSON のあとも着手の印は残る",
+              run_task(wt1, "relay", "T-105", "受け入れ", "--body-file", "-", stdin="x").stdout.startswith("RELAYED"))
+        r = flow(wt2, "T-105", _flow_passed())
+        check("着手の印を持たない作業ツリーは NOT_OWNER・終了コード4で何も書かない",
+              r.returncode == 4 and r.stdout.strip() == "NOT_OWNER\tT-105"
+              and _relay_out(wt1, "T-105", "振り返り").startswith("NONE"), r.stdout + r.stderr)
+
+
 TESTS = (
     test_unregistered_tests_named,
     test_all_tests_registered,
     test_config_flow_switches_step_candidates,
+    test_flow_result_writes_relays_and_releases,
 )
 
 

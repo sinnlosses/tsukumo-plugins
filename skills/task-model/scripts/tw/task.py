@@ -3,7 +3,7 @@
 # 宣言が無いと Python 3.9 が、長い日本語の行の読み込み位置によって「Non-UTF-8 code」で落ちる。
 """Beads に置いたタスクの運用を操作する入口コマンド。
 
-使い方: tw <status|new|claim|release|hold|done|ship|finish|land|config|config-doctor|show|find|edit|plan-check|plan-phases|verify|verify-check|accept|brief|pause|step|lap|escalate-check|beat-watch|loop-check|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|work-repo-guard|ask-guard|lap-hook|ref-guard> ...
+使い方: tw <status|new|claim|release|hold|done|ship|finish|land|config|config-doctor|show|find|edit|plan-check|plan-phases|verify|verify-check|accept|brief|pause|step|lap|escalate-check|beat-watch|loop-check|flow-result|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|work-repo-guard|ask-guard|lap-hook|ref-guard> ...
 
 plugin の `bin/tw` から呼ぶ。`commit-guard`・`handback-guard` の
 `--agent-scoped` は plugin の `hooks/hooks.json` が付け、入力に `agent_id` があるとき（サブエージェント）だけ関門を掛ける（`commit-guard` は主のセッションの書き込みの `bd` だけ例外）。
@@ -43,6 +43,7 @@ import tw_config
 import tw_edit
 import tw_escalate
 import tw_finish
+import tw_flow_result
 import tw_handback
 import tw_hold
 import tw_loop
@@ -187,6 +188,14 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
         r"""`--body-file` を付けると、本文を鍵 `<鍵>` の申し送りとして、`## 申し送り: <鍵>` で始まる comment に書く（WORKFLOW.md「段の申し送り」。書けるのは自分の着手の印のタスクだけで、違えば何も書かずに `NOT_OWNER`、終了コード4）。空の本文は消した扱いになる。付けなければ、その鍵の最後の comment の本文を出す（着手の印によらない）。鍵は自由な語で、空かタブ・改行を含めば終了コード2。comment は `release`・`claim` で消えず、GitHub に出さない。無い ID は `NOT_READY`（終了コード4）
 
 出力: `RELAYED\tT-xxx\t<鍵>`・`RELAY\tT-xxx\t<鍵>`（次の行から本文）・`NONE\tT-xxx\t<鍵>`（無いか空）・`NOT_OWNER\tT-xxx`・`NOT_READY\tT-xxx\t存在しない`""",
+    ),
+    "flow-result": (
+        "ワークフロースクリプトの戻り値の JSON から、申し送りを書き、止まっていれば release までを行う。",
+        r"""`--json-file`（`-` は標準入力）の JSON を読む（読む欄は `stopped`・`phase`・`reason`・`accept.judgment`・`retrospect.line`）。書けるのは自分の着手の印のタスクだけで、違えば何も書かずに `NOT_OWNER`（終了コード4）。壊れた JSON・オブジェクトでない・`stopped` が真偽値でないときは何も書かずに終了コード2
+- 通った（`stopped` が偽）: `accept.judgment` があれば鍵 `受け入れ`（`判定: 受け入れ`・`- 材料:`・`- 指摘:`・`- 目視:`・notes）、`retrospect.line` があれば鍵 `振り返り` を書く。`accept`・`retrospect` が無い段の鍵は書かない。鍵 `実装` は書かない（受け入れの準備が書く）。最後の行は `FINISH_READY\tT-xxx`
+- 止まった（`stopped` が真）: 鍵 `再開` に 1行目 `<phase>`、`--patch <パス>` があれば2行目 `- patch: <パス>` を書き、続けて `release` する。`--patch` は渡されたパスを書くだけで、退避はしない（通ったときは無視）
+
+出力: `RELAYED\tT-xxx\t<鍵>`・`FINISH_READY\tT-xxx`・`LEFTOVER\tT-xxx\t<件数>`・`RELEASED\tT-xxx\t<phase>\t<reason>`（`phase`・`reason` が欠ければ `-`）・`NOT_CLAIMED`・`NOT_OWNER`""",
     ),
     "show": (
         "タスク1件を front matter と本文の形で出す（読むだけ）。",
@@ -449,6 +458,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_relay.add_argument("task_id")
     p_relay.add_argument("key")
     p_relay.add_argument("--body-file", dest="body_file", default=None)
+    p_flow = sub.add_parser("flow-result")
+    p_flow.add_argument("task_id")
+    p_flow.add_argument("--json-file", dest="json_file", required=True)
+    p_flow.add_argument("--patch", default=None)
     p_metrics = sub.add_parser("metrics")
     p_metrics.add_argument("--days", type=int, default=metrics.DAYS_DEFAULT)
     p_metrics.add_argument("--stages", action="store_true")
@@ -671,6 +684,8 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
             tw_loop.cmd_loop_check(toplevel)
         elif args.command == "relay":
             tw_relay.cmd_relay(toplevel, args.task_id, args.key, args.body_file)
+        elif args.command == "flow-result":
+            tw_flow_result.cmd_flow_result(toplevel, args.task_id, args.json_file, args.patch)
         elif args.command == "metrics":
             (metrics.cmd_metrics_stages if args.stages else metrics.cmd_metrics)(toplevel, args.days)
         elif args.command == "adopt":

@@ -29,7 +29,12 @@ def cmd_relay(toplevel: str, task_id: str, key: str, body_path: str | None) -> N
     if not tw_base.owns(toplevel, shown):
         print(f"NOT_OWNER\t{shown}")
         raise SystemExit(4)
-    body = tw_base.read_body(body_path).strip("\n")
+    write_relay(toplevel, bd_id, shown, key, tw_base.read_body(body_path))
+
+
+def write_relay(toplevel: str, bd_id: str, shown: str, key: str, body: str) -> None:
+    """鍵 `key` の申し送りを書いて `RELAYED` を出す（持ち主かどうかは呼ぶ側が確かめる）。"""
+    body = body.strip("\n")
     text = f"{beads.RELAY_HEADING_PREFIX}{key}\n\n{body}\n" if body else f"{beads.RELAY_HEADING_PREFIX}{key}\n"
     beads.run_ok(toplevel, ["comment", bd_id, "--stdin"], tw_base.actor(toplevel), text)
     print(f"RELAYED\t{shown}\t{key}")
