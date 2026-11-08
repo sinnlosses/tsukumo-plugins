@@ -79,11 +79,13 @@ def _span(transcript_dir: str, agent_id: str) -> tuple[str, str] | None:
     return first, last
 
 
-def _parse(value: str) -> datetime | None:
+def parse_time(value: object) -> datetime | None:
+    """ISO の時刻（末尾 `Z` も可）。読めないか時差が無ければ `None`。"""
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        at = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except ValueError:
         return None
+    return at if at.tzinfo is not None else None
 
 
 def _verdict(result: object) -> str:
@@ -106,7 +108,7 @@ def read_stages(transcript_dir: str) -> list[Stage]:
         span = _span(transcript_dir, row["agentId"])
         if span is None:
             continue
-        begin, end = _parse(span[0]), _parse(span[1])
+        begin, end = parse_time(span[0]), parse_time(span[1])
         if begin is None or end is None:
             continue
         verdict = _verdict(results[row["agentId"]]) if stage == "review" else None

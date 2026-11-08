@@ -12,6 +12,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
+import flow_journal
 import ledger
 
 DAYS_DEFAULT = 7
@@ -283,12 +284,8 @@ def open_stages(events: list[Event], task_id: str) -> list[str]:
 def _flow_stage_span(event: Event) -> tuple[str, str, datetime, datetime, float] | None:
     stage = LAP_STAGE_NAMES.get(str(event.fields.get("stage")))
     seconds = event.fields.get("seconds")
-    try:
-        begin = datetime.fromisoformat(str(event.fields.get("start")).replace("Z", "+00:00"))
-        end = datetime.fromisoformat(str(event.fields.get("end")).replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if stage is None or not isinstance(seconds, (int, float)) or begin.tzinfo is None or end.tzinfo is None:
+    begin = flow_journal.parse_time(event.fields.get("start"))
+    if stage is None or not isinstance(seconds, (int, float)) or begin is None or flow_journal.parse_time(event.fields.get("end")) is None:
         return None
     # 欄 seconds は秒未満を切り捨てた値なので、終わりを始め＋seconds に揃え、task_stage_spans が verify で割らないようにする
     return stage, str(event.fields.get("difficulty", "?")), begin, begin + timedelta(seconds=seconds), float(seconds)
