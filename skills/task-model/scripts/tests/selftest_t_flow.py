@@ -231,6 +231,9 @@ def test_flow_result_writes_relays_and_releases() -> None:
         released = run_task(wt1, "release", "T-102")
         check("止まったあとは release 済みで、もう一度の release は NOT_CLAIMED",
               released.stdout.startswith("NOT_CLAIMED\tT-102"), released.stdout)
+        releases = {r["task"]: r for r in flow_rows(wt1) if r.get("event") == "release"}
+        check("止まった release の台帳の行には stuck が真で入る", releases.get("T-102", {}).get("stuck") is True, str(releases.get("T-102")))
+        check("手で外した release の行には stuck が無い", "T-100" in releases and "stuck" not in releases["T-100"], str(releases.get("T-100")))
 
         run_task(wt1, "claim", "T-103")
         r = flow(wt1, "T-103", {"stopped": True, "phase": "implement", "reason": "判断が要る"})

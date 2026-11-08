@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+from datetime import datetime
 
 import beads
 import layout
@@ -130,8 +131,33 @@ def cmd_release(toplevel: str, task_id: str, force: bool) -> None:
     leftover = tw_base.leftover_paths(toplevel)
     if leftover:
         print(f"LEFTOVER\t{shown}\t{len(leftover)}")
-    tw_base.record(toplevel, "release", shown, issue)
+    stuck = {"stuck": True} if _stuck_release(toplevel, bd_id, issue) else {}
+    tw_base.record(toplevel, "release", shown, issue, **stuck)
     tw_base.print_lines(pulled + trk.after([bd_id]))
+
+
+def _stuck_release(toplevel: str, bd_id: str, issue: beads.Issue) -> bool:
+    """いまの着手の始まり以後に、`再開` の申し送りが書かれているか（止まった release か）。"""
+    heading = f"{beads.RELAY_HEADING_PREFIX}再開"
+    started = _parse_iso(issue.started_at)
+    try:
+        found = beads.comments(toplevel, bd_id)
+    except beads.BeadsError:
+        return False
+    for c in found:
+        if str(c.get("text") or "").partition("\n")[0] != heading:
+            continue
+        at = _parse_iso(c.get("created_at"))
+        if started is None or at is None or at >= started:
+            return True
+    return False
+
+
+def _parse_iso(iso: object) -> datetime | None:
+    try:
+        return datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 def cmd_done(
