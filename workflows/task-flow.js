@@ -199,11 +199,9 @@ if (runs("accept")) {
     prepared = await agent(
       `${COMMON}\n` +
         (first && result.implement
-          ? `最初に、\`tw relay ${taskId} 実装 --body-file -\` の標準入力へ次の行を、この順に1行1要素で書く（実装の申し送り。tw accept より前に書き終える）。` +
-            `frictionLines:\n${result.implement.frictionLines.join("\n")}\n` +
-            `draftLines:\n${(result.implement.draftLines ?? []).join("\n")}\n` +
-            `conventionLines:\n${result.implement.conventionLines.join("\n")}\n` +
-            "（見出しの `frictionLines:` などは書かず、各配列の行だけを並べる。空の配列は行を足さない）。書いたあと、"
+          ? `最初に、\`tw relay ${taskId} 実装 --body-file -\` の標準入力へ、次の囲みの中の行をそのまま書く（実装の申し送り。tw accept より前に書き終える）。囲みの線は書かない。\n` +
+            `-----\n${[...result.implement.frictionLines, ...(result.implement.draftLines ?? []), ...result.implement.conventionLines].join("\n")}\n-----\n` +
+            "書いたあと、"
           : "") +
         (first
           ? `\`tw accept ${taskId}\` を打つ。出力の最後の行で道を分ける: ` +
