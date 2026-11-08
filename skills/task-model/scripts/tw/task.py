@@ -3,7 +3,7 @@
 # 宣言が無いと Python 3.9 が、長い日本語の行の読み込み位置によって「Non-UTF-8 code」で落ちる。
 """Beads に置いたタスクの運用を操作する入口コマンド。
 
-使い方: tw <status|new|claim|release|hold|done|ship|finish|land|config|config-doctor|show|find|edit|plan-check|plan-phases|verify|verify-check|accept|brief|pause|step|lap|escalate-check|beat-watch|loop-check|flow-result|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|work-repo-guard|ask-guard|lap-hook|ref-guard> ...
+使い方: tw <status|new|claim|release|hold|done|ship|finish|land|config|config-doctor|show|find|edit|plan-check|plan-phases|verify|verify-check|accept|brief|pause|step|lap|escalate-check|beat-watch|loop-check|flow-result|metrics|adopt|sync|backup|jira-closed|commit-guard|handback-guard|work-repo-guard|ask-guard|lap-hook|accept-hook|ref-guard> ...
 
 plugin の `bin/tw` から呼ぶ。`commit-guard`・`handback-guard` の
 `--agent-scoped` は plugin の `hooks/hooks.json` が付け、入力に `agent_id` があるとき（サブエージェント）だけ関門を掛ける（`commit-guard` は主のセッションの書き込みの `bd` だけ例外）。
@@ -24,6 +24,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "core"))
 
+import accept_hook
 import ask_guard
 import beads
 import commit_guard
@@ -192,7 +193,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     "flow-result": (
         "ワークフロースクリプトの戻り値の JSON から、申し送りを書き、止まっていれば release までを行う。",
         r"""`--json-file`（`-` は標準入力）の JSON を読む（読む欄は `stopped`・`phase`・`reason`・`accept.judgment`・`retrospect.line`）。書けるのは自分の着手の印のタスクだけで、違えば何も書かずに `NOT_OWNER`（終了コード4）。壊れた JSON・オブジェクトでない・`stopped` が真偽値でないときは何も書かずに終了コード2
-- 通った（`stopped` が偽）: `accept.judgment` があれば鍵 `受け入れ`（`判定: 受け入れ`・`- 材料:`・`- 指摘:`・`- 目視:`・notes）、`retrospect.line` があれば鍵 `振り返り` を書く。`accept`・`retrospect` が無い段の鍵は書かない。鍵 `実装` は書かない（受け入れの準備が書く）。最後の行は `FINISH_READY\tT-xxx`
+- 通った（`stopped` が偽）: `accept.judgment` があれば鍵 `受け入れ`（`判定: 受け入れ`・`- 材料:`・`- 指摘:`・`- 目視:`・notes）、`retrospect.line` があれば鍵 `振り返り` を書く。`accept`・`retrospect` が無い段の鍵は書かない。鍵 `実装` は書かない（ワークフロースクリプトの実装の agent が書く）。最後の行は `FINISH_READY\tT-xxx`。通る・止まるどちらでも、`accept-hook` の開いた周回を閉じる（`accept_round` の `round` 0）
 - 止まった（`stopped` が真）: 鍵 `再開` に 1行目 `<phase>`、`--patch <パス>` があれば2行目 `- patch: <パス>` を書き、続けて `release` する。`--patch` は渡されたパスを書くだけで、退避はしない（通ったときは無視）
 - `--transcript-dir <dir>`（ワークフロー起動の戻りの `Transcript dir`）: 通る・止まるどちらでも、`journal.jsonl` の label が `implement`・`fix-n`（段 `delegate`）・`acceptor-n`（段 `review`）・`retrospect`（段 `retro`）の agent ごとに、台帳へ出来事 `flow_stage`（`stage`・`label`・`start`・`end`・`seconds`・`source: journal`、受け入れ役だけ `verdict`）を書く。止まったときは `release` の前に `flow_stopped`（戻り値の JSON の `phase`・`result` の無い最後の agent の `label`）も書く。読むのは journal の `type`・`label`・`agentId`・`result.verdict` と `agent-<agentId>.jsonl` の先頭行・末尾行の時刻だけ（`phase` は journal でなく戻り値の JSON から取る）。ディレクトリが無ければ何も書かずに終了コード2
 
@@ -319,6 +320,16 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
         r"""Claude Code の hook（plugin の `hooks/hooks.json` の `SubagentStart`・`SubagentStop` と、matcher `Skill` の `PreToolUse`。殻 `${CLAUDE_PLUGIN_ROOT}/bin/tw-hook` 越しに呼ぶ）から呼ばれる。関門ではなく記録で、何も拒まない。入力の `cwd` の作業ツリーの `.tw/local/task-open-claims/` の控え（`commit-guard` と同じ読む順）がちょうど1件のとき、そのタスクの `flow/` に次の `lap` を1行足す。`SubagentStop` で `agent_type` の最後の `:` より後ろが `acceptor` で段 `review` が開いていれば `review` の `end`（`agent_type` が無い・文字列でないときは何もしない）。同じく `SubagentStop` で最後の `:` より後ろが `retrospector` で段 `retro` が開いていれば `retro` の `end`。ほかは `start`:`SubagentStart` で `agent_type` の最後の `:` より後ろが `no-delegate`・`general-purpose` なら段 `delegate`（受け入れ役 `acceptor` などほかの名前は書かない。`accept` が開いているあいだ〔受け入れ中の差し戻しの再開〕も書かない）。主のセッション（入力に `agent_id` が無い）の `Skill` で `tool_input.skill` の最後の `:` より後ろが `retrospect` なら段 `retro`（最後の `claim` 以降の `accept` の最後の端が `end` のときだけ）。どちらも、最後の `claim` 以降でその段が開いていれば（`start` に `end` が続かない。手打ちの `lap` を含む）書かない。控えが0件か2件以上・ほかのイベントやツールは何もしない。end は `lap T-xxx accept start`（`delegate`。`tw accept` が打つ）・`finish`（`retro`）・`lap-hook` 自身（`retrospector` の停止で `retro`）が書く。`bd` は記録の `difficulty` を引くために読む
 
 出力: 何も出さない（`SubagentStart` の stdout は委譲先の文脈に入りうる）。終了コードはいつも0。読めない入力も何もせずに通す""",
+    ),
+    "accept-hook": (
+        "Claude Code の hook から呼ばれ、受け入れ役（`acceptor`）の起動の前に受け入れの準備を、停止で締めを打つ。手で打たない。",
+        r"""Claude Code の hook（plugin の `hooks/hooks.json` の matcher `(^|:)acceptor$` の `SubagentStart`・`SubagentStop`。殻 `${CLAUDE_PLUGIN_ROOT}/bin/tw-hook` 越しに呼ぶ）から呼ばれる。`agent_type` の最後の `:` より後ろが `acceptor` で、入力の `cwd` の作業ツリーの着手の控えがちょうど1件で、設定 `flow` が `script` のときだけ動く（`skills` ではメインが同じ部品を打つ）。周回は最後の `claim` 以降の最後の出来事 `accept_round`（`round`・`tree`）で読み、`round` が1以上なら開いている。
+- `SubagentStart`: 開いた周回が無ければ `accept <ID>` と、その出力を渡した `brief acceptor <ID> --accept-file -` を打つ。判定が `REVIEW` なら `accept_round`（`round` 1・`SNAPSHOT` の木）を書く。開いた周回があれば `lap <ID> review start` と `brief acceptor <ID> --round <n+1> --since <前の木>` を打ち、`accept_round`（`round` n+1・`brief` の1行目の末尾の木）を書く。`additionalContext` の1行目は判定の行（2周目以降は `REVIEW\tround\t<n>`）、続けて `SNAPSHOT\t<木>`（あれば）・`accept` の出力・依頼文。`accept`・`lap`・`brief` が止まったら（終了コードが0でないか判定の行が無い）1行目を `STOP\t<最後の行>` にし、`accept_round` は書かない
+- `SubagentStop`: `agent_transcript_path` の末尾 12 行の `StructuredOutput` の `input.verdict` を読む（読めなければ 0.5 秒おきに最大4回読み直す）。`accept` で周回が開いていれば `accept <ID> --after-review` を打ち、最後の行が `VERIFIED` で始まれば `accept_round`（`round` 0）を書いて閉じる。そうでなければ `decision: block` で受け入れ役に reject で返し直させる（`stop_hook_active` が真なら block せず、周回も閉じない）。`reject`・読めない・周回が無い（`SKIP`・`NOTHING`・`NO_RANGE` の周）ときは何もしない
+
+周回を閉じるのは、この hook の締めと `flow-result`（`round` 0 を書く）と `claim`（最後の `claim` より前は読まない）。
+
+出力: `SubagentStart` は `hookSpecificOutput.additionalContext` の JSON 1行、`SubagentStop` は block のときだけ JSON 1行。ほかは何も出さない。終了コードはいつも0。読めない入力も何もせずに通す""",
     ),
     "ref-guard": (
         "git の reference-transaction hook から呼ばれ、着手中の作業ツリーで主ブランチに無いコミットへ枝を動かす更新を拒む。手で打たない。",
@@ -481,6 +492,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("work-repo-guard")
     sub.add_parser("ask-guard")
     sub.add_parser("lap-hook")
+    sub.add_parser("accept-hook")
     sub.add_parser("ref-guard").add_argument("state")
 
     p_edit = sub.add_parser("edit")
@@ -574,6 +586,9 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.command == "lap-hook":
         lap_hook.run(sys.stdin)
+        return
+    if args.command == "accept-hook":
+        accept_hook.run(sys.stdin, sys.stdout)
         return
     if args.command == "ref-guard":
         raise SystemExit(ref_guard.run(args.state, sys.stdin, sys.stderr))

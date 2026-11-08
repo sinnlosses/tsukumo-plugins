@@ -327,7 +327,6 @@ def _write_run(root: str, agents: list[tuple[str, str, object, tuple[float, floa
 
 _PASSED_RUN = [
     ("a1", "implement", {"stopped": False}, (0, 120.5)),
-    ("a2", "accept-prepare-1", {"kind": "code"}, (130, 140)),
     ("a3", "acceptor-1", {"verdict": "reject", "notes": "秘密の本文XYZ"}, (150, 210)),
     ("a4", "fix-1", {"stopped": False}, (220, 250)),
     ("a5", "acceptor-2", {"verdict": "accept"}, (260, 300)),
@@ -354,7 +353,7 @@ def test_flow_result_writes_journal_stages() -> None:
         check("通った戻り値は FINISH_READY", r.returncode == 0 and r.stdout.splitlines()[-1] == "FINISH_READY\tT-110",
               r.stdout + r.stderr)
         rows = stages_of("T-110")
-        check("flow_stage は journal の順に delegate・review・delegate・review・retro（受け入れの準備は書かない）",
+        check("flow_stage は journal の順に delegate・review・delegate・review・retro",
               [(row["stage"], row["label"]) for row in rows]
               == [("delegate", "implement"), ("review", "acceptor-1"), ("delegate", "fix-1"), ("review", "acceptor-2"),
                   ("retro", "retrospect")], repr(rows))
@@ -371,7 +370,7 @@ def test_flow_result_writes_journal_stages() -> None:
         run_task(wt1, "release", "T-110")
 
         run_task(wt1, "claim", "T-111")
-        stopped = _write_run(os.path.join(tmp, "run-stopped"), _PASSED_RUN[:4] + [
+        stopped = _write_run(os.path.join(tmp, "run-stopped"), _PASSED_RUN[:3] + [
             ("a5", "acceptor-2", {"verdict": "reject"}, (260, 300)),
             ("a6", "fix-2", None, (310, 320)),
         ])

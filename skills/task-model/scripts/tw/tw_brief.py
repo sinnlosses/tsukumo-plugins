@@ -26,6 +26,8 @@ TASK_MODEL_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpat
 SNAPSHOT_SCRIPT = os.path.join(TASK_MODEL_DIR, "scripts", "core", "review_snapshot.py")
 RULE_FILES = ("AGENTS.md", "CLAUDE.md")
 RELAY_IMPLEMENT_KEY = "実装"
+RELAY_FIX_KEY = "直し"
+IMAGE_LINE_PREFIX = "- 画像:"
 NO_DELEGATION_LINE = "- 規約: 委譲なし"
 _FRICTION_NONE = re.compile(r"friction log: なし\s*$")
 VERDICT_WORDS = ("REVIEW", "SKIP", "NOTHING", "NO_RANGE")
@@ -108,6 +110,8 @@ def cmd_brief_acceptor(
         _usage("brief acceptor: --accept-file（tw accept か review_needed.py の出力）が要る")
     verdict, tree_sha, marks = _read_verdict(tw_base.read_body(accept_file)) if accept_file is not None else ("", None, [])
     shown, issue, plan_body, _mark, _base, _drift = tw_edit.own_plan(toplevel, task_id)
+    if not images:
+        images = _relay_images(toplevel, shown)
     template_path, sections = _template(toplevel, ROLE_ACCEPTOR, ACCEPTOR_SECTIONS)
     criteria = str(issue.raw.get("acceptance_criteria") or "").strip("\n")
     work = work_repo(toplevel, shown, plan_body)
@@ -178,6 +182,18 @@ def _snapshot(tree: str) -> str:
     return r.stdout.strip()
 
 
+def _relay_images(toplevel: str, shown: str) -> list[str]:
+    """申し送り `実装`・`直し` の最後の本文の `- 画像: <パス>` の行のパス（重なりを除いて出た順）。"""
+    comment_list = beads.comments(toplevel, beads.to_bd_id(shown))
+    paths: list[str] = []
+    for key in (RELAY_IMPLEMENT_KEY, RELAY_FIX_KEY):
+        for line in (beads.last_relay(comment_list, key) or "").splitlines():
+            path = line[len(IMAGE_LINE_PREFIX) :].strip().strip("`") if line.startswith(IMAGE_LINE_PREFIX) else ""
+            if path != "" and path not in paths:
+                paths.append(path)
+    return paths
+
+
 def _friction_value(toplevel: str, shown: str) -> str:
     """申し送り `実装` から材料の `friction` の値（`none`・`some`・`missing`）を決める。委譲先の報告の行は返さない。
     `- ドラフト:`（子項目ごと）・`- 規約:`・`- 実装 計画:` の行は数えない。`- 規約: 委譲なし` は friction log の行が無くても `none`。"""
@@ -193,7 +209,7 @@ def _friction_value(toplevel: str, shown: str) -> str:
         if in_draft and line[:1] in (" ", "\t"):
             continue
         in_draft = False
-        if line.startswith("- ") and not line.startswith(("- 規約:", "- 実装 計画:")):
+        if line.startswith("- ") and not line.startswith(("- 規約:", "- 実装 計画:", IMAGE_LINE_PREFIX)):
             counted.append(line)
     if any(not _FRICTION_NONE.search(line) for line in counted):
         return "some"

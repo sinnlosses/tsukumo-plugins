@@ -4,7 +4,7 @@ export const meta = {
   whenToUse: "tw claim が CLAIMED を返したタスク1件を進めるとき（計画の判定と書き直しは呼ぶ側が済ませてから）",
   phases: [
     { title: "Implement", detail: "no-delegate が ## やること の段を順に実装し、段ごとに phase_result を呼ぶ" },
-    { title: "Accept", detail: "tw accept の判定で道を分け、acceptor が判定する。差し戻しは上限2回。範囲に入っていれば締めの agent（締めを起こさない道では振り返りの agent）が phase_result を呼ぶ" },
+    { title: "Accept", detail: "acceptor の起動と停止で hook（tw accept-hook）が tw accept の準備と締めを打ち、acceptor が判定する。差し戻しは上限2回。範囲に入っていれば振り返りの agent が受け入れの phase_result も呼ぶ" },
     { title: "Retrospect", detail: "retrospector が retrospect スキルで兆候を判定し、範囲に入っていれば phase_result を呼ぶ" },
   ],
 }
@@ -40,39 +40,22 @@ const IMPLEMENT = {
   required: ["changedFiles", "verifyCommand", "verifyResult", "verifyPassed", "stepLines", "conventionLines", "frictionLines", "stopped"],
 }
 
-const ACCEPT_PREPARE = {
-  type: "object",
-  properties: {
-    kind: { type: "string", enum: ["REVIEW", "SKIP", "NOTHING", "NO_RANGE", "STOP"] },
-    acceptLines: { type: "string" },
-    brief: { type: "string" },
-    tree: { type: "string" },
-    reason: { type: "string" },
-  },
-  required: ["kind", "acceptLines", "brief"],
-}
+const SKIP_KINDS = ["SKIP", "NOTHING", "NO_RANGE"]
 
 const JUDGMENT = {
   type: "object",
   properties: {
     verdict: { type: "string", enum: ["accept", "reject"] },
+    acceptKind: { type: "string", enum: ["REVIEW", ...SKIP_KINDS, "STOP"] },
+    tree: { type: "string" },
+    reason: { type: "string" },
     findings: { type: "array", items: { type: "string" } },
     visual: { type: "string" },
     friction: { type: "string" },
     human: { type: "number" },
     notes: { type: "string" },
   },
-  required: ["verdict", "findings", "friction", "human"],
-}
-
-const ACCEPT_CLOSE = {
-  type: "object",
-  properties: {
-    verifyCheckLine: { type: "string" },
-    closed: { type: "boolean" },
-    reason: { type: "string" },
-  },
-  required: ["verifyCheckLine", "closed"],
+  required: ["verdict", "acceptKind", "findings", "friction", "human"],
 }
 
 const RETRO = {
@@ -115,6 +98,16 @@ const COMMON =
   "`vendor/tsukumo-plugins` は読み込み元なので、`git submodule update`・`git checkout` などで動かさない（`tw` が submodule のずれで止まっても、そのまま報告する）。" +
   STOP_GATE
 
+// 受け入れ役の起動の hook（tw accept-hook）が tw brief acceptor で読む申し送り
+const relaySentence = (key) =>
+  `返す直前に、着手した作業ツリーで \`tw relay ${taskId} ${key} --body-file -\` の標準入力（一時ファイルに書かない）へ、` +
+  "frictionLines・draftLines・conventionLines の行と、images の画像ごとに `- 画像: <絶対パス>` の行をそのまま書く。"
+
+const ACCEPTOR_REQUEST =
+  `タスク ${taskId} の受け入れ役。起動時の文脈（hook が渡した追加の文脈）の1行目が判定の行、続く行が \`tw accept\` の出力と依頼文。依頼文に従って判定する。` +
+  "判定の行の最初の語を acceptKind に、`SNAPSHOT` の行の木の SHA を tree に写す（その行が無ければ tree は空）。" +
+  "1行目が `STOP` で始まるか判定の行が無ければ、acceptKind を STOP にし、reason にその行（無ければ「起動時の文脈に受け入れの準備が無い」）を入れ、verdict は reject でよい。"
+
 const result = { stopped: false }
 
 const titleOf = (step, match) => {
@@ -155,7 +148,8 @@ if (runs("implement")) {
       "frictionLines には、段ごとに `tw brief implementer` の決まりの `## friction log` の書き方で1行ずつ入れる" +
       `（1段1行。何も起きなかった段は \`- 実装 段<n>: friction log: なし\`、起きた段はその段の色つきの行）。` +
       "段を skipped にしたときは、飛ばしたわけの1行を入れる。frictionLines は空にしない。" +
-      "画面や見た目を撮ったら、その画像の絶対パスを images に入れる。撮らなければ空配列。",
+      "画面や見た目を撮ったら、その画像の絶対パスを images に入れる。撮らなければ空配列。" +
+      relaySentence("実装"),
     { agentType: "tsukumo-workflow:no-delegate", schema: IMPLEMENT, label: "implement", phase: implementTitle, ...modelOpt },
   )
   if (implement === null) {
@@ -191,9 +185,7 @@ if (runs("implement")) {
 if (runs("accept")) {
   phase(acceptTitle)
   let round = 0
-  let tree = ""
   let judgment = null
-  let prepared = null
   const fixes = []
   const reportSection = (heading, report) =>
     report
@@ -203,63 +195,29 @@ if (runs("accept")) {
       : ""
   while (true) {
     const first = round === 0
-    const imagePaths = [...new Set([result.implement, ...fixes].flatMap((report) => report?.images ?? []))]
-    const imageSentence =
-      "画面や見た目を確かめる完了条件があるタスクでは、次の画像のパスを全部 `--image <パス>` で並べて `tw brief acceptor` に付ける。" +
-      `画像が無ければ \`--visual\` を付ける: ${imagePaths.length > 0 ? imagePaths.join(" ") : "（画像のパスは無い）"}`
-    prepared = await agent(
-      `${COMMON}\n` +
-        (first && result.implement
-          ? `最初に、\`tw relay ${taskId} 実装 --body-file -\` の標準入力へ、次の囲みの中の行をそのまま書く（実装の申し送り。tw accept より前に書き終える）。囲みの線は書かない。\n` +
-            `-----\n${[...result.implement.frictionLines, ...(result.implement.draftLines ?? []), ...result.implement.conventionLines].join("\n")}\n-----\n` +
-            "書いたあと、"
-          : "") +
-        (first
-          ? `\`tw accept ${taskId}\` を打つ。出力の最後の行で道を分ける: ` +
-            "`REVIEW`（SNAPSHOT の行がある）なら kind を REVIEW に、" +
-            "`SKIP`・`NOTHING`・`NO_RANGE` の行が出たなら同名の kind にする。" +
-            "`NOT_LAST_STEP`・`FORMAT_FAILED`・`MISSING`・`INVALID`・`NOT_OWNER` など止まる行が出たら kind を STOP にして reason に行を入れる。"
-          : `受け入れ役が差し戻したので、\`tw lap ${taskId} review start\` を打つ。\`tw accept\` は打たない（\`accept\` の end は受け入れの締めの agent が \`--after-review\` で打つ。ここで打つと、受け入れ役の前に \`accept\` が閉じて、締めの agent が \`delegate\` の start を偽って書く）。` +
-            "kind は REVIEW にする。`NOT_CLAIMED`・`NOT_OWNER` など止まる行が出たら kind を STOP にして reason に行を入れる。") +
-        (first
-          ? "続けて、打った `tw accept` の出力を一時ファイルに書かず標準入力へ渡し、" +
-            `\`tw brief acceptor ${taskId} --accept-file -\` を打つ。${imageSentence}`
-          : `続けて \`tw brief acceptor ${taskId} --round ${round + 1} --since ${tree}\` を打つ（\`--accept-file\` は付けない）。${imageSentence}`) +
-        "kind が STOP のときは brief を空文字にしてよい。" +
-        "返すのは、kind・`tw accept` の出力全部（acceptLines）・`tw brief` の2行目以降の依頼文（brief）・tree。" +
-        (first
-          ? "tree は `tw accept` の出力の `SNAPSHOT` の行の木の SHA（その行が無ければ空）。"
-          : "tree は `tw brief` の1行目の末尾の木の SHA。"),
-      { agentType: "tsukumo-workflow:no-delegate", schema: ACCEPT_PREPARE, model: "haiku", effort: "low", label: `accept-prepare-${round + 1}`, phase: acceptTitle },
-    )
-    if (prepared === null) {
-      return { stopped: true, phase: "accept", reason: "受け入れの準備の agent が null を返した" }
-    }
-    if (prepared.kind === "STOP") {
-      return { stopped: true, phase: "accept", reason: prepared.reason ?? prepared.acceptLines, prepared }
-    }
-    const sameTree = !first && typeof prepared.tree === "string" && prepared.tree !== "" && prepared.tree === tree
-    if (typeof prepared.tree === "string" && prepared.tree !== "") {
-      tree = prepared.tree
-    }
+    const previousTree = judgment?.tree ?? ""
     const carried = first
       ? ""
       : `\n\n前回の受け入れ役の指摘の原文（直しが指摘に応えているかを照らす）:\n${JSON.stringify(judgment.findings)}\n` +
         `材料の値: friction=${judgment.friction} human=${judgment.human}（前回の判定の値）`
-    // 1周目は実装役の報告を渡さない。木が前の回と同じ（直しがコードを変えず材料だけを返した）ときだけ直しの報告を渡す
-    const reports = sameTree
-      ? reportSection(`直しの報告（${fixes.length}回目）`, fixes[fixes.length - 1]) +
-        "\n\n作業ツリーの木が前の回と同じ（直しがコードを変えず材料だけを返した）ので、diff が空でも差し戻さず、" +
-        "上の報告の材料（理由・所見、検証、stepLines）で前回の指摘に応えたかを見て判定する。"
-      : ""
-    judgment = await agent(`${prepared.brief}\n${STOP_GATE}${carried}${reports}`, {
+    // 1周目は実装役の報告を渡さない。木は起動の hook が決めるので、前の回と同じかは受け入れ役が照らす
+    const reports =
+      !first && previousTree !== ""
+        ? reportSection(`直しの報告（${fixes.length}回目）`, fixes[fixes.length - 1]) +
+          `\n\n起動時の文脈の SNAPSHOT の木が前の回の木 ${previousTree} と同じ（直しがコードを変えず材料だけを返した）ときだけ、diff が空でも差し戻さず、` +
+          "上の報告の材料（理由・所見、検証、stepLines）で前回の指摘に応えたかを見て判定する。木が違えば上の報告は読まずに判定する。"
+        : ""
+    judgment = await agent(`${ACCEPTOR_REQUEST}\n${STOP_GATE}${carried}${reports}`, {
       agentType: "tsukumo-workflow:acceptor",
       schema: JUDGMENT,
       label: `acceptor-${round + 1}`,
       phase: acceptTitle,
     })
     if (judgment === null) {
-      return { stopped: true, phase: "accept", reason: "受け入れ役が null を返した", prepared }
+      return { stopped: true, phase: "accept", reason: "受け入れ役が null を返した" }
+    }
+    if (judgment.acceptKind === "STOP") {
+      return { stopped: true, phase: "accept", reason: judgment.reason ?? "受け入れの準備（tw accept-hook）が止まった", judgment }
     }
     if (judgment.verdict === "accept") {
       break
@@ -273,7 +231,8 @@ if (runs("accept")) {
         `直したら作業ツリー（着手した側。別のリポジトリのタスクなら \`tw brief implementer ${taskId}\` が言う作業先の作業ツリー）でコミットし、\`tw verify\` を打つ。` +
         "コミットのあとに打つ。打ったコマンド・結果の要点・通ったかを返す。" +
         "frictionLines には、この直しで気づいた点を `- <色>: <何が起きたか>（<根拠の場所>）` で1行以上入れる（何も無ければ `- 直し: friction log: なし`）。" +
-        "画面や見た目を撮ったら、その画像の絶対パスを images に入れる。撮らなければ空配列。",
+        "画面や見た目を撮ったら、その画像の絶対パスを images に入れる。撮らなければ空配列。" +
+        relaySentence("直し"),
       { agentType: "tsukumo-workflow:no-delegate", schema: IMPLEMENT, label: `fix-${round}`, phase: acceptTitle, ...modelOpt },
     )
     if (fix === null) {
@@ -285,30 +244,16 @@ if (runs("accept")) {
     fixes.push(fix)
   }
 
-  let closed = null
-  if (prepared.kind === "REVIEW" || round > 0) {
-    closed = await agent(
-      `${COMMON}\n` +
-        `受け入れ役が通した。\`tw accept ${taskId} --after-review\` を打って、整形・verify-check・accept の end を済ませる。` +
-        "出力に NOT_VERIFIED が出たら `tw verify` を打ってから打ち直す。最後の行を verifyCheckLine に入れる。accept の end は出力に行が出ないので探さず、最後の行が `VERIFIED` か `VERIFIED_SAME` で始まれば closed を true にして返す（それ以外なら false）。" +
-        (acceptNumber === null
-          ? ""
-          : `返す前に受け入れの phase_result を { phase: ${acceptNumber}, count: ${phaseCount}, outcome: "finished", summary: <受け入れの結果を1〜2文> } で1回呼ぶ` +
-            `（受け入れ役は差し戻し ${round} 回のあと通した。tw accept の判定は ${prepared.kind}）。`),
-      { agentType: "tsukumo-workflow:no-delegate", schema: ACCEPT_CLOSE, model: "haiku", effort: "low", label: "accept-close", phase: acceptTitle },
-    )
-    if (closed === null || !closed.closed) {
-      return { stopped: true, phase: "accept", reason: "受け入れの締めが済まなかった", closed }
-    }
-  }
-  result.accept = { rounds: round, kind: prepared.kind, judgment, closed }
+  result.accept = { rounds: round, kind: judgment.acceptKind, judgment }
 }
 
-// SKIP・NOTHING・NO_RANGE では tw accept が accept を閉じており、ここで no-delegate を起こすと tw lap-hook が delegate の start を書く
-const acceptSkipSentence =
-  result.accept !== undefined && result.accept.closed === null && acceptNumber !== null
-    ? `最初に受け入れの phase_result を { phase: ${acceptNumber}, count: ${phaseCount}, outcome: "skipped" } で1回呼ぶ（summary は付けない。tw accept の判定が ${result.accept.kind} で締めの agent を起こしていない）。`
-    : ""
+const acceptFinishedSentence =
+  result.accept === undefined || acceptNumber === null
+    ? ""
+    : SKIP_KINDS.includes(result.accept.kind)
+      ? `最初に受け入れの phase_result を { phase: ${acceptNumber}, count: ${phaseCount}, outcome: "skipped" } で1回呼ぶ（summary は付けない。tw accept の判定が ${result.accept.kind}）。`
+      : `最初に受け入れの phase_result を { phase: ${acceptNumber}, count: ${phaseCount}, outcome: "finished", summary: <受け入れの結果を1〜2文> } で1回呼ぶ` +
+        `（受け入れ役は差し戻し ${result.accept.rounds} 回のあと通した。tw accept の判定は ${result.accept.kind}）。`
 
 if (runs("retrospect")) {
   phase(retrospectTitle)
@@ -319,7 +264,7 @@ if (runs("retrospect")) {
       `振り返りの段。tsukumo-workflow:retrospect スキルを Skill ツールで読み、タスク ${taskId}・friction=${friction}・human=${human} で従う。` +
       "兆候が無ければ `- 振り返り: 兆候なし`、あれば物差しを通った候補を tw new --draft で積み、`- 振り返り:` の1行（積んだドラフトの ID を添える）を line に入れて返す。" +
       "作業ツリーのファイルは書き換えない。" +
-      acceptSkipSentence +
+      acceptFinishedSentence +
       (retrospectNumber === null
         ? ""
         : `返す前に phase_result を { phase: ${retrospectNumber}, count: ${phaseCount}, outcome: "finished", summary: <line と同じ要点を1〜2文> } で1回呼ぶ。`),

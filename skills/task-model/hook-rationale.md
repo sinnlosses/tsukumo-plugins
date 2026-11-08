@@ -48,3 +48,13 @@ plugin のサブエージェントは frontmatter の `hooks`・`permissionMode`
 - `handback-guard` は、作業のある返却（途中の段も含む）の本文（`SubagentHandback`）に `friction log:` の箇条が1行も無いと `FRICTION_LOG_MISSING` で拒む。書き忘れを機械で落とすため。作業の無い返却と本文が読めない `SubagentStop` は通す。書き方は `implementer-brief.md` の `## friction log`。
 - `handback-guard` の印は `agent_id` ごとの `.tw/local/task-agent-writers/<agent_id>` に残り、着手の控えが無くなると消える。外への書き込みは印を残さない。受け入れ役の返却には掛からない。
 - `handback-guard` が通す返却: 作業の無い返却（前提が誤り・`dropped`・計画だけの回）。作業先で `tw verify` が `MISSING`・`INVALID` を返すか、設定に検証コマンドが無ければ、検証を求めずに通す。段の控えの数えは、作業先の作業ツリーの判定では着手した作業ツリーの段の控えも含める。
+
+#### `accept-hook` で受け入れの準備と締めを打つ件
+
+ワークフロースクリプト（`flow = "script"`）の受け入れの準備（`tw accept`・`tw brief acceptor`）と締め（`tw accept --after-review`）は判断の要らない決まった手順で、受け入れ役は `tw` を打てない（上の `commit-guard` の受け入れ役の規則）。そのため以前は周回ごとに準備と締めの agent を起こしていた。受け入れ役の `SubagentStart`・`SubagentStop` の hook で打てば、その起動が消える。仕様の正典は `tw accept-hook --help`。
+
+- 確かめた範囲（2026-11-08）: `SubagentStart` の hook が返す `hookSpecificOutput.additionalContext` は、`claude -p` の `Agent` で起こした `general-purpose` の最初の文脈に届いた。ワークフローの agent の transcript の先頭には `SubagentStart` の `hook_success` が1件ずつある。受け入れ役の transcript では `StructuredOutput` の行が `SubagentStop` の行より前にあり、`SubagentStop` の入力には `agent_transcript_path`・`stop_hook_active` が入る。
+- 確かめていないこと: ワークフローの agent に `additionalContext` が届くか（`Agent` の起動では届いた）、`SubagentStop` の起動時点で transcript の書き込みが済んでいるか（読めなければ 0.5 秒おきに最大4回読み直し、それでも読めなければ締めを打たない）、同じイベントの hook が `hooks.json` の順に走るか（`accept-hook` を `lap-hook` の前に置く）。
+- 届かないときの形: 受け入れ役は判定の行を見つけられず `acceptKind` を `STOP` で返し、ワークフロースクリプトは `stopped` で止まる。
+- `skills` の流れでは打たない: メインが同じ部品を打ち、同じ型の受け入れ役を起こすので、二重になる。
+- やめる条件: hook の失敗で受け入れが止まる run が出続けるなら、準備・締めの agent に戻す。

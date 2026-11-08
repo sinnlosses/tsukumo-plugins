@@ -12,6 +12,8 @@ from datetime import datetime, timedelta, timezone
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 from selftest_support import RESULT_FULL, RESULT_REQUIRED, check, git, git_env, refuse_direct_run, say, weight, write  # noqa: E402
+from selftest_body import task_body  # noqa: E402
+import accept_hook  # noqa: E402
 import beads  # noqa: E402
 import commit_guard  # noqa: E402
 import escalation  # noqa: E402
@@ -120,6 +122,142 @@ def _subagent_stop(agent_type: object) -> dict:
 
 def _skill_call(skill: str, **extra: str) -> dict:
     return {"hook_event_name": "PreToolUse", "session_id": "s-1", "tool_name": "Skill", "tool_input": {"skill": skill}, **extra}
+
+
+def run_accept_hook(tmp: str, where: str, payload: dict) -> dict | None:
+    """`tw accept-hook` を git の外（`tmp`）から打つ。出した JSON（何も出さなければ `None`）。終了コードが0でなければ例外。"""
+    r = run_task(tmp, "accept-hook", stdin=json.dumps({"cwd": where, **payload}))
+    if r.returncode != 0:
+        raise RuntimeError(f"accept-hook が {r.returncode} で終わった: {r.stdout}{r.stderr}")
+    return json.loads(r.stdout) if r.stdout.strip() else None
+
+
+def _accept_context(out: dict | None) -> str:
+    return out["hookSpecificOutput"]["additionalContext"] if out is not None else ""
+
+
+def _accept_rounds(wt: str) -> list[tuple[object, object]]:
+    return [(e.get("round"), e.get("tree")) for e in flow_rows(wt) if e["event"] == accept_hook.ROUND_EVENT]
+
+
+def _accept_hook_repo(tmp: str, steps: tuple = (("書く", "x"),), flow: str = "script") -> tuple[str, str]:
+    main_path, wt1, wt2 = make_repo(tmp, branch="切らない", verify="`true`", format_command="`true`", extra=f'flow = "{flow}"\n')
+    commit_task(main_path, taskfile.Task("T-100", "受け入れ", "todo", "sonnet", "Y", (), task_body(steps, ["shared.txt"])))
+    run_task(wt1, "claim", "T-100")
+    return wt1, wt2
+
+
+@weight(6)
+def test_accept_hook_prepare() -> None:
+    say("task.py accept-hook: 受け入れ役の起動で tw accept と tw brief acceptor を打ち、additionalContext で渡す")
+    start = _subagent_start("tsukumo-workflow:acceptor")
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1, wt2 = _accept_hook_repo(tmp)
+        check("着手の控えが無い作業ツリーでは何も出さない", run_accept_hook(tmp, wt2, start) is None)
+        check("型が acceptor でなければ何も出さない",
+              run_accept_hook(tmp, wt1, _subagent_start("tsukumo-workflow:no-delegate")) is None and _accept_rounds(wt1) == [])
+
+        write(os.path.join(wt1, "note.md"), "x\n")
+        run_task(wt1, "verify")
+        context = _accept_context(run_accept_hook(tmp, wt1, start))
+        check("1周目の SKIP は判定の行と依頼文を渡し、周回を書かない",
+              context.startswith("SKIP\t") and "BRIEF\tT-100\tacceptor\t" in context and "SNAPSHOT" not in context
+              and _accept_rounds(wt1) == [],
+              context + repr(_accept_rounds(wt1)))
+
+        run_task(wt1, "relay", "T-100", "実装", "--body-file", "-", stdin="- 実装 段1: friction log: なし\n- 画像: /abs/shot.png\n")
+        write(os.path.join(wt1, "code.py"), "x = 1\n")
+        context = _accept_context(run_accept_hook(tmp, wt1, start))
+        rounds = _accept_rounds(wt1)
+        tree = rounds[0][1] if rounds else ""
+        check("1周目の REVIEW は判定の行・木・依頼文を渡し、round 1 と SNAPSHOT の木を書く",
+              context.startswith("REVIEW\t") and f"\nSNAPSHOT\t{tree}\n" in context and "BRIEF\tT-100\tacceptor\t" in context
+              and len(rounds) == 1 and rounds[0][0] == 1 and isinstance(tree, str) and len(tree) == 40,
+              context + repr(rounds))
+        check("実装の申し送りの - 画像: の行が依頼文の画像の欄に出る", "/abs/shot.png" in context, context)
+
+        context = _accept_context(run_accept_hook(tmp, wt1, start))
+        rounds = _accept_rounds(wt1)
+        review_edges = [e.get("edge") for e in flow_rows(wt1) if e["event"] == "lap" and e.get("stage") == "review"]
+        check("開いた round 1 のあとは 2周目として --round 2 --since <前の木> の依頼文を渡し、round 2 を書く",
+              context.startswith("REVIEW\tround\t2\n") and "BRIEF\tT-100\tacceptor\t2回目以降" in context
+              and tree in context and [r[0] for r in rounds] == [1, 2] and review_edges.count("start") >= 1,
+              context + repr(rounds))
+
+        accept_hook_close = run_task(wt1, "flow-result", "T-100", "--json-file", "-", stdin=json.dumps({"stopped": False}))
+        check("flow-result は開いた周回を round 0 で閉じる",
+              accept_hook_close.returncode == 0 and _accept_rounds(wt1)[-1] == (0, ""), repr(_accept_rounds(wt1)))
+        context = _accept_context(run_accept_hook(tmp, wt1, start))
+        check("閉じた周回のあとに起こすと1周目として tw accept を打つ",
+              context.startswith("REVIEW\tcode") and [r[0] for r in _accept_rounds(wt1)] == [1, 2, 0, 1], context)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1, _wt2 = _accept_hook_repo(tmp, (("書く", "x"), ("試す", "x"), ("直す", "x")))
+        context = _accept_context(run_accept_hook(tmp, wt1, start))
+        check("1周目で NOT_LAST_STEP なら additionalContext が STOP\\t<行> で始まり、周回を書かない",
+              context.startswith("STOP\tNOT_LAST_STEP\tT-100\t1,2/3") and _accept_rounds(wt1) == [], context)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1, _wt2 = _accept_hook_repo(tmp, flow="skills")
+        write(os.path.join(wt1, "code.py"), "x = 1\n")
+        check("設定 flow が skills なら（メインが受け入れの部品を打つ）何も出さず、tw accept も打たない",
+              run_accept_hook(tmp, wt1, start) is None and not [e for e in flow_rows(wt1) if e["event"] == "lap"],
+              repr(flow_rows(wt1)))
+
+
+def _acceptor_transcript(tmp: str, name: str, verdict: str | None) -> str:
+    """受け入れ役の transcript を模した jsonl（`verdict` が `None` なら `StructuredOutput` の行を置かない）。"""
+    tool = {"type": "tool_use", "name": "StructuredOutput", "input": {"verdict": verdict, "findings": []}}
+    rows = [{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "x"}]}}]
+    if verdict is not None:
+        rows.append({"type": "assistant", "message": {"role": "assistant", "content": [tool]}})
+    rows.append({"type": "attachment", "attachment": {"type": "hook_success", "hookEvent": "SubagentStop"}})
+    return write(os.path.join(tmp, f"{name}.jsonl"), "".join(json.dumps(r) + "\n" for r in rows))
+
+
+@weight(6)
+def test_accept_hook_close() -> None:
+    say("task.py accept-hook: 受け入れ役の停止で判定 accept を読み、開いた周回なら tw accept --after-review を打って閉じる")
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1, _wt2 = _accept_hook_repo(tmp)
+        accept_edges = lambda: [e.get("edge") for e in flow_rows(wt1) if e["event"] == "lap" and e.get("stage") == "accept"]
+
+        def stop(verdict: str | None, active: bool = False) -> dict | None:
+            path = _acceptor_transcript(tmp, f"agent-{verdict}-{active}", verdict)
+            payload = {**_subagent_stop("tsukumo-workflow:acceptor"), "agent_transcript_path": path, "stop_hook_active": active}
+            return run_accept_hook(tmp, wt1, payload)
+
+        write(os.path.join(wt1, "code.py"), "x = 1\n")
+        run_task(wt1, "verify")
+        run_accept_hook(tmp, wt1, _subagent_start("tsukumo-workflow:acceptor"))
+        opened = _accept_rounds(wt1)
+        check("reject は何も打たず、周回も accept も開いたまま",
+              stop("reject") is None and _accept_rounds(wt1) == opened and accept_edges() == ["start"], repr(accept_edges()))
+        check("verdict が読めない transcript は何も打たず、周回を閉じない",
+              stop(None) is None and _accept_rounds(wt1) == opened and accept_edges() == ["start"], repr(accept_edges()))
+
+        write(os.path.join(wt1, "code2.py"), "y = 1\n")
+        out = stop("accept")
+        check("--after-review が NOT_VERIFIED なら decision: block で reject に返し直させ、周回を閉じない",
+              out is not None and out.get("decision") == "block" and "NOT_VERIFIED" in str(out.get("reason"))
+              and _accept_rounds(wt1) == opened, repr(out))
+        check("stop_hook_active が真なら block せず、周回も閉じない",
+              stop("accept", active=True) is None and _accept_rounds(wt1) == opened, repr(_accept_rounds(wt1)))
+
+        run_task(wt1, "verify")
+        check("accept で --after-review が通れば周回を round 0 で閉じ、accept も閉じる",
+              stop("accept") is None and _accept_rounds(wt1)[-1] == (0, "") and accept_edges()[-1] == "end",
+              repr([_accept_rounds(wt1), accept_edges()]))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1, _wt2 = _accept_hook_repo(tmp)
+        write(os.path.join(wt1, "note.md"), "x\n")
+        run_task(wt1, "verify")
+        run_accept_hook(tmp, wt1, _subagent_start("tsukumo-workflow:acceptor"))
+        before = flow_rows(wt1)
+        payload = {**_subagent_stop("acceptor"), "agent_transcript_path": _acceptor_transcript(tmp, "skip", "accept")}
+        check("SKIP の周の accept は --after-review を打たない（台帳に何も足さない）",
+              run_accept_hook(tmp, wt1, payload) is None and flow_rows(wt1) == before, repr(flow_rows(wt1)[len(before):]))
 
 
 @weight(6)
@@ -574,6 +712,16 @@ def test_agent_scoped_guard() -> None:
                           for n in ("Explore", "", "tsukumo-workflow:acceptor-x", "no-delegate-x", "retrospector-x"))
               and not re.search(stop_matcher, "tsukumo-workflow:no-delegate"),
               f"{start_matcher!r} {stop_matcher!r}")
+        accept_hooks = [(e, m) for e, m, argv in all_hooks if argv[1:] == ["accept-hook"]]
+        stop_events = [(e, argv[1:]) for e, _, argv in all_hooks if e == "SubagentStop"]
+        check("hooks/hooks.json は SubagentStart・SubagentStop で受け入れ役（裸と plugin 付き）にだけ当たる accept-hook を呼び、"
+              "SubagentStop では lap-hook より前に置く",
+              sorted(e for e, _ in accept_hooks) == ["SubagentStart", "SubagentStop"]
+              and stop_events.index(("SubagentStop", ["accept-hook"])) < stop_events.index(("SubagentStop", ["lap-hook"]))
+              and all(re.search(m or "", f"{p}{lap_hook.ACCEPTOR_TYPE}") for _, m in accept_hooks for p in ("", "tsukumo-workflow:"))
+              and not any(re.search(m or "", n) for _, m in accept_hooks
+                          for n in ("tsukumo-workflow:no-delegate", "tsukumo-workflow:acceptor-x", "retrospector", "")),
+              str(accept_hooks))
         check("hooks/hooks.json は --agent-scoped 付きで commit-guard・handback-guard を呼ぶ hook を PLUGIN_HOOKS の数だけ持つ",
               len(hooks) == sum("--agent-scoped" in args for _, _, args in expected_hooks) and all(a in ("commit-guard", "handback-guard") for a in (argv[-2] for argv in hooks)),
               str(all_hooks))
@@ -1590,6 +1738,8 @@ TESTS = (
     test_commit_guard_other_repo,
     test_work_repo_guard,
     test_agent_scoped_guard,
+    test_accept_hook_prepare,
+    test_accept_hook_close,
     test_readonly_git,
 )
 

@@ -9,6 +9,7 @@ import os
 import re
 import sys
 
+import accept_hook
 import beads
 import flow_journal
 import tw_base
@@ -82,6 +83,7 @@ def cmd_flow_result(toplevel: str, task_id: str, json_path: str, patch: str | No
     if not tw_base.owns(toplevel, shown):
         print(f"NOT_OWNER\t{shown}")
         raise SystemExit(4)
+    accept_hook.close_round(toplevel, shown)
     if transcript_dir is not None:
         _record_stages(toplevel, task_id, transcript_dir)
     if not result["stopped"]:

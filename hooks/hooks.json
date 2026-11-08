@@ -45,6 +45,12 @@
         ]
       },
       {
+        "matcher": "(^|:)acceptor$",
+        "hooks": [
+          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/tw-hook", "args": ["accept-hook"] }
+        ]
+      },
+      {
         "matcher": "(^|:)(acceptor|retrospector)$",
         "hooks": [
           { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/tw-hook", "args": ["lap-hook"] }
@@ -56,6 +62,12 @@
         "matcher": "(^|:)(general-purpose|no-delegate|retrospector)$",
         "hooks": [
           { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/tw-hook", "args": ["lap-hook"] }
+        ]
+      },
+      {
+        "matcher": "(^|:)acceptor$",
+        "hooks": [
+          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/tw-hook", "args": ["accept-hook"] }
         ]
       }
     ],
