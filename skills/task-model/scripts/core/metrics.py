@@ -12,6 +12,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
+import flow_journal
 import ledger
 
 DAYS_DEFAULT = 7
@@ -41,6 +42,7 @@ STAGE_ORDER = ("計画", "直し", "委譲", "検証", "受け入れ", "レビ�
 ROUTES = ("direct", "normal", "split", "escalated")
 LAP_STAGE_NAMES = {"direct": "直し", "delegate": "委譲", "accept": "受け入れ", "review": "レビュー", "retro": "振り返り", "land": "合流", "sync": "反映"}
 KIND_STAGE_NAMES = {"claim": "計画", "step": "委譲", "verify": "検証", "done": "送り出し"}
+JOURNAL_LAP_STAGES = ("delegate", "review", "retro")
 
 
 @dataclass(frozen=True, eq=False)
@@ -279,18 +281,36 @@ def open_stages(events: list[Event], task_id: str) -> list[str]:
     return stages
 
 
+def _flow_stage_span(event: Event) -> tuple[str, str, datetime, datetime, float] | None:
+    stage = LAP_STAGE_NAMES.get(str(event.fields.get("stage")))
+    seconds = event.fields.get("seconds")
+    begin = flow_journal.parse_time(event.fields.get("start"))
+    if stage is None or not isinstance(seconds, (int, float)) or begin is None or flow_journal.parse_time(event.fields.get("end")) is None:
+        return None
+    # 欄 seconds は秒未満を切り捨てた値なので、終わりを始め＋seconds に揃え、task_stage_spans が verify で割らないようにする
+    return stage, str(event.fields.get("difficulty", "?")), begin, begin + timedelta(seconds=seconds), float(seconds)
+
+
 def _run_spans(run: list[Event]) -> tuple[list[tuple[str, str, datetime, datetime, float]], list[str]]:
     """`run`（1回の着手以降の出来事）から `(段, difficulty, 始め, 終わり, 所要秒)` の並びと、終わりの無い `start` の段名の並びを拾う。
 
     最後の出来事は次の出来事が無いので拾わない。同じ段の前の `start` がまだ閉じていない `start`（手打ちと hook が重ねた lap）は数えない。
+    `flow_stage`（ワークフローの run の journal から写した区間）があれば、段 `delegate`・`review`・`retro` の `lap` は
+    区間にも閉じ残りにも数えず（ほかの段の区間の終わりとしては読む）、`flow_stage` の区間を数える。
     """
     spans: list[tuple[str, str, datetime, datetime, float]] = []
     opens: list[str] = []
+    flows = [e for e in run if e.kind == "flow_stage"]
+    if flows:
+        run = [e for e in run if e.kind != "flow_stage"]
+        spans.extend(span for span in map(_flow_stage_span, flows) if span is not None)
     verifying = _verify_spans(run)
     covered: dict[str, int | None] = {}
     for i, e in enumerate(run[:-1]):
         stage = _stage_of(e)
         if stage is None:
+            continue
+        if flows and e.kind == "lap" and e.fields.get("stage") in JOURNAL_LAP_STAGES:
             continue
         edge = e.fields.get("edge") if e.kind == "lap" else None
         if edge == "end":

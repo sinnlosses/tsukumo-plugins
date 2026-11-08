@@ -5,10 +5,12 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
 import re
 import sys
 
 import beads
+import flow_journal
 import tw_base
 import tw_claim
 import tw_relay
@@ -49,7 +51,24 @@ def _fail_usage(message: str) -> None:
     raise SystemExit(2)
 
 
-def cmd_flow_result(toplevel: str, task_id: str, json_path: str, patch: str | None) -> None:
+def _record_stages(toplevel: str, task_id: str, transcript_dir: str) -> None:
+    for stage in flow_journal.read_stages(transcript_dir):
+        verdict = {} if stage.verdict is None else {"verdict": stage.verdict}
+        tw_base.record(
+            toplevel,
+            "flow_stage",
+            task_id,
+            stage=stage.stage,
+            label=stage.label,
+            start=stage.start,
+            end=stage.end,
+            seconds=stage.seconds,
+            source="journal",
+            **verdict,
+        )
+
+
+def cmd_flow_result(toplevel: str, task_id: str, json_path: str, patch: str | None, transcript_dir: str | None) -> None:
     bd_id = tw_base.bd_task_id(task_id)
     shown = beads.to_task_id(bd_id)
     try:
@@ -58,9 +77,13 @@ def cmd_flow_result(toplevel: str, task_id: str, json_path: str, patch: str | No
         _fail_usage(f"戻り値の JSON が壊れている（{exc}）")
     if not isinstance(result, dict) or not isinstance(result.get("stopped"), bool):
         _fail_usage("戻り値がオブジェクトでないか、stopped が真偽値でない")
+    if transcript_dir is not None and not os.path.isdir(transcript_dir):
+        _fail_usage(f"--transcript-dir のディレクトリが無い（{transcript_dir}）")
     if not tw_base.owns(toplevel, shown):
         print(f"NOT_OWNER\t{shown}")
         raise SystemExit(4)
+    if transcript_dir is not None:
+        _record_stages(toplevel, task_id, transcript_dir)
     if not result["stopped"]:
         accept = result.get("accept")
         judgment = accept.get("judgment") if isinstance(accept, dict) else None
@@ -76,6 +99,9 @@ def cmd_flow_result(toplevel: str, task_id: str, json_path: str, patch: str | No
     reason = _flat(result.get("reason"))
     body = phase if patch is None else f"{phase}\n- patch: {patch}"
     tw_relay.write_relay(toplevel, bd_id, shown, "再開", body)
+    if transcript_dir is not None:
+        label = flow_journal.unfinished_label(transcript_dir)
+        tw_base.record(toplevel, "flow_stopped", task_id, phase=phase, label=label if label is not None else "-")
     out = io.StringIO()
     code: object = None
     with contextlib.redirect_stdout(out):

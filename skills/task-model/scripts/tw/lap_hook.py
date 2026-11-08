@@ -9,6 +9,7 @@
 
 書くのは入力の `cwd` の作業ツリーの着手の控えがちょうど1件で、その段が開いていないときだけ。`delegate` は `accept` が
 開いているあいだは書かず、`retro` は `accept` の最後の端が `end` のときだけ書く。
+ワークフローの run で `tw flow-result --transcript-dir` が `flow_stage` を書いた着手では、集計はここで書く `delegate`・`review`・`retro` の `lap` を読まない。
 
 stdout には何も出さない（`SubagentStart` の stdout は委譲先の文脈に入りうる）。終了コードはいつも0。
 """
