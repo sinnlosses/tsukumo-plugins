@@ -194,6 +194,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
         r"""`--json-file`（`-` は標準入力）の JSON を読む（読む欄は `stopped`・`phase`・`reason`・`accept.judgment`・`retrospect.line`）。書けるのは自分の着手の印のタスクだけで、違えば何も書かずに `NOT_OWNER`（終了コード4）。壊れた JSON・オブジェクトでない・`stopped` が真偽値でないときは何も書かずに終了コード2
 - 通った（`stopped` が偽）: `accept.judgment` があれば鍵 `受け入れ`（`判定: 受け入れ`・`- 材料:`・`- 指摘:`・`- 目視:`・notes）、`retrospect.line` があれば鍵 `振り返り` を書く。`accept`・`retrospect` が無い段の鍵は書かない。鍵 `実装` は書かない（受け入れの準備が書く）。最後の行は `FINISH_READY\tT-xxx`
 - 止まった（`stopped` が真）: 鍵 `再開` に 1行目 `<phase>`、`--patch <パス>` があれば2行目 `- patch: <パス>` を書き、続けて `release` する。`--patch` は渡されたパスを書くだけで、退避はしない（通ったときは無視）
+- `--transcript-dir <dir>`（ワークフロー起動の戻りの `Transcript dir`）: 通る・止まるどちらでも、`journal.jsonl` の label が `implement`・`fix-n`（段 `delegate`）・`acceptor-n`（段 `review`）・`retrospect`（段 `retro`）の agent ごとに、台帳へ出来事 `flow_stage`（`stage`・`label`・`start`・`end`・`seconds`・`source: journal`、受け入れ役だけ `verdict`）を書く。止まったときは `release` の前に `flow_stopped`（`phase`・`result` の無い最後の agent の `label`）も書く。読むのは journal の `label`・`phase`・`agentId`・`result.verdict` と `agent-<agentId>.jsonl` の先頭行・末尾行の時刻だけ。ディレクトリが無ければ何も書かずに終了コード2
 
 出力: `RELAYED\tT-xxx\t<鍵>`・`FINISH_READY\tT-xxx`・`LEFTOVER\tT-xxx\t<件数>`・`RELEASED\tT-xxx\t<phase>\t<reason>`（`phase`・`reason` が欠ければ `-`）・`NOT_CLAIMED`・`NOT_OWNER`""",
     ),
@@ -462,6 +463,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_flow.add_argument("task_id")
     p_flow.add_argument("--json-file", dest="json_file", required=True)
     p_flow.add_argument("--patch", default=None)
+    p_flow.add_argument("--transcript-dir", dest="transcript_dir", default=None)
     p_metrics = sub.add_parser("metrics")
     p_metrics.add_argument("--days", type=int, default=metrics.DAYS_DEFAULT)
     p_metrics.add_argument("--stages", action="store_true")
@@ -685,7 +687,7 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
         elif args.command == "relay":
             tw_relay.cmd_relay(toplevel, args.task_id, args.key, args.body_file)
         elif args.command == "flow-result":
-            tw_flow_result.cmd_flow_result(toplevel, args.task_id, args.json_file, args.patch)
+            tw_flow_result.cmd_flow_result(toplevel, args.task_id, args.json_file, args.patch, args.transcript_dir)
         elif args.command == "metrics":
             (metrics.cmd_metrics_stages if args.stages else metrics.cmd_metrics)(toplevel, args.days)
         elif args.command == "adopt":
