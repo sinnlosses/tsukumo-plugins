@@ -29,7 +29,7 @@ import subprocess
 import sys
 
 _TASK_MODEL_SCRIPTS = os.path.normpath(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "task-model", "scripts", "core")
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "skills", "task-model", "scripts", "core")
 )
 if _TASK_MODEL_SCRIPTS not in sys.path:
     sys.path.insert(0, _TASK_MODEL_SCRIPTS)
@@ -89,7 +89,7 @@ def main() -> int:
 
 def find_comment_script() -> str | None:
     here = os.path.dirname(os.path.abspath(__file__))
-    candidate = os.path.normpath(os.path.join(here, "..", "..", COMMENT_AUDIT_RELATIVE))
+    candidate = os.path.normpath(os.path.join(here, "..", "skills", COMMENT_AUDIT_RELATIVE))
     return candidate if os.path.isfile(candidate) else None
 
 

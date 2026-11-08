@@ -48,7 +48,7 @@ def main() -> int:
     check("task-model のパスは許す", forbidden("a", "${CLAUDE_SKILL_DIR}/../task-model/WORKFLOW.md") == [])
     check("自分自身のパスは許す", forbidden("a", "${CLAUDE_SKILL_DIR}/../a/scripts") == [])
     check("ほかの兄弟のパスは返す", forbidden("a", "${CLAUDE_SKILL_DIR}/../task-model/x ${CLAUDE_SKILL_DIR}/../retrospect/SKILL.md") == ["retrospect"])
-    check("改名前の task-workflow のパスは返す", forbidden("a", "${CLAUDE_SKILL_DIR}/../task-workflow/WORKFLOW.md") == ["task-workflow"])
+    check("task-model 以外の実在する兄弟のパスは返す", forbidden("a", "${CLAUDE_SKILL_DIR}/../next-task/SKILL.md") == ["next-task"])
 
     entry = check_repo.RETROSPECT_ENTRY_REFERENCE
     check("retrospect/SKILL.md の指し方を拾う", entry.search("`retrospect/SKILL.md` の出典") is not None)
@@ -59,24 +59,24 @@ def main() -> int:
     check("next-task から task-model のファイルは許す", edges("next-task", "`skills/task-model/WORKFLOW.md`", skills) == [])
     check("plan-tasks から next-task のファイルは返す",
           edges("plan-tasks", "`next-task` スキルの `ship-stopped.md` の表", skills) == ["next-task"])
-    check("retrospect から task-workflow の段の手順のファイルは返す",
-          edges("retrospect", "task-workflow/parts/retrospect/retrospect.md を読む", skills) == ["task-workflow"])
+    check("retrospect から next-task の手順のファイルは返す",
+          edges("retrospect", "next-task/ship.md を読む", skills) == ["next-task"])
     check("task-model からほかのスキルのファイルは返す", edges("task-model", "`next-task` の `SKILL.md`", skills) == ["next-task"])
     check("retro から retrospect のファイルは許す", edges("retro", "`retrospect` の `detail.md`", skills) == [])
     check("自分自身のファイルは許す", edges("plan-tasks", "skills/plan-tasks/SKILL.md", skills) == [])
-    check("名前で呼ぶだけなら拾わない", edges("next-task", "`task-workflow` を Skill ツールで呼ぶ", skills) == [])
+    check("名前で呼ぶだけなら拾わない", edges("next-task", "`retro` を Skill ツールで呼ぶ", skills) == [])
     check("台帳の置き場は拾わない",
           edges("task-model", "`$(git rev-parse --git-common-dir)/task-workflow/flow/<ID>.md`", skills) == [])
 
     upward = check_repo.upward_reference_problems
-    brief = os.path.join(check_repo.SKILLS, "task-workflow", "parts", "acceptor", "acceptor-brief.md")
-    check("1つ上の `ship/ship.md` は届く", upward(brief, "このファイルの1つ上のディレクトリの `ship/ship.md`") == [])
-    check("括弧の中の言及から2つ上の `review-criteria.md` に届く",
-          upward(brief, "置き場（このファイルの2つ上のディレクトリ）の `review-criteria.md`") == [])
-    check("括弧の後ろの `scripts/self_review.py` に届く",
-          upward(brief, "このファイルの2つ上のディレクトリ（`task-workflow` の置き場）の `scripts/self_review.py`") == [])
-    check("3つ上の `review-criteria.md` は届かないとして返す",
-          len(upward(brief, "置き場（このファイルの3つ上のディレクトリ）の `review-criteria.md`")) == 1)
+    brief = os.path.join(check_repo.SKILLS, "next-task", "ship-stopped.md")
+    check("1つ上の `task-model/WORKFLOW.md` は届く", upward(brief, "このファイルの1つ上のディレクトリの `task-model/WORKFLOW.md`") == [])
+    check("括弧の中の言及から2つ上の `README.md` に届く",
+          upward(brief, "置き場（このファイルの2つ上のディレクトリ）の `README.md`") == [])
+    check("括弧の後ろの `scripts/check_repo.py` に届く",
+          upward(brief, "このファイルの2つ上のディレクトリ（`retrospect` の置き場）の `scripts/check_repo.py`") == [])
+    check("3つ上の `README.md` は届かないとして返す",
+          len(upward(brief, "置き場（このファイルの3つ上のディレクトリ）の `README.md`")) == 1)
     check("先のパスを読めない言及を返す", len(upward(brief, "このファイルの2つ上のディレクトリにあるスクリプト")) == 1)
 
     mentions = check_repo.task_model_name_mentions
@@ -93,34 +93,12 @@ def main() -> int:
           mentions("受け入れ役は `acceptor` に渡す。brief の前の acceptor", skills, agents) == ["acceptor"])
 
     unknown = check_repo.unknown_qualified_names
-    known = {"task-workflow", "acceptor"}
-    check("全名が実在する名なら問題なし", unknown("`tsukumo-workflow:task-workflow` と `tsukumo-workflow:acceptor`。", known) == [])
-    check("実在しない名の全名を返す", unknown("`tsukumo-workflow:task-workflw` と `tsukumo-workflow:acceptor`", known) == ["task-workflw"])
+    known = {"retrospect", "acceptor"}
+    check("全名が実在する名なら問題なし", unknown("`tsukumo-workflow:retrospect` と `tsukumo-workflow:acceptor`。", known) == [])
+    check("実在しない名の全名を返す", unknown("`tsukumo-workflow:retrospct` と `tsukumo-workflow:acceptor`", known) == ["retrospct"])
     check("`<name>` の雛形は拾わない", unknown("`tsukumo-workflow:<name>`", known) == [])
     check("名前を指して呼ぶ言い回しを拾う", check_repo.SHORT_NAME_CALL.search("`retrospect` を Skill ツールで名前を指して呼び") is not None)
     check("全名の呼び方は拾わない", check_repo.SHORT_NAME_CALL.search("`tsukumo-workflow:retrospect` を Skill ツールで呼び") is None)
-
-    marked = check_repo.is_workflow_step
-    head = '---\nname: s\ndescription: "d"\nmetadata:\n  workflow-step: "true"\n---\n'
-    check("metadata の workflow-step: \"true\" を印として拾う", marked(head))
-    check("引用符の無い true も拾う", marked(head.replace('"true"', "true")))
-    check("値が true でなければ拾わない", not marked(head.replace('"true"', '"false"')))
-    check("metadata の外の workflow-step は拾わない",
-          not marked('---\nname: s\nworkflow-step: "true"\nother:\n  workflow-step: "true"\n---\n'))
-    check("frontmatter が無ければ拾わない", not marked("# 本文\n  workflow-step: \"true\"\n"))
-
-    contract = check_repo.step_contract_problems
-    outcomes = "`finished`・`skipped`・`stopped`"
-    check("`phase_result` と3つの結果があれば問題なし", contract(head + f"`phase_result` を呼ぶ。{outcomes}\n") == [])
-    check("`work_plan` でもよい", contract(head + f"`work_plan` で進める。{outcomes}\n") == [])
-    check("返す口が無ければ返す", len(contract(head + f"{outcomes}\n")) == 1)
-    check("結果の語が欠ければ返す", len(contract(head + "`work_plan` で進める。`finished`\n")) == 1)
-    check("段の返却に外した行 `設定で外した` を渡すと言えば返す",
-          len(contract(head + f"`work_plan` で進める。{outcomes}\n`skipped` は `設定で外した` を渡す\n")) == 1)
-    check("廃止した `なし` の設定を指せば返す",
-          len(contract(head + f"`work_plan` で進める。{outcomes}\n（`なし` の設定には無い）\n")) == 1)
-    check("frontmatter の中の語は本文に数えない",
-          len(contract('---\nname: s\ndescription: "`work_plan`"\n---\n' + f"{outcomes}\n")) == 1)
 
     hard = check_repo.hardcoded_phase_titles
     check("phase() の直書きを拾う", len(hard('phase("Implement")\n')) == 1)

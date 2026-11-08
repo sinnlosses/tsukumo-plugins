@@ -576,7 +576,7 @@ def test_hold_requires_unlock_condition() -> None:
 
 
 def _brief_always_section(role_file: str) -> str:
-    path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "task-workflow", "parts", role_file)
+    path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "workflow-briefs", role_file)
     with open(path, encoding="utf-8") as f:
         text = f.read()
     return text.split("\n## 常に\n", 1)[1].split("\n## ", 1)[0]
@@ -584,8 +584,8 @@ def _brief_always_section(role_file: str) -> str:
 
 def test_brief_head_fixed_lines() -> None:
     say("依頼文の型: `常に` の頭に書き込みの正しい形（実装・受け入れ）と tw を打たない旨（受け入れ）が固定の行である")
-    implementer = _brief_always_section("implementer/implementer-request.md")
-    acceptor = _brief_always_section("acceptor/acceptor-request.md")
+    implementer = _brief_always_section("implementer-request.md")
+    acceptor = _brief_always_section("acceptor-request.md")
     for name, head in (("実装", implementer), ("受け入れ", acceptor)):
         check(f"{name}: 書き先を変数・コマンド置換にせず絶対パスのリテラルで Write する",
               "変数" in head and "絶対パスのリテラル" in head and "Write" in head, head)

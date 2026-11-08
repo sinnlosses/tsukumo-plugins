@@ -6,47 +6,31 @@ import os
 
 import gitinfo
 
-# 毎回読まれる文書の上限（skills/ からの相対パス: バイト）。今の値を100B 単位で切り上げて凍らせたもの
+# 毎回読まれる文書の上限（リポジトリの根からの相対パス: バイト）。今の値を100B 単位で切り上げて凍らせたもの
 LIMITS: dict[str, int] = {
-    "accept-step/SKILL.md": 4000,
-    "comment-audit/SKILL.md": 9200,
-    "implement-step/SKILL.md": 4500,
-    "list-tasks/SKILL.md": 5100,
-    "next-task/SKILL.md": 7100,
-    "plan-tasks/SKILL.md": 20500,
-    "retro/SKILL.md": 6700,
-    "retrospect-step/SKILL.md": 3900,
-    "retrospect/SKILL.md": 2700,
-    "setup-tasks/SKILL.md": 6400,
-    "ship-step/SKILL.md": 2900,
-    "task-model/SKILL.md": 2000,
-    "task-workflow/SKILL.md": 18600,
-    "task-workflow/completion-report.md": 5800,
-    "task-workflow/review-criteria.md": 1800,
-    "task-workflow/parts/implementer/delegate.md": 11500,
-    "task-workflow/parts/implementer/handback-read.md": 4500,
-    "task-workflow/parts/implementer/implementer-brief.md": 21800,
-    "task-workflow/parts/implementer/implementer-request.md": 9300,
-    "task-workflow/parts/acceptor/accept.md": 11500,
-    "task-workflow/parts/acceptor/acceptor-return.md": 6000,
-    "task-workflow/parts/acceptor/acceptor-brief.md": 5500,
-    "task-workflow/parts/acceptor/acceptor-request.md": 3200,
-    "task-workflow/parts/acceptor/verify-check.md": 1500,
-    "task-workflow/parts/retrospect/retrospect.md": 3900,
-    "task-workflow/parts/ship/ship.md": 7400,
-    "task-model/WORKFLOW.md": 70500,
-    "task-model/tw-reference.md": 45300,
-    "task-model/preflight.md": 800,
+    "skills/comment-audit/SKILL.md": 9200,
+    "skills/list-tasks/SKILL.md": 5100,
+    "skills/next-task/SKILL.md": 7100,
+    "skills/plan-tasks/SKILL.md": 20500,
+    "skills/retro/SKILL.md": 6700,
+    "skills/retrospect/SKILL.md": 2700,
+    "skills/setup-tasks/SKILL.md": 6400,
+    "skills/task-model/SKILL.md": 2000,
+    "workflow-briefs/review-criteria.md": 1800,
+    "workflow-briefs/implementer-brief.md": 21800,
+    "workflow-briefs/implementer-request.md": 9300,
+    "workflow-briefs/acceptor-return.md": 6000,
+    "workflow-briefs/acceptor-brief.md": 5500,
+    "workflow-briefs/acceptor-request.md": 3200,
+    "skills/task-model/WORKFLOW.md": 70500,
+    "skills/task-model/tw-reference.md": 45300,
+    "skills/task-model/preflight.md": 800,
 }
 
-SKILLS_PREFIX = "skills/"
 
-
-def limit_key(path: str) -> str | None:
-    """リポジトリの根からの相対パスを表のキー（`skills/` を外したもの）にする。`skills/` の外は `None`。"""
-    if not path.startswith(SKILLS_PREFIX):
-        return None
-    return path[len(SKILLS_PREFIX):]
+def limit_key(path: str) -> str:
+    """リポジトリの根からの相対パスを表のキーにする。"""
+    return path
 
 
 def same_repo(root: str) -> bool:
@@ -61,7 +45,7 @@ def same_repo(root: str) -> bool:
 def remaining(root: str, path: str) -> tuple[int, int] | None:
     """`(上限 - 実バイト数, 上限)`。超過なら残りは負。表に無い・読めないとき `None`。"""
     key = limit_key(path)
-    if key is None or key not in LIMITS:
+    if key not in LIMITS:
         return None
     try:
         with open(os.path.join(root, path), "rb") as f:

@@ -362,8 +362,6 @@ class ConfigValueError(ValueError):
 STEP_MARK_KEY = "workflow-step"
 STEP_ORDER_KEY = "workflow-step-order"  # 既定の並びでの位置（整数の文字）。`tw` と同じ plugin のスキルだけが使う
 STEP_TITLE_KEY = "workflow-step-title"
-BRIEF_KEY_PREFIX = "workflow-brief-"  # 後ろに役の名。値は SKILL.md のディレクトリからの依頼文の型のパス
-BRIEF_ROLES = ("implementer", "acceptor")
 ENTRY_MARK_KEY = "workflow-entry"  # タスクの実行の入口にできるスキル（ID を渡すと着手する）の印
 ENTRY_TITLE_KEY = "workflow-entry-title"
 PLUGIN_MANIFEST_PATH = os.path.join(".claude-plugin", "plugin.json")
@@ -377,10 +375,6 @@ class StepCandidate:
     own: bool  # `tw` と同じチェックアウトの plugin のスキルか
     order: int | None = None
     title: str = ""  # 日本語の段の名前。`workflow-step-title` が無ければ `label` と同じ
-    briefs: tuple[tuple[str, str], ...] = ()  # (役, 依頼文の型の絶対パス)
-
-    def brief(self, role: str) -> str | None:
-        return next((path for r, path in self.briefs if r == role), None)
 
 
 def _scalar(text: str) -> str:
@@ -448,7 +442,6 @@ class _Skill:
     step_marked: bool
     order: int | None  # 既定の並びでの位置。整数でなければ `None`
     step_title: str | None
-    briefs: tuple[tuple[str, str], ...]  # 依頼文の型
     entry_marked: bool
     entry_title: str | None
 
@@ -467,11 +460,6 @@ def _read_skill(skill_dir: str) -> _Skill | None:
     order_text = metadata.get(STEP_ORDER_KEY) if isinstance(metadata, dict) else None
     order = int(order_text) if isinstance(order_text, str) and re.fullmatch(r"-?[0-9]+", order_text) else None
     title_text = metadata.get(STEP_TITLE_KEY) if isinstance(metadata, dict) else None
-    briefs: list[tuple[str, str]] = []
-    for role in BRIEF_ROLES:
-        rel = metadata.get(BRIEF_KEY_PREFIX + role) if isinstance(metadata, dict) else None
-        if isinstance(rel, str) and rel:
-            briefs.append((role, os.path.realpath(os.path.join(os.path.realpath(skill_dir), rel))))
     entry_marked = isinstance(metadata, dict) and metadata.get(ENTRY_MARK_KEY) == "true"
     entry_title = metadata.get(ENTRY_TITLE_KEY) if isinstance(metadata, dict) else None
     return _Skill(
@@ -480,7 +468,6 @@ def _read_skill(skill_dir: str) -> _Skill | None:
         step_marked=marked,
         order=order,
         step_title=title_text if isinstance(title_text, str) and title_text else None,
-        briefs=tuple(briefs),
         entry_marked=entry_marked,
         entry_title=entry_title if isinstance(entry_title, str) and entry_title else None,
     )
@@ -550,7 +537,7 @@ def step_candidates(
 ) -> list[StepCandidate]:
     """並びに置ける候補（`workflow-step` の印のあるスキル）。走査の決まりは `_marked_skills`。"""
     return [
-        StepCandidate(value, skill.name, skill.description, own, skill.order, skill.step_title or skill.name, skill.briefs)
+        StepCandidate(value, skill.name, skill.description, own, skill.order, skill.step_title or skill.name)
         for value, own, skill in _marked_skills(project_root, home, plugin, lambda s: s.step_marked)
     ]
 

@@ -31,14 +31,11 @@
   実在するファイルを指すこと（形を読めない言及も落とす）
 - `task-model` の `.md` が、ほかのスキル名とエージェント名を書いていないこと（データの名前の
   `task-workflow.` の kv キー・`/task-workflow/` の台帳・`docs/history/retrospect.md`・`retrospect_due` は除く）
-- 並びの印（frontmatter の `metadata` に `workflow-step: "true"`）を持つ SKILL.md が、契約の返す口
-  （`` `phase_result` `` か `` `work_plan` ``）と、`finished`・`skipped`・`stopped` の返し方を本文に書いていること
 """
 
 from __future__ import annotations
 
 import ast
-import functools
 import json
 import os
 import re
@@ -230,7 +227,7 @@ def check_script_paths(names: list[str]) -> None:
     for n in names:
         for md in markdown_files(n):
             body = read(md)
-            for bad in ("<このスキルのパス>", "<task-workflowスキルのディレクトリ>", "<task-modelスキルのディレクトリ>"):
+            for bad in ("<このスキルのパス>", "<task-modelスキルのディレクトリ>"):
                 if bad in body:
                     fail(f"{os.path.relpath(md, ROOT)}: {bad} は ${{CLAUDE_SKILL_DIR}} で書く")
             if re.search(r"python3 [^\n`]*/Users/", body):
@@ -529,17 +526,6 @@ def check_task_model_layout() -> None:
                     fail(f"{rel}:{node.lineno}: os.path.join が {hit!r} を直書きしている")
 
 
-@functools.cache
-def _load_layout():
-    import importlib.util
-
-    spec = importlib.util.spec_from_file_location("_check_repo_layout", LAYOUT_PATH)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module  # dataclass が自分のモジュールを引くため
-    spec.loader.exec_module(module)
-    return module
-
-
 def check_selftest_body_literal() -> None:
     """自己テストが `### 名指すファイル` を直書きして本文を組んでいないか（`selftest_body.task_body` で組む）。"""
     for fname in sorted(os.listdir(_TASK_MODEL_TESTS)):
@@ -625,7 +611,6 @@ def check_retrospect_entry_references(names: list[str]) -> None:
 # 入口が流れのオーケストレーターを、オーケストレーターが段のスキルを呼ぶのは Skill ツールの名前で、ファイルは指さない。
 DEPENDENCY_EDGES = {
     "next-task": ("task-model",),
-    "task-workflow": ("task-model",),
     "retrospect": ("task-model",),
     "comment-audit": ("task-model",),
     "plan-tasks": ("task-model",),
@@ -633,10 +618,6 @@ DEPENDENCY_EDGES = {
     "setup-tasks": ("task-model",),
     "retro": ("retrospect", "task-model"),
     "task-model": (),
-    "implement-step": ("task-workflow", "task-model"),
-    "accept-step": ("task-workflow", "task-model"),
-    "retrospect-step": ("task-workflow", "retrospect", "task-model"),
-    "ship-step": ("task-workflow", "task-model"),
 }
 
 
@@ -817,52 +798,6 @@ def check_sibling_imports(names: list[str]) -> None:
                 fail(f"{rel}:{node.lineno}: sys.path の組み立てを読めない（兄弟スキル依存を検査できない）")
 
 
-STEP_RETURN_PORTS = ("`phase_result`", "`work_plan`")
-STEP_OUTCOMES = ("`finished`", "`skipped`", "`stopped`")
-# 振り返りを省く手段は並び（`steps`）から段を外すことだけ。外した段は呼ばれないので段の返却に `設定で外した` は出ず、
-# 廃止した `parts.retrospect = なし` を指す「`なし` の設定・振り返り」も残さない。
-RETIRED_SKIP_LINE = "設定で外した"
-RETIRED_NONE_SETTING = re.compile(r"`なし` の(設定|振り返り)")
-
-
-def is_workflow_step(text: str) -> bool:
-    """`tw config --schema` が候補に拾う印を持つか（読み方は `layout.parse_skill_frontmatter` と同じ）。"""
-    layout = _load_layout()
-    metadata = layout.parse_skill_frontmatter(text).get("metadata")
-    return isinstance(metadata, dict) and metadata.get(layout.STEP_MARK_KEY) == "true"
-
-
-def step_contract_problems(text: str) -> list[str]:
-    """印のある SKILL.md の本文（frontmatter の後ろ）に欠けている、返す口と結果の語。"""
-    end = text.find("\n---\n", 3)
-    body = text[end + 5 :] if end != -1 else text
-    out = []
-    if not any(port in body for port in STEP_RETURN_PORTS):
-        out.append(f"契約の返す口（{' か '.join(STEP_RETURN_PORTS)}）を呼ぶ手順が無い")
-    missing = [o for o in STEP_OUTCOMES if o not in body]
-    if missing:
-        out.append(f"結果の返し方が無い: {'・'.join(missing)}")
-    for line in body.splitlines():
-        if RETIRED_SKIP_LINE in line:
-            out.append(f"並びから外した段は呼ばれないので、段が返す行に `{RETIRED_SKIP_LINE}` は書かない: {line.strip()[:60]}")
-        if RETIRED_NONE_SETTING.search(line):
-            out.append(f"廃止した `なし` の設定を指している: {line.strip()[:60]}")
-    return out
-
-
-def check_workflow_steps(names: list[str]) -> None:
-    """並びの印を持つスキルが、契約の返す口で結果を返す手順を持つか。"""
-    for n in names:
-        path = os.path.join(SKILLS, n, "SKILL.md")
-        if not os.path.exists(path):
-            continue
-        text = read(path)
-        if not is_workflow_step(text):
-            continue
-        for p in step_contract_problems(text):
-            fail(f"{n}/SKILL.md: {p}")
-
-
 def hardcoded_phase_titles(text: str) -> list[str]:
     """`phase("…")` と、`agentType:` を持つ選択肢の `phase:` が文字列の直書きの形の行。題は args の `phaseIds` からだけ作る。
     `{ stopped: true, phase: "accept" }` の戻り値の `phase` は `agentType:` を持たず、段の名前で、題ではない。"""
@@ -927,7 +862,6 @@ def main() -> None:
     check_task_model_layout()
     check_selftest_body_literal()
     check_agent_frontmatter(agent_names())
-    check_workflow_steps(names)
     check_workflow_phase_titles()
 
     if problems:

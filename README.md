@@ -69,8 +69,9 @@ Claude Code 以外の環境（Codex など）へスキルを置く入口は、�
 振り返りが `tsukumo-workflow:retrospector`。`tw lap-hook` が agent の起動・停止から `delegate`・`review`・`retro` の `lap` を書く（`retro` は起動で `start`、`retrospector` の停止で `end`）。
 受け入れの準備（`tw accept`・`tw brief acceptor`）と締め（`tw accept --after-review`）は agent を起こさず、`acceptor` の起動・停止で `tw accept-hook` が打つ。
 
-- 呼ぶ側: `/next-task` は、設定 `flow` が `script` のとき着手のあとにこのワークフロースクリプトを呼び、完了の通知を受けて `ship-step` で送り出す（手順は `skills/next-task/script-flow.md`）。
-  既定の `skills` は今までどおり `task-workflow` を呼ぶ。切り戻しは `tw config set flow skills`
+- 呼ぶ側: `/next-task` は着手のあとにこのワークフロースクリプトを呼び、完了の通知を受けて送り出す（手順は `skills/next-task/script-flow.md`、送り出しは `skills/next-task/ship.md`）。
+  切り戻しは git の revert で行う
+- 依頼文の型と決まり: `tw brief` は `workflow-briefs/<役>-request.md` から依頼文を出し、実装・受け入れの agent が `workflow-briefs/` の決まりを読む
 - 呼び方（`Workflow` はメインのセッションから呼ぶ。委譲先には道具が無い）: 名前 `tsukumo-workflow:task-flow` か、`scriptPath` にこのファイルの絶対パスを渡す。
   名前での呼び出しは接頭辞つきの `tsukumo-workflow:task-flow` で通ることを確かめた。`task-flow` だけでは読めない（not found）。
   plugin を入れ直したあとの読み込みは次のセッションの開始か `/reload-plugins` で効く
@@ -148,27 +149,24 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
 
 | 外のスキル | 使う場所 | 無いとき |
 | --- | --- | --- |
-| verifying-before-completion | task-workflow の受け入れの関門 | 主張ごとに差分とコマンドの出力で確かめる |
+| verifying-before-completion | ワークフロースクリプト `task-flow` の受け入れの関門 | 主張ごとに差分とコマンドの出力で確かめる |
 | writing-for-agents | retro の物差し、retrospect の「空振り」の試金石 | retro の「ファイルの使い分け」を物差しにする |
 | code-review | retro が読むレビューの観点 | 読まない |
-| resolving-merge-conflicts | task-workflow の `CONFLICT` の案内 | 人に預ける |
+| resolving-merge-conflicts | `/next-task` の送り出しの `CONFLICT` の案内 | 人に預ける |
 | token-usage-diet | retrospect の「道具の経済」の根拠 | 使用量の数を根拠にしない |
 
 ## 由来
 
-全13スキル。`skills/` にあるものが全てで、この一覧がその索引。
+全8スキル。`skills/` にあるものが全てで、この一覧がその索引。
 
-- 自作（12件）: `task-model`（タスクの規則の正典と `tw` の実装・参照専用）、`setup-tasks` `plan-tasks` `list-tasks`、
-  `next-task`（タスクを1件に決めて着手の印を立てる入口）、
-  `task-workflow`（印の立ったタスクを委譲→受け入れ→振り返り→送り出しの段で進めるオーケストレーター。流れの変種は `flows/`、各段の手順は `parts/<段の役>/`）、
-  `retrospect`（`task-workflow` の中で1件ごと・`next-task` の頭で7日おきに振り返り、改善候補をドラフトの課題〔`tw new --draft`〕として積む。正典・参照専用）、
-  `comment-audit`（コメントの種類を判定して消す・縮める・正典へ移す。`task-workflow` の受け入れ役に渡す）、
-  `implement-step` `accept-step` `retrospect-step` `ship-step`（tsukumo の契約の並び〔schema 2 の `steps`〕に置く段。
-  frontmatter の `metadata` に `workflow-step: "true"` を持ち、入口と出口だけを持って手順は `task-workflow` の `parts/` を読む）
+- 自作（7件）: `task-model`（タスクの規則の正典と `tw` の実装・参照専用）、`setup-tasks` `plan-tasks` `list-tasks`、
+  `next-task`（タスクを1件に決めて着手の印を立て、ワークフロースクリプト task-flow で進めて送り出す入口）、
+  `retrospect`（ワークフロースクリプト task-flow の中で1件ごと・`next-task` の頭で7日おきに振り返り、改善候補をドラフトの課題〔`tw new --draft`〕として積む。正典・参照専用）、
+  `comment-audit`（コメントの種類を判定して消す・縮める・正典へ移す。ワークフロースクリプト task-flow の受け入れ役に渡す）
 - [mattpocock/skills](https://github.com/mattpocock/skills) を日本語化したもの（1件）: `retro`
   （改善の7観点の一覧を `retrospect` へ移してそこを指し、選ばれた改善案をドラフトの課題として積む）
 
-並びの段の4件を除き、どれも `sinnlosses/claude-skills` で育ったもので、そこから切り出した（下の「決めたこと」の2）。
+どれも `sinnlosses/claude-skills` で育ったもので、そこから切り出した（下の「決めたこと」の2）。
 
 ## 決めたこと
 
@@ -183,8 +181,8 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
      （「Plugin dependencies」）
    - マーケットプレイスから入れたプラグインはキャッシュへ別々に写され、プラグインの根より上（`../`）は
      届かない（「Plugin loading reference」）。`${CLAUDE_SKILL_DIR}/../<外のスキル>` は在るときだけ使う
-   - claude-skills に残る `maintenance-docs` は `task-workflow`（このリポジトリでは `task-model` に改名した）の `scripts/layout.py` を import している。
-     claude-skills から `task-workflow` を消すときに、`tw` コマンド越しに読み、無ければその検査を飛ばす形に直す
+   - claude-skills に残る `maintenance-docs` は旧いタスク運用のスキル（このリポジトリでは `task-model` に改名した）の `scripts/layout.py` を import している。
+     claude-skills から旧いスキルを消すときに、`tw` コマンド越しに読み、無ければその検査を飛ばす形に直す
 2. **歴史は持ち込まず、新しい歴史で始める。** 最初のコミットに写し元（claude-skills の main の SHA）を書いた。
    それまでの歴史は claude-skills に残る。`git filter-repo` は使える外部コマンドに無く、持ち込むコミットの題は
    claude-skills のタスク番号を指す
@@ -219,4 +217,4 @@ Claude Code の `sandbox.filesystem.allowWrite`）に向ける（向けなくて
   `.tw/config.toml` で表す
 - SKILL.md 内の `` !`コマンド` `` はスキル読み込み時に実行され、非0で終わるとスキル全体が失敗する。
   終了コードを潰していない埋め込みは `./check.sh` の `check_repo.py` が落とす。
-  `/next-task`・`task-workflow`・`/plan-tasks` は設定を `` !`tw config 2>&1 || true` `` で読む（設定が無い・git の外でも非0で終わらない）
+  `/next-task`・`/plan-tasks` は設定を `` !`tw config 2>&1 || true` `` で読む（設定が無い・git の外でも非0で終わらない）

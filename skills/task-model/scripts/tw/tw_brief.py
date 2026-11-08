@@ -1,4 +1,4 @@
-"""`tw brief`: 委譲先・受け入れ役への依頼文を、並びのスキルが持つ型から場合に当たる節を選んで出す。
+"""`tw brief`: 委譲先・受け入れ役への依頼文を、plugin の `workflow-briefs/` の型から場合に当たる節を選んで出す。
 
 型は `## <節名>` の節の並びで、`{{名前}}` を値で埋める。どの節を選ぶかと値はここが決め、文面は型が持つ。
 """
@@ -16,7 +16,6 @@ import gitinfo
 import layout
 import taskfile
 import tw_base
-import tw_config
 import tw_edit
 import tw_plan
 
@@ -286,17 +285,15 @@ def work_repo(toplevel: str, shown: str, plan_body: str) -> WorkRepo | None:
 
 
 def _template(toplevel: str, role: str, known: tuple[str, ...]) -> tuple[str, dict[str, str]]:
-    """並び（`steps`、無ければ既定の並び）の順で最初に役の型を持つスキルの型の `(パス, 節名 → 本文)`。
+    """plugin の根の `workflow-briefs/<役>-request.md` の型の `(パス, 節名 → 本文)`。
 
-    無い・読めなければ `MISSING`（終了コード6）、知らない節名があれば `INVALID`（終了コード3）。
+    根が引けない・ファイルが無い・読めなければ `MISSING`（終了コード6）、知らない節名があれば `INVALID`（終了コード3）。
     """
-    config = layout.read_config(toplevel)
-    steps = tw_config.skill_steps(toplevel, config)
-    by_value = {c.value: c for c in tw_config.step_candidates(toplevel)}
-    path = next((by_value[s].brief(role) for s in steps if s in by_value and by_value[s].brief(role)), None)
-    if path is None:
-        print(f"MISSING\tbrief-{role}\t並びのスキルの metadata に {layout.BRIEF_KEY_PREFIX}{role} が無い")
+    root = layout.own_plugin_root()
+    if root is None:
+        print(f"MISSING\tbrief-{role}\tplugin の根が引けない")
         raise SystemExit(6)
+    path = os.path.join(root[0], "workflow-briefs", f"{role}-request.md")
     try:
         with open(path, encoding="utf-8") as f:
             text = f.read()
