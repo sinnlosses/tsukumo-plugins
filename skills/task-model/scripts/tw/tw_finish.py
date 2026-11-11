@@ -4,7 +4,7 @@
 `tw ship` の `SHIPPED`・`NOTHING` 以外）が出たら以降を打たない。
 最初に、`--dropped` でなければ、作業先が別のリポジトリでその枝が主ブランチへ合流していないとき `WORK_NOT_LANDED`（終了コード4）で何も書かずに止まる。コミットは対象のファイルを個別に `git add` した1つだけで、
 差分が無ければ打たない。対象は `--add` で渡したファイル。渡さなければ作業ツリーの変更のうち通常のファイルで、`.tw/local`・symlink・サブモジュールは除く。
-件名の `T-xxx:` は tw が付ける。
+件名の `T-xxx:` は tw が付ける。設定 `commit_task_id = "付けない"` なら付けず、`--message` の先頭の `T-xxx:` も外す。
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 
 import beads
 import gitinfo
+import layout
 import ledger
 import metrics
 import tw_base
@@ -56,7 +57,8 @@ def cmd_finish(
         tw_handback.close_open_lap(toplevel, bd_id, "accept")
         if _done_found_stray_commits(toplevel, task_id, dropped, result_path, reflection):
             raise SystemExit(STRAY_COMMITS_EXIT)
-    committed = _commit(toplevel, _subject(shown, message), files)
+    with_id = layout.read_config(toplevel).commit_task_id == layout.COMMIT_TASK_ID_ON
+    committed = _commit(toplevel, _subject(shown, message, with_id), files)
     if committed is not None:
         _warn_fix_links(toplevel, shown, committed)
     tw_ship.cmd_ship(toplevel)
@@ -73,10 +75,10 @@ def _my_ship_mark(toplevel: str, bd_id: str) -> str | None:
     return beads.ship_mark(issue)
 
 
-def _subject(shown: str, message: str) -> str:
-    """件名の先頭に `<shown>: ` を一度だけ付ける（旧形式の `<shown>: …` はそのまま受ける）。"""
+def _subject(shown: str, message: str, with_id: bool) -> str:
+    """件名の先頭に `<shown>: ` を一度だけ付ける（旧形式の `<shown>: …` はそのまま受ける）。`with_id` が偽なら外すだけ。"""
     body = re.sub(rf"^\s*{re.escape(shown)}\s*[:：]\s*", "", message, count=1, flags=re.IGNORECASE)
-    return f"{shown}: {body}"
+    return f"{shown}: {body}" if with_id else body
 
 
 def _done_found_stray_commits(

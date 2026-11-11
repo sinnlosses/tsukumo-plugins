@@ -60,6 +60,10 @@ FLOW_VALUES = (FLOW_SCRIPT,)
 SHELL_WRITE_GUARD_TW = "tw"
 SHELL_WRITE_GUARD_PROJECT = "project"
 SHELL_WRITE_GUARD_VALUES = (SHELL_WRITE_GUARD_TW, SHELL_WRITE_GUARD_PROJECT)
+COMMIT_TASK_ID_KEY = "commit_task_id"
+COMMIT_TASK_ID_ON = "付ける"
+COMMIT_TASK_ID_OFF = "付けない"
+COMMIT_TASK_ID_VALUES = (COMMIT_TASK_ID_ON, COMMIT_TASK_ID_OFF)
 DEFAULT_LOOP_MAX_SHIPS = 12
 
 STORE_BEADS = "beads"
@@ -104,6 +108,7 @@ CONFIG_KEYS = (
     "steps",
     "review_code_globs",
     "shell_write_guard",
+    "commit_task_id",
     "flow",
     "loop_max_ships",
 )
@@ -143,6 +148,7 @@ class Config:
     steps: tuple[str, ...] | None = None
     review_code_globs: tuple[str, ...] = ()
     shell_write_guard: str = SHELL_WRITE_GUARD_TW
+    commit_task_id: str = COMMIT_TASK_ID_ON
     flow: str = FLOW_SCRIPT
     loop_max_ships: int = DEFAULT_LOOP_MAX_SHIPS
     written: frozenset = frozenset()
@@ -330,6 +336,7 @@ def build_config(source: str | None, values: dict[str, str | None]) -> Config:
         steps=tuple(json.loads(values["steps"])) if values.get("steps") else None,
         review_code_globs=tuple(json.loads(values.get(REVIEW_CODE_GLOBS_KEY) or "[]")),
         shell_write_guard=values.get(SHELL_WRITE_GUARD_KEY) or defaults.shell_write_guard,
+        commit_task_id=values.get(COMMIT_TASK_ID_KEY) or defaults.commit_task_id,
         flow=FLOW_SCRIPT if values.get(FLOW_KEY) == FLOW_SKILLS else values.get(FLOW_KEY) or defaults.flow,
         loop_max_ships=_loop_max_ships(source, values.get("loop_max_ships"), defaults.loop_max_ships),
         written=frozenset(values),
@@ -337,6 +344,10 @@ def build_config(source: str | None, values: dict[str, str | None]) -> Config:
     if config.shell_write_guard not in SHELL_WRITE_GUARD_VALUES:
         raise ConfigError(
             f"{source}: {SHELL_WRITE_GUARD_KEY} の値 {config.shell_write_guard!r} は {' / '.join(SHELL_WRITE_GUARD_VALUES)} のどちらか"
+        )
+    if config.commit_task_id not in COMMIT_TASK_ID_VALUES:
+        raise ConfigError(
+            f"{source}: {COMMIT_TASK_ID_KEY} の値 {config.commit_task_id!r} は {' / '.join(COMMIT_TASK_ID_VALUES)} のどちらか"
         )
     if config.flow not in FLOW_VALUES:
         raise ConfigError(f"{source}: {FLOW_KEY} の値 {config.flow!r} は {' / '.join(FLOW_VALUES)} だけ")
@@ -350,7 +361,7 @@ def build_config(source: str | None, values: dict[str, str | None]) -> Config:
 # --- 設定の欄の形（`tw config --schema`）と書く口（`tw config set`） -----------------
 
 BRANCH_KEY = "branch"
-SETTABLE_KEYS = (STEPS_KEY, *COMMAND_SETTABLE_KEYS, BRANCH_KEY, SHELL_WRITE_GUARD_KEY, FLOW_KEY)
+SETTABLE_KEYS = (STEPS_KEY, *COMMAND_SETTABLE_KEYS, BRANCH_KEY, SHELL_WRITE_GUARD_KEY, COMMIT_TASK_ID_KEY, FLOW_KEY)
 
 
 class ConfigValueError(ValueError):
@@ -620,6 +631,17 @@ def config_schema() -> dict:
                     },
                 ],
             },
+            {
+                "key": COMMIT_TASK_ID_KEY,
+                "label": "コミットのタスクID",
+                "description": "tw finish のコミットの件名の先頭にタスクID（T-xxx: など）を付けるか",
+                "kind": "choice",
+                "default": COMMIT_TASK_ID_ON,
+                "values": [
+                    {"value": COMMIT_TASK_ID_ON, "label": "付ける", "description": "件名を T-xxx: 本文 の形にする"},
+                    {"value": COMMIT_TASK_ID_OFF, "label": "付けない", "description": "件名は --message の本文だけにする"},
+                ],
+            },
             *(
                 {"key": key, "label": label, "description": description, "kind": "command", "default": NO_COMMAND}
                 for key, (label, description) in COMMAND_FIELDS.items()
@@ -685,6 +707,10 @@ def config_text_with(text: str, key: str, value: str, label: str = CONFIG_PATH) 
         if value not in SHELL_WRITE_GUARD_VALUES:
             raise ConfigValueError(f"{key} の値は {' / '.join(SHELL_WRITE_GUARD_VALUES)} のどちらか: {value!r}")
         quoted = json.dumps(value)
+    elif key == COMMIT_TASK_ID_KEY:
+        if value not in COMMIT_TASK_ID_VALUES:
+            raise ConfigValueError(f"{key} の値は {' / '.join(COMMIT_TASK_ID_VALUES)} のどちらか: {value!r}")
+        quoted = json.dumps(value, ensure_ascii=False)
     elif key == FLOW_KEY:
         if value not in FLOW_VALUES:
             raise ConfigValueError(f"{key} の値は {' / '.join(FLOW_VALUES)} だけ: {value!r}")

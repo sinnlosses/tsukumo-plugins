@@ -16,11 +16,23 @@ from selftest_fixtures import BODY, commit_task, flow_rows, make_repo, run_task 
 RESULT = RESULT_FULL
 
 
-def _claimed(tmp: str, verify: str | None = None) -> tuple[str, str]:
-    main_path, wt1, _wt2 = make_repo(tmp, branch="切らない", verify=verify)
+def _claimed(tmp: str, verify: str | None = None, extra: str = "") -> tuple[str, str]:
+    main_path, wt1, _wt2 = make_repo(tmp, branch="切らない", verify=verify, extra=extra)
     commit_task(main_path, taskfile.Task("T-100", "束ねる", "todo", "sonnet", "Y", (), BODY))
     run_task(wt1, "claim", "T-100")
     return main_path, wt1
+
+
+def test_finish_without_task_id_in_subject() -> None:
+    say("task.py finish: 設定 commit_task_id = \"付けない\" なら件名にタスクIDを付けず、--message の先頭の ID も外す")
+    for message in ("完了", "T-100: 完了"):
+        with tempfile.TemporaryDirectory() as tmp:
+            main_path, wt1 = _claimed(tmp, extra='commit_task_id = "付けない"\n')
+            write(os.path.join(wt1, "work.txt"), "x")
+            r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", message, "--add", "work.txt", stdin=RESULT)
+            subject = git(main_path, "log", "-1", "--format=%s", "main").stdout.strip()
+            check(f"--message {message!r} の件名は 完了 だけ", r.returncode == 0 and subject == "完了",
+                  repr(subject) + r.stdout + r.stderr)
 
 
 def test_finish_bundles_done_commit_ship() -> None:
@@ -336,6 +348,7 @@ TESTS = (
     test_done_twice_is_refused,
     test_finish_stops_on_commits_since_claim,
     test_finish_bundles_done_commit_ship,
+    test_finish_without_task_id_in_subject,
     test_finish_stops_on_stop_lines,
     test_finish_refuses_missing_result_lines,
 )

@@ -135,6 +135,22 @@ def test_config_flow_is_script_only() -> None:
               layout.script_steps([old_name("implement"), old_name("ship"), "retrospect"]) == ["implement", "retrospect"])
 
 
+def test_config_commit_task_id() -> None:
+    say("自己テスト: 設定の欄 commit_task_id の既定は 付ける で、set は 付ける・付けない だけを書ける")
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = _make_config_doctor_repo(tmp, "commit-task-id")
+        field = _schema_key(repo, "commit_task_id")
+        check("commit_task_id の既定は 付ける で、選択肢は 付ける・付けない",
+              field["default"] == "付ける" and [v["value"] for v in field["values"]] == ["付ける", "付けない"], repr(field))
+        check("tw config の commit_task_id の行は 付ける・default", _config_rows(repo)["commit_task_id"][1:] == ["付ける", "default"])
+        done = run_task(repo, "config", "set", "commit_task_id", "付けない")
+        check("commit_task_id を 付けない にできる", done.returncode == 0 and done.stdout.strip() == "SET\tcommit_task_id\t付けない",
+              done.stdout + done.stderr)
+        check("tw config の commit_task_id の行は 付けない・config", _config_rows(repo)["commit_task_id"][1:] == ["付けない", "config"])
+        bad = run_task(repo, "config", "set", "commit_task_id", "off")
+        check("語彙の外の値を書く set は終了コード2", bad.returncode == 2, bad.stdout + bad.stderr)
+
+
 def _relay_out(wt: str, task_id: str, key: str) -> str:
     return run_task(wt, "relay", task_id, key).stdout
 
@@ -554,6 +570,7 @@ TESTS = (
     test_unregistered_tests_named,
     test_all_tests_registered,
     test_config_flow_is_script_only,
+    test_config_commit_task_id,
     test_flow_result_writes_relays_and_releases,
     test_flow_result_writes_journal_stages,
     test_metrics_counts_flow_stage_once,

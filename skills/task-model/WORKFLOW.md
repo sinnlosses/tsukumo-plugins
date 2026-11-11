@@ -83,6 +83,7 @@ verify = "pnpm check"        # 受け入れ判定に使う。打つものが無�
 | `size_budget` | 名指すファイルの上限までの残りを出すコマンド。読むのは `tw plan-check` で、無ければ出さない |
 | `review_code_globs` | 文書の拡張子（`.md` など）でもコード扱いにして、受け入れの新しい文脈のレビューを掛けるパスの glob の配列。最上位に `review_code_globs = ["skills/**", "agents/**"]` の形で書く。`**` は `/` を越え、`*`・`?` は越えない。空の配列でも書かなくてもよく、無ければ文書の拡張子だけの差分は `SKIP\tdocs-only`。`review_needed.py` が読む |
 | `shell_write_guard` | `tw`（既定）・`project`。`project` なら `tw commit-guard` は `SHELL_WRITE` を見ない（プロジェクトが自前のシェル書き込みの hook で止める印。ほかの規則は変わらない）。欄の形は `tw config --schema` |
+| `commit_task_id` | `付ける`（既定）・`付けない`。`付けない` なら `tw finish` はコミットの件名の先頭にタスクIDを付けず、`--message` の先頭の `T-xxx:` も外す（「コミットメッセージ」） |
 | `flow` | `script`（既定で、値はこれだけ）。入口のスキルは着手のあと plugin のワークフロースクリプトを呼ぶ。旧い値 `skills` は `script` として読み、`tw config set flow skills` は終了コード2で拒む |
 | `loop_max_ships` | `"12"` の形の1以上の整数（既定12）。`/loop` が1日に送ってよい件数の上限で、`tw loop-check` が読む |
 | `steps` | ワークフロースクリプトの段（実装・受け入れ・振り返りの3つ。名前は `tw config --schema` が返す）の並び。最上位に `steps = ["<段の名前>", …]`（文字列の配列）で書く。1つ以上・重複なし。無ければ `tw config --schema` の `default`。実装役・受け入れ役への依頼文の型は plugin の `workflow-briefs/<役>-request.md` で、`tw brief` が読む。書くのは `tw config set steps '<1行の JSON の配列>'` |
@@ -571,6 +572,9 @@ frame が実装と合わず人が決め直すまで進められないタスク�
   1タスク＝1コミットは送り出しの段（`tw finish`）で守られる。分けられない場合だけ
   `T-105, T-108: 〜`
 - **IDを持たない作業には付けない**（登録・振り返り・`hold` の切り替え・移行・typo修正）
+- 設定 `commit_task_id = "付けない"` のプロジェクトでは、タスクのコミットにも付けない。`tw status` の `STALE:shipped` と
+  振り返りの `material.py` は `tw ship` の送り出しの記録でコミットを引き、記録の無い課題を件名で引く戻り道は当たらない。
+  `tw metrics` の `revert_within_7d` は元のコミットの件名の ID で引くので、付けないコミットの revert は数えない
 - 過去のコミットは書き換えない。末尾の署名は、利用者の `CLAUDE.md`（グローバル・プロジェクト）に定めがあればそれに従い（署名を省く定めなら付けない）、無ければセッションの attribution の指示に従う
 
 ## ドラフトの課題
