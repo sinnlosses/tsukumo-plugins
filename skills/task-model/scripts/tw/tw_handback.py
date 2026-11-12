@@ -318,7 +318,7 @@ def handback_refusal(where: str, body: str | None = None) -> tuple[str, str] | N
             return "FRICTION_LOG_MISSING", (
                 f"返却の本文に friction log の行が無い（着手の印 {','.join(claims)}）。"
                 "段ごとの返却に `- friction log: なし`（何も無ければ）か `- <色>: <何が起きたか>（<根拠の場所>）` を"
-                "1行以上書く（implementer-brief.md の `## friction log`）"
+                "1行以上書く（implementer-brief.md の `## 報告` の friction log の項）"
             )
         found = _structure_section_problem(body) if body is not None and last_stage else None
         if found is not None:

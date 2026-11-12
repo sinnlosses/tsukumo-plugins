@@ -149,7 +149,7 @@ if (runs("implement")) {
       `最後の段のあと \`tw verify\` を打ち、打ったコマンド・結果の要点・通ったかを返す。` +
       "返す欄は schema のとおり。draftLines には委譲先の報告に書く `- ドラフト:` の行があれば入れる。" +
       "conventionLines には、`tw brief implementer` の決まりに従って報告に書く `- 規約:` の行（あれば `- 規約の指摘:` の行も）を1行1要素で入れる。" +
-      "frictionLines には、段ごとに `tw brief implementer` の決まりの `## friction log` の書き方で1行ずつ入れる" +
+      "frictionLines には、段ごとに `tw brief implementer` の決まりの friction log の書き方で1行ずつ入れる" +
       `（1段1行。何も起きなかった段は \`- 実装 段<n>: friction log: なし\`、起きた段はその段の色つきの行）。` +
       "段を skipped にしたときは、飛ばしたわけの1行を入れる。frictionLines は空にしない。" +
       "画面や見た目を撮ったら、その画像の絶対パスを images に入れる。撮らなければ空配列。" +

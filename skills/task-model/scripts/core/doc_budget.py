@@ -17,7 +17,7 @@ LIMITS: dict[str, int] = {
     "skills/setup-tasks/SKILL.md": 6400,
     "skills/task-model/SKILL.md": 2000,
     "workflow-briefs/review-criteria.md": 1800,
-    "workflow-briefs/implementer-brief.md": 21800,
+    "workflow-briefs/implementer-brief.md": 10500,
     "workflow-briefs/implementer-request.md": 9300,
     "workflow-briefs/acceptor-return.md": 6000,
     "workflow-briefs/acceptor-brief.md": 5500,
