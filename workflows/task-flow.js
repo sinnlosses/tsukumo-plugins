@@ -33,12 +33,16 @@ const IMPLEMENT = {
     stepLines: { type: "array", items: { type: "string" } },
     conventionLines: { type: "array", items: { type: "string" } },
     frictionLines: { type: "array", items: { type: "string" } },
+    unverifiedCriteria: { type: "array", items: { type: "integer" } },
     images: { type: "array", items: { type: "string" } },
     stopped: { type: "boolean" },
     reason: { type: "string" },
   },
-  required: ["changedFiles", "verifyCommand", "verifyResult", "verifyPassed", "stepLines", "conventionLines", "frictionLines", "stopped"],
+  required: ["changedFiles", "verifyCommand", "verifyResult", "verifyPassed", "stepLines", "conventionLines", "frictionLines", "unverifiedCriteria", "stopped"],
 }
+
+const UNVERIFIED_SENTENCE =
+  "`## 完了条件` のうち、打ったコマンドの出力か撮った画で確かめていない行の番号を unverifiedCriteria に入れる。全部確かめたら空配列。"
 
 const SKIP_KINDS = ["SKIP", "NOTHING", "NO_RANGE"]
 
@@ -152,6 +156,7 @@ if (runs("implement")) {
       "frictionLines には、段ごとに `tw brief implementer` の決まりの friction log の書き方で1行ずつ入れる" +
       `（1段1行。何も起きなかった段は \`- 実装 段<n>: friction log: なし\`、起きた段はその段の色つきの行）。` +
       "段を skipped にしたときは、飛ばしたわけの1行を入れる。frictionLines は空にしない。" +
+      UNVERIFIED_SENTENCE +
       "画面や見た目を撮ったら、その画像の絶対パスを images に入れる。撮らなければ空配列。" +
       relaySentence("実装"),
     { agentType: "tsukumo-workflow:no-delegate", schema: IMPLEMENT, label: "implement", phase: implementTitle, ...modelOpt },
@@ -211,7 +216,12 @@ if (runs("accept")) {
           `\n\n起動時の文脈の SNAPSHOT の木が前の回の木 ${previousTree} と同じ（直しがコードを変えず材料だけを返した）ときだけ、diff が空でも差し戻さず、` +
           "上の報告の材料（理由・所見、検証、stepLines）で前回の指摘に応えたかを見て判定する。木が違えば上の報告は読まずに判定する。"
         : ""
-    judgment = await agent(`${ACCEPTOR_REQUEST}\n${STOP_GATE}${carried}${reports}`, {
+    const unverified = (fixes[fixes.length - 1] ?? result.implement)?.unverifiedCriteria ?? []
+    const unverifiedLine =
+      unverified.length > 0
+        ? `\n\n実装役が確かめていない完了条件: ${unverified.join(",")}。受け入れ役が自分で確かめ、確かめられなければ \`完了条件\` の指摘にする`
+        : ""
+    judgment = await agent(`${ACCEPTOR_REQUEST}\n${STOP_GATE}${carried}${reports}${unverifiedLine}`, {
       agentType: "tsukumo-workflow:acceptor",
       schema: JUDGMENT,
       label: `acceptor-${round + 1}`,
@@ -235,6 +245,7 @@ if (runs("accept")) {
         `直したら作業ツリー（着手した側。別のリポジトリのタスクなら \`tw brief implementer ${taskId}\` が言う作業先の作業ツリー）でコミットし、\`tw verify\` を打つ。` +
         "コミットのあとに打つ。打ったコマンド・結果の要点・通ったかを返す。" +
         "frictionLines には、この直しで気づいた点を `- <色>: <何が起きたか>（<根拠の場所>）` で1行以上入れる（何も無ければ `- 直し: friction log: なし`）。" +
+        UNVERIFIED_SENTENCE +
         "画面や見た目を撮ったら、その画像の絶対パスを images に入れる。撮らなければ空配列。" +
         relaySentence("直し"),
       { agentType: "tsukumo-workflow:no-delegate", schema: IMPLEMENT, label: `fix-${round}`, phase: acceptTitle, ...modelOpt },
