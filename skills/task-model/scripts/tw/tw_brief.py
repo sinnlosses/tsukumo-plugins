@@ -33,7 +33,7 @@ VERDICT_WORDS = ("REVIEW", "SKIP", "NOTHING", "NO_RANGE")
 _PLACEHOLDER = re.compile(r"\{\{(\w+)\}\}")
 
 IMPLEMENTER_SECTIONS = ("常に", "計画どおり", "書き直し", "古い計画", "別のリポジトリ", "並列の段", "目視")
-ACCEPTOR_SECTIONS = ("常に", "同じリポジトリ", "別のリポジトリ", "レビュー", "目視", "目視待ち", "2回目以降")
+ACCEPTOR_SECTIONS = ("常に", "同じリポジトリ", "別のリポジトリ", "レビュー", "文書", "目視", "目視待ち", "2回目以降")
 
 
 @dataclass(frozen=True)
@@ -143,6 +143,9 @@ def cmd_brief_acceptor(
     if verdict.startswith("REVIEW"):
         chosen.append("レビュー")
         values["tree"] = tree_sha or _snapshot(tree)
+    if verdict.startswith("SKIP\tdocs-only"):
+        chosen.append("文書")
+        values["steps"] = plan_body.strip("\n") or "（無い）"
     chosen.extend(look)
     rules = [os.path.join(tree, name) for name in RULE_FILES if os.path.isfile(os.path.join(tree, name))]
     values.update(

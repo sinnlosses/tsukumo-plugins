@@ -297,7 +297,24 @@ def test_brief_acceptor_visual_criterion_without_images() -> None:
               r.returncode == 0 and head.startswith("BRIEF\tT-100\tacceptor\t2回目以降,目視\t"), r.stdout + r.stderr)
 
 
+def test_brief_acceptor_docs_section() -> None:
+    say("task.py brief acceptor: SKIP docs-only のときだけ 文書 の節と計画の ## やること の本文が出る")
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1 = _claimed_repo(tmp, body=task_body([("書く", "x")], ["shared.txt"]))
+        r = run_task(wt1, "brief", "acceptor", "T-100", "--accept-file", "-", stdin="SKIP\tdocs-only\n")
+        head = r.stdout.splitlines()[0] if r.stdout else ""
+        check("SKIP docs-only は節に 文書 が入り、計画の段の本文 書く が載る",
+              r.returncode == 0 and "文書" in head.split("\t")[3].split(",") and "### 1. 書く" in r.stdout,
+              r.stdout + r.stderr)
+        for verdict in ("SKIP\n", "NOTHING\n", "REVIEW\tcode\t1\n"):
+            r = run_task(wt1, "brief", "acceptor", "T-100", "--accept-file", "-", stdin=verdict)
+            head = r.stdout.splitlines()[0] if r.stdout else ""
+            check(f"{verdict.split(chr(10))[0]!r} では 文書 の節が入らない",
+                  r.returncode == 0 and "文書" not in head.split("\t")[3].split(","), r.stdout + r.stderr)
+
+
 TESTS = (
+    test_brief_acceptor_docs_section,
     test_brief_acceptor_visual_criterion_without_images,
     test_brief_acceptor_round_with_images,
     test_accept_does_not_duplicate_open_laps,

@@ -11,7 +11,7 @@
 | --- | --- | --- |
 | 選ばれ方 | `subagent_type` は `tsukumo-workflow:acceptor` | `task-flow` |
 | 持たない道具 | `Agent`・`Edit`・`Write`・`NotebookEdit` を持たず、frontmatter に `hooks` を持たない（書き換えないので返却は `tw handback-guard` に判定されない。コミットを拒む `tw commit-guard` は `hooks/hooks.json` が名前を問わず掛ける） | `task-flow`、`check_repo.py`（同梱の定義だけ） |
-| 依頼 | `受け入れ`（差分のレビュー・目視・材料）と `目視待ち`（目視だけ）の2種類。渡すものは `tw brief acceptor` が型 `acceptor-request.md` から出す依頼文。どちらにも `acceptor-brief.md` の絶対パスが載る。レビューの要否は `tw accept`（作業先が別のリポジトリでも）の `REVIEW\t…` と木の SHA か、`SKIP`・`NOTHING`・`NO_RANGE`。差し戻しのあとの2・3回目は `tw brief acceptor --round` の依頼文（2つの木の SHA と取り下げた指摘の行）を受ける | `task-flow`、`tw accept` |
+| 依頼 | `受け入れ`（差分のレビュー・目視・材料）と `目視待ち`（目視だけ）の2種類。渡すものは `tw brief acceptor` が型 `acceptor-request.md` から出す依頼文。どちらにも `acceptor-brief.md` の絶対パスが載る。レビューの要否は `tw accept`（作業先が別のリポジトリでも）の `REVIEW\t…` と木の SHA か、`SKIP`・`NOTHING`・`NO_RANGE`（`SKIP\tdocs-only` は `文書` の節が付き `完了条件` だけを行う）。差し戻しのあとの2・3回目は `tw brief acceptor --round` の依頼文（2つの木の SHA と取り下げた指摘の行）を受ける | `task-flow`、`tw accept` |
 | 返却の1行目 | `受け入れ <判定> \| <1文>`。判定は下の3語のどれか | `task-flow` |
 | `- 指摘: <種類>: <中身>` | 種類は `正しさ`・`完了条件`・`規約`・`簡素化`。委譲先が直せるものだけを1指摘1行で。3回目に残る指摘で直し方が1つに決まるものは `直し: <どう直すか>` を添える | `task-flow`（差し戻しで委譲先へ渡す。`簡素化` を取り下げの対象にする）、`tw finish` の `- 規約の指摘:`（`規約:` で始まる行を数える）、`retrospect` |
 | `- 目視: 可\|否\|なし <画像のパス> <完了条件の行> <見比べた結果>` | 完了条件に印 `[目視]` の項目があるとき（依頼に `目視` の節があるとき）と `目視待ち` の依頼で返す。`否` は何がどう違うかを `- 指摘:` に入れる。画像のパスが無い・開けないときも `否` にして、撮り直しを `- 指摘:` に入れる | `task-flow`、`tw finish` の `- 目視:` |
