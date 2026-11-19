@@ -300,14 +300,14 @@ def test_brief_acceptor_visual_criterion_without_images() -> None:
 def test_brief_acceptor_docs_section() -> None:
     say("task.py brief acceptor: SKIP docs-only のときだけ 文書 の節と計画の ## やること の本文が出る")
     with tempfile.TemporaryDirectory() as tmp:
-        wt1 = _claimed_repo(tmp, body=task_body([("書く", "x")], ["shared.txt"]))
+        wt1 = _claimed_repo(tmp, body=task_body([("書く", "x")], ["shared.txt"], acceptance="- 一意の完了条件ZZ"))
         r = run_task(wt1, "brief", "acceptor", "T-100", "--accept-file", "-", stdin="SKIP\tdocs-only\n")
         head = r.stdout.splitlines()[0] if r.stdout else ""
         check("SKIP docs-only は節に 文書 が入り、計画の段の本文 書く が載る",
               r.returncode == 0 and "文書" in head.split("\t")[3].split(",") and "### 1. 書く" in r.stdout,
               r.stdout + r.stderr)
-        check("文書 の節に ## 完了条件 の見出しは入らない（完了条件は 常に の節の1回だけ）",
-              "## 完了条件" not in r.stdout, r.stdout)
+        check("文書 の節は完了条件を重ねて載せない（完了条件の本文は依頼文に1回だけ）",
+              r.stdout.count("一意の完了条件ZZ") == 1, r.stdout)
         for verdict in ("SKIP\n", "NOTHING\n", "REVIEW\tcode\t1\n"):
             r = run_task(wt1, "brief", "acceptor", "T-100", "--accept-file", "-", stdin=verdict)
             head = r.stdout.splitlines()[0] if r.stdout else ""
