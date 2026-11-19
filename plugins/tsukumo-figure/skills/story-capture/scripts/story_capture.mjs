@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-// 変えたファイルに当たる Storybook の story を選び、story 1件ずつの #storybook-root を PNG に撮る。
-// 口: select / shoot / base-worktree。終了コード 0 撮れた・2 引数の誤り・3 撮れない環境。
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
@@ -18,15 +16,13 @@ export class ExitError extends Error {
 
 const normalize = (p) => p.replace(/\\/g, "/").replace(/^\.\//, "");
 
-// Storybook の importPath は index.json の根からの相対で、repo の根とずれることがある（モノレポ）。
-// 末尾が一致する長い側を優先して照らす。
+// importPath は index.json の根からの相対で、repo の根とずれる（モノレポ）ので、末尾が一致すれば同じとみなす。
 function samePath(importPath, changed) {
   const a = normalize(importPath);
   const b = normalize(changed);
   return a === b || a.endsWith(`/${b}`) || b.endsWith(`/${a}`);
 }
 
-/** index.json の entries と変えたファイルから、`{ ids, noStory }` を返す。 */
 export function selectStories(index, changedFiles) {
   const stories = Object.values(index.entries ?? {}).filter(
     (e) => e.type === "story" && typeof e.importPath === "string",
@@ -55,7 +51,7 @@ function defaultBase(repo) {
       git(repo, ["rev-parse", "--verify", "--quiet", ref]);
       return ref;
     } catch {
-      /* 次の候補へ */
+      continue;
     }
   }
   throw new ExitError(2, "主ブランチが見つからない。--base で渡す");
