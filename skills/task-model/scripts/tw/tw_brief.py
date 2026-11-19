@@ -145,7 +145,7 @@ def cmd_brief_acceptor(
         values["tree"] = tree_sha or _snapshot(tree)
     if verdict.startswith("SKIP\tdocs-only"):
         chosen.append("文書")
-        values["steps"] = plan_body.strip("\n") or "（無い）"
+        values["steps"] = str(issue.raw.get("notes") or "").strip("\n") or "（無い）"
     chosen.extend(look)
     rules = [os.path.join(tree, name) for name in RULE_FILES if os.path.isfile(os.path.join(tree, name))]
     values.update(

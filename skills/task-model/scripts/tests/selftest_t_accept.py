@@ -306,6 +306,8 @@ def test_brief_acceptor_docs_section() -> None:
         check("SKIP docs-only は節に 文書 が入り、計画の段の本文 書く が載る",
               r.returncode == 0 and "文書" in head.split("\t")[3].split(",") and "### 1. 書く" in r.stdout,
               r.stdout + r.stderr)
+        check("文書 の節に ## 完了条件 の見出しは入らない（完了条件は 常に の節の1回だけ）",
+              "## 完了条件" not in r.stdout, r.stdout)
         for verdict in ("SKIP\n", "NOTHING\n", "REVIEW\tcode\t1\n"):
             r = run_task(wt1, "brief", "acceptor", "T-100", "--accept-file", "-", stdin=verdict)
             head = r.stdout.splitlines()[0] if r.stdout else ""
