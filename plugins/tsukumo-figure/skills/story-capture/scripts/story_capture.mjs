@@ -125,12 +125,19 @@ export function serveStatic(dir) {
   });
 }
 
+const PLAYWRIGHT_PACKAGES = ["playwright", "@playwright/test", "playwright-core"];
+
 function loadPlaywright(repo) {
-  try {
-    return createRequire(path.join(repo, "noop.js"))("playwright");
-  } catch {
-    throw new ExitError(3, `${repo} の node_modules に playwright が無い。導入は人がやる（このスクリプトは取得しない）`);
+  const req = createRequire(path.join(repo, "noop.js"));
+  for (const name of PLAYWRIGHT_PACKAGES) {
+    try {
+      const mod = req(name);
+      if (mod?.chromium) return mod;
+    } catch {
+      // 次の名前を試す
+    }
   }
+  throw new ExitError(3, `${repo} の node_modules に ${PLAYWRIGHT_PACKAGES.join("・")} のどれも無い。導入は人がやる（このスクリプトは取得しない）`);
 }
 
 export async function shoot({ url, ids, out, label, repo = process.cwd() }, log) {

@@ -104,11 +104,15 @@ test("base-worktree は build が落ちても一時の worktree を残さない"
 });
 
 const searchFrom = process.env.STORY_CAPTURE_PLAYWRIGHT_REPO ?? process.cwd();
-let playwrightReadable = true;
-try {
-  createRequire(path.join(searchFrom, "noop.js")).resolve("playwright");
-} catch {
-  playwrightReadable = false;
+let playwrightReadable = false;
+for (const name of ["playwright", "@playwright/test", "playwright-core"]) {
+  try {
+    createRequire(path.join(searchFrom, "noop.js")).resolve(name);
+    playwrightReadable = true;
+    break;
+  } catch {
+    // 次の名前を試す
+  }
 }
 
 test("静的出力の iframe.html から #storybook-root だけが PNG に撮れる", { skip: !playwrightReadable && "playwright が読めない" }, async () => {

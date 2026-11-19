@@ -34,9 +34,9 @@ description: Storybook のあるリポジトリでフロントの部品を直し
 2. **直したあとに後を撮る。** `select` を打ち直し（変えたファイルに当たる ID が出る）、同じ `--ids` で `--label after` を撮る。
    `NO_STORY\t<ファイル>` の行は、当たる story が無かったファイル。
 3. **撮った PNG を開いて読む。** 空白・はみ出し・崩れを見てから載せる。
-4. tsukumo の `report` で載せる。前後がそろえば `Compare`（`relation: before-after`、側は `kind: image`）、前が無ければ `Picture`。
+4. tsukumo の口（`report`）がツール一覧にあれば、それで載せる。前後がそろえば `Compare`（`relation: before-after`、側は `kind: image`）、前が無ければ `Picture`。
    画像のパスは `/tmp` の下のまま渡せる。
-5. 撮れなかった・当たる story が無かったときは、`checks` に `unobserved` の行（理由に `NO_STORY` や終了コードを書く）。
+5. 撮れなかった・当たる story が無かったときは、`report` がツール一覧にあれば `checks` に `unobserved` の行（理由に `NO_STORY` や終了コードを書く）。無ければ返却の本文に同じ理由を書く。
 
 ## 撮り忘れたとき
 

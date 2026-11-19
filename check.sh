@@ -13,7 +13,8 @@
 # 低優先度（taskpolicy -c utility / nice）で流すのは `CHECK_LOWPRI=1` のときだけ。
 #
 # 1. リポジトリ全体の整合（frontmatter・README の索引・参照先の実在・殻 bin/tw-hook の自己テスト・公式の claude plugin validate）（いつも）
-# 2. task-model のスクリプトの自己テスト（review_needed.py・review_snapshot.py を含む。台帳と Beads 方式は並べて走らせ、出力は流し終えてから順に出す）
+# 2. story-capture の自己テスト（plugins/tsukumo-figure/skills/story-capture/ に当たるとき）
+# 3. task-model のスクリプトの自己テスト（review_needed.py・review_snapshot.py を含む。台帳と Beads 方式は並べて走らせ、出力は流し終えてから順に出す）
 #    絞れるときは tests/selftest_scope.py の対応の表が決め、selftest_task.py に当たる selftest_t_* だけを流す。表に載らないファイルは全件
 #
 # 当たる段は `./check.sh --plan` で見る。
@@ -131,6 +132,9 @@ if [ "$mode" != plan ]; then
   else
     echo "claude コマンドが無いので claude plugin validate を飛ばす"
   fi
+fi
+
+if stage "story-capture の自己テスト" 'plugins/tsukumo-figure/skills/story-capture/*'; then
   if command -v node >/dev/null 2>&1; then
     node --test "$here/plugins/tsukumo-figure/skills/story-capture/scripts/"
   else
