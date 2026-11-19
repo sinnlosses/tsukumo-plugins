@@ -131,6 +131,11 @@ if [ "$mode" != plan ]; then
   else
     echo "claude コマンドが無いので claude plugin validate を飛ばす"
   fi
+  if command -v node >/dev/null 2>&1; then
+    node --test "$here/plugins/tsukumo-figure/skills/story-capture/scripts/"
+  else
+    echo "node コマンドが無いので story-capture の自己テストを飛ばす"
+  fi
 fi
 
 pid_task=

@@ -1,6 +1,6 @@
 {
   "name": "tsukumo-figure",
-  "description": "図の構造を JSON で書くと、配色と配置を決めて HTML にし、図の部分を PNG に撮るスキル",
+  "description": "図の構造を JSON で書くと PNG に撮るスキルと、Storybook の変えた部品の story を前後で撮るスキル",
   "author": {
     "name": "sinnlosses",
     "url": "https://github.com/sinnlosses"

@@ -113,6 +113,11 @@ Claude Code 以外の環境（Codex など）へスキルを置く入口は、�
 撮る段だけ playwright と chromium が要る（無ければ HTML までで止まる）。タスク運用の `tw`・Beads・hook には触らない。
 `tsukumo-workflow` とは別の名前空間で、`vendor/tsukumo-plugins` として tsukumo に取り込まれるのは `tsukumo-workflow` だけ。
 
+もう1つのスキル `tsukumo-figure:story-capture` は、ほかのリポジトリで tsukumo を開いてフロントを直したときに、最終レポートへ前後の画を載せるためのもの。
+Storybook の `index.json` と `git diff` で変えた部品に当たる story だけを選び、`iframe.html?id=<story-id>` の `#storybook-root` を Playwright で撮る
+（着手時に `before`、直したあとに `after`。撮り忘れには主ブランチを一時の worktree で build する `base-worktree`）。
+Playwright は対象のリポジトリの `node_modules` から読み、無ければ終了コード 3 で止まる。外部サービスは使わない。
+
 ## `.git` が読み取り専用の sandbox で打つとき
 
 Codex のように、書けるのが作業ツリーと一時ディレクトリだけの環境:
