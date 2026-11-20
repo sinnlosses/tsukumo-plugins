@@ -126,7 +126,7 @@ def config_rows(toplevel: str, config: layout.Config) -> list[tuple[str, str | l
 
 
 def cmd_config(toplevel: str, as_json: bool = False) -> None:
-    """解けた設定を `<キー>\\t<値>\\t<config|default>`（`as_json` なら 1行の JSON）で出す（読むだけ）。"""
+    """解けた設定を `<キー>\\t<値>\\t<config|default>`（`as_json` なら 1行の JSON）で出し、登録簿があれば `REPO` の行（`repos` の欄）を続ける（読むだけ）。"""
     config = layout.read_config(toplevel)
     if config.source is None:
         print(f"MISSING\t{layout.CONFIG_PATH}")
@@ -134,12 +134,19 @@ def cmd_config(toplevel: str, as_json: bool = False) -> None:
     rows = config_rows(toplevel, config)
     if as_json:
         keys = [{"key": key, "value": value, "source": source} for key, value, source in rows]
-        print(json.dumps({"config": config.source, "keys": keys}, ensure_ascii=False))
+        out: dict = {"config": config.source, "keys": keys}
+        if config.repos:
+            out["repos"] = [
+                {"name": r.name, "base_branch": r.base_branch, "land": r.land, "verify": r.verify} for r in config.repos
+            ]
+        print(json.dumps(out, ensure_ascii=False))
         return
     print(f"CONFIG\t{config.source}")
     for key, value, source in rows:
         text = layout.steps_text(value) if isinstance(value, list) else value
         print(f"{key}\t{text}\t{source}")
+    for r in config.repos:
+        print(f"REPO\t{r.name}\t{r.base_branch or '-'}\t{r.land or layout.LAND_FF}\t{r.verify or '-'}")
 
 
 def cmd_show(toplevel: str, task_id: str) -> None:

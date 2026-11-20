@@ -222,7 +222,7 @@ def _friction_value(toplevel: str, shown: str) -> str:
 
 def other_repo_root(toplevel: str, plan_body: str) -> str | None:
     """`### 作業先` が名指す、着手した作業ツリーとは別のリポジトリの根。同じリポジトリか無ければ `None`。読めなければ `GitCommandError`。"""
-    root, _ = taskfile.plan_work_repo(plan_body)
+    root = tw_plan.work_repo_root(toplevel, plan_body)
     if root is None or not os.path.isdir(root):
         return None
     if gitinfo.git_common_dir(root) == gitinfo.git_common_dir(toplevel):

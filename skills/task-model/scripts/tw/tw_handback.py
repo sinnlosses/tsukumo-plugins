@@ -15,6 +15,7 @@ import gitinfo
 import layout
 import ledger
 import metrics
+import repos
 import stamps
 import ship
 import taskfile
@@ -183,11 +184,19 @@ def task_trees(toplevel: str, task_id: str) -> list[str]:
     `## やること` の `### 作業先` が別のリポジトリなら、そのリポジトリの作業ツリーのうち、
     枝の名前がタスクIDを小文字にしたものを続ける。
     """
-    work_repo, _ = taskfile.plan_work_repo(_claimed_plan_body(toplevel, task_id))
+    work_repo = work_repo_or_none(toplevel, _claimed_plan_body(toplevel, task_id))
     try:
         return _trees_of(toplevel, task_id, work_repo)
     except gitinfo.GitCommandError:
         return [toplevel]
+
+
+def work_repo_or_none(toplevel: str, body: str) -> str | None:
+    """`repos.work_repo_root`。名前のパスが引けない・設定が読めなければ作業先なしとして `None`。"""
+    try:
+        return repos.work_repo_root(toplevel, body)
+    except (repos.RepoPathMissing, layout.ConfigError):
+        return None
 
 
 def _trees_of(toplevel: str, task_id: str, work_repo: str | None) -> list[str]:
@@ -208,7 +217,7 @@ def work_roots(toplevel: str, task_id: str) -> list[str] | None:
     issue = beads.show(toplevel, beads.to_bd_id(task_id))
     if issue is None:
         return None
-    work_repo, _ = taskfile.plan_work_repo(f"{taskfile.PLAN_HEADING}\n{issue.raw.get('notes') or ''}\n")
+    work_repo = work_repo_or_none(toplevel, f"{taskfile.PLAN_HEADING}\n{issue.raw.get('notes') or ''}\n")
     try:
         trees = _trees_of(toplevel, task_id, work_repo)
     except gitinfo.GitCommandError:

@@ -79,6 +79,7 @@ def cmd_claim(toplevel: str, task_id: str) -> None:
         f"{taskfile.PLAN_HEADING}\n{plan}\n\n"
         f"{taskfile.ACCEPTANCE_HEADING}\n{issue.raw.get('acceptance_criteria') or ''}\n"
     )
+    tw_plan.work_repo_root(toplevel, plan_body)  # 名前の作業先のパスが引けなければ、印を立てる前に MISSING で止める
     registered = False
     if plan_base and not taskfile.is_blank(plan):
         tip = tw_plan.plan_tip(toplevel, plan_body)
@@ -336,7 +337,7 @@ def _claim_branch_out(
 def other_repo_main(toplevel: str, plan_body: str) -> str | None:
     """`## やること` の `### 作業先` が別のリポジトリなら、その本体の作業ツリー（`git worktree list` の先頭）。
     同じリポジトリ・作業先が無い・読めないときは `None`。"""
-    root, _ = taskfile.plan_work_repo(plan_body)
+    root = tw_plan.work_repo_root(toplevel, plan_body)
     if root is None or not os.path.isdir(root):
         return None
     try:

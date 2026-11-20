@@ -14,6 +14,7 @@ from typing import NoReturn
 import beads
 import doc_budget
 import layout
+import repos
 import taskfile
 import tracker
 import tw_base
@@ -88,6 +89,8 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
             print(f"usage: {error}", file=sys.stderr)
             raise SystemExit(2)
         _refuse_frame_change(shown, taskfile.changed_frame_sections(current, body), args.change_frame)
+        if taskfile.plan_changed(current, body):
+            tw_plan.refuse_unregistered_work_repo(toplevel, body)
         parts = beads.split_body(body)
         cmd += ["--body-file", "-", "--acceptance", parts.acceptance, "--notes", parts.notes]
         stdin = parts.description
@@ -377,8 +380,18 @@ def _refuse_plan_after_work(shown: str, state: str, after_work: bool) -> None:
         raise SystemExit(4)
 
 
+def _budget_root(toplevel: str, body: str) -> str | None:
+    """大きさの残りを測るリポジトリ。名前の作業先のパスが引けなければ `None`（測らない）。"""
+    try:
+        return repos.work_repo_root(toplevel, body) or toplevel
+    except repos.RepoPathMissing:
+        return None
+
+
 def _print_doc_budget(toplevel: str, shown: str, body: str) -> None:
-    root = taskfile.plan_work_repo(body)[0] or toplevel
+    root = _budget_root(toplevel, body)
+    if root is None:
+        return
     if not doc_budget.same_repo(root):
         return
     for path in taskfile.plan_files(body)[0]:
@@ -391,7 +404,9 @@ SIZE_BUDGET_TIMEOUT_SECONDS = 20
 
 
 def _print_size_budget(toplevel: str, shown: str, body: str) -> None:
-    root = taskfile.plan_work_repo(body)[0] or toplevel
+    root = _budget_root(toplevel, body)
+    if root is None:
+        return
     try:
         command = layout.read_config(root).size_budget
     except (layout.ConfigError, OSError):

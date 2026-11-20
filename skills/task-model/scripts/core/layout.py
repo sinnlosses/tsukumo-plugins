@@ -116,6 +116,14 @@ CONFIG_KEYS = (
 # 廃止したキーと表。設定に残っていれば `ConfigError` で知らせる。
 REMOVED_PARTS_TABLE = "parts"
 
+# 作業先の登録簿（`[repos.<名前>]`。正典 WORKFLOW.md「作業先の登録簿」）
+REPOS_TABLE = "repos"
+REPO_NAME_FRAGMENT = r"[a-z0-9][a-z0-9-]*"
+REPO_NAME_PATTERN = re.compile(REPO_NAME_FRAGMENT)  # fullmatch で使う
+REPO_KEYS = ("base_branch", "land", "verify")
+LAND_FF = "ff"
+LAND_VALUES = (LAND_FF, "branch", "pr")
+
 # 置き場の根を選んでいたころのキー。書いてあっても読み捨てる。
 IGNORED_KEYS = ("root",)
 GITHUB_PROJECT_PATTERN = re.compile(r"([^/\s]+)/(\d+)")
@@ -123,6 +131,16 @@ GITHUB_PROJECT_PATTERN = re.compile(r"([^/\s]+)/(\d+)")
 
 class ConfigError(RuntimeError):
     """設定が読めない（呼ぶ側が `INVALID`・終了コード3にする）。"""
+
+
+@dataclass(frozen=True)
+class RepoEntry:
+    """登録簿の1件（`[repos.<名前>]`）。書いていないキーは `None`。"""
+
+    name: str
+    base_branch: str | None = None
+    land: str | None = None
+    verify: str | None = None
 
 
 @dataclass(frozen=True)
@@ -152,6 +170,10 @@ class Config:
     flow: str = FLOW_SCRIPT
     loop_max_ships: int = DEFAULT_LOOP_MAX_SHIPS
     written: frozenset = frozenset()
+    repos: tuple[RepoEntry, ...] = ()
+
+    def repo(self, name: str) -> RepoEntry | None:
+        return next((r for r in self.repos if r.name == name), None)
 
     @property
     def project_owner_number(self) -> tuple[str, str] | None:
@@ -191,16 +213,19 @@ def _mtime(path: str) -> tuple[int, int] | None:
 
 
 _LINE_PATTERN = re.compile(r"([A-Za-z0-9_-]+)[ \t]*=[ \t]*(.*)")
-_TABLE_PATTERN = re.compile(r"\[[ \t]*([A-Za-z0-9_-]+)[ \t]*\][ \t]*(?:#.*)?")
+_TABLE_PATTERN = re.compile(r"\[[ \t]*([A-Za-z0-9_.-]+)[ \t]*\][ \t]*(?:#.*)?")
+_REPO_TABLE_PATTERN = re.compile(rf"{REPOS_TABLE}\.({REPO_NAME_FRAGMENT})")
 
 
 def parse_config_text(text: str, label: str) -> list[tuple[int, str, str]]:
-    """TOML の部分集合（空行・`# コメント`・`key = "値"`／`key = '値'`）を `(行番号, キー, 値)` にする。
+    """TOML の部分集合（空行・`# コメント`・`key = "値"`／`key = '値'`・`[repos.<名前>]` の表）を `(行番号, キー, 値)` にする。
 
-    表（`[…]`）は読まない。`[parts]` は廃止した表として `ConfigError` にする。
+    表の見出しは `(行番号, "repos.<名前>", "")`、表の中のキーは `(行番号, "repos.<名前>.<キー>", 値)`。
+    ほかの表（廃止した `[parts]` を含む）と、表の後ろの最上位のキーは `ConfigError` にする。
     """
     entries: list[tuple[int, str, str]] = []
     seen: dict[str, int] = {}
+    table: str | None = None
     for lineno, raw in enumerate(text.splitlines(), start=1):
         line = raw.strip()
         if not line or line.startswith("#"):
@@ -210,11 +235,29 @@ def parse_config_text(text: str, label: str) -> list[tuple[int, str, str]]:
             name = t.group(1)
             if name == REMOVED_PARTS_TABLE:
                 raise ConfigError(f"{label}:{lineno}: [{name}] は廃止した（スキルの差し替えは steps に書く。tw config set steps）")
-            raise ConfigError(f"{label}:{lineno}: 知らない表 [{name}]（表は使わない）")
+            if _REPO_TABLE_PATTERN.fullmatch(name) is None:
+                raise ConfigError(f"{label}:{lineno}: 知らない表 [{name}]（書ける表は [{REPOS_TABLE}.<名前>] だけ。名前は {REPO_NAME_FRAGMENT}）")
+            if name in seen:
+                raise ConfigError(f"{label}:{lineno}: 表 [{name}] が {seen[name]} 行目にもある")
+            seen[name] = lineno
+            table = name
+            entries.append((lineno, name, ""))
+            continue
         m = _LINE_PATTERN.fullmatch(line)
         if m is None:
             raise ConfigError(f"{label}:{lineno}: `key = \"値\"` の形でない: {line}")
         key, rest = m.group(1), m.group(2)
+        if table is not None:
+            if key not in REPO_KEYS:
+                raise ConfigError(
+                    f"{label}:{lineno}: [{table}] の知らないキー {key!r}（{' / '.join(REPO_KEYS)} だけ。最上位のキーは最初の表より前に書く）"
+                )
+            full = f"{table}.{key}"
+            if full in seen:
+                raise ConfigError(f"{label}:{lineno}: キー {key!r} が [{table}] の {seen[full]} 行目にもある")
+            seen[full] = lineno
+            entries.append((lineno, full, _parse_string(rest, f"{label}:{lineno}")))
+            continue
         if key not in CONFIG_KEYS and key not in IGNORED_KEYS:
             raise ConfigError(f"{label}:{lineno}: 知らないキー {key!r}")
         if key in seen:
@@ -288,10 +331,29 @@ def _parse_string(rest: str, where: str) -> str:
     return "".join(chars)
 
 
+def _repo_entries(source: str, entries: list[tuple[int, str, str]]) -> tuple[RepoEntry, ...]:
+    tables: dict[str, dict[str, str]] = {}
+    for lineno, key, value in entries:
+        name, _, field = key[len(REPOS_TABLE) + 1 :].partition(".")
+        fields = tables.setdefault(name, {})
+        if not field:
+            continue
+        if value == "":
+            raise ConfigError(f"{source}:{lineno}: [{REPOS_TABLE}.{name}] の {field} の値が空")
+        if field == "land" and value not in LAND_VALUES:
+            raise ConfigError(f"{source}:{lineno}: land の値 {value!r} が {' / '.join(LAND_VALUES)} のどれでもない")
+        fields[field] = value
+    return tuple(RepoEntry(name, **fields) for name, fields in tables.items())
+
+
 def _config_from_values(source: str, entries: list[tuple[int, str, str]]) -> Config:
     values: dict[str, str | None] = {}
     lines: dict[str, int] = {}
+    repo_prefix = REPOS_TABLE + "."
+    repos = _repo_entries(source, [e for e in entries if e[1].startswith(repo_prefix)])
     for lineno, key, value in entries:
+        if key.startswith(repo_prefix):
+            continue
         if value == "":
             raise ConfigError(f"{source}:{lineno}: {key} の値が空")
         if key in COMMAND_SETTABLE_KEYS and value == NO_COMMAND:
@@ -306,7 +368,7 @@ def _config_from_values(source: str, entries: list[tuple[int, str, str]]) -> Con
             raise ConfigError(
                 f"{source}:{lines[key]}: {key} の値 {values[key]!r} が {' / '.join(vocabulary)} のどれでもない"
             )
-    return build_config(source, values)
+    return build_config(source, values, repos)
 
 
 def _loop_max_ships(source: str | None, text: str | None, default: int) -> int:
@@ -317,7 +379,7 @@ def _loop_max_ships(source: str | None, text: str | None, default: int) -> int:
     return int(text)
 
 
-def build_config(source: str | None, values: dict[str, str | None]) -> Config:
+def build_config(source: str | None, values: dict[str, str | None], repos: tuple[RepoEntry, ...] = ()) -> Config:
     defaults = Config(source=source)
     config = Config(
         source=source,
@@ -340,6 +402,7 @@ def build_config(source: str | None, values: dict[str, str | None]) -> Config:
         flow=FLOW_SCRIPT if values.get(FLOW_KEY) == FLOW_SKILLS else values.get(FLOW_KEY) or defaults.flow,
         loop_max_ships=_loop_max_ships(source, values.get("loop_max_ships"), defaults.loop_max_ships),
         written=frozenset(values),
+        repos=repos,
     )
     if config.shell_write_guard not in SHELL_WRITE_GUARD_VALUES:
         raise ConfigError(
@@ -690,7 +753,8 @@ def steps_text(items: list[str]) -> str:
 def config_text_with(text: str, key: str, value: str, label: str = CONFIG_PATH) -> str:
     """設定の全文 `text` の `key` を `value` にした全文。ほかの行・並び・コメントは変えない。
 
-    キーの行があれば値の文字列だけを差し替え、無ければ最後のキーの行の次へ足す。書けないキー・値は
+    見るのは最初の表の見出しより前の行だけ（表の後ろの行は TOML ではその表のキーになる）。キーの行があれば
+    値の文字列だけを差し替え、無ければその範囲の最後のキーの行の次（キーが無ければ先頭）へ足す。書けないキー・値は
     `ConfigValueError`、書いた結果が読めなければ `ConfigError`。
     """
     if key not in SETTABLE_KEYS:
@@ -729,7 +793,9 @@ def config_text_with(text: str, key: str, value: str, label: str = CONFIG_PATH) 
     insert_at: int | None = None  # 足す位置（最後のキーの行の次）
     for i, raw in enumerate(lines):
         stripped = raw.strip()
-        if not stripped or stripped.startswith("#") or _TABLE_PATTERN.fullmatch(stripped):
+        if _TABLE_PATTERN.fullmatch(stripped):
+            break
+        if not stripped or stripped.startswith("#"):
             continue
         m = _VALUE_LINE_PATTERN.fullmatch(raw)
         if m is None:

@@ -7,6 +7,7 @@ import sys
 from collections.abc import Sequence
 
 import gitinfo
+import repos
 import taskfile
 import tw_base
 
@@ -71,6 +72,15 @@ def refuse_direct(difficulty: str, body: str) -> None:
         raise SystemExit(2)
 
 
+def refuse_unregistered_work_repo(toplevel: str, body: str) -> None:
+    """`### 作業先` が登録簿に無い名前なら `usage:`・終了コード2、登録簿の名前でパスが引けなければ `MISSING`・終了コード6。"""
+    reason = repos.registry_refusal(toplevel, body)
+    if reason is not None:
+        print(f"usage: {reason}", file=sys.stderr)
+        raise SystemExit(2)
+    work_repo_root(toplevel, body)
+
+
 def direct_column(direct: str, difficulty: str, body: str, registered: bool) -> str:
     """`CLAIMED` の行末に足す近道の列。印が無ければ空。"""
     if direct != "Y":
@@ -119,9 +129,18 @@ def rewritten_plan_base(toplevel: str, body: str) -> str | None:
     return r.stdout.strip() if r.returncode == 0 and r.stdout.strip() else None
 
 
+def work_repo_root(toplevel: str, body: str) -> str | None:
+    """`repos.work_repo_root`。名前のパスが引けなければ `MISSING\\t作業先 <名前>`・終了コード6。"""
+    try:
+        return repos.work_repo_root(toplevel, body)
+    except repos.RepoPathMissing as e:
+        print(f"MISSING\t作業先 {e.name}")
+        raise SystemExit(6)
+
+
 def _plan_repo(toplevel: str, body: str) -> str | None:
     """計画の名指すファイルを読むリポジトリ。`### 作業先` が無ければ `toplevel`、あってもリポジトリの根でなければ `None`。"""
-    path, _ = taskfile.plan_work_repo(body)
+    path = work_repo_root(toplevel, body)
     if path is None:
         return toplevel
     if not os.path.isdir(path):

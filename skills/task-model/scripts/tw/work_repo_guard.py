@@ -73,7 +73,7 @@ def _refusal(toplevel: str, task_id: str, target: pathlib.Path) -> str | None:
     issue = beads.show(toplevel, beads.to_bd_id(task_id))
     if issue is None:
         return None
-    work_repo, _ = taskfile.plan_work_repo(f"{taskfile.PLAN_HEADING}\n{issue.raw.get('notes') or ''}\n")
+    work_repo = tw_handback.work_repo_or_none(toplevel, f"{taskfile.PLAN_HEADING}\n{issue.raw.get('notes') or ''}\n")
     if work_repo is None or not os.path.isdir(work_repo):
         return None
     if gitinfo.git_common_dir(work_repo) == gitinfo.git_common_dir(toplevel):

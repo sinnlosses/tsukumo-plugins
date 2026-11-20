@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
+import sys
 import tempfile
 
 from selftest_support import RESULT_FULL, check, git, refuse_direct_run, say, weight, write  # noqa: E402
@@ -506,7 +508,111 @@ def test_warn_red_step() -> None:
               r.stdout + r.stderr)
 
 
+def _git_repo_with(path: str, name: str) -> str:
+    os.makedirs(path)
+    git(path, "init", "-q", "-b", "main")
+    git(path, "config", "user.email", "test@example.com")
+    git(path, "config", "user.name", "test")
+    write(os.path.join(path, name), "x\n")
+    git(path, "add", "-A")
+    git(path, "commit", "-q", "-m", "init")
+    return path
+
+
+def _name_of(cwd: str, env: dict[str, str], path: str) -> str:
+    """`repos.name_of` を子プロセスで引く（`repos.toml` の置き場を環境で差し替えるため）。"""
+    core = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "core")
+    code = f"import sys; sys.path.insert(0, {core!r}); import repos; print(repos.name_of({cwd!r}, {path!r}))"
+    return subprocess.run([sys.executable, "-c", code], cwd=cwd, capture_output=True, text=True, env={**os.environ, **env}).stdout.strip()
+
+
+def test_work_repo_name() -> None:
+    say("task.py new・adopt・edit・claim・brief・finish: ### 作業先 を登録簿の名前で書け、登録簿に無い名前は終了コード2、パスが引けない名前は MISSING・終了コード6")
+    with tempfile.TemporaryDirectory() as tmp:
+        work_main, _, _ = make_repo(os.path.join(tmp, "work"), verify="`true`")
+        registry = "\n[repos.plugins]\nland = \"ff\"\n\n[repos.sib]\n\n[repos.gone]\n"
+        own_main, wt1, _ = make_repo(os.path.join(tmp, "own"), branch="切らない", verify="`true`", extra=registry)
+        _git_repo_with(os.path.join(tmp, "own", "sib"), "shared.txt")
+        xdg = os.path.join(tmp, "xdg")
+        if os.environ.get("XDG_CONFIG_HOME") and os.path.isdir(os.environ["XDG_CONFIG_HOME"]):
+            shutil.copytree(os.environ["XDG_CONFIG_HOME"], xdg)
+        write(os.path.join(xdg, "tw", "repos.toml"), f"# 作業先の置き場\nplugins = \"{work_main}\"\n")
+        env = {"XDG_CONFIG_HOME": xdg}
+
+        def new(spec: str, cwd: str = wt1) -> subprocess.CompletedProcess:
+            return run_task(cwd, "new", "--summary", f"作業先 {spec}", "--difficulty", "sonnet", "--loopable", "Y",
+                            "--body-file", "-", stdin=task_body([("書く", "x")], ["shared.txt"], spec), env=env)
+
+        made = new("plugins")
+        check("登録簿の名前で repos.toml にパスがある作業先は new が通る", made.returncode == 0 and made.stdout.startswith("CREATED\t"),
+              made.stdout + made.stderr)
+        r = new("sib")
+        check("repos.toml に無くても、ホームの本体の作業ツリーの親に同じ名前の git の根があれば new が通る",
+              r.returncode == 0 and r.stdout.startswith("CREATED\t"), r.stdout + r.stderr)
+        r = new("gone")
+        check("登録簿にあってパスが引けない名前は new が MISSING・終了コード6",
+              r.returncode == 6 and r.stdout == "MISSING\t作業先 gone\n", r.stdout + r.stderr)
+        r = new("nope")
+        check("登録簿に無い名前は new が終了コード2で拒む", r.returncode == 2 and r.stderr.startswith("usage:") and "nope" in r.stderr,
+              r.stdout + r.stderr)
+        r = new(work_main)
+        check("登録簿の名前のパスと同じ絶対パスは new が通る", r.returncode == 0, r.stdout + r.stderr)
+        check("その絶対パスは repos.name_of がその名前に解く", _name_of(wt1, env, work_main) == "plugins", _name_of(wt1, env, work_main))
+        stray = _git_repo_with(os.path.join(tmp, "stray"), "shared.txt")
+        r = new(stray)
+        check("どの名前にも解けない絶対パスは今までどおり通る", r.returncode == 0 and _name_of(wt1, env, stray) == "None",
+              r.stdout + r.stderr)
+
+        subprocess.run(["bd", "create", "--id", "t-adopt", "--title", "取り込み", "--silent"], cwd=own_main, capture_output=True, text=True)
+        r = run_task(own_main, "adopt", "T-ADOPT", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", "-",
+                     stdin=task_body([("書く", "x")], ["shared.txt"], "nope"), env=env)
+        check("登録簿に無い名前は adopt が終了コード2で拒む", r.returncode == 2 and "nope" in r.stderr, r.stdout + r.stderr)
+        r = run_task(own_main, "adopt", "T-ADOPT", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", "-",
+                     stdin=task_body([("書く", "x")], ["shared.txt"], "gone"), env=env)
+        check("パスが引けない名前は adopt が MISSING・終了コード6", r.returncode == 6 and r.stdout == "MISSING\t作業先 gone\n",
+              r.stdout + r.stderr)
+
+        task_id = made.stdout.split("\t")[1].strip()
+        plan = task_body([("書く", "x")], ["shared.txt"], "nope")
+        r = run_task(wt1, "edit", task_id, "--body-file", "-", stdin=plan, env=env)
+        check("登録簿に無い名前へ書き直す edit は終了コード2で拒む", r.returncode == 2 and "nope" in r.stderr, r.stdout + r.stderr)
+        r = run_task(wt1, "edit", task_id, "--body-file", "-", stdin=task_body([("書く", "x")], ["shared.txt"], "gone"), env=env)
+        check("パスが引けない名前へ書き直す edit は MISSING・終了コード6", r.returncode == 6 and r.stdout == "MISSING\t作業先 gone\n",
+              r.stdout + r.stderr)
+
+        commit_task(own_main, taskfile.Task("T-900", "消えた作業先", "todo", "sonnet", "Y", (), task_body([("書く", "x")], ["shared.txt"], "gone")))
+        r = run_task(wt1, "claim", "T-900", env=env)
+        check("パスが引けない名前の claim は MISSING・終了コード6で、印を立てない",
+              r.returncode == 6 and r.stdout == "MISSING\t作業先 gone\n" and "\nstatus: todo\n" in shown(wt1, "T-900"),
+              r.stdout + r.stderr)
+
+        r = run_task(wt1, "claim", task_id, env=env)
+        check("名前の作業先のタスクを claim できる", r.returncode == 0 and r.stdout.startswith("CLAIMED\t"), r.stdout + r.stderr)
+        r = run_task(wt1, "brief", "implementer", task_id, env=env)
+        check("brief implementer は名前を作業先の根に解いて出す", r.returncode == 0 and work_main in r.stdout, r.stdout + r.stderr)
+        branch = task_id.lower()
+        work_tree = os.path.join(tmp, f"work-{branch}")
+        git(work_main, "worktree", "add", "-q", "-b", branch, work_tree, "main")
+        write(os.path.join(work_tree, "a.txt"), "x")
+        git(work_tree, "add", "a.txt")
+        git(work_tree, "commit", "-q", "-m", "a")
+        r = run_task(wt1, "finish", task_id, "--result-file", "-", "--message", "x", stdin=RESULT_FULL, env=env)
+        check("名前の作業先でも、枝が未合流なら finish は WORK_NOT_LANDED",
+              r.returncode == 4 and r.stdout == f"WORK_NOT_LANDED\t{task_id}\t{work_main}\t{branch}\n", r.stdout + r.stderr)
+        write(os.path.join(xdg, "tw", "repos.toml"), "")
+        r = run_task(wt1, "brief", "implementer", task_id, env=env)
+        check("着手のあとで名前のパスが引けなくなれば brief は MISSING・終了コード6",
+              r.returncode == 6 and "MISSING\t作業先 plugins" in r.stdout, r.stdout + r.stderr)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        _main, wt1, _ = make_repo(tmp)
+        r = run_task(wt1, "new", "--summary", "登録簿なし", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", "-",
+                     stdin=task_body([("書く", "x")], ["shared.txt"], "plugins"))
+        check("登録簿の無い設定で名前を書いた new は終了コード2", r.returncode == 2 and "plugins" in r.stderr, r.stdout + r.stderr)
+
+
 TESTS = (
+    test_work_repo_name,
     test_warn_red_step,
     test_warn_main_only_tool,
     test_plan_phases_ids,

@@ -63,6 +63,7 @@ def _check_one(toplevel: str, args: argparse.Namespace) -> _Checked:
         raise SystemExit(2)
     if args.direct:
         tw_plan.refuse_direct(args.difficulty, body)
+    tw_plan.refuse_unregistered_work_repo(toplevel, body)
     plan_base = tw_plan.registered_plan_base(toplevel, body) if taskfile.has_plan(body) and not args.draft else None
     return _Checked(summary, deps, fixes, body, plan_base)
 
@@ -391,6 +392,7 @@ def cmd_adopt(toplevel: str, args: argparse.Namespace) -> None:
         raise SystemExit(2)
     if args.direct:
         tw_plan.refuse_direct(args.difficulty, body)
+    tw_plan.refuse_unregistered_work_repo(toplevel, body)
     plan_base = tw_plan.registered_plan_base(toplevel, body)
     trk = tracker.session(toplevel)
     pulled = trk.before([old])

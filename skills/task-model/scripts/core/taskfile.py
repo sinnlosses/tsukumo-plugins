@@ -32,7 +32,7 @@ PURPOSE_HEADING = "## 目的・背景"
 PLAN_HEADING = "## やること"
 # 登録時（`tw new`・`tw adopt`）に書いた `## やること` が名指すファイル。1行1つの「- `パス`」。
 PLAN_FILES_HEADING = "### 名指すファイル"
-# 名指すファイルが別のリポジトリにあるときの、そのリポジトリの根の絶対パス。1行の「- `パス`」。
+# 名指すファイルが別のリポジトリにあるときの、その作業先。1行の「- `名前`」（ホームの登録簿の名前）か「- `絶対パス`」。
 PLAN_WORK_REPO_HEADING = "### 作業先"
 ACCEPTANCE_HEADING = "## 完了条件"
 CAUTION_HEADING = "## 注意"
@@ -743,9 +743,10 @@ def _overlap(left: tuple[str, ...], right: tuple[str, ...]) -> tuple[str, ...]:
 
 
 def plan_work_repo(body: str) -> tuple[str | None, str | None]:
-    """`## やること` の `### 作業先` が名指すリポジトリの根。小見出しが無ければ `(None, None)`、形が違えば `(None, 理由)`。
+    """`## やること` の `### 作業先` が名指す作業先（登録簿の名前か絶対パスの文字列）。小見出しが無ければ `(None, None)`、形が違えば `(None, 理由)`。
 
-    小見出しの下は、次の `### ` 見出しか節の終わりまで、空でない行がちょうど1つの「- `絶対パス`」。
+    小見出しの下は、次の `### ` 見出しか節の終わりまで、空でない行がちょうど1つの「- `名前`」か「- `絶対パス`」。
+    名前をパスに解くのは `repos.resolve`。
     """
     lines = dict(_frame_sections(body)[1]).get(PLAN_HEADING, "").split("\n")
     starts = [i for i, line in enumerate(lines) if line.rstrip() == PLAN_WORK_REPO_HEADING]
@@ -760,14 +761,16 @@ def plan_work_repo(body: str) -> tuple[str | None, str | None]:
         if line.strip():
             entries.append(line.rstrip())
     if len(entries) != 1:
-        return None, f"{PLAN_WORK_REPO_HEADING} には「- `パス`」を1行だけ置く（{len(entries)}行ある）"
+        return None, f"{PLAN_WORK_REPO_HEADING} には「- `名前`」か「- `パス`」を1行だけ置く（{len(entries)}行ある）"
     m = _PLAN_FILE_LINE.match(entries[0])
     if m is None:
-        return None, f"{PLAN_WORK_REPO_HEADING} の行が「- `パス`」の形でない: {entries[0].strip()}"
-    path = m.group(1)
-    if not path.startswith("/"):
-        return None, f"{PLAN_WORK_REPO_HEADING} の {path} は絶対パスにする（`~` も展開して書く）"
-    return path, None
+        return None, f"{PLAN_WORK_REPO_HEADING} の行が「- `名前`」か「- `パス`」の形でない: {entries[0].strip()}"
+    spec = m.group(1)
+    if not spec.startswith("/") and layout.REPO_NAME_PATTERN.fullmatch(spec) is None:
+        return None, (
+            f"{PLAN_WORK_REPO_HEADING} の {spec} は登録簿の名前（{layout.REPO_NAME_FRAGMENT}）か絶対パスにする（`~` も展開して書く）"
+        )
+    return spec, None
 
 
 def plan_files(body: str) -> tuple[tuple[str, ...], str | None]:

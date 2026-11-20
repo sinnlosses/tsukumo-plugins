@@ -151,6 +151,56 @@ def test_config_commit_task_id() -> None:
         check("語彙の外の値を書く set は終了コード2", bad.returncode == 2, bad.stdout + bad.stderr)
 
 
+def test_config_repos_table() -> None:
+    say("自己テスト: 設定は [repos.<名前>] の表を登録簿として読み、ほかの表・表の中の知らないキー・表の後ろの最上位キーは INVALID。config set は最初の表より前に書く")
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = _make_config_doctor_repo(tmp, "repos")
+        config_path = os.path.join(repo, ".tw", "config.toml")
+        plain = run_task(repo, "config")
+        plain_json = run_task(repo, "config", "--json")
+        check("登録簿の無い設定の tw config に REPO の行は無い", "REPO\t" not in plain.stdout, plain.stdout)
+        check("登録簿の無い設定の tw config --json に repos の欄は無い", "repos" not in json.loads(plain_json.stdout), plain_json.stdout)
+        write(
+            config_path,
+            'verify = "なし"\nbranch = "既定"\n\n# 作業先\n[repos.plugins]\nbase_branch = "develop"\nland = "pr"\nverify = "make test"\n\n[repos.web-2]\n',
+        )
+        rows = [r.split("\t") for r in run_task(repo, "config").stdout.splitlines() if r.startswith("REPO\t")]
+        check("tw config は登録簿の順に REPO の行を出し、書いていない欄は - と既定の ff",
+              rows == [["REPO", "plugins", "develop", "pr", "make test"], ["REPO", "web-2", "-", "ff", "-"]], repr(rows))
+        repos_json = json.loads(run_task(repo, "config", "--json").stdout).get("repos")
+        check("tw config --json の repos の欄は名前と3つのキー（書いていなければ null）",
+              repos_json == [
+                  {"name": "plugins", "base_branch": "develop", "land": "pr", "verify": "make test"},
+                  {"name": "web-2", "base_branch": None, "land": None, "verify": None},
+              ], repr(repos_json))
+        other_rows = {r.split("\t")[0]: r for r in run_task(repo, "config").stdout.splitlines() if not r.startswith(("REPO\t", "CONFIG\t"))}
+        plain_rows = {r.split("\t")[0]: r for r in plain.stdout.splitlines() if not r.startswith("CONFIG\t")}
+        check("表の中の verify・base_branch は最上位の欄の値にならない", other_rows == plain_rows, repr(other_rows))
+        done = run_task(repo, "config", "set", "verify", "make check")
+        check("verify の set は通る", done.returncode == 0, done.stdout + done.stderr)
+        set_new = run_task(repo, "config", "set", "format", "make fmt")
+        check("format の set は通る", set_new.returncode == 0, set_new.stdout + set_new.stderr)
+        with open(config_path, encoding="utf-8") as f:
+            text = f.read()
+        check("set は最上位の verify を差し替え、表の中の verify は残し、新しいキーは最初の表より前（最後の最上位キーの次）に足す",
+              text.startswith('verify = "make check"\nbranch = "既定"\nformat = "make fmt"\n\n# 作業先\n[repos.plugins]\n')
+              and 'verify = "make test"' in text, text)
+        no_key = layout.config_text_with('[repos.only]\nland = "ff"\n', "verify", "なし")
+        check("最上位のキーが無ければ set は先頭に足す", no_key == 'verify = "なし"\n[repos.only]\nland = "ff"\n', no_key)
+        for label, body in (
+            ("廃止した [parts]", '[parts]\n'),
+            ("知らない表 [foo]", '[foo]\n'),
+            ("名前の形でない [repos.Plugins]", '[repos.Plugins]\n'),
+            ("表の中の知らないキー", '[repos.x]\nformat = "a"\n'),
+            ("表の後ろの最上位キー", '[repos.x]\nbranch = "既定"\n'),
+            ("land の語彙の外", '[repos.x]\nland = "merge"\n'),
+            ("同じ表が2つ", '[repos.x]\n[repos.x]\n'),
+        ):
+            write(config_path, 'verify = "なし"\n' + body)
+            bad = run_task(repo, "config")
+            check(f"{label} は INVALID・終了コード3", bad.returncode == 3 and bad.stdout.startswith("INVALID"), bad.stdout + bad.stderr)
+
+
 def _relay_out(wt: str, task_id: str, key: str) -> str:
     return run_task(wt, "relay", task_id, key).stdout
 
@@ -571,6 +621,7 @@ TESTS = (
     test_all_tests_registered,
     test_config_flow_is_script_only,
     test_config_commit_task_id,
+    test_config_repos_table,
     test_flow_result_writes_relays_and_releases,
     test_flow_result_writes_journal_stages,
     test_metrics_counts_flow_stage_once,
