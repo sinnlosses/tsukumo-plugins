@@ -47,8 +47,8 @@
 
 ## 別のリポジトリ
 
-- 作業先のリポジトリ {{work_repo}} では、別の作業ツリー（`git -C {{work_repo}} worktree add -b {{branch}} {{worktree}} {{base}}`。
-  すでにあればそのまま使う）で直してコミットし、**コミットのあと**にその作業ツリーを cwd にして `tw verify` を打つ（控えは cwd の作業ツリーごとで、鍵に `HEAD` の
+- 作業先のリポジトリ {{work_repo}} では、`tw claim` が作ってある作業ツリー {{worktree}}（枝 {{branch}}）で直してコミットする。
+  その作業ツリーが無ければ自分で作らず、止まって着手した側へ戻す。**コミットのあと**にその作業ツリーを cwd にして `tw verify` を打つ（控えは cwd の作業ツリーごとで、鍵に `HEAD` の
   SHA を含むので、コミットの前に打つと受け入れで `NOT_VERIFIED head` になる）。`tw step`・`tw pause` は
   着手した側（Beads のある作業ツリー {{claimed}}）を cwd にして打ち、作業先の作業ツリーでは
   打たない（`NOT_OWNER` か `MISSING …/.beads` で拒まれる）。作業先の作業ツリーで打つ `tw` は
@@ -56,7 +56,8 @@
   作業先の作業ツリーの `tw verify-check` が `VERIFIED_SAME` でなければ hook に拒まれる。**`{{base}}` へ入れず、
   作業ツリーと枝を消さずに残して**、作業ツリーのパスと `tw verify` の判定行（`VERIFIED`・
   `VERIFY_NOT_PASSED` など）を報告に書く。作業先に `.tw/config.toml` があれば台帳（`.beads`）が無くても
-  `tw verify` は打てる。設定が無く `tw verify` が `MISSING` を返すときは、検証コマンドを自分で打って通し、打ったコマンドと終了コードを報告に書く。作業先が tsukumo-plugins で `skills/task-model/scripts/` を直すタスク（tw 自身を直すタスク）のときは、`tw` を打たず（グローバルの `tw` は本体の旧い版を指すため）、作業ツリーの `skills/task-model/scripts/tw/task.py <サブコマンド>` を直に実行して確かめる。
+  `tw verify` は打てる。設定が無くても、ホームの登録簿の `[repos.<名前>]` に `verify` があればそれで `tw verify` が打てる。
+  `tw verify` が `MISSING`（`work-home` が無い）か `NOTHING`（登録簿に `verify` が無い）を返すときは、検証コマンドを自分で打って通し、打ったコマンドと終了コードを報告に書く。作業先が tsukumo-plugins で `skills/task-model/scripts/` を直すタスク（tw 自身を直すタスク）のときは、`tw` を打たず（グローバルの `tw` は本体の旧い版を指すため）、作業ツリーの `skills/task-model/scripts/tw/task.py <サブコマンド>` を直に実行して確かめる。
 - 作業先の本体の作業ツリー（`git worktree list` の先頭。全プロジェクトが参照する実体のことがある）のファイルは読むだけで、書き換えない。そこを cwd に
   して編集しない。枝も切り替えない。編集は必ず自分の作業ツリー {{worktree}} の下のパスに対して行う。
 - 作業先の作業ツリーのパスのファイルは、本体のパスで読んだだけでは Edit が拒まれる（別のパスなので）。Edit の前に、作業ツリーのパスでその回に Read する。

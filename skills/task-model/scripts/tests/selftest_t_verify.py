@@ -514,8 +514,8 @@ def make_work_tree(tmp: str, registry: str) -> tuple[str, str, str]:
     検証コマンドに `sh ../verify-count.sh` を書けば、打たれるたびに `verify-count.log` へ1行足す。
     """
     home = os.path.join(tmp, "home")
-    write(os.path.join(home, ".tw", "config.toml"), f'verify = "なし"\n\n[repos.plugins]\n{registry}')
-    work = os.path.join(tmp, "plugins")
+    _set_registry(home, registry)
+    work =os.path.join(tmp, "plugins")
     os.makedirs(work)
     git(work, "init", "-q", "-b", "main")
     git(work, "config", "user.email", "test@example.com")

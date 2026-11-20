@@ -56,6 +56,7 @@
 | 作業ツリーの根の `.tw/local/task-open-claims/T-xxx` | `claim` から `done`・`release`・`ship` までの控え（中身は空）。`tw commit-guard`・`tw handback-guard`・`tw ask-guard`・`tw ref-guard` が読む。コミットしない。作業ツリーごと |
 | 共有の git dir の `hooks/reference-transaction`（`git rev-parse --git-path hooks` の下。`core.hooksPath` があれば置かない） | `tw ref-guard` を呼ぶ薄い殻（2行目が印 `# tw ref-guard`）。`claim` が置き、`done`・`ship` では消さない。控えの無い作業ツリーでは何もしない。印の無い利用者の hook があれば置かない。消してよい（次の `claim` が置き直す）。全作業ツリーで1つ |
 | 作業ツリーの根の `.tw/local/` | `tw verify`・`tw pause`・`tw step` を打った時点の中身の鍵、`ship` の検証の借り、検証のログ、書き換える道具を使ったサブエージェントの印（`task-agent-writers/<agent_id>`）、`agent` の出来事を台帳へ残した印（`task-agent-tasks/<agent_id>`。出来事は `commit-guard` が、着手の控えがちょうど1件の作業ツリーでのサブエージェントの最初の Bash に1回だけ `flow/` へ足す〔タスク・`agent`＝agent_id・`session`＝session_id〕）。この2種とも着手の控えが全部無くなると消える。コミットしない。作業ツリーごと。初めて書くときに `tw` が作り、中身 `*` の `.tw/local/.gitignore` を置く |
+| 作業先の作業ツリーの根の `.tw/local/work-home` | 1行目にホームの本体の根、2行目に登録簿の名前（名前に解けなければ空行）。`### 作業先` が別のリポジトリのタスクの `claim` が書き（作業ツリーが在っても書き直す）、`tw verify`・`tw verify-check`・`tw land --fold` が登録簿の `verify` を引くのに読む（下の「作業先の登録簿」）。消さない。コミットしない |
 
 **プロジェクトごとに変わる値は `.tw/config.toml` に置く**（コミットする。`AGENTS.md`・`CLAUDE.md` には
 書かない）。`tw` は `layout.read_config` の1つの口で読み、`tw config` が解けた値を出す（スキルはこれを読む）。
@@ -499,7 +500,7 @@ frame が実装と合わず人が決め直すまで進められないタスク�
 ## 作業先の登録簿
 
 あるリポジトリ（**ホーム**）の置き場から、別のリポジトリ（**作業先**）を直すタスクを回す形。決めたのはこの節で、
-登録簿・`repos.toml`・名前の形の `### 作業先` は動く。`land` の振る舞い・検証の順はまだ（`tw land` は ff だけ）。
+登録簿・`repos.toml`・名前の形の `### 作業先`・作業先の作業ツリーを `tw claim` が作ること・検証の順は動く。`land` の合流の方針はまだ（`tw land` は ff だけ）。
 **登録簿が無い設定は今の1リポジトリの動きのまま**で、使い方を切り替える旗は置かない。
 
 前提（変えない）: 一覧は開いたリポジトリの置き場のタスクだけを出し、置き場を読み合わせない。作業先に `.tw/config.toml` が
@@ -516,7 +517,7 @@ verify = "pnpm run check"
 [repos.tsukumo-plugins]
 base_branch = "main"         # 作業先の主ブランチ。無ければ作業先で gitinfo.base_branch の順で決める
 land = "ff"                  # 合流の方針（下の表）。無ければ ff
-verify = "./check.sh"        # 作業先に .tw/config.toml が無いときだけ使う検証コマンド
+verify = "./check.sh"        # 作業先の .tw/config.toml に検証コマンドが無いときだけ使う
 ```
 
 絶対パスは追跡する設定に書かず、利用者ごとのファイル `${XDG_CONFIG_HOME:-~/.config}/tw/repos.toml` の
@@ -558,8 +559,8 @@ verify = "./check.sh"        # 作業先に .tw/config.toml が無いときだ�
 
 **変えない**。ホームの置き場の ID（`GH-<n>`・`T-<n>`）はホームの一覧にしか出ず、作業先で開いた置き場の ID は
 作業先の一覧にしか出ない（置き場を読み合わせない）ので、同じ一覧に2つの体系が並ぶ場面が無い。
-作業先の枝はホームのタスクIDの小文字（`gh-123` の形）のままで、作業先に同じ名の枝か作業ツリーが既にあれば、
-今の `tw brief` の作業ツリーの道の判定と同じく `INVALID` で止まる（別の ID を作って避けない）。
+作業先の枝はホームのタスクIDの小文字（`gh-123` の形）のままで、その枝の作業ツリーが既にあれば `tw claim` も `tw brief` もそれを使い、
+枝だけが在って作業ツリーが無い・道に別のものがあるときは `INVALID` で止まる（別の ID を作って避けない）。
 
 ### 合流の方針
 
@@ -578,17 +579,22 @@ verify = "./check.sh"        # 作業先に .tw/config.toml が無いときだ�
 
 ### 作業先の検証コマンドと控え
 
-作業先の作業ツリーで打つ `tw verify`・`tw verify-check` と、`tw land --fold` の検証は、同じ1つの口（今の `ship.read_stamp_command`）で
-コマンドを決める。順は (1) 作業先の作業ツリーの `.tw/config.toml` の `verify`（無ければ `verify_before_ship`。今と同じ）、
-(2) ホームの登録簿の `[repos.<名前>]` の `verify`、(3) どちらも無ければ `NOTHING`（今と同じ）。
+作業先の作業ツリーで打つ `tw verify`・`tw verify-check` と、`tw land --fold` の検証は、同じ1つの口（`ship.read_stamp_command`）で
+コマンドを決める。順は (1) 作業先の作業ツリーの `.tw/config.toml` の `verify`（無ければ `verify_before_ship`）、
+(2) ホームの登録簿の `[repos.<名前>]` の `verify`、(3) どちらも無ければ `NOTHING`。
 
-- ホームを引くために、作業先の作業ツリーは `tw claim` が作り（`git worktree add -b <枝> <道> <主ブランチ>`。道は今の `tw brief` の決め方）、
-  その木の `.tw/local/work-home` に、ホームの本体の根と登録簿の名前を1行ずつ書く。木が既にあれば作らずに控えだけ書く。
-  委譲先が `git worktree add` を打たずに済むのは、作業先の本体の枝を増やす操作を auto mode が拒むことがあるため
-- 控えは今と同じく cwd の作業ツリーの `.tw/local/` に置き、鍵には決めたコマンドを入れる。(2) で決めた木は、登録簿の `verify` を
+- ホームを引くために、作業先の作業ツリーは `tw claim` が印を立てる前に作り（作業先の本体で `git worktree add -b <枝> <道> <主ブランチ>`。
+  道は `tw brief` と同じ1つの決め方）、その木の `.tw/local/work-home` に、ホームの本体の根と登録簿の名前を1行ずつ書く。
+  木が既にあれば作らずに控えだけ書く。委譲先が自分で作業ツリーを作らずに済むのは、作業先の本体の枝を増やす操作を auto mode が拒むことがあるため
+- 作れない（同じ名の枝が在るのに作業ツリーが無い・主ブランチが決まらない・道に別のものがある・git が落ちた）ときは、
+  印を立てる前に `INVALID\t作業先の作業ツリーを作れない（<理由>）`・終了コード3で止め、印も控えも書かない
+  （印を立てたあとに止めると `release` を挟む往復が要る）。印の取り合いに負けた（`TAKEN`）ときに作った木は消さない（勝った側の `claim` も同じ木を使う）
+- 作業先の作業ツリーに `.tw/config.toml` が無くても、`work-home` があれば `tw verify`・`tw verify-check` は `MISSING` で止まらない。
+  `work-home` も無ければ今までどおり `MISSING`
+- 控えは cwd の作業ツリーの `.tw/local/` に置き、鍵には決めたコマンドを入れる。(2) で決めた木は、登録簿の `verify` を
   書き換えると控えが外れて検証し直しになる
-- `tw land --fold` は今の「検証コマンドが無い」の拒否を、(1)〜(3) で決めて無いときだけに狭める。
-  作業先に設定が無いときにメインが検証を手で打つ入口の手順は、登録簿に `verify` があれば要らない
+- `tw land --fold` は「検証コマンドが無い」の拒否を、(1)〜(3) で決まらないときだけ出す。
+  作業先に設定が無いときにメインが検証コマンドを打つ入口の手順は、`tw verify-check` が `NOTHING` のときだけ要る
 
 ## 段の申し送り
 
