@@ -101,6 +101,8 @@ PLAN_TIP_KEY = "task_plan_tip"
 # `tw ship` が書く、送ったコミットの範囲（`<送る前の主ブランチの先端>..<送ったコミット>`）。
 SHIPPED_KEY = "task_shipped"
 SHIPPED_RANGE_PATTERN = re.compile(r"([0-9a-f]{40})\.\.([0-9a-f]{40})")
+# `tw land` が方針 `branch`・`pr` で書く、検証を通した枝の先端（`<登録簿の名前>:<枝>@<SHA>`。`tw finish` が枝の先端と照らす）。
+WORK_LANDED_KEY = "work_landed"
 # この運用が metadata に置く印（GitHub には載らないので、取り込みで消えたら戻す）。
 MARK_KEYS = (
     CLAIM_BRANCH_KEY,
@@ -115,6 +117,7 @@ MARK_KEYS = (
     DRAFT_KEY,
     FROM_DRAFT_KEY,
     SHIPPED_KEY,
+    WORK_LANDED_KEY,
     CANDIDATE_SIGNAL_KEY,
     CANDIDATE_PLACE_KEY,
 )

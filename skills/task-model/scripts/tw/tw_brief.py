@@ -13,6 +13,7 @@ import sys
 import beads
 import gitinfo
 import layout
+import repos
 import taskfile
 import tw_base
 import tw_edit
@@ -211,8 +212,10 @@ def _friction_value(toplevel: str, shown: str) -> str:
 
 
 def unlanded_work_branch(toplevel: str, shown: str, plan_body: str) -> tuple[str, str] | None:
-    """別のリポジトリの作業先に枝（タスクIDの小文字）があり、主ブランチへ合流していなければ `(作業先, 枝)`。
+    """別のリポジトリの作業先に枝（タスクIDの小文字）があり、まだ合流していなければ `(作業先, 枝)`。
 
+    合流したかは、登録簿の件の `land` が `branch`・`pr` なら枝の先端がタスクの metadata `work_landed` の SHA と同じか、
+    それ以外（`ff`・絶対パスの作業先・件が無い）なら主ブランチに入っているか。
     作業先が無い・同じリポジトリ・枝が無い・合流済み・読めないときは `None`。
     """
     try:
@@ -226,8 +229,16 @@ def unlanded_work_branch(toplevel: str, shown: str, plan_body: str) -> tuple[str
         )
         if found.returncode != 0:
             return None
+        tip = found.stdout.decode().strip()
+        spec, _ = taskfile.plan_work_repo(plan_body)
+        work = repos.resolve(toplevel, spec)
     except gitinfo.GitCommandError:
         return None
+    if work is not None and work.entry is not None and work.entry.land in ("branch", "pr"):
+        issue = beads.show(toplevel, beads.to_bd_id(shown))
+        marked = beads.attribute_values(issue, beads.WORK_LANDED_KEY) if issue is not None else []
+        parsed = repos.parse_work_landed(marked[0]) if marked else None
+        return None if parsed is not None and parsed[2] == tip else (root, branch)
     merged = subprocess.run(
         ["git", "merge-base", "--is-ancestor", branch, base], cwd=root, capture_output=True, check=False
     )

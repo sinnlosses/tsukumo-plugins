@@ -151,6 +151,34 @@ def test_config_commit_task_id() -> None:
         check("語彙の外の値を書く set は終了コード2", bad.returncode == 2, bad.stdout + bad.stderr)
 
 
+def _land_schema_problem(schema: dict) -> str | None:
+    """`repos.keys` の `land` の値が `layout.LAND_VALUES` と同じ並びで、どれも説明を持つか。欠けがあれば理由。"""
+    field = next((k for k in schema.get("repos", {}).get("keys", []) if k.get("key") == "land"), None)
+    if field is None:
+        return "land の欄が無い"
+    values = field.get("values", [])
+    if [v.get("value") for v in values] != list(layout.LAND_VALUES):
+        return "values が LAND_VALUES と違う"
+    if any(not v.get("description") for v in values):
+        return "説明の無い値がある"
+    return None
+
+
+def test_config_schema_repos_land() -> None:
+    say("自己テスト: config --schema の repos の land は LAND_VALUES の全値と説明を持つ")
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = _make_config_doctor_repo(tmp, "schema-land")
+        schema = json.loads(run_task(repo, "config", "--schema").stdout)
+        check("出力の repos.land が LAND_VALUES の全値を説明つきで持つ", _land_schema_problem(schema) is None, str(_land_schema_problem(schema)))
+        check("land の既定は ff", schema["repos"]["keys"][0]["default"] == layout.LAND_FF)
+        dropped = json.loads(json.dumps(schema))
+        dropped["repos"]["keys"][0]["values"].pop()
+        check("values を1つ欠かした版は検査が落とす", _land_schema_problem(dropped) is not None)
+        blank = json.loads(json.dumps(schema))
+        blank["repos"]["keys"][0]["values"][0]["description"] = ""
+        check("説明を空にした版は検査が落とす", _land_schema_problem(blank) is not None)
+
+
 def test_config_repos_table() -> None:
     say("自己テスト: 設定は [repos.<名前>] の表を登録簿として読み、ほかの表・表の中の知らないキー・表の後ろの最上位キーは INVALID。config set は最初の表より前に書く")
     with tempfile.TemporaryDirectory() as tmp:
@@ -621,6 +649,7 @@ TESTS = (
     test_all_tests_registered,
     test_config_flow_is_script_only,
     test_config_commit_task_id,
+    test_config_schema_repos_land,
     test_config_repos_table,
     test_flow_result_writes_relays_and_releases,
     test_flow_result_writes_journal_stages,

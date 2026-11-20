@@ -1,5 +1,6 @@
 """`tw ship`（作業ブランチの変更を主ブランチへ送り、送り終えたタスクの印を消す）と
-`tw land`（作業先が別のリポジトリのタスクの枝を主ブランチへ合流し、その作業ツリーと枝を消す）。"""
+`tw land`（作業先が別のリポジトリのタスクの枝を、登録簿の `land` の方針で扱う。`ff` は主ブランチへ合流して作業ツリーと枝を消し、
+`branch`・`pr` は合流せず枝を残して先端を `work_landed` に書く）。"""
 
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ import fold
 import layout
 import gitinfo
 import ledger
+import repos
 import stamps
 import ship
 import tracker
@@ -206,6 +208,7 @@ def _record_shipped(
 def cmd_land(toplevel: str, branch: str, with_fold: bool = False) -> None:
     """`branch` を主ブランチへ ff-only で合流し、主ブランチに入ったことを確かめてから、その枝の作業ツリーと枝を消す。
 
+    作業先の登録簿の `land` が `branch`・`pr` なら合流せず枝を残す（`_keep_branch`）。以下は `ff`。
     合流は主ブランチを出している作業ツリーで打つ。合流できない・入っていない・どちらかの作業ツリーが汚れているか無いときは
     何も消さずに `NOT_LANDED`。合流のあとに消せなかったものは `NOT_REMOVED` の行で残りを知らせる。
     `with_fold` なら、合流の前に枝の作業ツリーで主ブランチを取り込み、検証を多くて1回通す（`_fold_and_verify`）。
@@ -218,6 +221,11 @@ def cmd_land(toplevel: str, branch: str, with_fold: bool = False) -> None:
     worktrees = gitinfo.list_worktrees(toplevel)
     base_tree = next((w.path for w in worktrees if w.branch == base), None)
     branch_trees = [w.path for w in worktrees if w.branch == branch]
+    policy, home_root, name = _land_policy(toplevel)
+    if policy != layout.LAND_FF:
+        assert home_root is not None and name is not None
+        _keep_branch(toplevel, worktrees[0].path, branch, base, branch_trees, policy, home_root, name, with_fold)
+        return
     blocker = _merge_blocker(base_tree, base, branch_trees, base_tree or "", need_base=True)
     if blocker is not None:
         _refuse_land(branch, _LAND_REASON[blocker.kind].format(base=base, detail=blocker.detail))
@@ -248,6 +256,64 @@ def cmd_land(toplevel: str, branch: str, with_fold: bool = False) -> None:
         print(f"NOT_REMOVED\t{name}\t{reason}")
     if leftovers:
         raise SystemExit(4)
+
+
+def _land_policy(tree: str) -> tuple[str, str | None, str | None]:
+    """`tree` の `work-home` が指すホームの登録簿の件の `land`（方針、ホームの根、名前）。
+
+    `work-home` が無い・名前が空・設定が読めない・件が無い・`land` を書いていないときは `ff`（根と名前は `None`）。
+    """
+    home = repos.work_home(tree)
+    if home is None or not home[1]:
+        return layout.LAND_FF, None, None
+    try:
+        entry = layout.read_config(home[0]).repo(home[1])
+    except (layout.ConfigError, OSError):
+        return layout.LAND_FF, None, None
+    if entry is None or entry.land in (None, layout.LAND_FF):
+        return layout.LAND_FF, None, None
+    return entry.land, home[0], home[1]
+
+
+def _keep_branch(
+    toplevel: str,
+    work_root: str,
+    branch: str,
+    base: str,
+    branch_trees: list[str],
+    policy: str,
+    home_root: str,
+    name: str,
+    with_fold: bool,
+) -> None:
+    """方針 `branch`・`pr` の合流。主ブランチへは入れず、検証を通した枝の先端をホームのタスクの `work_landed` に書いて残す。
+
+    枝の作業ツリーの汚れと `.git` の書き込みだけ前提にする。`work_landed` を書けないときは何も変えずに `NOT_LANDED`。
+    `pr` は続けて `PR_READY` を出す（push も PR の作成もしない）。
+    """
+    blocker = _merge_blocker(None, base, branch_trees, toplevel, need_base=False)
+    if blocker is not None:
+        _refuse_land(branch, _LAND_REASON[blocker.kind].format(base=base, detail=blocker.detail))
+    bd_id = beads.to_bd_id(branch)
+    try:
+        known = beads.show(home_root, bd_id) is not None
+    except beads.BeadsError as e:
+        _refuse_land(branch, f"work_landed を書けない: {e}")
+    if not known:
+        _refuse_land(branch, f"work_landed を書けない: ホームにタスク {beads.to_task_id(bd_id)} が無い")
+    if with_fold:
+        _fold_and_verify(base, branch, branch_trees)
+    sha = tw_base.run_git(toplevel, ["rev-parse", f"refs/heads/{branch}"]).stdout.strip()
+    value = repos.format_work_landed(name, branch, sha)
+    try:
+        written = beads.run(home_root, ["update", bd_id, "--set-metadata", f"{beads.WORK_LANDED_KEY}={value}"], tw_base.actor(home_root))
+    except beads.BeadsError as e:
+        _refuse_land(branch, f"work_landed を書けない: {e}")
+    if written.returncode != 0:
+        _refuse_land(branch, f"work_landed を書けない: {_first_line(written.stderr or written.stdout)}")
+    print(f"KEPT\t{work_root}\t{branch}\t{sha}")
+    if policy == "pr":
+        print(f"PR_READY\t{work_root}\t{branch}\t{base}")
 
 
 def _fold_and_verify(base: str, branch: str, branch_trees: list[str]) -> None:

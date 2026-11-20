@@ -503,6 +503,113 @@ def test_land_fold_registry_verify() -> None:
         check("登録簿の verify を1回打つ", _verify_runs(os.path.join(tmp, "verify-count.log")) == 1)
 
 
+def _kept_setup(tmp: str, land: str, with_work_home: bool = True, task_id: str = "T-100") -> tuple[str, str, str, str]:
+    """`(ホーム, 作業先の本体, 作業先の作業ツリー, 枝)`。ホームの登録簿の plugins は `land` と `verify = "true"`、枝はタスクIDの小文字。"""
+    registry = f'\n[repos.plugins]\nland = "{land}"\nverify = "true"\n'
+    home, _, _ = make_repo(os.path.join(tmp, "home"), branch="切らない", extra=registry)
+    commit_task(home, taskfile.Task(task_id, "作業先のタスク", "todo", "sonnet", "Y", (), BODY))
+    work = os.path.join(tmp, "plugins")
+    os.makedirs(work)
+    git(work, "init", "-q", "-b", "main")
+    git(work, "config", "user.email", "test@example.com")
+    git(work, "config", "user.name", "test")
+    _commit(work, "a.txt", "a\n", "init")
+    branch = task_id.lower()
+    tree = os.path.join(tmp, "plugins-wt")
+    git(work, "worktree", "add", "-q", "-b", branch, tree, "main")
+    if with_work_home:
+        repos.write_work_home(tree, home, "plugins")
+    return home, work, tree, branch
+
+
+def test_land_policy() -> None:
+    say("task.py land: 登録簿の land が branch・pr なら合流せず KEPT（pr は PR_READY も）で枝を残し、work_landed に先端を書く。ff・work-home が無いときは今のまま")
+    with tempfile.TemporaryDirectory() as tmp:
+        for land, with_home in (("ff", True), ("branch", False)):
+            sub = os.path.join(tmp, f"{land}-{with_home}")
+            _home, work, tree, branch = _kept_setup(sub, land, with_work_home=with_home)
+            _commit(tree, "c.txt", "c\n", "枝の作業")
+            r = run_task(tree, "land", branch)
+            check(
+                f"land={land}・work-home {'あり' if with_home else 'なし'} は今までどおり LANDED・DELETED",
+                r.returncode == 0 and any(x.startswith(f"LANDED\t{branch}\tmain\t") for x in r.stdout.splitlines())
+                and f"DELETED\t{branch}" in r.stdout.splitlines() and not os.path.isdir(tree),
+                r.stdout + r.stderr,
+            )
+
+    for land in ("branch", "pr"):
+        with tempfile.TemporaryDirectory() as tmp:
+            home, work, tree, branch = _kept_setup(tmp, land)
+            tip = _commit(tree, "c.txt", "c\n", "枝の作業")
+            main_before = git(work, "rev-parse", "main").stdout.strip()
+            bare = os.path.join(tmp, "origin.git")
+            git(tmp, "init", "-q", "--bare", bare)
+            git(work, "remote", "add", "origin", bare)
+            marker = os.path.join(tmp, "pushed")
+            write(os.path.join(work, ".git", "hooks", "pre-push"), f'#!/bin/sh\necho x >> "{marker}"\nexit 1\n')
+            os.chmod(os.path.join(work, ".git", "hooks", "pre-push"), 0o755)
+            fake = os.path.join(tmp, "fakebin")
+            write(os.path.join(fake, "gh"), f'#!/bin/sh\necho "$@" >> "{marker}"\nexit 1\n')
+            os.chmod(os.path.join(fake, "gh"), 0o755)
+            r = run_task(tree, "land", branch, env={"PATH": fake + os.pathsep + os.environ["PATH"]})
+            lines = r.stdout.splitlines()
+            kept = lines[0].split("\t") if lines else []
+            check(
+                f"land={land} は KEPT\\t<作業先>\\t<枝>\\t<SHA>（終了コード0）",
+                r.returncode == 0 and len(kept) == 4 and kept[0] == "KEPT" and os.path.realpath(kept[1]) == os.path.realpath(work)
+                and kept[2:] == [branch, tip],
+                r.stdout + r.stderr,
+            )
+            expected = ["KEPT"] if land == "branch" else ["KEPT", "PR_READY"]
+            check(f"land={land} の出力の先頭語は {expected}", [x.split("\t")[0] for x in lines] == expected, r.stdout)
+            if land == "pr":
+                ready = lines[1].split("\t")
+                check("PR_READY\\t<作業先>\\t<枝>\\t<主ブランチ>", os.path.realpath(ready[1]) == os.path.realpath(work) and ready[2:] == [branch, "main"], lines[1])
+            check("work_landed は <名前>:<枝>@<SHA>", metadata(home, "T-100").get(beads.WORK_LANDED_KEY) == f"plugins:{branch}@{tip}",
+                  repr(metadata(home, "T-100")))
+            check(
+                "主ブランチ・枝・作業ツリーは変わらず、push も gh も起きない",
+                git(work, "rev-parse", "main").stdout.strip() == main_before and os.path.isdir(tree)
+                and git(work, "rev-parse", branch).stdout.strip() == tip and not os.path.exists(marker)
+                and git(work, "ls-remote", "origin").stdout.strip() == "",
+            )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        home, work, tree, branch = _kept_setup(tmp, "branch")
+        head = _commit(tree, "c.txt", "c\n", "枝の作業")
+        base_head = _commit(work, "b.txt", "b\n", "主ブランチを進める")
+        r = run_task(tree, "land", branch, "--fold")
+        lines = r.stdout.splitlines()
+        merged = git(work, "rev-parse", branch).stdout.strip()
+        check(
+            "--fold は FOLDED・検証・KEPT の順で、KEPT の SHA は取り込んだマージコミット",
+            r.returncode == 0 and lines[0].startswith(f"FOLDED\t{branch}\t")
+            and any(x.startswith("VERIFIED\t") for x in lines)
+            and lines[-1].split("\t")[0] == "KEPT" and lines[-1].split("\t")[3] == merged and merged != head
+            and metadata(home, "T-100").get(beads.WORK_LANDED_KEY) == f"plugins:{branch}@{merged}",
+            r.stdout + r.stderr,
+        )
+        check("主ブランチは進めたまま動かない", git(work, "rev-parse", "main").stdout.strip() == base_head)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        home, work, tree, branch = _kept_setup(tmp, "branch")
+        _commit(tree, "c.txt", "c\n", "枝の作業")
+        write(os.path.join(tree, "scratch.txt"), "x\n")
+        r = run_task(tree, "land", branch)
+        check("枝の作業ツリーが汚れていれば NOT_LANDED（終了コード4）で work_landed も書かない",
+              r.returncode == 4 and r.stdout.startswith(f"NOT_LANDED\t{branch}\t")
+              and not metadata(home, "T-100").get(beads.WORK_LANDED_KEY), r.stdout + r.stderr)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        home, work, tree, branch = _kept_setup(tmp, "pr")
+        git(work, "worktree", "add", "-q", "-b", "t-999", os.path.join(tmp, "orphan"), "main")
+        repos.write_work_home(os.path.join(tmp, "orphan"), home, "plugins")
+        r = run_task(os.path.join(tmp, "orphan"), "land", "t-999")
+        check("ホームにタスクが無く work_landed を書けなければ NOT_LANDED（終了コード4）",
+              r.returncode == 4 and r.stdout.startswith("NOT_LANDED\tt-999\twork_landed を書けない"), r.stdout + r.stderr)
+        check("何も出さず枝も残る", "KEPT" not in r.stdout and os.path.isdir(os.path.join(tmp, "orphan")))
+
+
 def test_ship_skips_send_on_main_worktree() -> None:
     say("task.py ship: main の作業ツリーで起こしたときは送る段を飛ばす")
     with tempfile.TemporaryDirectory() as tmp:
@@ -707,6 +814,7 @@ TESTS = (
     test_land_fold_verify_fails,
     test_land_fold_without_verify_command,
     test_land_fold_registry_verify,
+    test_land_policy,
     test_base_branch_resolution,
 )
 

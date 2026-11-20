@@ -15,13 +15,16 @@
 `tw land --fold` は、委譲先の検証のあとに作業先の主ブランチが進んでいれば枝の作業ツリーへマージコミットで取り込み、
 検証を多くて1回打ち（取り込みが要らず控えが今の中身と同じなら省く）、通ったら作業先の本体で `<枝>` を ff-only で主ブランチへ合流し、
 入ったことを確かめてから作業ツリーと枝を消す。検証を打つと作業先の検証コマンドの所要（数分〜10分）がかかるので、
-Bash の timeout を上限の 600000 にするか背景で起こし、`LANDED` か `NOT_LANDED` の行まで待つ。
+Bash の timeout を上限の 600000 にするか背景で起こし、`LANDED`・`KEPT` か `NOT_LANDED` の行まで待つ。
+作業先の登録簿の合流の方針が `branch`・`pr` なら、主ブランチへは合流せず、検証を通した枝の先端をホームのタスクの `work_landed` に書いて作業ツリーと枝を残す（`KEPT`。`pr` は続けて `PR_READY`）。
 `git merge`・`git worktree remove`・`git branch -d` を素で打たない（委譲先が打つと hook `tw commit-guard` が拒む。`tw land` は Python から打つので通る）。
 
 | `tw land --fold` の先頭語 | すること |
 | --- | --- |
 | `FOLDED`・`VERIFIED_SAME …verify=skipped`・`VERIFIED` | 取り込み・検証の段の行。読み進める |
 | `LANDED` に続けて `REMOVED`・`DELETED` | 次へ |
+| `KEPT`（方針 `branch`。合流していない。作業ツリーと枝は残る） | 次へ進む。`tw finish` は枝の先端を `work_landed` の SHA と照らすので、`KEPT` のあとに枝へコミットを足さない |
+| `KEPT` に続けて `PR_READY`（方針 `pr`） | push も PR の作成も打たない。`PR_READY` の行を報告に写して人に預け、次へ進む |
 | `CONFLICT` に続けて `NOT_LANDED`（何も変えていない） | 主ブランチの取り込みが衝突した。その作業ツリーで `git merge <主ブランチ>` を打ち、両方の意図を残して解いてコミットしてから、`tw land <枝> --fold` を打ち直す。解けなければ行を添えて人に預けて終了する |
 | 検証の落ち（`VERIFY_NOT_PASSED`・`FORMAT_FAILED`）に続けて `NOT_LANDED`（合流していない。`FOLDED` が出ていれば、取り込んだマージコミットは枝に残る） | 作業先の作業ツリーで直してコミットしてから `tw land <枝> --fold` を打ち直す |
 | `FOLDED` のあと `SUBMODULE_NOT_SYNCED` に続けて `NOT_LANDED`（合流していない。取り込んだマージコミットは枝に残る） | 取り込んだサブモジュールの版を揃えられなかった。その作業ツリーで `git submodule update --init` を通してから `tw land <枝> --fold` を打ち直す。通らなければ行を添えて人に預けて終了する |

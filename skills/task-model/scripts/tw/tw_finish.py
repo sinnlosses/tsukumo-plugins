@@ -2,7 +2,8 @@
 
 各部品の出力の行はそのまま並べ、止まる行（`tw done` の `NOT_OWNER`・`ALREADY_DONE` と `COMMITS_SINCE_CLAIM`、
 `tw ship` の `SHIPPED`・`NOTHING` 以外）が出たら以降を打たない。
-最初に、`--dropped` でなければ、作業先が別のリポジトリでその枝が主ブランチへ合流していないとき `WORK_NOT_LANDED`（終了コード4）で何も書かずに止まる。コミットは対象のファイルを個別に `git add` した1つだけで、
+最初に、`--dropped` でなければ、作業先が別のリポジトリでその枝が合流していないとき `WORK_NOT_LANDED`（終了コード4）で何も書かずに止まる
+（登録簿の `land` が `branch`・`pr` なら、枝の先端が metadata `work_landed` の SHA と同じでないとき。それ以外は主ブランチに入っていないとき）。コミットは対象のファイルを個別に `git add` した1つだけで、
 差分が無ければ打たない。対象は `--add` で渡したファイル。渡さなければ作業ツリーの変更のうち通常のファイルで、`.tw/local`・symlink・サブモジュールは除く。
 件名の `T-xxx:` は tw が付ける。設定 `commit_task_id = "付けない"` なら付けず、`--message` の先頭の `T-xxx:` も外す。
 """

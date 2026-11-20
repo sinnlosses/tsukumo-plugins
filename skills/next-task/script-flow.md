@@ -39,6 +39,6 @@
      3. 保存を確かめてから、`git restore` で追跡済みの変更を戻し、新規ファイルを `git rm -q -f` で消す（`git status --short` が空になる）
      4. `tw flow-result T-xxx --json-file - --patch <保存したパス> --transcript-dir <dir>`（保存するものが無ければ `--patch` を付けない。`<dir>` は手順3と同じ `Transcript dir`）に、戻り値の JSON を標準入力で渡す。`再開` の書き込みと release は `tw` が行う（patch は `git apply <パス>` で読み戻せる）。`LEFTOVER` が出たら退避の漏れなので、2・3 の手順で残りを別の patch へ退避し、そのパスを `report` に書く。`RELEASED` の行を確かめて、`workPlanClosing: stopped` の `report` を渡す
    - 通ったとき: 戻り値の JSON を `tw flow-result T-xxx --json-file - --transcript-dir <dir>` に標準入力で渡し、最後の行が `FINISH_READY` なら続ける（段の所要は `tw` が journal から台帳の `flow_stage` に写す。`受け入れ`・`振り返り` の申し送りは `tw` が書き、`実装` はワークフロースクリプトの実装の agent が返す前に書く。形は `task-model` の `WORKFLOW.md`「段の申し送り」）。
-     `### 作業先` が別のリポジトリなら、`${CLAUDE_SKILL_DIR}/other-repo-land.md`（`tw lap` の囲みと `tw land <枝> --fold`、先頭語の表）に従って合流し、`LANDED` を確かめてから送り出しへ進む。続けて `${CLAUDE_SKILL_DIR}/ship.md` の手順で `tw finish` を打つ
+     `### 作業先` が別のリポジトリなら、`${CLAUDE_SKILL_DIR}/other-repo-land.md`（`tw lap` の囲みと `tw land <枝> --fold`、先頭語の表）に従って合流し、`LANDED`・`KEPT` を確かめてから送り出しへ進む。続けて `${CLAUDE_SKILL_DIR}/ship.md` の手順で `tw finish` を打つ
 
 5. **完了報告**は `${CLAUDE_SKILL_DIR}/completion-report.md`（`/loop` の続行判断も同じ）で書く。

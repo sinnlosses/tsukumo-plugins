@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from dataclasses import dataclass
 
@@ -159,6 +160,20 @@ def write_work_home(tree: str, home_root: str, name: str | None) -> None:
     path = os.path.join(stamps.worktree_state_dir(cwd=tree), WORK_HOME_FILE)
     with open(path, "w", encoding="utf-8") as f:
         f.write(f"{home_root}\n{name or ''}\n")
+
+
+_WORK_LANDED_PATTERN = re.compile(rf"({layout.REPO_NAME_FRAGMENT}):([^@\s]+)@([0-9a-f]{{40}})")
+
+
+def format_work_landed(name: str, branch: str, sha: str) -> str:
+    """metadata `work_landed` の値 `<名前>:<枝>@<SHA>`。"""
+    return f"{name}:{branch}@{sha}"
+
+
+def parse_work_landed(text: str) -> tuple[str, str, str] | None:
+    """`format_work_landed` の値を `(名前, 枝, SHA)` に戻す。形が違えば `None`。"""
+    m = _WORK_LANDED_PATTERN.fullmatch(text.strip())
+    return (m.group(1), m.group(2), m.group(3)) if m else None
 
 
 def registry_verify(tree: str) -> str | None:

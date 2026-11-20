@@ -646,6 +646,12 @@ def default_steps() -> list[str]:
     return [name for name, _, _ in SCRIPT_STEPS]
 
 
+LAND_FIELD_DESCRIPTIONS = {
+    LAND_FF: "作業先の主ブランチへ ff-only で合流して、作業ツリーと枝を消す",
+    "branch": "合流せず、検証を通した枝の先端を work_landed に書いて、作業ツリーと枝を残す",
+    "pr": "branch と同じに残し、PR_READY を出す（push も PR の作成もしない）",
+}
+
 BRANCH_FIELD_DESCRIPTIONS = {
     "既定": "tw の既定のブランチの扱い",
     "作業ブランチを切る": "着手のたびに作業ブランチを切る",
@@ -724,6 +730,18 @@ def config_schema() -> dict:
                 for key, (label, description) in READONLY_FIELDS.items()
             ),
         ],
+        "repos": {
+            "keys": [
+                {
+                    "key": "land",
+                    "label": "合流の方針",
+                    "description": "作業先のタスクの枝を tw land でどう扱うか（登録簿の [repos.<名前>] の land）",
+                    "kind": "choice",
+                    "default": LAND_FF,
+                    "values": [{"value": v, "label": v, "description": LAND_FIELD_DESCRIPTIONS[v]} for v in LAND_VALUES],
+                },
+            ],
+        },
     }
 
 

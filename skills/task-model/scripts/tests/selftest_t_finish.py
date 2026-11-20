@@ -342,8 +342,65 @@ def test_finish_stops_on_unlanded_work_branch() -> None:
         check("作業先に枝が無ければ通る", "WORK_NOT_LANDED" not in r.stdout and "DONE\t" in r.stdout, r.stdout + r.stderr)
 
 
+def _named_claimed(tmp: str, land: str) -> tuple[str, str, str, dict[str, str]]:
+    """着手側の作業ツリー・作業先の本体・作業先の作業ツリー・env。`### 作業先` は登録簿の名前 plugins（`land` は引数）。"""
+    registry = f'\n[repos.plugins]\nland = "{land}"\n'
+    _own_main, wt1, _ = make_repo(os.path.join(tmp, "own"), branch="切らない", verify="`true`", extra=registry)
+    work_main, _, _ = make_repo(os.path.join(tmp, "work"), verify="`true`")
+    xdg = os.path.join(tmp, "xdg")
+    if os.environ.get("XDG_CONFIG_HOME") and os.path.isdir(os.environ["XDG_CONFIG_HOME"]):
+        shutil.copytree(os.environ["XDG_CONFIG_HOME"], xdg)
+    write(os.path.join(xdg, "tw", "repos.toml"), f'plugins = "{work_main}"\n')
+    env = {"XDG_CONFIG_HOME": xdg}
+    commit_task(_own_main, taskfile.Task("T-100", "作業先で直す", "todo", "sonnet", "Y", (), task_body((("書く", "x"),), ["a.txt"], "plugins")))
+    claimed = run_task(wt1, "claim", "T-100", env=env)
+    if claimed.returncode != 0:
+        raise RuntimeError(claimed.stdout + claimed.stderr)
+    work_tree = claimed_work_tree(work_main, "t-100")
+    write(os.path.join(work_tree, "a.txt"), "x")
+    git(work_tree, "add", "a.txt")
+    git(work_tree, "commit", "-q", "-m", "a")
+    return wt1, work_main, work_tree, env
+
+
+def test_finish_work_landed_sha() -> None:
+    say("task.py finish: 登録簿の land が branch・pr なら、tw land のあと枝の先端が work_landed の SHA と同じときだけ通る。ff は今のまま")
+    for land in ("branch", "pr"):
+        with tempfile.TemporaryDirectory() as tmp:
+            wt1, work_main, work_tree, env = _named_claimed(tmp, land)
+            r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT, env=env)
+            check(f"land={land}: tw land を打っていなければ WORK_NOT_LANDED（終了コード4）",
+                  r.returncode == 4 and r.stdout == f"WORK_NOT_LANDED\tT-100\t{work_main}\tt-100\n", r.stdout + r.stderr)
+            landed = run_task(work_tree, "land", "t-100", env=env)
+            check(f"land={land}: tw land は KEPT で終わる", landed.returncode == 0 and landed.stdout.startswith("KEPT\t"),
+                  landed.stdout + landed.stderr)
+            git(work_tree, "commit", "-q", "--allow-empty", "-m", "land のあとの足し")
+            r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT, env=env)
+            check(f"land={land}: tw land のあとにコミットを足すと WORK_NOT_LANDED",
+                  r.returncode == 4 and r.stdout == f"WORK_NOT_LANDED\tT-100\t{work_main}\tt-100\n", r.stdout + r.stderr)
+            landed = run_task(work_tree, "land", "t-100", env=env)
+            r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT, env=env)
+            check(f"land={land}: 打ち直した tw land のあとは通る", "WORK_NOT_LANDED" not in r.stdout and "DONE\t" in r.stdout,
+                  landed.stdout + r.stdout + r.stderr)
+        with tempfile.TemporaryDirectory() as tmp:
+            wt1, work_main, work_tree, env = _named_claimed(tmp, land)
+            git(work_main, "worktree", "remove", "--force", work_tree)
+            git(work_main, "branch", "-D", "t-100")
+            r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT, env=env)
+            check(f"land={land}: 枝が無ければ通る", "WORK_NOT_LANDED" not in r.stdout and "DONE\t" in r.stdout, r.stdout + r.stderr)
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1, work_main, _work_tree, env = _named_claimed(tmp, "ff")
+        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT, env=env)
+        check("land=ff（名前で書いた作業先）: 未合流なら WORK_NOT_LANDED",
+              r.returncode == 4 and r.stdout == f"WORK_NOT_LANDED\tT-100\t{work_main}\tt-100\n", r.stdout + r.stderr)
+        git(work_main, "merge", "-q", "--ff-only", "t-100")
+        r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT, env=env)
+        check("land=ff: ff で合流したあとは通る", "WORK_NOT_LANDED" not in r.stdout and "DONE\t" in r.stdout, r.stdout + r.stderr)
+
+
 TESTS = (
     test_finish_stops_on_unlanded_work_branch,
+    test_finish_work_landed_sha,
     test_finish_closes_open_accept,
     test_finish_without_add_commits_changes,
     test_finish_resume_after_commits_since_claim,
