@@ -596,7 +596,75 @@ def test_brief_head_fixed_lines() -> None:
           "`tw` を打たない" in acceptor and "tw verify-check" in acceptor and "判定だけ" in acceptor, acceptor)
 
 
+def _work_home_lines(tree: str) -> list[str]:
+    path = os.path.join(tree, ".tw", "local", "work-home")
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as f:
+        return f.read().splitlines()
+
+
+def test_claim_creates_work_tree() -> None:
+    say("task.py claim: ### 作業先 が別のリポジトリなら、印を立てる前に枝の作業ツリーを作って work-home を書き、作れなければ INVALID で印を立てない")
+    with tempfile.TemporaryDirectory() as tmp:
+        own_main, wt1, _ = make_repo(os.path.join(tmp, "own"), branch="切らない", extra='\n[repos.plugins]\nverify = "true"\n')
+        work_main = os.path.join(tmp, "own", "plugins")
+        os.makedirs(work_main)
+        git(work_main, "init", "-q", "-b", "main")
+        git(work_main, "config", "user.email", "test@example.com")
+        git(work_main, "config", "user.name", "test")
+        write(os.path.join(work_main, "a.txt"), "a\n")
+        git(work_main, "add", "a.txt")
+        git(work_main, "commit", "-q", "-m", "init")
+        commit_task(own_main, taskfile.Task("T-100", "作業先で直す", "todo", "sonnet", "Y", (), task_body((("書く", "x"),), ["a.txt"], "plugins")))
+        work_tree = os.path.join(tmp, "plugins", "t-100")
+
+        r = run_task(wt1, "claim", "T-100")
+        check("CLAIMED", r.returncode == 0 and r.stdout.startswith("CLAIMED\tT-100\t"), r.stdout + r.stderr)
+        check("作業先の作業ツリーを枝 t-100 で主ブランチから作る",
+              gitinfo.current_branch(cwd=work_tree) == "t-100"
+              and git(work_tree, "rev-parse", "HEAD").stdout == git(work_main, "rev-parse", "main").stdout)
+        home = _work_home_lines(work_tree)
+        check("work-home にホームの本体の根と登録簿の名前を1行ずつ書く",
+              len(home) == 2 and os.path.realpath(home[0]) == os.path.realpath(own_main) and home[1] == "plugins", str(home))
+        check("work-home は作業先の作業ツリーの変更に数えない", git(work_tree, "status", "--porcelain").stdout == "")
+        r = run_task(wt1, "brief", "implementer", "T-100")
+        check("brief は claim の作った木を作業ツリーに出す",
+              r.returncode == 0 and "別のリポジトリ" in r.stdout.splitlines()[0] and work_tree in r.stdout, r.stdout + r.stderr)
+
+        run_task(wt1, "release", "T-100")
+        os.remove(os.path.join(work_tree, ".tw", "local", "work-home"))
+        head = git(work_tree, "rev-parse", "HEAD").stdout
+        r = run_task(wt1, "claim", "T-100")
+        check("木が在れば作らずに work-home だけ書いて CLAIMED",
+              r.returncode == 0 and r.stdout.startswith("CLAIMED\t") and len(_work_home_lines(work_tree)) == 2
+              and git(work_tree, "rev-parse", "HEAD").stdout == head, r.stdout + r.stderr)
+
+        run_task(wt1, "release", "T-100")
+        git(work_main, "worktree", "remove", work_tree)
+        r = run_task(wt1, "claim", "T-100")
+        check("枝が在るのに作業ツリーが無ければ INVALID（終了コード3）で印を立てない",
+              r.returncode == 3 and r.stdout.startswith("INVALID\t作業先の作業ツリーを作れない（")
+              and "status: todo" in run_task(wt1, "show", "T-100").stdout, r.stdout + r.stderr)
+
+        git(work_main, "branch", "-D", "t-100")
+        write(os.path.join(work_tree, "occupied.txt"), "x\n")
+        r = run_task(wt1, "claim", "T-100")
+        check("道に別のものがあれば INVALID（終了コード3）で印を立てない",
+              r.returncode == 3 and r.stdout.startswith("INVALID\t作業先の作業ツリーを作れない（")
+              and "status: todo" in run_task(wt1, "show", "T-100").stdout, r.stdout + r.stderr)
+
+        shutil.rmtree(os.path.join(tmp, "plugins"))
+        git(work_main, "branch", "-m", "main", "dev")
+        r = run_task(wt1, "claim", "T-100")
+        check("作業先の主ブランチが決まらなければ INVALID（終了コード3）で印を立てない",
+              r.returncode == 3 and r.stdout.startswith("INVALID\t作業先の作業ツリーを作れない（")
+              and "status: todo" in run_task(wt1, "show", "T-100").stdout
+              and not os.path.exists(os.path.join(tmp, "plugins")), r.stdout + r.stderr)
+
+
 TESTS = (
+    test_claim_creates_work_tree,
     test_brief_head_fixed_lines,
     test_hold_requires_unlock_condition,
     test_done_commits_since_claim,

@@ -14,6 +14,7 @@ import gitinfo
 import ledger
 import metrics
 import ref_guard
+import repos
 import stamps
 import taskfile
 import tracker
@@ -80,6 +81,7 @@ def cmd_claim(toplevel: str, task_id: str) -> None:
         f"{taskfile.ACCEPTANCE_HEADING}\n{issue.raw.get('acceptance_criteria') or ''}\n"
     )
     tw_plan.work_repo_root(toplevel, plan_body)  # 名前の作業先のパスが引けなければ、印を立てる前に MISSING で止める
+    _prepare_work_tree(toplevel, shown, plan_body)
     registered = False
     if plan_base and not taskfile.is_blank(plan):
         tip = tw_plan.plan_tip(toplevel, plan_body)
@@ -332,6 +334,30 @@ def _claim_branch_out(
         print(f"CLAIMED\t{task_id}\t{where}\tbranch={feature_branch}{direct}")
     else:
         print(f"CLAIMED\t{task_id}\t{where}\tbranch={branch_after_sync}{direct}")
+
+
+def _prepare_work_tree(toplevel: str, shown: str, plan_body: str) -> None:
+    """`### 作業先` が別のリポジトリなら、枝の作業ツリーを作り（在れば作らない）、その `work-home` を書く。
+
+    印を立てる前に打つ。作れなければ `INVALID\\t作業先の作業ツリーを作れない（<理由>）`・終了コード3で止め、印も控えも書かない。
+    印の取り合いに負けても作った木は消さない（勝った側の `claim` も同じ木を受ける）。
+    """
+    try:
+        work = tw_plan.work_tree_path(toplevel, shown, plan_body)
+        if work is None:
+            return
+        if not work.exists:
+            main = gitinfo.list_worktrees(cwd=work.root)[0].path
+            r = tw_base.run_git(main, ["worktree", "add", "-b", work.branch, work.worktree, work.base])
+            if r.returncode != 0:
+                said = (r.stderr or r.stdout).strip().splitlines()
+                raise tw_plan.WorkTreeUnavailable(said[0] if said else "git worktree add が失敗")
+        spec, _ = taskfile.plan_work_repo(plan_body)
+        name = spec if spec is not None and not spec.startswith("/") else repos.name_of(toplevel, work.root)
+        repos.write_work_home(work.worktree, gitinfo.list_worktrees(cwd=toplevel)[0].path, name)
+    except (tw_plan.WorkTreeUnavailable, gitinfo.GitCommandError, OSError) as e:
+        print(f"INVALID\t作業先の作業ツリーを作れない（{e}）")
+        raise SystemExit(3)
 
 
 def other_repo_main(toplevel: str, plan_body: str) -> str | None:

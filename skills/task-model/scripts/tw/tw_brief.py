@@ -9,7 +9,6 @@ import os
 import re
 import subprocess
 import sys
-from dataclasses import dataclass
 
 import beads
 import gitinfo
@@ -34,15 +33,6 @@ _PLACEHOLDER = re.compile(r"\{\{(\w+)\}\}")
 
 IMPLEMENTER_SECTIONS = ("常に", "計画どおり", "書き直し", "古い計画", "別のリポジトリ", "並列の段", "目視")
 ACCEPTOR_SECTIONS = ("常に", "同じリポジトリ", "別のリポジトリ", "レビュー", "文書", "目視", "目視待ち", "2回目以降")
-
-
-@dataclass(frozen=True)
-class WorkRepo:
-    root: str
-    branch: str
-    worktree: str
-    base: str
-
 
 def cmd_brief_implementer(toplevel: str, task_id: str, step: int | None, rewrite: bool, visual: bool) -> None:
     shown, _issue, plan_body, mark, _base, drift = tw_edit.own_plan(toplevel, task_id)
@@ -220,23 +210,13 @@ def _friction_value(toplevel: str, shown: str) -> str:
     return "missing"
 
 
-def other_repo_root(toplevel: str, plan_body: str) -> str | None:
-    """`### 作業先` が名指す、着手した作業ツリーとは別のリポジトリの根。同じリポジトリか無ければ `None`。読めなければ `GitCommandError`。"""
-    root = tw_plan.work_repo_root(toplevel, plan_body)
-    if root is None or not os.path.isdir(root):
-        return None
-    if gitinfo.git_common_dir(root) == gitinfo.git_common_dir(toplevel):
-        return None
-    return root
-
-
 def unlanded_work_branch(toplevel: str, shown: str, plan_body: str) -> tuple[str, str] | None:
     """別のリポジトリの作業先に枝（タスクIDの小文字）があり、主ブランチへ合流していなければ `(作業先, 枝)`。
 
     作業先が無い・同じリポジトリ・枝が無い・合流済み・読めないときは `None`。
     """
     try:
-        root = other_repo_root(toplevel, plan_body)
+        root = tw_plan.other_repo_root(toplevel, plan_body)
         if root is None:
             return None
         branch = shown.lower()
@@ -254,37 +234,13 @@ def unlanded_work_branch(toplevel: str, shown: str, plan_body: str) -> tuple[str
     return (root, branch) if merged.returncode == 1 else None
 
 
-def work_repo(toplevel: str, shown: str, plan_body: str) -> WorkRepo | None:
-    """`### 作業先` が別のリポジトリなら、その作業先と枝と作業ツリーの道。同じリポジトリか無ければ `None`。
-
-    作業ツリーの道は、枝（タスクIDの小文字）の作業ツリーがあればそのパス。無ければ、着手した作業ツリーが本体でなければ
-    `<着手した作業ツリーの親の親>/<作業先の名前>/<枝>`、本体なら `<作業先の親>/<作業先の名前>-<枝>`。
-    決めた道に別のものがある・作業先の中に入るなら `INVALID`（終了コード3）。
-    """
+def work_repo(toplevel: str, shown: str, plan_body: str) -> tw_plan.WorkTree | None:
+    """`tw_plan.work_tree_path`（`tw claim` が作業ツリーを作るのと同じ道）。道が決まらなければ `INVALID`（終了コード3）。"""
     try:
-        root = other_repo_root(toplevel, plan_body)
-        if root is None:
-            return None
-        branch = shown.lower()
-        existing = [w.path for w in gitinfo.list_worktrees(cwd=root) if w.branch == branch]
-        base = gitinfo.base_branch(root)
-        if existing:
-            return WorkRepo(root, branch, existing[0], base)
-        claimed_trees = gitinfo.list_worktrees(cwd=toplevel)
-    except gitinfo.GitCommandError as e:
-        print(f"INVALID\t作業先 {root} が読めない（{e}）")
+        return tw_plan.work_tree_path(toplevel, shown, plan_body)
+    except tw_plan.WorkTreeUnavailable as e:
+        print(f"INVALID\t{e}")
         raise SystemExit(3)
-    name = os.path.basename(os.path.normpath(root))
-    is_main = bool(claimed_trees) and os.path.realpath(claimed_trees[0].path) == os.path.realpath(toplevel)
-    if is_main:
-        path = os.path.join(os.path.dirname(os.path.normpath(root)), f"{name}-{branch}")
-    else:
-        path = os.path.join(os.path.dirname(os.path.dirname(os.path.normpath(toplevel))), name, branch)
-    real_root = os.path.realpath(root)
-    if os.path.lexists(path) or os.path.realpath(path).startswith(real_root + os.sep):
-        print(f"INVALID\t作業先の作業ツリーの道 {path} に別のものがあるか、作業先の中に入る（枝 {branch} の作業ツリーを先に作る）")
-        raise SystemExit(3)
-    return WorkRepo(root, branch, path, base)
 
 
 def _template(toplevel: str, role: str, known: tuple[str, ...]) -> tuple[str, dict[str, str]]:

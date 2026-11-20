@@ -11,7 +11,7 @@ import beads  # noqa: E402
 import doc_budget  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import INTERVENTION, UNLOCK, task_body  # noqa: E402
-from selftest_fixtures import BODY, PLANNED_BODY, _claim_work_and_done, commit_task, issue_count, make_repo, make_submodule_repo, drift_submodule, metadata, run_task, set_metadata, set_acceptance_directly, set_plan_directly, shown, shown_body  # noqa: E402
+from selftest_fixtures import BODY, PLANNED_BODY, _claim_work_and_done, claimed_work_tree, commit_task, issue_count, make_repo, make_submodule_repo, drift_submodule, metadata, run_task, set_metadata, set_acceptance_directly, set_plan_directly, shown, shown_body  # noqa: E402
 
 
 @weight(21)
@@ -654,8 +654,7 @@ def test_work_repo_name() -> None:
         r = run_task(wt1, "brief", "implementer", task_id, env=env)
         check("brief implementer は名前を作業先の根に解いて出す", r.returncode == 0 and work_main in r.stdout, r.stdout + r.stderr)
         branch = task_id.lower()
-        work_tree = os.path.join(tmp, f"work-{branch}")
-        git(work_main, "worktree", "add", "-q", "-b", branch, work_tree, "main")
+        work_tree = claimed_work_tree(work_main, branch)
         write(os.path.join(work_tree, "a.txt"), "x")
         git(work_tree, "add", "a.txt")
         git(work_tree, "commit", "-q", "-m", "a")

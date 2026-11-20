@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 import gitinfo
 import repos
@@ -136,6 +137,64 @@ def work_repo_root(toplevel: str, body: str) -> str | None:
     except repos.RepoPathMissing as e:
         print(f"MISSING\t作業先 {e.name}")
         raise SystemExit(6)
+
+
+def other_repo_root(toplevel: str, plan_body: str) -> str | None:
+    """`### 作業先` が名指す、着手した作業ツリーとは別のリポジトリの根。同じリポジトリか無ければ `None`。読めなければ `GitCommandError`。"""
+    root = work_repo_root(toplevel, plan_body)
+    if root is None or not os.path.isdir(root):
+        return None
+    if gitinfo.git_common_dir(root) == gitinfo.git_common_dir(toplevel):
+        return None
+    return root
+
+
+@dataclass(frozen=True)
+class WorkTree:
+    """別のリポジトリの作業先・枝（タスクIDの小文字）・作業ツリーの道・作業先の主ブランチ。`exists` は枝の作業ツリーが既にあるか。"""
+
+    root: str
+    branch: str
+    worktree: str
+    base: str
+    exists: bool
+
+
+class WorkTreeUnavailable(RuntimeError):
+    """作業先の作業ツリーの道が決まらない（呼ぶ側が `INVALID`・終了コード3にする）。"""
+
+
+def work_tree_path(toplevel: str, shown: str, plan_body: str) -> WorkTree | None:
+    """`### 作業先` が別のリポジトリなら、その作業先と枝と作業ツリーの道。同じリポジトリか無ければ `None`。
+
+    作業ツリーの道は、枝の作業ツリーがあればそのパス。無ければ、着手した作業ツリーが本体でなければ
+    `<着手した作業ツリーの親の親>/<作業先の名前>/<枝>`、本体なら `<作業先の親>/<作業先の名前>-<枝>`。
+    作業先が読めない・主ブランチが決まらない・決めた道に別のものがある・作業先の中に入るなら `WorkTreeUnavailable`。
+    """
+    root: str | None = None
+    try:
+        root = other_repo_root(toplevel, plan_body)
+        if root is None:
+            return None
+        branch = shown.lower()
+        existing = [w.path for w in gitinfo.list_worktrees(cwd=root) if w.branch == branch]
+        base = gitinfo.base_branch(root)
+        if existing:
+            return WorkTree(root, branch, existing[0], base, True)
+        claimed_trees = gitinfo.list_worktrees(cwd=toplevel)
+    except gitinfo.GitCommandError as e:
+        raise WorkTreeUnavailable(f"作業先 {root} が読めない（{e}）") from e
+    except gitinfo.NoBaseBranch as e:
+        raise WorkTreeUnavailable(f"作業先 {root} の主ブランチが決まらない（{e}）") from e
+    name = os.path.basename(os.path.normpath(root))
+    is_main = bool(claimed_trees) and os.path.realpath(claimed_trees[0].path) == os.path.realpath(toplevel)
+    if is_main:
+        path = os.path.join(os.path.dirname(os.path.normpath(root)), f"{name}-{branch}")
+    else:
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.normpath(toplevel))), name, branch)
+    if os.path.lexists(path) or os.path.realpath(path).startswith(os.path.realpath(root) + os.sep):
+        raise WorkTreeUnavailable(f"作業先の作業ツリーの道 {path} に別のものがあるか、作業先の中に入る")
+    return WorkTree(root, branch, path, base, False)
 
 
 def _plan_repo(toplevel: str, body: str) -> str | None:

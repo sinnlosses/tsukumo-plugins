@@ -9,7 +9,7 @@ from selftest_support import check, git, refuse_direct_run, say, write  # noqa: 
 import beads  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
-from selftest_fixtures import PLANNED_BODY, commit_task, flow_rows, make_repo, run_task  # noqa: E402
+from selftest_fixtures import PLANNED_BODY, claimed_work_tree, commit_task, flow_rows, make_repo, run_task  # noqa: E402
 
 
 def _claimed_repo(tmp: str, format_command: str = "`true`", body: str = PLANNED_BODY) -> str:
@@ -93,10 +93,9 @@ def _other_repo_claimed(
     tmp: str,
     difficulty: str = "sonnet",
     before_claim: str | None = None,
-    worktree: bool = True,
     steps: tuple[tuple[str, str], ...] = (("書く", "x"),),
 ) -> tuple[str, str, str]:
-    """着手側の作業ツリー・作業先の本体・作業先の作業ツリー（枝 `t-100`）。`before_claim` は着手の前に本体へ置く未追跡のファイル。"""
+    """着手側の作業ツリー・作業先の本体・作業先の作業ツリー（枝 `t-100`。`claim` が作る）。`before_claim` は着手の前に本体へ置く未追跡のファイル。"""
     own_main, wt1, _ = make_repo(os.path.join(tmp, "own"), branch="切らない", verify="`true`", format_command="`true`")
     work_main, _, _ = make_repo(os.path.join(tmp, "work"), verify="`true`")
     body = task_body(steps, ["shared.txt"], work_main)
@@ -104,9 +103,7 @@ def _other_repo_claimed(
     if before_claim is not None:
         write(os.path.join(work_main, before_claim), "before\n")
     run_task(wt1, "claim", "T-100")
-    work_tree = os.path.join(tmp, "work-t-100")
-    if worktree:
-        git(work_main, "worktree", "add", "-q", "-b", "t-100", work_tree, "main")
+    work_tree = claimed_work_tree(work_main, "t-100")
     return wt1, work_main, work_tree
 
 

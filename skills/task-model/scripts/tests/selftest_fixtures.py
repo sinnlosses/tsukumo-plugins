@@ -126,6 +126,14 @@ def make_repo(
     return main_path, wt1, wt2
 
 
+def claimed_work_tree(work_main: str, branch: str) -> str:
+    """`tw claim` が作業先 `work_main` に作った、枝 `branch` の作業ツリーのパス。"""
+    found = [w.path for w in gitinfo.list_worktrees(cwd=work_main) if w.branch == branch]
+    if len(found) != 1:
+        raise RuntimeError(f"作業先 {work_main} に枝 {branch} の作業ツリーが1つでない: {found}")
+    return found[0]
+
+
 def body_file(dirpath: str, name: str = "body.md") -> str:
     return write(os.path.join(dirpath, name), PLANNED_BODY)
 

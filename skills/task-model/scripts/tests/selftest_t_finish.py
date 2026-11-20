@@ -11,7 +11,7 @@ import beads  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
-from selftest_fixtures import BODY, commit_task, flow_rows, make_repo, run_task  # noqa: E402
+from selftest_fixtures import BODY, claimed_work_tree, commit_task, flow_rows, make_repo, run_task  # noqa: E402
 
 RESULT = RESULT_FULL
 
@@ -297,14 +297,17 @@ def test_finish_closes_open_accept() -> None:
 
 
 def _other_repo_claimed(tmp: str, unmerged_branch: bool) -> tuple[str, str, str]:
-    """着手側の作業ツリー・作業先の本体。`unmerged_branch` なら作業先に主ブランチへ未合流の枝 `t-100` がある。"""
+    """着手側の作業ツリー・作業先の本体。`unmerged_branch` なら作業先に主ブランチへ未合流の枝 `t-100` があり、
+    偽なら `claim` が作った枝 `t-100` とその作業ツリーを消して枝の無い作業先にする。"""
     own_main, wt1, _ = make_repo(os.path.join(tmp, "own"), branch="切らない", verify="`true`")
     work_main, _, _ = make_repo(os.path.join(tmp, "work"), verify="`true`")
     commit_task(own_main, taskfile.Task("T-100", "作業先で直す", "todo", "sonnet", "Y", (), task_body((("書く", "x"),), ["a.txt"], work_main)))
     run_task(wt1, "claim", "T-100")
-    if unmerged_branch:
-        work_tree = os.path.join(tmp, "work-t-100")
-        git(work_main, "worktree", "add", "-q", "-b", "t-100", work_tree, "main")
+    work_tree = claimed_work_tree(work_main, "t-100")
+    if not unmerged_branch:
+        git(work_main, "worktree", "remove", work_tree)
+        git(work_main, "branch", "-D", "t-100")
+    else:
         write(os.path.join(work_tree, "a.txt"), "x")
         git(work_tree, "add", "a.txt")
         git(work_tree, "commit", "-q", "-m", "a")
