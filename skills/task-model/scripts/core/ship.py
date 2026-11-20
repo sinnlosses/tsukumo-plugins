@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 import gitcmd
 import layout
 import gitinfo
+import repos
 import stamps
 
 MAX_TRIES = 3
@@ -38,9 +39,13 @@ class ShipOutcome:
 
 
 def read_stamp_command(toplevel: str) -> str | None:
-    """`tw verify` が打ち、控えの鍵に入れるコマンド。検証コマンド（`verify`）。無いときだけ送る前の検証コマンド。"""
+    """`tw verify` が打ち、控えの鍵に入れるコマンド。
+
+    (1) 木の検証コマンド（`verify`。無ければ送る前の検証コマンド）、(2) 作業先の作業ツリーならホームの登録簿の `verify`
+    （`repos.registry_verify`）、(3) どちらも無ければ `None`。
+    """
     config = layout.read_config(toplevel)
-    return config.verify or config.verify_before_ship
+    return config.verify or config.verify_before_ship or repos.registry_verify(toplevel)
 
 
 def find_base_worktree(

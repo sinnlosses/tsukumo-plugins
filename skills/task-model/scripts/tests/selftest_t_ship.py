@@ -9,9 +9,11 @@ import beads  # noqa: E402
 import fold  # noqa: E402
 import gitinfo  # noqa: E402
 import ledger  # noqa: E402
+import repos  # noqa: E402
 import stamps  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_fixtures import BODY, FILE_PROTOCOL, FILE_PROTOCOL_ENV, _claim_work_and_done, advance_submodule, body_file, commit_task, flow_rows, make_repo, make_submodule_repo, metadata, run_task, set_metadata  # noqa: E402
+from selftest_t_verify import make_work_tree  # noqa: E402
 
 
 def _no_merge_commits(repo: str, base: str = "main") -> str:
@@ -481,6 +483,26 @@ def test_land_fold_without_verify_command() -> None:
         )
 
 
+def test_land_fold_registry_verify() -> None:
+    say("task.py land --fold: 作業先に設定が無くても、work-home の指すホームの登録簿の verify で検証して合流する")
+    with tempfile.TemporaryDirectory() as tmp:
+        home, work, tree = make_work_tree(tmp, 'verify = "sh ../verify-count.sh"\n')
+        repos.write_work_home(tree, home, "plugins")
+        _commit(tree, "c.txt", "c\n", "枝の作業")
+        _commit(work, "b.txt", "b\n", "主ブランチを進める")
+        r = run_task(tree, "land", "gh-1", "--fold")
+        lines = r.stdout.splitlines()
+        check(
+            "FOLDED・VERIFIED のあと LANDED",
+            r.returncode == 0
+            and lines[0].startswith("FOLDED\tgh-1\t")
+            and any(line.startswith("VERIFIED\t") for line in lines)
+            and any(line.startswith("LANDED\tgh-1\tmain\t") for line in lines),
+            f"{r.returncode} {r.stdout}{r.stderr}",
+        )
+        check("登録簿の verify を1回打つ", _verify_runs(os.path.join(tmp, "verify-count.log")) == 1)
+
+
 def test_ship_skips_send_on_main_worktree() -> None:
     say("task.py ship: main の作業ツリーで起こしたときは送る段を飛ばす")
     with tempfile.TemporaryDirectory() as tmp:
@@ -684,6 +706,7 @@ TESTS = (
     test_land_fold_conflict,
     test_land_fold_verify_fails,
     test_land_fold_without_verify_command,
+    test_land_fold_registry_verify,
     test_base_branch_resolution,
 )
 

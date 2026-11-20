@@ -582,7 +582,7 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(1)
 
     if args.command not in ("config-doctor", "land"):
-        refusal = tw_base.format_refusal(toplevel)
+        refusal = tw_base.format_refusal(toplevel, registry=args.command in ("verify", "verify-check"))
         if refusal is not None:
             print(refusal[0])
             raise SystemExit(refusal[1])

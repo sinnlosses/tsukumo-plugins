@@ -9,6 +9,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 from selftest_support import RESULT_FULL, check, git, refuse_direct_run, say, weight, write  # noqa: E402
+import repos  # noqa: E402
 import stamps  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import task_body  # noqa: E402
@@ -506,7 +507,88 @@ def test_verify_check_passes_base_with_preship() -> None:
         check("取り込みが衝突すれば NOT_VERIFIED base", r.stdout.strip() == "NOT_VERIFIED\tbase", r.stdout)
 
 
+def make_work_tree(tmp: str, registry: str) -> tuple[str, str, str]:
+    """`(ホーム, 作業先の本体, 作業先の作業ツリー)`。作業先は `.tw/config.toml` を持たず、作業ツリーの枝は `gh-1`。
+
+    `registry` はホームの `[repos.plugins]` の中身の行。`work-home` は書かない（テストが `repos.write_work_home` で書く）。
+    検証コマンドに `sh ../verify-count.sh` を書けば、打たれるたびに `verify-count.log` へ1行足す。
+    """
+    home = os.path.join(tmp, "home")
+    write(os.path.join(home, ".tw", "config.toml"), f'verify = "なし"\n\n[repos.plugins]\n{registry}')
+    work = os.path.join(tmp, "plugins")
+    os.makedirs(work)
+    git(work, "init", "-q", "-b", "main")
+    git(work, "config", "user.email", "test@example.com")
+    git(work, "config", "user.name", "test")
+    write(os.path.join(work, "a.txt"), "a\n")
+    git(work, "add", "a.txt")
+    git(work, "commit", "-q", "-m", "init")
+    tree = os.path.join(tmp, "plugins-gh-1")
+    git(work, "worktree", "add", "-q", "-b", "gh-1", tree, "main")
+    write(os.path.join(tmp, "verify-count.sh"), COUNTING_VERIFY_SCRIPT)
+    return home, work, tree
+
+
+def _set_registry(home: str, registry: str) -> None:
+    write(os.path.join(home, ".tw", "config.toml"), f'verify = "なし"\n\n[repos.plugins]\n{registry}')
+
+
+def test_verify_registry_fallback() -> None:
+    say("task.py verify・verify-check: 作業先に設定が無ければ work-home の指すホームの登録簿の verify で控えを取り、決まらなければ NOTHING")
+    with tempfile.TemporaryDirectory() as tmp:
+        home, _work, tree = make_work_tree(tmp, 'verify = "sh ../verify-count.sh"\n')
+        r = run_task(tree, "verify")
+        check("work-home が無ければ今までどおり MISSING（終了コード6）", r.returncode == 6 and r.stdout.strip() == "MISSING",
+              f"{r.returncode} {r.stdout}{r.stderr}")
+        check("検証コマンドを打たない", _verify_count(tmp) == 0)
+
+        repos.write_work_home(tree, home, "plugins")
+        write(os.path.join(tree, "work.txt"), "x\n")
+        r = run_task(tree, "verify")
+        check("登録簿の verify を打って VERIFIED", r.returncode == 0 and r.stdout.startswith("VERIFIED\t")
+              and _verify_count(tmp) == 1, f"{r.returncode} {r.stdout}{r.stderr}")
+        r = run_task(tree, "verify-check")
+        check("verify-check は VERIFIED_SAME", r.stdout.startswith("VERIFIED_SAME\t"), r.stdout + r.stderr)
+        check("work-home は作業ツリーの変更に数えない", git(tree, "status", "--porcelain").stdout == "?? work.txt\n",
+              git(tree, "status", "--porcelain").stdout)
+
+        _set_registry(home, 'verify = "sh ../verify-count.sh again"\n')
+        r = run_task(tree, "verify-check")
+        check("登録簿の verify を書き換えると NOT_VERIFIED", r.stdout.startswith("NOT_VERIFIED\t"), r.stdout + r.stderr)
+
+        _set_registry(home, 'land = "ff"\n')
+        for command in ("verify", "verify-check"):
+            r = run_task(tree, command)
+            check(f"登録簿に verify が無ければ {command} は NOTHING", r.returncode == 0 and r.stdout.startswith("NOTHING\t"),
+                  f"{r.returncode} {r.stdout}{r.stderr}")
+
+        _set_registry(home, 'verify = "sh ../verify-count.sh"\n')
+        repos.write_work_home(tree, home, None)
+        r = run_task(tree, "verify")
+        check("work-home の名前が空なら NOTHING", r.returncode == 0 and r.stdout.startswith("NOTHING\t"), r.stdout + r.stderr)
+        check("検証コマンドは最初の1回だけ", _verify_count(tmp) == 1, str(_verify_count(tmp)))
+
+
+def test_verify_work_home_config_wins() -> None:
+    say("task.py verify: 作業先の作業ツリーに設定があれば、登録簿の verify より設定の verify（無ければ verify_before_ship）を打つ")
+    with tempfile.TemporaryDirectory() as tmp:
+        home, _work, tree = make_work_tree(tmp, 'verify = "sh ../registry.sh"\n')
+        write(os.path.join(tmp, "registry.sh"), "echo x >> ../registry-count.log\n")
+        repos.write_work_home(tree, home, "plugins")
+        config = os.path.join(tree, ".tw", "config.toml")
+        for toml, name in (('verify = "sh ../verify-count.sh"\n', "verify"),
+                           ('verify = "なし"\nverify_before_ship = "sh ../verify-count.sh"\n', "verify_before_ship")):
+            write(config, toml)
+            r = run_task(tree, "verify")
+            check(f"設定の {name} を打つ", r.returncode == 0 and r.stdout.startswith("VERIFIED\t"), r.stdout + r.stderr)
+            check(f"設定の {name} の控えで VERIFIED_SAME", run_task(tree, "verify-check").stdout.startswith("VERIFIED_SAME\t"))
+        check("設定の検証コマンドが2回", _verify_count(tmp) == 2, str(_verify_count(tmp)))
+        check("登録簿の verify は打たない", _count_lines(os.path.join(tmp, "registry-count.log")) == 0)
+
+
 TESTS = (
+    test_verify_registry_fallback,
+    test_verify_work_home_config_wins,
     test_ship_skips_preship_verify_when_stamp_matches,
     test_verify_stamp,
     test_verify_check_passes_base_with_preship,

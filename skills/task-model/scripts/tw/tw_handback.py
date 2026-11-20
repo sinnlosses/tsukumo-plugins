@@ -405,7 +405,7 @@ def _skipped_steps(toplevel: str, tree: str, task_id: str) -> bool:
 
 def _tree_verify_line(tree: str) -> str:
     """`tree` の `verify-check` の行。`tw verify` がそこで形式のために打てない（`tw_base.format_refusal`）なら、控えを書けないので `NOTHING`。"""
-    if tw_base.format_refusal(tree) is not None:
+    if tw_base.format_refusal(tree, registry=True) is not None:
         return "NOTHING\t(tw verify が打てない形式)"
     return _first_output_line(lambda: tw_verify.cmd_verify_check(tree))
 

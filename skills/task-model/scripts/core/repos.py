@@ -11,7 +11,10 @@ from dataclasses import dataclass
 
 import gitinfo
 import layout
+import stamps
 import taskfile
+
+WORK_HOME_FILE = "work-home"
 
 
 class RepoPathMissing(RuntimeError):
@@ -134,3 +137,42 @@ def registry_refusal(toplevel: str, body: str) -> str | None:
     if spec is None or spec.startswith("/") or layout.read_config(toplevel).repo(spec) is not None:
         return None
     return f"{taskfile.PLAN_WORK_REPO_HEADING} の名前 {spec} が登録簿（{layout.CONFIG_PATH} の [{layout.REPOS_TABLE}.{spec}]）に無い"
+
+
+def work_home(tree: str) -> tuple[str, str] | None:
+    """作業先の作業ツリー `tree` の `.tw/local/work-home` の（ホームの本体の根, 登録簿の名前）。名前が無ければ空。
+
+    ファイルが無いか1行目が空なら `None`。
+    """
+    try:
+        with open(os.path.join(tree, layout.LOCAL_DIR, WORK_HOME_FILE), encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return None
+    if not lines or not lines[0]:
+        return None
+    return lines[0], lines[1] if len(lines) > 1 else ""
+
+
+def write_work_home(tree: str, home_root: str, name: str | None) -> None:
+    """`tree` の `.tw/local/work-home` に、ホームの本体の根と登録簿の名前（無ければ空行）を1行ずつ書く。"""
+    path = os.path.join(stamps.worktree_state_dir(cwd=tree), WORK_HOME_FILE)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(f"{home_root}\n{name or ''}\n")
+
+
+def registry_verify(tree: str) -> str | None:
+    """`tree` の `work-home` が指すホームの登録簿の `[repos.<名前>]` の `verify`。
+
+    `work-home` が無い・名前が空・ホームの設定が読めない・表か `verify` が無い（`なし` を含む）なら `None`。
+    """
+    home = work_home(tree)
+    if home is None or not home[1]:
+        return None
+    try:
+        entry = layout.read_config(home[0]).repo(home[1])
+    except (layout.ConfigError, OSError):
+        return None
+    if entry is None or entry.verify in (None, layout.NO_COMMAND):
+        return None
+    return entry.verify

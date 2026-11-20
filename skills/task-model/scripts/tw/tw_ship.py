@@ -261,7 +261,9 @@ def _fold_and_verify(base: str, branch: str, branch_trees: list[str]) -> None:
     tree = branch_trees[0]
     verify_command = ship.read_stamp_command(tree)
     if verify_command is None:
-        _refuse_land(branch, "検証コマンドが無い。検証を打ってから --fold なしで打つ")
+        _refuse_land(
+            branch, "検証コマンドが決まらない（枝の作業ツリーの設定にも、ホームの登録簿の verify にも無い）。検証を打ってから --fold なしで打つ"
+        )
     folded = fold.fold_committed(tree, base)
     if folded.kind == "CONFLICT":
         print("CONFLICT\t" + (",".join(folded.conflict_files) or "?"))

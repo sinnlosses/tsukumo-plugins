@@ -14,13 +14,20 @@ import gitcmd
 import layout
 import gitinfo
 import ledger
+import repos
 import taskfile
 import tracker
 
 
-def format_refusal(toplevel: str) -> tuple[str, int] | None:
-    """設定ファイルが無いために、サブコマンド（`config-doctor`・`land` を除く）を打たずに出す行と終了コード。打てるなら `None`。"""
+def format_refusal(toplevel: str, registry: bool = False) -> tuple[str, int] | None:
+    """設定ファイルが無いために、サブコマンド（`config-doctor`・`land` を除く）を打たずに出す行と終了コード。打てるなら `None`。
+
+    `registry`（`verify`・`verify-check`）なら、設定ファイルが無くても作業先の作業ツリー（`.tw/local/work-home` がある）なら打てる。
+    検証コマンドはホームの登録簿の `verify` で決まり、決まらなければ `NOTHING`（`ship.read_stamp_command`）。
+    """
     if os.path.exists(os.path.join(toplevel, layout.CONFIG_PATH)):
+        return None
+    if registry and repos.work_home(toplevel) is not None:
         return None
     return "MISSING", 6
 
