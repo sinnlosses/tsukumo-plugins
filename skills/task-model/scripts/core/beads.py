@@ -94,6 +94,8 @@ CLAIM_HEAD_KEY = "task_claim_head"
 PLAN_KEY = "task_plan"
 # 登録時（`tw new`・`tw adopt`）に `## やること` を書いたときの主ブランチの SHA。
 PLAN_BASE_KEY = "task_plan_base"
+# `### 作業先` が名指す作業先の登録簿の名前（`tw new`・`adopt`・`edit` が書く。`claim` は書かない）。
+WORK_REPO_KEY = "work_repo"
 # 登録時の計画を判定した、着手時の主ブランチの先端。
 PLAN_TIP_KEY = "task_plan_tip"
 # `tw ship` が書く、送ったコミットの範囲（`<送る前の主ブランチの先端>..<送ったコミット>`）。

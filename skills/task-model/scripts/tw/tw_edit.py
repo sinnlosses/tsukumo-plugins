@@ -96,6 +96,12 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
         stdin = parts.description
         metadata = issue.raw.get("metadata")
         metadata = metadata if isinstance(metadata, dict) else {}
+        if taskfile.plan_changed(current, body):
+            work_repo = repos.work_repo_mark(toplevel, body)
+            if work_repo is not None:
+                cmd += ["--set-metadata", f"{beads.WORK_REPO_KEY}={work_repo}"]
+            elif metadata.get(beads.WORK_REPO_KEY):
+                cmd += ["--unset-metadata", beads.WORK_REPO_KEY]
         if (
             issue.status == "in_progress"
             and issue.assignee == tw_base.actor(toplevel)

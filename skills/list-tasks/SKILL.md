@@ -11,8 +11,7 @@ description: "tw status の出力から、タスクの置き場に登録され�
 tw status
 ```
 
-行の列は `id / status / difficulty / loopable / dependencies / 着手可否 / 印 / summary`（`id` は `T-xxx`。
-トラッカーが `github` なら `GH-<n>` もある）。行は緊急・重要の高い順（同じなら番号順）。`---` の後ろに
+行の列は `id / status / difficulty / loopable / dependencies / 着手可否 / 印 / summary / 作業先`（`id` は `T-xxx`、`github` なら `GH-<n>` も）。行は緊急・重要の高い順（同じなら番号順）。`---` の後ろに
 `counts`・`ready`（READY 件数）・`todo_loopable`・`stale`・`invalid`・`triage`（正典 `TRACKER.md`「サイクルの各段で Beads に起きること」）、
 トラッカーが `jira` なら `jira_close`。
 

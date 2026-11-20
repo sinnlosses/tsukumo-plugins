@@ -73,7 +73,7 @@ def test_claim_race_owner_and_release() -> None:
         r = run_task(loser, "release", a)
         check("他人の印の release は NOT_OWNER", r.returncode == 4 and r.stdout.startswith("NOT_OWNER"), r.stdout)
         r = run_task(winner, "status")
-        marker = rows(r.stdout).get(a, [""] * 8)[6]
+        marker = rows(r.stdout).get(a, [""] * 9)[6]
         check("印の列は作業ツリー名と経過", marker.startswith(os.path.basename(winner) + " "), r.stdout)
         r = run_task(winner, "claim", h)
         check("hold は claim できない（NOT_READY）", r.returncode == 4 and r.stdout.startswith("NOT_READY"), r.stdout)
@@ -115,8 +115,8 @@ def test_cycle_done_ship_and_dropped() -> None:
         check("claim・done の記録に difficulty が入る", {(e["event"], e["difficulty"]) for e in events if e["task"] == a}
               >= {("claim", "sonnet"), ("done", "sonnet")}, repr(events))
         r = run_task(wt2, "status")
-        check("done のあとも ship までは印が残り、後段は BLOCKED", rows(r.stdout).get(b, [""] * 8)[5] == f"BLOCKED:{a}"
-              and rows(r.stdout).get(a, [""] * 8)[5] == "CLAIMED", r.stdout)
+        check("done のあとも ship までは印が残り、後段は BLOCKED", rows(r.stdout).get(b, [""] * 9)[5] == f"BLOCKED:{a}"
+              and rows(r.stdout).get(a, [""] * 9)[5] == "CLAIMED", r.stdout)
         r = run_task(wt1, "ship")
         first = r.stdout.splitlines()[0] if r.stdout else ""
         check("ship は SHIPPED で閉じた ID を released に出す", r.returncode == 0 and first.startswith("SHIPPED")
@@ -128,7 +128,7 @@ def test_cycle_done_ship_and_dropped() -> None:
         check("ship のあとにバックアップを取る", any(l.startswith("BACKUP\tOK") for l in r.stdout.splitlines()), r.stdout)
         r = run_task(wt2, "status", "--all")
         t = rows(r.stdout)
-        check("閉じたものは done、後段は READY", t.get(a, [""] * 8)[1] == "done" and t.get(b, [""] * 8)[5] == "READY", r.stdout)
+        check("閉じたものは done、後段は READY", t.get(a, [""] * 9)[1] == "done" and t.get(b, [""] * 9)[5] == "READY", r.stdout)
         shown = run_task(wt2, "show", a).stdout
         heads = [l for l in shown.split("\n") if l.startswith("## ")]
         check("show の末尾に ## 結果（comment から）", shown.rstrip().endswith("- 振り返り: 兆候なし")
@@ -141,7 +141,7 @@ def test_cycle_done_ship_and_dropped() -> None:
         r = run_task(wt2, "ship")
         r = run_task(wt1, "status", "--all")
         t = rows(r.stdout)
-        check("dropped は closed ＋ label cancelled", t.get(c, [""] * 8)[1] == "dropped", r.stdout)
+        check("dropped は closed ＋ label cancelled", t.get(c, [""] * 9)[1] == "dropped", r.stdout)
         issue = beads.show(main_path, beads.to_bd_id(c))
         check("閉じたあと ship: の印は残らない", issue is not None and issue.status == "closed"
               and "cancelled" in issue.labels and not any(l.startswith("ship:") for l in issue.labels),

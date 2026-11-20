@@ -172,8 +172,9 @@ def test_status_priority_order() -> None:
 
         check("status の行は階級→番号の順", ids("status") == want, str(ids("status")))
         check("status --all も同じ順", ids("status", "--all") == want, str(ids("status", "--all")))
-        check("行の列は8つのまま", all(len(l.split("\t")) == 8
-              for l in run_task(wt1, "status").stdout.split("\n---\n")[0].splitlines()))
+        status_rows = [l.split("\t") for l in run_task(wt1, "status").stdout.split("\n---\n")[0].splitlines()]
+        check("行の列は9つで、summary は8列目のまま・末尾は作業先の無い `-`",
+              all(len(c) == 9 and c[7] == "階級試験" and c[8] == "-" for c in status_rows), str(status_rows))
         found = [l.split("\t")[1] for l in run_task(wt1, "find", "階級試験").stdout.splitlines() if l.startswith("CANDIDATE\t")]
         check("find の候補も階級順（先頭4件）", found == want[:4], str(found))
 

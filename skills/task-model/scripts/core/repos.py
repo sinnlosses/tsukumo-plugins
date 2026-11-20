@@ -108,6 +108,16 @@ def work_repo_root(toplevel: str, body: str) -> str | None:
     return work.root if work is not None else None
 
 
+def work_repo_mark(toplevel: str, body: str) -> str | None:
+    """metadata `work_repo` に書く名前。`### 作業先` が無ければ `None`、絶対パスは登録簿の名前に解け、解けなければ根のディレクトリ名。"""
+    spec, _ = taskfile.plan_work_repo(body)
+    if spec is None:
+        return None
+    if not spec.startswith("/"):
+        return spec
+    return name_of(toplevel, spec) or os.path.basename(spec.rstrip("/"))
+
+
 def name_of(toplevel: str, path: str) -> str | None:
     """`path` が登録簿の名前のどれかのパスに解ければその名前。"""
     real = os.path.realpath(path)

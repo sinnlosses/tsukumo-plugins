@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 import beads
 import layout
+import repos
 import taskfile
 import tracker
 import tw_base
@@ -29,6 +30,7 @@ class _Checked:
     fixes: tuple[str, ...]
     body: str
     plan_base: str | None
+    work_repo: str | None
 
 
 def _check_one(toplevel: str, args: argparse.Namespace) -> _Checked:
@@ -65,7 +67,7 @@ def _check_one(toplevel: str, args: argparse.Namespace) -> _Checked:
         tw_plan.refuse_direct(args.difficulty, body)
     tw_plan.refuse_unregistered_work_repo(toplevel, body)
     plan_base = tw_plan.registered_plan_base(toplevel, body) if taskfile.has_plan(body) and not args.draft else None
-    return _Checked(summary, deps, fixes, body, plan_base)
+    return _Checked(summary, deps, fixes, body, plan_base, repos.work_repo_mark(toplevel, body))
 
 
 def _level_metadata(args: argparse.Namespace) -> dict[str, str]:
@@ -79,6 +81,8 @@ def _metadata(args: argparse.Namespace, checked: _Checked, candidate: tuple[str,
     metadata.update(_level_metadata(args))
     if checked.plan_base is not None:
         metadata[beads.PLAN_BASE_KEY] = checked.plan_base
+    if checked.work_repo is not None:
+        metadata[beads.WORK_REPO_KEY] = checked.work_repo
     if args.draft:
         metadata[beads.DRAFT_KEY] = beads.DRAFT_ON
     if candidate is not None:
@@ -425,6 +429,9 @@ def cmd_adopt(toplevel: str, args: argparse.Namespace) -> None:
     parts = beads.split_body(body)
     cmd = ["update", new_id, "--body-file", "-", "--acceptance", parts.acceptance, "--notes", parts.notes]
     cmd += ["--set-metadata", f"{beads.PLAN_BASE_KEY}={plan_base}"]
+    work_repo = repos.work_repo_mark(toplevel, body)
+    if work_repo is not None:
+        cmd += ["--set-metadata", f"{beads.WORK_REPO_KEY}={work_repo}"]
     cmd += [x for l in issue.labels if l.startswith(beads.DIRECT_LABEL) for x in ("--remove-label", l)]
     cmd += ["--set-metadata", f"{beads.DIFFICULTY_KEY}={args.difficulty}", "--set-metadata", f"{beads.LOOPABLE_KEY}={args.loopable}"]
     for key, value in _level_metadata(args).items():

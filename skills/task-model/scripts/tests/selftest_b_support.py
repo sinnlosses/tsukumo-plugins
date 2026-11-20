@@ -43,7 +43,7 @@ def rows(out: str) -> dict[str, list[str]]:
     table: dict[str, list[str]] = {}
     for line in out.split("---")[0].splitlines():
         cols = line.split("\t")
-        if len(cols) == 8:
+        if len(cols) == 9:
             table[cols[0]] = cols
     return table
 

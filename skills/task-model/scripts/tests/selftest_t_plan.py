@@ -11,7 +11,7 @@ import beads  # noqa: E402
 import doc_budget  # noqa: E402
 import taskfile  # noqa: E402
 from selftest_body import INTERVENTION, UNLOCK, task_body  # noqa: E402
-from selftest_fixtures import BODY, PLANNED_BODY, _claim_work_and_done, commit_task, issue_count, make_repo, make_submodule_repo, drift_submodule, metadata, run_task, set_acceptance_directly, set_plan_directly, shown, shown_body  # noqa: E402
+from selftest_fixtures import BODY, PLANNED_BODY, _claim_work_and_done, commit_task, issue_count, make_repo, make_submodule_repo, drift_submodule, metadata, run_task, set_metadata, set_acceptance_directly, set_plan_directly, shown, shown_body  # noqa: E402
 
 
 @weight(21)
@@ -559,6 +559,11 @@ def test_work_repo_name() -> None:
         r = new("sib")
         check("repos.toml に無くても、ホームの本体の作業ツリーの親に同じ名前の git の根があれば new が通る",
               r.returncode == 0 and r.stdout.startswith("CREATED\t"), r.stdout + r.stderr)
+        sib_id = r.stdout.split("\t")[1].strip()
+        made_id = made.stdout.split("\t")[1].strip()
+        check("new は登録簿の名前を metadata work_repo に書く",
+              metadata(wt1, made_id).get("work_repo") == "plugins" and metadata(wt1, sib_id).get("work_repo") == "sib",
+              f"{metadata(wt1, made_id)} {metadata(wt1, sib_id)}")
         r = new("gone")
         check("登録簿にあってパスが引けない名前は new が MISSING・終了コード6",
               r.returncode == 6 and r.stdout == "MISSING\t作業先 gone\n", r.stdout + r.stderr)
@@ -567,11 +572,53 @@ def test_work_repo_name() -> None:
               r.stdout + r.stderr)
         r = new(work_main)
         check("登録簿の名前のパスと同じ絶対パスは new が通る", r.returncode == 0, r.stdout + r.stderr)
+        check("その絶対パスは metadata work_repo に登録簿の名前で書かれる",
+              metadata(wt1, r.stdout.split("\t")[1].strip()).get("work_repo") == "plugins", r.stdout)
         check("その絶対パスは repos.name_of がその名前に解く", _name_of(wt1, env, work_main) == "plugins", _name_of(wt1, env, work_main))
         stray = _git_repo_with(os.path.join(tmp, "stray"), "shared.txt")
         r = new(stray)
         check("どの名前にも解けない絶対パスは今までどおり通る", r.returncode == 0 and _name_of(wt1, env, stray) == "None",
               r.stdout + r.stderr)
+        check("どの名前にも解けない絶対パスは metadata work_repo に根のディレクトリ名で書かれる",
+              metadata(wt1, r.stdout.split("\t")[1].strip()).get("work_repo") == "stray", r.stdout)
+        r = run_task(wt1, "new", "--summary", "作業先なし", "--difficulty", "sonnet", "--loopable", "Y",
+                     "--body-file", "-", stdin=task_body([("書く", "x")], ["shared.txt"]), env=env)
+        bare_id = r.stdout.split("\t")[1].strip()
+        check("### 作業先 が無い new は metadata work_repo を書かない", "work_repo" not in metadata(wt1, bare_id), str(metadata(wt1, bare_id)))
+        r = run_task(wt1, "new", "--draft", "--summary", "ドラフト", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", "-",
+                     stdin=task_body([("書く", "x")], ["shared.txt"], "plugins"), env=env)
+        check("new --draft も metadata work_repo を書く",
+              r.returncode == 0 and metadata(wt1, r.stdout.split("\t")[1].strip()).get("work_repo") == "plugins", r.stdout + r.stderr)
+
+        table = {l.split("\t")[0]: l.split("\t") for l in run_task(wt1, "status", env=env).stdout.split("\n---\n")[0].splitlines()}
+        check("status の行は 9列目が作業先の名前、8列目は summary のまま・無ければ `-`",
+              table[made_id][7:] == ["作業先 plugins", "plugins"] and table[bare_id][7:] == ["作業先なし", "-"], str(table))
+        r = run_task(wt1, "find", "--repo", "plugins", env=env)
+        check("find --repo は語も --kind も無くてもその作業先の READY だけを出す",
+              r.returncode == 0 and r.stdout.startswith("MANY\t2\n") and "作業先 sib" not in r.stdout, r.stdout + r.stderr)
+        r = run_task(wt1, "find", "作業先", "--repo", "sib", env=env)
+        check("find <語> --repo は語と作業先の両方に当たるものだけ",
+              r.stdout == f"FOUND\t{sib_id}\tY\t作業先 sib\n", r.stdout + r.stderr)
+        r = run_task(wt1, "find", "sib", "--repo", "plugins", env=env)
+        check("語が当たっても作業先が違えば外れ、find は NONE", r.stdout.startswith("NONE\t"), r.stdout + r.stderr)
+        r = run_task(wt1, "find", "--repo", "どこにも無い", env=env)
+        check("どれにも無い作業先は NONE", r.stdout.startswith("NONE\t"), r.stdout + r.stderr)
+        r = run_task(wt1, "find", env=env)
+        check("語・--kind・--repo のどれも無い find は終了コード2", r.returncode == 2, r.stdout + r.stderr)
+
+        r = run_task(wt1, "edit", sib_id, "--body-file", "-", stdin=task_body([("書く", "y")], ["shared.txt"], "plugins"), env=env)
+        check("edit が ## やること を別の名前へ書き直すと work_repo が更新される",
+              r.returncode == 0 and metadata(wt1, sib_id).get("work_repo") == "plugins", r.stdout + r.stderr)
+        r = run_task(wt1, "edit", sib_id, "--summary", "題だけ直す", env=env)
+        check("## やること を変えない edit は work_repo に触らない",
+              r.returncode == 0 and metadata(wt1, sib_id).get("work_repo") == "plugins", r.stdout + r.stderr)
+        set_metadata(wt1, bare_id, "work_repo", "old")
+        r = run_task(wt1, "edit", bare_id, "--body-file", "-", stdin=task_body([("書く", "z")], ["shared.txt"]), env=env)
+        check("節の無い本文へ ## やること を書き直す edit は残った work_repo を消す",
+              r.returncode == 0 and "work_repo" not in metadata(wt1, bare_id), r.stdout + r.stderr + str(metadata(wt1, bare_id)))
+        r = run_task(wt1, "edit", made_id, "--body-file", "-", stdin=task_body([("書く", "x")], ["shared.txt"]), env=env)
+        check("節を落とす edit は終了コード2で拒み、work_repo はそのまま",
+              r.returncode == 2 and metadata(wt1, made_id).get("work_repo") == "plugins", r.stdout + r.stderr)
 
         subprocess.run(["bd", "create", "--id", "t-adopt", "--title", "取り込み", "--silent"], cwd=own_main, capture_output=True, text=True)
         r = run_task(own_main, "adopt", "T-ADOPT", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", "-",
@@ -580,6 +627,11 @@ def test_work_repo_name() -> None:
         r = run_task(own_main, "adopt", "T-ADOPT", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", "-",
                      stdin=task_body([("書く", "x")], ["shared.txt"], "gone"), env=env)
         check("パスが引けない名前は adopt が MISSING・終了コード6", r.returncode == 6 and r.stdout == "MISSING\t作業先 gone\n",
+              r.stdout + r.stderr)
+        r = run_task(own_main, "adopt", "T-ADOPT", "--difficulty", "sonnet", "--loopable", "Y", "--body-file", "-",
+                     stdin=task_body([("書く", "x")], ["shared.txt"], "plugins"), env=env)
+        check("名前の作業先の adopt は metadata work_repo を書く",
+              r.returncode == 0 and metadata(own_main, r.stdout.split("\t")[2].strip()).get("work_repo") == "plugins",
               r.stdout + r.stderr)
 
         task_id = made.stdout.split("\t")[1].strip()
@@ -598,6 +650,7 @@ def test_work_repo_name() -> None:
 
         r = run_task(wt1, "claim", task_id, env=env)
         check("名前の作業先のタスクを claim できる", r.returncode == 0 and r.stdout.startswith("CLAIMED\t"), r.stdout + r.stderr)
+        check("claim は work_repo を変えない", metadata(wt1, task_id).get("work_repo") == "plugins", str(metadata(wt1, task_id)))
         r = run_task(wt1, "brief", "implementer", task_id, env=env)
         check("brief implementer は名前を作業先の根に解いて出す", r.returncode == 0 and work_main in r.stdout, r.stdout + r.stderr)
         branch = task_id.lower()

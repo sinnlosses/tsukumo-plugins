@@ -81,12 +81,13 @@ def cmd_status(toplevel: str, show_all: bool, check: bool) -> None:
     open_triage = [i for i in snap.triage if i.status != "closed"]
     triage_rows = [
         [beads.to_task_id(i.bd_id), "todo", "-", "-", ",".join(beads.to_task_id(d) for d in i.dependencies) or "-",
-         "TRIAGE", i.assignee or "-", " ".join(i.title.split()) or "-"]
+         "TRIAGE", i.assignee or "-", " ".join(i.title.split()) or "-", "-"]
         for i in open_triage
     ]
     candidates = {tid for tid in snap.tasks if beads.is_candidate(snap.issues[tid])}
     _print_status_table(
-        snap.tasks, snap.invalid, snap.claims, show_all, marker_of, stale_entries, triage_rows, beads.sort_key, candidates
+        snap.tasks, snap.invalid, snap.claims, show_all, marker_of, stale_entries, triage_rows, beads.sort_key, candidates,
+        lambda tid: (beads.attribute_values(snap.issues[tid], beads.WORK_REPO_KEY) or ["-"])[0],
     )
     triage_ids = [row[0] for row in triage_rows]
     print(f"triage\t{len(triage_ids)}\t" + (",".join(triage_ids) or "-"))
@@ -171,11 +172,11 @@ def cmd_show(toplevel: str, task_id: str) -> None:
 FIND_CANDIDATES = 4
 
 
-def cmd_find(toplevel: str, words: list[str], kind: str | None) -> None:
-    """`READY` を語と種類で絞り、`FOUND`・`MANY`・`NONE` で返す（読むだけ。WORKFLOW.md「kind（種類）」）。"""
+def cmd_find(toplevel: str, words: list[str], kind: str | None, repo: str | None = None) -> None:
+    """`READY` を語・種類・作業先で絞り、`FOUND`・`MANY`・`NONE` で返す（読むだけ。WORKFLOW.md「kind（種類）」）。"""
     folded = [w for w in (_fold(w) for w in words) if w]
-    if not folded and kind is None:
-        print("usage: 語か --kind のどちらかを渡す", file=sys.stderr)
+    if not folded and kind is None and repo is None:
+        print("usage: 語・--kind・--repo のどれかを渡す", file=sys.stderr)
         raise SystemExit(2)
     snap = tw_base.beads_snapshot(toplevel)
     ready = [
@@ -183,7 +184,7 @@ def cmd_find(toplevel: str, words: list[str], kind: str | None) -> None:
         for tid in sorted(snap.tasks, key=lambda tid: (priority_rank(snap.tasks[tid]), beads.sort_key(tid)))
         if snap.tasks[tid].status == "todo" and tw_base.readiness(snap.tasks[tid], snap.tasks, snap.claims) == "READY"
     ]
-    hits = [tid for tid in ready if _find_hit(snap.tasks[tid], snap.issues[tid], folded, kind)]
+    hits = [tid for tid in ready if _find_hit(snap.tasks[tid], snap.issues[tid], folded, kind, repo)]
     if not hits:
         print(f"NONE\t{len(ready)}")
         return
@@ -202,16 +203,19 @@ def _fold(s: str) -> str:
     return unicodedata.normalize("NFKC", s).casefold().strip()
 
 
-def _find_hit(task: taskfile.Task, issue: beads.Issue, words: list[str], kind: str | None) -> bool:
+def _find_hit(task: taskfile.Task, issue: beads.Issue, words: list[str], kind: str | None, repo: str | None) -> bool:
     """語は summary と `### 名指すファイル` のどれかに含まれれば当たり（語どうしは OR）。
 
     種類を渡したら、種類の違うタスクは外す。種類の無いタスクは語だけで決め、語が無ければ当たらない。
+    作業先を渡したら、metadata `work_repo` が違うタスクは外し、語も種類も無ければ作業先だけで当たる。
     """
+    if repo is not None and beads.attribute_values(issue, beads.WORK_REPO_KEY) != [repo]:
+        return False
     own = beads.kind_of(issue)
     if kind is not None and own is not None and own != kind:
         return False
     if not words:
-        return own == kind
+        return kind is None or own == kind
     body = beads.issue_body(issue)
     paths, _ = taskfile.plan_files(body)
     targets = [_fold(task.summary), *(_fold(p) for p in paths)]
@@ -228,8 +232,11 @@ def _print_status_table(
     extra_rows: list[list[str]],
     sort_key: Callable[[str], object],
     hidden: set[str],
+    repo_of: Callable[[str], str],
 ) -> None:
     """`status` の行と `---` 以降の集計（`invalid` の行まで）。
+
+    行の末尾の列は `repo_of` が返す作業先（無ければ `-`）。
 
     `extra_rows` は階級順・番号順の行のあとに足す行（振り分け前の課題）。集計には数えない。
     `hidden`（候補）は行にも集計にも出さないが、依存の解決には `tasks` のまま数える。
@@ -251,6 +258,7 @@ def _print_status_table(
                     ready,
                     marker_of(tid),
                     t.summary,
+                    repo_of(tid),
                 ]
             )
         )

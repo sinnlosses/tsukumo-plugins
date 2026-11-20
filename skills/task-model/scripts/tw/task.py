@@ -66,7 +66,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
         "一覧（読むだけ。done/dropped は件数だけ。`--all` で行も）。",
         r"""一覧（読むだけ。done/dropped は件数だけ。`--all` で行も）。`--check` は検証コマンド向けの判定で、Beads の課題がこの運用の形（状態・`difficulty`・`loopable`・`direct:` の label・題）に読めないものがあれば `INVALID`、無ければ `OK`（本文の枠は見ない。枠は `new`・`adopt`・`edit` が書くときに検査する）。`--claims` は一覧の代わりに、この作業ツリーが着手の印を持つタスクを 1行の JSON `{"claims": [{"task", "stage", "claim"}, …]}` で出す（`tw` の「stdout は先頭語の TSV」の例外。着手なしは `{"claims": []}`、2件以上なら全部）。`task` は表示のタスクID、`stage` は最後の `claim` 以降の最後の `lap` の段（無ければ `null`）、`claim` は Beads の `started_at`（`claim` し直すと変わる、着手の同一性の鍵）。`--claims` を付けると一覧の旗（`--all`・`--check`）は読まない
 
-出力: 行 `id/status/difficulty/loopable/dependencies/着手可否/印/summary`（ドラフトは status が `draft`・着手可否が `DRAFT`。候補〔label `candidate` のドラフト〕は `--all` でも行に出さない）、`---` の後に `counts`（ドラフトの件数は `draft=` で、候補は数えない）・`ready`（ドラフトは数えない）・`todo_loopable`・`stale`・`invalid`・`triage\t<件数>\t<ID>`（振り分け前の課題。TRACKER.md の「サイクルの各段で Beads に起きること」）・`CANDIDATE\t<件数>\t<ID>`（候補。無ければ `-`）・（`jira` なら）`jira_close`・（横断の振り返りの時期なら）`retrospect_due`。`retrospect_due\t<最後の記録の日付>\t<経過日数>d` は `docs/history/retrospect.md` の見出しの日付（主ブランチの版と作業ツリーの版の遅いほう）から7日以上経ったときに出る。記録が無いあいだは台帳の `flow/` の最も古い出来事から7日以上で `retrospect_due\t-\t<経過日数>d`（`flow/` が無ければ出ない）""",
+出力: 行 `id/status/difficulty/loopable/dependencies/着手可否/印/summary/作業先`（作業先は metadata `work_repo`、無ければ `-`。summary は8列目のまま。ドラフトは status が `draft`・着手可否が `DRAFT`。候補〔label `candidate` のドラフト〕は `--all` でも行に出さない）、`---` の後に `counts`（ドラフトの件数は `draft=` で、候補は数えない）・`ready`（ドラフトは数えない）・`todo_loopable`・`stale`・`invalid`・`triage\t<件数>\t<ID>`（振り分け前の課題。TRACKER.md の「サイクルの各段で Beads に起きること」）・`CANDIDATE\t<件数>\t<ID>`（候補。無ければ `-`）・（`jira` なら）`jira_close`・（横断の振り返りの時期なら）`retrospect_due`。`retrospect_due\t<最後の記録の日付>\t<経過日数>d` は `docs/history/retrospect.md` の見出しの日付（主ブランチの版と作業ツリーの版の遅いほう）から7日以上経ったときに出る。記録が無いあいだは台帳の `flow/` の最も古い出来事から7日以上で `retrospect_due\t-\t<経過日数>d`（`flow/` が無ければ出ない）""",
     ),
     "new": (
         "採番して Beads に課題を作る（コミットしない）。",
@@ -193,8 +193,8 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
 出力: front matter 末尾の `created:`・`updated:`（Beads の日時をローカルの `YYYY-MM-DD HH:MM` で。値が無ければ `-`）つきの本文。無ければ `NOT_READY`""",
     ),
     "find": (
-        "`READY` のタスクを語と種類で絞る（読むだけ）。",
-        r"""`READY`（`status` の着手可否が `READY` の行）のタスクを、語と `--kind` で `status` の並びのまま絞る（読むだけ。WORKFLOW.md の「kind（種類）」）。語は NFKC と大文字小文字を揃えて、summary か `### 名指すファイル` のパスに含まれれば当たり、語どうしは言い換えとしてどれか1つでよい。`--kind` を付けると label `kind:` が違う種類のタスクを外し、種類の無いタスクは語だけで決める（語が無ければ当たらない）。語も `--kind` も無ければ終了コード2
+        "`READY` のタスクを語・種類・作業先で絞る（読むだけ）。",
+        r"""`READY`（`status` の着手可否が `READY` の行）のタスクを、語と `--kind` と `--repo <名前>`（metadata `work_repo` が一致するものだけ。語も `--kind` も無くてよい）で `status` の並びのまま絞る（読むだけ。WORKFLOW.md の「kind（種類）」）。語は NFKC と大文字小文字を揃えて、summary か `### 名指すファイル` のパスに含まれれば当たり、語どうしは言い換えとしてどれか1つでよい。`--kind` を付けると label `kind:` が違う種類のタスクを外し、種類の無いタスクは語だけで決める（語が無ければ当たらない）。語・`--kind`・`--repo` のどれも無ければ終了コード2
 
 出力（どれも終了コード0）: 1件なら `FOUND\t<ID>\t<loopable>\t<summary>`。2件以上なら `MANY\t<件数>` に続けて先頭4件の `CANDIDATE\t<ID>\t<loopable>\t<summary>`、5件以上ならそのあとに `MORE\t<残りの件数>`。0件なら `NONE\t<絞る前の READY の件数>`""",
     ),
@@ -413,6 +413,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_find = sub.add_parser("find")
     p_find.add_argument("words", nargs="*")
     p_find.add_argument("--kind", default=None, choices=taskfile.KIND_VALUES)
+    p_find.add_argument("--repo", default=None)
 
     p_plan_check = sub.add_parser("plan-check")
     p_plan_check.add_argument("task_id")
@@ -650,7 +651,7 @@ def _run(toplevel: str, args: argparse.Namespace) -> None:
         elif args.command == "show":
             tw_status.cmd_show(toplevel, args.task_id)
         elif args.command == "find":
-            tw_status.cmd_find(toplevel, args.words, args.kind)
+            tw_status.cmd_find(toplevel, args.words, args.kind, args.repo)
         elif args.command == "edit":
             tw_edit.cmd_edit(toplevel, args)
         elif args.command == "plan-check":
