@@ -526,6 +526,16 @@ def _name_of(cwd: str, env: dict[str, str], path: str) -> str:
     return subprocess.run([sys.executable, "-c", code], cwd=cwd, capture_output=True, text=True, env={**os.environ, **env}).stdout.strip()
 
 
+def _fix_times(cwd: str, env: dict[str, str], task_id: str) -> tuple[str, str]:
+    """`material.work_repo_fix_times` を子プロセスで引き、拾った件数と理由を返す。"""
+    scripts = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "retrospect", "scripts")
+    code = (f"import sys; sys.path.insert(0, {scripts!r}); import material; "
+            f"t, e = material.work_repo_fix_times({cwd!r}, {task_id!r}); print(len(t)); print(e)")
+    r = subprocess.run([sys.executable, "-c", code], cwd=cwd, capture_output=True, text=True, env={**os.environ, **env})
+    lines = r.stdout.splitlines()
+    return (lines[0], lines[1]) if len(lines) == 2 else (r.stdout, r.stderr)
+
+
 def test_work_repo_name() -> None:
     say("task.py new・adopt・edit・claim・brief・finish: ### 作業先 を登録簿の名前で書け、登録簿に無い名前は終了コード2、パスが引けない名前は MISSING・終了コード6")
     with tempfile.TemporaryDirectory() as tmp:
@@ -599,7 +609,16 @@ def test_work_repo_name() -> None:
         r = run_task(wt1, "finish", task_id, "--result-file", "-", "--message", "x", stdin=RESULT_FULL, env=env)
         check("名前の作業先でも、枝が未合流なら finish は WORK_NOT_LANDED",
               r.returncode == 4 and r.stdout == f"WORK_NOT_LANDED\t{task_id}\t{work_main}\t{branch}\n", r.stdout + r.stderr)
+        write(os.path.join(work_tree, "b.txt"), "x")
+        git(work_tree, "add", "b.txt")
+        git(work_tree, "commit", "-q", "-m", f"{task_id}: 直す")
+        times, unread = _fix_times(wt1, env, task_id)
+        check("material.py の作業先のコミットは名前の作業先でも件名のタスクIDを拾う", times == "1" and unread == "None",
+              f"{times} {unread}")
         write(os.path.join(xdg, "tw", "repos.toml"), "")
+        times, unread = _fix_times(wt1, env, task_id)
+        check("名前のパスが引けなければ material.py の作業先のコミットは数えずに理由を返す",
+              times == "0" and unread == "作業先 plugins のパスが引けない", f"{times} {unread}")
         r = run_task(wt1, "brief", "implementer", task_id, env=env)
         check("着手のあとで名前のパスが引けなくなれば brief は MISSING・終了コード6",
               r.returncode == 6 and "MISSING\t作業先 plugins" in r.stdout, r.stdout + r.stderr)

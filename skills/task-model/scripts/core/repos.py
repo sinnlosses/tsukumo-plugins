@@ -24,7 +24,7 @@ class RepoPathMissing(RuntimeError):
 
 @dataclass(frozen=True)
 class WorkRepo:
-    """解けた作業先。`name` は登録簿の名前（どの名前にも解けない絶対パスなら `None`）。"""
+    """解けた作業先。`name` は `### 作業先` に書いた登録簿の名前（絶対パスで書いたなら `None`）。"""
 
     name: str | None
     root: str
@@ -88,15 +88,13 @@ def resolve(toplevel: str, spec: str | None) -> WorkRepo | None:
     """`### 作業先` の名前か絶対パスを解く。`spec` が `None` なら `None`。
 
     名前は登録簿 → `repos.toml` → ホームの本体の作業ツリーの親の `<名前>` の順に引き、登録簿に無いかパスが引けなければ
-    `RepoPathMissing`。絶対パスはそのまま根にする。
+    `RepoPathMissing`。絶対パスはそのまま根にし、名前は引かない（`name`・`entry` は `None`。名前が要る呼び出し側が `name_of` で引く）。
     """
     if spec is None:
         return None
-    config = layout.read_config(toplevel)
     if spec.startswith("/"):
-        name = name_of(toplevel, spec)
-        return WorkRepo(name, spec, config.repo(name) if name is not None else None)
-    entry = config.repo(spec)
+        return WorkRepo(None, spec, None)
+    entry = layout.read_config(toplevel).repo(spec)
     path = _path_of(toplevel, spec) if entry is not None else None
     if path is None:
         raise RepoPathMissing(spec)

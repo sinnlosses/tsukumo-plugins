@@ -76,6 +76,7 @@ import layout  # noqa: E402
 import gitinfo  # noqa: E402
 import ledger  # noqa: E402
 import metrics  # noqa: E402
+import repos  # noqa: E402
 import taskfile  # noqa: E402
 import transcript  # noqa: E402
 
@@ -480,9 +481,15 @@ def work_repo_fix_times(root: str, task_id: str) -> tuple[list[datetime], str | 
     body = beads.compose_body(
         str(raw.get("description") or ""), str(raw.get("acceptance_criteria") or ""), str(raw.get("notes") or ""), None
     )
-    repo, err = taskfile.plan_work_repo(body)
-    if repo is None:
+    spec, err = taskfile.plan_work_repo(body)
+    if spec is None:
         return [], err
+    try:
+        repo = repos.work_repo_root(root, body) or spec
+    except repos.RepoPathMissing as e:
+        return [], f"作業先 {e.name} のパスが引けない"
+    except layout.ConfigError as e:
+        return [], f"作業先 {spec} が解けない: {e}"
     try:
         refs = [gitinfo.base_branch(repo)]
     except (gitinfo.NoBaseBranch, gitinfo.GitCommandError, OSError) as e:
