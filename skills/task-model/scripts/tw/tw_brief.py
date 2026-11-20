@@ -215,7 +215,7 @@ def unlanded_work_branch(toplevel: str, shown: str, plan_body: str) -> tuple[str
     """別のリポジトリの作業先に枝（タスクIDの小文字）があり、まだ合流していなければ `(作業先, 枝)`。
 
     合流したかは、登録簿の件の `land` が `branch`・`pr` なら枝の先端がタスクの metadata `work_landed` の SHA と同じか、
-    それ以外（`ff`・絶対パスの作業先・件が無い）なら主ブランチに入っているか。
+    それ以外（`ff`・件が無い）なら（絶対パスの作業先は `name_of` で登録簿の名前に解いてから件を引く。解けなければ件が無い扱い）主ブランチに入っているか。
     作業先が無い・同じリポジトリ・枝が無い・合流済み・読めないときは `None`。
     """
     try:
@@ -232,9 +232,13 @@ def unlanded_work_branch(toplevel: str, shown: str, plan_body: str) -> tuple[str
         tip = found.stdout.decode().strip()
         spec, _ = taskfile.plan_work_repo(plan_body)
         work = repos.resolve(toplevel, spec)
-    except gitinfo.GitCommandError:
+        entry = work.entry if work is not None else None
+        if work is not None and entry is None:
+            name = repos.name_of(toplevel, work.root)
+            entry = layout.read_config(toplevel).repo(name) if name is not None else None
+    except (gitinfo.GitCommandError, layout.ConfigError, OSError):
         return None
-    if work is not None and work.entry is not None and work.entry.land in ("branch", "pr"):
+    if entry is not None and entry.land in ("branch", "pr"):
         issue = beads.show(toplevel, beads.to_bd_id(shown))
         marked = beads.attribute_values(issue, beads.WORK_LANDED_KEY) if issue is not None else []
         parsed = repos.parse_work_landed(marked[0]) if marked else None

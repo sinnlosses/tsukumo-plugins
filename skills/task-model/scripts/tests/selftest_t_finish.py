@@ -342,8 +342,9 @@ def test_finish_stops_on_unlanded_work_branch() -> None:
         check("作業先に枝が無ければ通る", "WORK_NOT_LANDED" not in r.stdout and "DONE\t" in r.stdout, r.stdout + r.stderr)
 
 
-def _named_claimed(tmp: str, land: str) -> tuple[str, str, str, dict[str, str]]:
-    """着手側の作業ツリー・作業先の本体・作業先の作業ツリー・env。`### 作業先` は登録簿の名前 plugins（`land` は引数）。"""
+def _named_claimed(tmp: str, land: str, absolute: bool = False) -> tuple[str, str, str, dict[str, str]]:
+    """着手側の作業ツリー・作業先の本体・作業先の作業ツリー・env。`### 作業先` は登録簿の名前 plugins（`land` は引数）。
+    `absolute` なら絶対パスで書く（登録簿の名前に解ける）。"""
     registry = f'\n[repos.plugins]\nland = "{land}"\n'
     _own_main, wt1, _ = make_repo(os.path.join(tmp, "own"), branch="切らない", verify="`true`", extra=registry)
     work_main, _, _ = make_repo(os.path.join(tmp, "work"), verify="`true`")
@@ -352,8 +353,8 @@ def _named_claimed(tmp: str, land: str) -> tuple[str, str, str, dict[str, str]]:
         shutil.copytree(os.environ["XDG_CONFIG_HOME"], xdg)
     write(os.path.join(xdg, "tw", "repos.toml"), f'plugins = "{work_main}"\n')
     env = {"XDG_CONFIG_HOME": xdg}
-    commit_task(_own_main, taskfile.Task("T-100", "作業先で直す", "todo", "sonnet", "Y", (), task_body((("書く", "x"),), ["a.txt"], "plugins")))
-    claimed = run_task(wt1, "claim", "T-100", env=env)
+    commit_task(_own_main, taskfile.Task("T-100", "作業先で直す", "todo", "sonnet", "Y", (), task_body((("書く", "x"),), ["a.txt"], work_main if absolute else "plugins")))
+    claimed =run_task(wt1, "claim", "T-100", env=env)
     if claimed.returncode != 0:
         raise RuntimeError(claimed.stdout + claimed.stderr)
     work_tree = claimed_work_tree(work_main, "t-100")
@@ -398,9 +399,25 @@ def test_finish_work_landed_sha() -> None:
         check("land=ff: ff で合流したあとは通る", "WORK_NOT_LANDED" not in r.stdout and "DONE\t" in r.stdout, r.stdout + r.stderr)
 
 
+def test_finish_work_landed_absolute_path() -> None:
+    say("task.py finish: `### 作業先` を絶対パスで書いても、登録簿の名前に解けて land が branch・pr なら名前で書いたときと同じに通る")
+    for land in ("branch", "pr"):
+        with tempfile.TemporaryDirectory() as tmp:
+            wt1, work_main, work_tree, env = _named_claimed(tmp, land, absolute=True)
+            r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT, env=env)
+            check(f"land={land}（絶対パス）: tw land を打っていなければ WORK_NOT_LANDED",
+                  r.returncode == 4 and r.stdout == f"WORK_NOT_LANDED\tT-100\t{work_main}\tt-100\n", r.stdout + r.stderr)
+            landed = run_task(work_tree, "land", "t-100", env=env)
+            check(f"land={land}（絶対パス）: tw land は KEPT で終わる", landed.stdout.startswith("KEPT\t"), landed.stdout + landed.stderr)
+            r = run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT, env=env)
+            check(f"land={land}（絶対パス）: tw land のあとは通る", "WORK_NOT_LANDED" not in r.stdout and "DONE\t" in r.stdout,
+                  r.stdout + r.stderr)
+
+
 TESTS = (
     test_finish_stops_on_unlanded_work_branch,
     test_finish_work_landed_sha,
+    test_finish_work_landed_absolute_path,
     test_finish_closes_open_accept,
     test_finish_without_add_commits_changes,
     test_finish_resume_after_commits_since_claim,
