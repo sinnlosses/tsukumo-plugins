@@ -319,11 +319,15 @@ front matter（`id`・`summary`・`status`・`difficulty`・`loopable`・近道�
 **difficulty → 委譲先モデルの対応表**（ラインナップが変わったら**この表だけ**を直す。3段の語彙・
 Beads の label・各スキルの本文は触らない）:
 
-| difficulty | Agent ツールに渡す `model` | いまその名前が指すモデル |
-| --- | --- | --- |
-| `haiku` | `haiku` | Claude Haiku 4.5（`claude-haiku-4-5`） |
-| `sonnet` | `sonnet` | Claude Sonnet 5（`claude-sonnet-5`） |
-| `opus` | `opus` | Claude Opus 5（`claude-opus-5`） |
+| difficulty | Agent ツールに渡す `model` | 実装・直しに渡す `effort` | いまその名前が指すモデル |
+| --- | --- | --- | --- |
+| `haiku` | `haiku` | `low` | Claude Haiku 5.5（`claude-haiku-5-5`） |
+| `sonnet` | `sonnet` | 渡さない（既定） | Claude Sonnet 5.5（`claude-sonnet-5-5`） |
+| `opus` | `opus` | 渡さない（既定） | Claude Opus 5.5（`claude-opus-5-5`） |
+
+実装・直し以外の effort も同じ表で決める。振り返りの役は `medium`
+（`low` まで下げると兆候を見落とす）、受け入れ役は下げない（指定しない）。ワークフロースクリプトの
+`agent()` は `effort`（`low`／`medium`／`high`／`xhigh`／`max`）を受ける。
 
 渡すのは**世代を含まない短い名前**（`haiku`／`sonnet`／`opus`）で、世代が上がっても指す先が
 入れ替わるだけなので、ふだんは右端の列だけが古くなる。`fable` のように3段に割り当てていない

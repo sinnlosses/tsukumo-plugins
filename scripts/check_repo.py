@@ -835,6 +835,28 @@ def check_workflow_phase_titles() -> None:
         fail(f"workflows/task-flow.js: 段の題を直書きしている（args.phaseIds から作る）: {line}")
 
 
+def check_workflow_effort() -> None:
+    """task-flow.js の effort が WORKFLOW.md の対応表と合っているか（haiku は low、sonnet・opus は渡さない、振り返りは medium、受け入れ役は渡さない）。"""
+    path = os.path.join(ROOT, "workflows", "task-flow.js")
+    if not os.path.exists(path):
+        return
+    text = read(path)
+    m = re.search(r"const EFFORT_BY_MODEL = \{([^}]*)\}", text)
+    table = dict(re.findall(r"(\w+):\s*\"(\w+)\"", m.group(1))) if m else None
+    if table != {"haiku": "low"}:
+        fail(f"workflows/task-flow.js: EFFORT_BY_MODEL が対応表（haiku だけ low）と違う: {table}")
+    for label, want in (("implement", True), ("fix-${round}", True)):
+        line = next((ln for ln in text.splitlines() if f"label: `{label}`" in ln or f'label: "{label}"' in ln), "")
+        if want and "...effortOpt" not in line:
+            fail(f"workflows/task-flow.js: {label} の agent() に effortOpt を渡していない")
+    retro = next((ln for ln in text.splitlines() if 'label: "retrospect"' in ln), "")
+    if 'effort: "medium"' not in retro:
+        fail('workflows/task-flow.js: 振り返りの agent() に effort: "medium" を渡していない')
+    accept = [ln for ln in text.splitlines() if "acceptor" in ln and "agentType" in ln]
+    if any("effort" in ln for ln in accept):
+        fail("workflows/task-flow.js: 受け入れ役の agent() に effort を渡さない")
+
+
 def main() -> None:
     names = skill_names()
     check_frontmatter(names)
@@ -845,6 +867,7 @@ def main() -> None:
     check_tw_entry(names)
     check_plugin()
     check_marketplace()
+    check_workflow_effort()
     check_cross_references(names)
     check_requires(names)
     check_sibling_references(names)
