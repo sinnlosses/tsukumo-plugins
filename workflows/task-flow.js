@@ -97,7 +97,7 @@ const startAt = ALL_STEPS.includes(args.from) ? ALL_STEPS.indexOf(args.from) : 0
 const runs = (step) => steps.includes(step) && ALL_STEPS.indexOf(step) >= startAt
 const modelOpt = typeof args.model === "string" ? { model: args.model } : {}
 // 実装・直しの effort。skills/task-model/WORKFLOW.md の対応表の effort の列と同じ（載せていない model は既定のまま）
-const EFFORT_BY_MODEL = { haiku: "low" }
+const EFFORT_BY_MODEL = { haiku: "medium" }
 const effortOpt = Object.hasOwn(EFFORT_BY_MODEL, args.model) ? { effort: EFFORT_BY_MODEL[args.model] } : {}
 
 const STOP_GATE =
@@ -286,7 +286,7 @@ if (runs("retrospect")) {
       (retrospectNumber === null
         ? ""
         : `返す前に phase_result を { phase: ${retrospectNumber}, count: ${phaseCount}, outcome: "finished", summary: <line と同じ要点を1〜2文> } で1回呼ぶ。`),
-    { agentType: "tsukumo-workflow:retrospector", schema: RETRO, model: "haiku", effort: "medium", label: "retrospect", phase: retrospectTitle },
+    { agentType: "tsukumo-workflow:retrospector", schema: RETRO, model: "sonnet", effort: "medium", label: "retrospect", phase: retrospectTitle },
   )
   if (retro === null) {
     return { stopped: true, phase: "retrospect", reason: "振り返りの agent が null を返した" }

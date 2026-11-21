@@ -321,11 +321,11 @@ Beads の label・各スキルの本文は触らない）:
 
 | difficulty | Agent ツールに渡す `model` | 実装・直しに渡す `effort` | いまその名前が指すモデル |
 | --- | --- | --- | --- |
-| `haiku` | `haiku` | `low` | Claude Haiku 5.5（`claude-haiku-5-5`） |
+| `haiku` | `haiku` | `medium` | Claude Haiku 5.5（`claude-haiku-5-5`） |
 | `sonnet` | `sonnet` | 渡さない（既定） | Claude Sonnet 5.5（`claude-sonnet-5-5`） |
 | `opus` | `opus` | 渡さない（既定） | Claude Opus 5.5（`claude-opus-5-5`） |
 
-実装・直し以外の effort も同じ表で決める。振り返りの役は `medium`
+実装・直し以外の effort も同じ表で決める。振り返りの役は `sonnet` の `medium`
 （`low` まで下げると兆候を見落とす）、受け入れ役は下げない（指定しない）。ワークフロースクリプトの
 `agent()` は `effort`（`low`／`medium`／`high`／`xhigh`／`max`）を受ける。
 
