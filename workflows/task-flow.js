@@ -127,7 +127,6 @@ const startAt = steps.includes(args.from) ? steps.indexOf(args.from) : 0
 const runs = (step) => steps.includes(step) && steps.indexOf(step) >= startAt
 const acceptAt = steps.indexOf("accept")
 const modelOpt = typeof args.model === "string" ? { model: args.model } : {}
-// 実装の前の控えの回（完了条件の行ごとの確かめ方）を走らせる model。ほかの model と model の省略では走らせない
 const CONTRACT_MODELS = ["opus"]
 // 実装・直しの effort。skills/task-model/WORKFLOW.md の対応表の effort の列と同じ（載せていない model は既定のまま）
 const EFFORT_BY_MODEL = { haiku: "medium" }
