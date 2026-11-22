@@ -16,11 +16,14 @@ def step_candidates(toplevel: str | None) -> list[layout.StepCandidate]:
     return layout.step_candidates(toplevel, os.path.expanduser("~"), layout.own_plugin_root())
 
 
-def script_steps(toplevel: str | None, config: layout.Config) -> list[str]:
-    """設定の `steps`（無ければ既定の並び）を、ワークフロースクリプトの段の名前と独自の段の値にしたもの。"""
+def script_steps(
+    toplevel: str | None, config: layout.Config, candidates: list[layout.StepCandidate] | None = None
+) -> list[str]:
+    """設定の `steps`（無ければ既定の並び）を、ワークフロースクリプトの段の名前と独自の段の値にしたもの。`candidates` を省くと走査する。"""
     if config.steps is None:
         return layout.default_steps()
-    return layout.script_steps(config.steps, [c.value for c in step_candidates(toplevel)])
+    found = step_candidates(toplevel) if candidates is None else candidates
+    return layout.script_steps(config.steps, [c.value for c in found])
 
 
 def _toplevel_or_none() -> str | None:
