@@ -85,7 +85,7 @@ def main() -> int:
           mentions("`task-workflow.last-id`・`/task-workflow/<ID>`・`docs/history/retrospect.md`・`retrospect_due`・lap の段 retro",
                    skills, agents) == [])
     check("スキル名とエージェント名を拾う",
-          mentions("`/next-task` から `no-delegate` に委譲し `/retro` を呼ぶ", skills, agents) == ["next-task", "no-delegate", "retro"])
+          mentions("`/next-task` から `implementer` に委譲し `/retro` を呼ぶ", skills, agents) == ["next-task", "implementer", "retro"])
     check("`brief` の役の語は拾わない",
           mentions("`tw brief acceptor T-xxx`・`brief implementer`", skills, agents) == [])
     check("裸の `acceptor` は拾う",
