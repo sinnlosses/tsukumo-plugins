@@ -39,7 +39,6 @@ def cmd_claim(toplevel: str, task_id: str) -> None:
     branch_setting, base = _claim_preflight(toplevel)
 
     trk = tracker.session(toplevel)
-    pulled = trk.before([bd_id])
     issue = beads.show(toplevel, bd_id)
     if issue is None:
         print(f"NOT_READY\t{shown}\t存在しない")
@@ -107,18 +106,16 @@ def cmd_claim(toplevel: str, task_id: str) -> None:
     _claim_branch_out(
         toplevel, shown, branch_setting, base, branch_after_sync, f"beads:{bd_id}",
     )
-    tw_base.print_lines(pulled + trk.after([bd_id]))
+    tw_base.print_lines(trk.after([bd_id]))
 
 
 def cmd_release(toplevel: str, task_id: str, force: bool) -> None:
     bd_id = tw_base.bd_task_id(task_id)
     shown = beads.to_task_id(bd_id)
     trk = tracker.session(toplevel)
-    pulled = trk.before([bd_id])
     issue = beads.show(toplevel, bd_id)
     if issue is None or issue.status != "in_progress":
         print(f"NOT_CLAIMED\t{shown}")
-        tw_base.print_lines(pulled)
         return
     actor = tw_base.actor(toplevel)
     if not force and issue.assignee != actor:
@@ -141,7 +138,7 @@ def cmd_release(toplevel: str, task_id: str, force: bool) -> None:
         print(f"LEFTOVER\t{shown}\t{len(leftover)}")
     stuck = {"stuck": True} if _stuck_release(toplevel, bd_id, issue) else {}
     tw_base.record(toplevel, "release", shown, issue, **stuck)
-    tw_base.print_lines(pulled + trk.after([bd_id]))
+    tw_base.print_lines(trk.after([bd_id]))
 
 
 def _stuck_count(toplevel: str, shown: str) -> int:
@@ -205,24 +202,20 @@ def cmd_done(
         print("usage: --result-file の中身が空", file=sys.stderr)
         raise SystemExit(2)
     trk = tracker.session(toplevel)
-    pulled = trk.before([bd_id])
     issue = beads.show(toplevel, bd_id)
     if issue is not None and beads.is_draft(issue):
         if not dropped:
             print(f"NOT_READY\t{shown}\tDRAFT")
-            tw_base.print_lines(pulled)
             raise SystemExit(4)
         _close_draft(toplevel, shown, issue, result)
-        tw_base.print_lines(pulled + trk.after([bd_id]))
+        tw_base.print_lines(trk.after([bd_id]))
         return
     if issue is None or issue.status != "in_progress" or issue.assignee != actor:
         print(f"NOT_OWNER\t{shown}")
-        tw_base.print_lines(pulled)
         raise SystemExit(4)
     marked = beads.ship_mark(issue)
     if marked is not None:
         print(f"ALREADY_DONE\t{shown}\t{marked}")
-        tw_base.print_lines(pulled)
         raise SystemExit(4)
     if not dropped:
         result = _checked_result(toplevel, shown, issue, result)
@@ -245,7 +238,7 @@ def cmd_done(
     metadata = issue.raw.get("metadata")
     head = metadata.get(beads.CLAIM_HEAD_KEY) if isinstance(metadata, dict) else None
     _print_commits_since_claim(toplevel, shown, head)
-    tw_base.print_lines(pulled + trk.after([bd_id]))
+    tw_base.print_lines(trk.after([bd_id]))
 
 
 def _checked_result(toplevel: str, shown: str, issue: beads.Issue, result: str) -> str:

@@ -4,8 +4,9 @@
 トラッカーは写しを持つだけなので、ここの失敗はタスクの操作を止めない（呼ぶ側は
 `TRACKER\\tFAILED\\t…` の行を足して先へ進み、`task sync` で打ち直す）。
 
-- `github`: Beads の `issue_prefix` が `gh` なら双方向（取り込みは `bd` の増分に頼らず、番号を選んで
-  `bd github pull <番号>…`）、`t` なら Beads から送るだけ。書くのは `new` と、`ship`・`sync` の全件の送りだけ。そのあと Project の Status 欄を `gh api graphql` で書く（`bd` は Status 欄を触らない）。
+- `github`: Beads から送るだけで、GitHub 側の変更は取り込まない。Beads の `issue_prefix` が `gh` なら ID を
+  Issue 番号で振り（`gh-<番号>`）、`sync`・`ship` は前回の送りより後に変えた課題だけを送る。`t` なら全件を送る。
+  書くのは `new` と、`ship`・`sync` の送りだけ。そのあと Project の Status 欄を `gh api graphql` で書く（`bd` は Status 欄を触らない）。
   `bd` へ渡す token は `GITHUB_TOKEN` が無ければ `gh auth token` から取る
 - `jira`: `bd jira sync --pull` だけ。Jira には書かない（`--push` と引数なしの `sync` は打たない）。取り込んだ
   振り分け前の課題は `external_ref` の Jira のキーの ID（`proj-123`）へ付け替える
@@ -14,7 +15,7 @@
 GraphQL の枠（1時間に5000点、アカウント単位）は要求の上限で数えられる。`gh project item-list` は
 入れ子の上限で1回約101点かかったので使わない。Project・Status 欄・選択肢の ID と、Issue ごとの
 項目 ID・最後に書いた Status は `bd kv` に控え、Status が変わらない課題には触らない。
-Issue の読み書き（`bd github push`・`pull` と、取り込む番号を選ぶ一覧）は REST で、GraphQL の枠を食わない。
+Issue の読み書き（`bd github push` と、二重に立てないための一覧）は REST で、GraphQL の枠を食わない。
 """
 
 from __future__ import annotations
@@ -24,7 +25,6 @@ import re
 import subprocess
 import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -33,7 +33,6 @@ import layout
 import tracker_github as gh
 from tracker_github import (
     BULK_LOOKUP_THRESHOLD,
-    GH_ID,
     LEGACY_ITEMS_KEY,
     STATUS_OPTIONS,
     _bd,
@@ -48,7 +47,6 @@ from tracker_github import (
 from tracker_claims import (
     PUSHED_KEY_PREFIX,
     SYNCED_ITEM_PREFIX,
-    _claim_restore_args,
     _claim_started,
     _pushed_of,
     _restore_from_snapshots,
@@ -57,19 +55,12 @@ from tracker_claims import (
 
 JIRA_REF = re.compile(rf"^(?:\S*/browse/)?({layout.JIRA_ID_FRAGMENT})$")
 
-# 1件の操作（before・after・register）の始めから数えた反映の上限（秒）。
+# 1件の操作の始めから数えた反映の上限（秒）。
 OP_TIMEOUT = 25.0
 SHOW_LIMIT = 3
 OP_TIMEOUT_ENV = "TASK_WORKFLOW_TRACKER_TIMEOUT"
 
-SEEN_KEY = "task-workflow.github-seen"  # GitHub の一覧で見た最後の更新時刻
-# `bd github pull` の actor は `<作業ツリーの名前>` にこれと `:<pid>-<time_ns>` を足したもの（その取り込みが書いた
-# 更新だけを監査の出来事で見分ける）。
-PULL_ACTOR_SUFFIX = ":github-pull"
-
-# 取り込む範囲を、前回見た更新時刻よりこれだけさかのぼる（立てた直後の Issue は一覧にすぐ出ない）。
-SEEN_MARGIN = timedelta(hours=1)
-# 課題ごとの同期の時刻と GitHub の更新時刻を比べるときの許し（時計のずれと、送った直後の更新）。
+# 課題の作成時刻と GitHub の Issue の作成・更新時刻を比べるときの許し（時計のずれ）。
 SYNC_SLACK = timedelta(seconds=10)
 
 
@@ -95,9 +86,9 @@ def session(toplevel: str) -> "Session":
 def restore_claims(toplevel: str, bd_ids: list[str], actor: str) -> list[str]:
     """着手の印の控え（`beads.write_claim_snapshot`）から、取り込みが消したまま残った着手の印を Beads へ戻し、出力の行を返す。
 
-    取り込みの無い（双方向でない）ときは何もしない。GitHub には触らない（戻した課題は次の送りで送られる）。
+    ID を Issue 番号で振らない（`numbered_by_github` が偽の）ときは何もしない。GitHub には触らない（戻した課題は次の送りで送られる）。
     """
-    if not session(toplevel).bidirectional:
+    if not session(toplevel).numbered_by_github:
         return []
     return _restore_from_snapshots(toplevel, beads.read_kv(toplevel), lambda _wanted: beads.list_issues(toplevel), bd_ids, actor)[0]
 
@@ -129,8 +120,8 @@ class Session:
             self.progress(message)
 
     @property
-    def bidirectional(self) -> bool:
-        """GitHub から取り込むか（`issue_prefix` が `gh`）。`t` のあいだは送るだけ。"""
+    def numbered_by_github(self) -> bool:
+        """ID を Issue 番号で振るか（`issue_prefix` が `gh`）。真なら送りは前回の送りより後に変えた課題だけ、`t` なら全件。"""
         if self.tracker.kind != "github":
             return False
         if self._prefix is None:
@@ -143,40 +134,6 @@ class Session:
         return self._config
 
     # --- 1件の操作 -------------------------------------------------------------
-
-    def before(self, bd_ids: list[str]) -> list[str]:
-        """操作の前に、触る課題を GitHub から取り込む（双方向のときだけ）。
-
-        Beads が `in_progress` で担当者のある課題（着手中で未送り）は取り込まない。
-        担当者が空の `in_progress` は止めた取り込みが印を消した版なので、取り込んで戻す。
-        送った着手の印が残っていて、いまの Beads が `in_progress` でなく、前の送りより後に Beads で変えた課題
-        （`release`・`hold` で外した直後で未送り）は、GitHub の古い `in_progress` に戻されないよう取り込まない
-        （次の `sync` が外した版を送る）。送ったあとは時刻が進むので、これまでどおり取り込む。
-        """
-        self._begin(time.monotonic() + _op_timeout())
-        matched = [(i, m) for i, m in ((i, GH_ID.match(i)) for i in bd_ids) if m]
-        if not self.bidirectional or not matched:
-            return []
-        numbers = []
-        pushed: dict[int, str] | None = None
-        for bd_id, m in matched:
-            issue = beads.show(self.toplevel, bd_id)
-            if issue is not None and issue.status == "in_progress" and issue.assignee:
-                continue
-            if issue is not None and issue.status != "in_progress":
-                pushed = self._load_pushed() if pushed is None else pushed
-                if pushed.get(int(m.group(1))) and _after(issue.raw.get("updated_at"), self._synced_at(issue)):
-                    continue
-            numbers.append(int(m.group(1)))
-        if not numbers:
-            return []
-        try:
-            remote = {n: gh.rest_issue(self.toplevel, self._repository(), n, self._remaining) for n in numbers}
-            lines = self._pull(self._without_echo(remote, list(self._by_numbers(sorted(remote)).values())))
-            self._save()
-        except _Failed as e:
-            return [f"TRACKER\tFAILED\tgithub\t{e}"]
-        return lines
 
     def after(self, bd_ids: list[str]) -> list[str]:
         """操作のあと。jira は取り込むだけで、github・なしは何も書かない（送りは `push_created` と `sync_all`）。"""
@@ -202,7 +159,7 @@ class Session:
         return [f"TRACKER\tOK\tgithub\tpushed={len(ids)}\tstatus_changed={changed}"]
 
     def register(self, provisional: str) -> tuple[str, list[str]]:
-        """`task new`（双方向のとき）: 仮の ID の課題で Issue を立て、`gh-<Issue 番号>` へ付け替える。
+        """`task new`（`numbered_by_github` のとき）: 仮の ID の課題で Issue を立て、`gh-<Issue 番号>` へ付け替える。
 
         落ちたら仮の ID のまま返す（`task sync` が送り直して付け替える）。
         """
@@ -213,8 +170,8 @@ class Session:
             final = renamed.get(provisional)
             if final is None:
                 return provisional, lines + [f"TRACKER\tFAILED\tgithub\t{provisional} に Issue の番号が付かなかった"]
-            # 付け替えは Beads の更新なので、送り直して `bd` の前回の同期の時刻を進める（進めないと、次の
-            # 取り込みがこの課題を「Beads で変えたもの」として飛ばし、GitHub での変更を送り返して消す）。
+            # 付け替えは Beads の更新なので、送り直して課題ごとの送った時刻を進める（進めないと、次の
+            # `sync` がこの課題を「前回の送りより後に変えたもの」として送り直す）。
             self._push([final])
             self._mark_synced([final])
             issue = self._issue(final)
@@ -225,7 +182,7 @@ class Session:
         return final, lines + [f"TRACKER\tOK\tgithub\tpushed=1\tstatus_changed={changed}"]
 
     def register_many(self, provisionals: list[str]) -> tuple[dict[str, str], list[str]]:
-        """`task new --batch`（双方向のとき）: 仮の ID の課題をまとめて送り、`gh-<Issue 番号>` へ付け替える。`{仮: 最終}` と行を返す。
+        """`task new --batch`（`numbered_by_github` のとき）: 仮の ID の課題をまとめて送り、`gh-<Issue 番号>` へ付け替える。`{仮: 最終}` と行を返す。
 
         `register` を1件ずつ打つのと同じ結果を、送り・付け替え・Status 欄の書き込みを各1回にして得る。
         付け替えられなかった課題は `{仮: 仮}` のまま返し（`task sync` が送り直す）、行に `FAILED` を足す。
@@ -253,7 +210,7 @@ class Session:
     # --- 全件 ------------------------------------------------------------------
 
     def sync_all(self, pull: bool) -> list[str]:
-        """全件を送る（`ship`）。`pull` なら先に GitHub で変わった課題を取り込む（`task sync`）。"""
+        """送って Project の Status 欄を揃える（`ship`・`task sync`）。jira は `pull` のときだけ取り込む。"""
         if self.tracker.kind == "jira":
             return _jira_pull(self.toplevel) if pull else []
         if self.tracker.kind != "github":
@@ -261,38 +218,17 @@ class Session:
         self._begin(None)
         lines: list[str] = []
         try:
-            started = _now()
-            newest = None
-            # 取り込みは送った時刻を進める（Beads が勝って飛ばした課題も）ので、送る課題は取り込みの前に選ぶ。
             pushed_count = "all"
-            if not self.bidirectional:
+            if not self.numbered_by_github:
                 self._say("GitHub へ全件を送る（bd github sync --push-only）")
                 self._bd_ok(["github", "sync", "--push-only"], "bd github sync --push-only")
             else:
-                # GitHub の一覧と Beads の読みは互いに頼らないので、一覧を先に走らせて待ちを重ねる。
-                # 走らせる前に `bd` を打つ読み（前回見た時刻・リポジトリ名）を済ませる（スレッドでは `gh` だけを打つ）。
-                fetch = None
-                with ThreadPoolExecutor(max_workers=1) as pool:
-                    if pull:
-                        query = self._changed_query()
-                        self._repository()
-                        self._say(f"GitHub の更新を取得中（{query.partition('since=')[2] or '開いている全件'} 以降）")
-                        fetch = pool.submit(self._rest_issues, query)
-                    self._say("Beads の課題を読み込み中")
-                    self._adopt_existing([i.bd_id for i in self._issues() if beads.is_provisional(i.bd_id)])
-                    listed = self._issues()
-                    stale = {i.bd_id for i in listed if _after(i.raw.get("updated_at"), self._synced_at(i))}
-                    self._say(f"Beads: {len(listed)} 件を読んだ（前回の送りより後に変えたもの {len(stale)} 件）")
-                    if fetch is not None:
-                        remote = fetch.result()
-                        newest = _newest_update(remote)
-                        self._say(f"GitHub: {len(remote)} 件が更新されていた")
-                if fetch is not None:
-                    incoming = self._without_echo(remote, listed)
-                    if incoming:
-                        self._say(f"Beads へ取り込む: {len(incoming)} 件（#{', #'.join(str(n) for n in sorted(incoming))}）")
-                    lines += self._pull(incoming)
-                # 取り込まなかった課題も控えから戻す（取り込みが読んだ kv を使い回す）。戻した課題は下で送る。
+                self._say("Beads の課題を読み込み中")
+                self._adopt_existing([i.bd_id for i in self._issues() if beads.is_provisional(i.bd_id)])
+                listed = self._issues()
+                stale = {i.bd_id for i in listed if _after(i.raw.get("updated_at"), self._synced_at(i))}
+                self._say(f"Beads: {len(listed)} 件を読んだ（前回の送りより後に変えたもの {len(stale)} 件）")
+                # 控えから戻した課題は下で送る。
                 restore_lines, restored = self._restore_from_snapshots(None)
                 lines += restore_lines
                 stale |= set(restored)
@@ -325,109 +261,12 @@ class Session:
                     self._mark_synced(unsent)
             self._say("Project の Status 欄を揃える")
             changed = self._bridge(self._issues())
-            if pull and self.bidirectional:
-                beads.run_ok(self.toplevel, ["kv", "set", SEEN_KEY, _format_time(newest or started)])
             self._save()
         except _Failed as e:
             return lines + [f"TRACKER\tFAILED\tgithub\t{e}"]
         return lines + [f"TRACKER\tOK\tgithub\tpushed={pushed_count}\tstatus_changed={changed}"]
 
-    # --- 取り込み ----------------------------------------------------------------
-
-    def _without_echo(self, remote: dict[int, dict], issues: list[beads.Issue]) -> dict[int, dict]:
-        """自分の送りで `updated_at` が進んだだけの Issue（送った時刻 + `SYNC_SLACK` 以前の更新）を落とす。
-
-        控えの無い課題・Beads に無い Issue・更新時刻を読めない Issue は落とさない。
-        """
-        local = _by_number(issues)
-        kept: dict[int, dict] = {}
-        for n, item in remote.items():
-            issue = local.get(n)
-            since = self._synced_at(issue) if issue is not None else None
-            updated = item.get("updated_at")
-            if since is None or beads.parse_time(updated) is None or _after(updated, since + SYNC_SLACK):
-                kept[n] = item
-        return kept
-
-    def _pull(self, remote: dict[int, dict]) -> list[str]:
-        """番号を選んで取り込み、着手の印を戻し、GitHub で閉じた・開き直した課題を片付ける。
-
-        `bd github pull` は前回の同期より後に Beads で変えた課題を飛ばす（両側で変えたら Beads が勝つ）が、
-        飛ばしたかを教えないので、課題ごとの同期の時刻より後に両側で更新されたものを `CONFLICT` にする。
-        取り込みのあとは必ず送る（`bd` の前回の同期の時刻は取り込みでも進むので、送らずにもう一度
-        取り込むと GitHub の版が勝つ）。着手の印を戻せなかった課題は `TRACKER\\tFAILED` の行にして、
-        ほかの行と送りは続ける。
-        """
-        if not remote:
-            return []
-        old = self._by_numbers(sorted(remote))
-        lines = []
-        for n in sorted(remote):
-            local = old.get(n)
-            since = self._synced_at(local) if local is not None else None
-            if (
-                since is not None
-                and _after(local.raw.get("updated_at"), since)
-                and _after(remote[n].get("updated_at"), since + SYNC_SLACK)
-            ):
-                lines.append(f"TRACKER\tCONFLICT\t{beads.to_task_id(local.bd_id)}")
-        pull_actor = f"{self._actor}{PULL_ACTOR_SUFFIX}:{os.getpid()}-{time.time_ns()}"
-        self._bd_ok(["--actor", pull_actor, "github", "pull", *(str(n) for n in sorted(remote))], "bd github pull")
-        new = self._by_numbers(sorted(remote))
-        twins = [
-            (new[n].bd_id, twin.bd_id)
-            for n in sorted(remote)
-            if n in new and n not in old and (twin := _duplicate_of(new[n], self._issues())) is not None
-        ]
-        # 別の作業ツリーの送りも見るので、この Session の控えではなく今の値を読む。
-        pushed = self._load_pushed(fresh=True)
-        legacy = self._load_synced()
-        fixed: list[str] = []
-        for n in sorted(remote):
-            issue, was = new.get(n), old.get(n)
-            if issue is None:
-                continue
-            try:
-                overwritten = beads.overwritten_by(self.toplevel, issue.bd_id, pull_actor)
-            except beads.BeadsError as e:
-                lines.append(f"TRACKER\tFAILED\tgithub\t{beads.to_task_id(issue.bd_id)} の着手の印を戻せない: {e}")
-                overwritten = None
-            restore = [] if overwritten is None else _claim_restore_args(
-                overwritten, issue, pushed.get(n), beads.parse_time(legacy.get(str(n)))
-            )
-            if restore:
-                r = self._write(["update", issue.bd_id, *restore])
-                if r.returncode == 0:
-                    fixed.append(issue.bd_id)
-                else:
-                    lines.append(f"TRACKER\tFAILED\tgithub\t{beads.to_task_id(issue.bd_id)} の着手の印を戻せない: {_tail(r)}")
-            was_closed = was is not None and was.status == "closed"
-            if issue.status == "closed" and not was_closed and beads.ship_mark(issue) is None:
-                if beads.CANCELLED_LABEL not in issue.labels:
-                    self._write(["update", issue.bd_id, "--add-label", beads.CANCELLED_LABEL], check=True)
-                    fixed.append(issue.bd_id)
-                lines.append(f"TRACKER\tCLOSED\t{beads.to_task_id(issue.bd_id)}")
-            elif was_closed and issue.status != "closed":
-                marks = [l for l in issue.labels if l == beads.CANCELLED_LABEL or l in beads.SHIP_LABELS.values()]
-                if marks:
-                    self._write(["update", issue.bd_id, *[x for m in marks for x in ("--remove-label", m)]], check=True)
-                    fixed.append(issue.bd_id)
-        # 前の取り込みが戻す前に止まっていれば、取り込みの直前の版も空なので、控えから戻す。
-        restore_lines, restored = self._restore_from_snapshots([new[n].bd_id for n in remote if n in new])
-        lines += restore_lines
-        fixed += restored
-        renamed, rename_lines = self._rename([new[n].bd_id for n in remote if n in new])
-        # 取り込みのあとの直し（assignee・label・付け替え）は Beads の更新なので、ここで送って `bd` の前回の
-        # 同期の時刻を進める（進めないと、次の取り込みがこの課題を飛ばして GitHub での変更を送り返す）。
-        fixed = list(dict.fromkeys([renamed.get(i, i) for i in fixed] + list(renamed.values())))
-        if fixed:
-            self._push(fixed)
-        self._mark_synced([renamed.get(new[n].bd_id, new[n].bd_id) for n in remote if n in new])
-        duplicate_lines = [
-            f"TRACKER\tINVALID\t{beads.to_task_id(renamed.get(a, a))}\t{beads.to_task_id(renamed.get(b, b))} と重複している"
-            for a, b in twins
-        ]
-        return lines + rename_lines + duplicate_lines
+    # --- 付け替え ----------------------------------------------------------------
 
     def _rename(self, bd_ids: list[str]) -> tuple[dict[str, str], list[str]]:
         """`external_ref` の番号と ID が違う課題を `gh-<番号>` へ付け替える。`{元: 先}` と出力の行を返す。"""
@@ -449,14 +288,6 @@ class Session:
                 continue
             renamed[issue.bd_id] = target
         return renamed, lines
-
-    def _changed_query(self) -> str:
-        """前回見た更新時刻（無ければ開いた全件）より後に更新された Issue を引く一覧の問い合わせ。"""
-        raw = self._kv_listing().get(SEEN_KEY)
-        seen = beads.parse_time(raw.strip()) if isinstance(raw, str) else None
-        if seen is None:
-            return "state=open&per_page=100"
-        return "state=all&per_page=100&since=" + _format_time(seen - SEEN_MARGIN)
 
     def _rest_issues(self, query: str) -> dict[int, dict]:
         return gh.rest_issues(self.toplevel, self._repository(), query, self._remaining)
@@ -529,11 +360,11 @@ class Session:
         return beads.parse_time(self._load_synced().get(str(n))) if n is not None else None
 
     def _mark_synced(self, bd_ids: list[str]) -> None:
-        """送った・取り込んだ時刻を控え、その場で `bd kv` へ書く（あとの Status 欄の書き込みが落ちても残す）。
+        """送った時刻を控え、その場で `bd kv` へ書く（あとの Status 欄の書き込みが落ちても残す）。
 
         触った番号のキーだけを書く（別の作業ツリーが書いた別の番号の時刻を戻さない）。
         """
-        if not self.bidirectional or not bd_ids:
+        if not self.numbered_by_github or not bd_ids:
             return
         wanted = set(bd_ids)
         now = _format_time(_now())
@@ -553,13 +384,13 @@ class Session:
 
     def _push(self, bd_ids: list[str]) -> None:
         """`bd github push` で送り、届いたら課題ごとに送った着手の時刻を `bd kv` へ書く（変わったものだけ）。"""
-        if self.bidirectional:
+        if self.numbered_by_github:
             self._adopt_existing(bd_ids)
         before = {i.bd_id: i for i in self._issues_of(bd_ids)}
         sent = {i: _claim_started(before.get(i)) for i in bd_ids}
         has_ref = all(i in before and _ref_number(before[i].external_ref) is not None for i in bd_ids)
         self._bd_ok(["github", "push", *bd_ids], "bd github push", keeps_issues=has_ref)
-        if not self.bidirectional:
+        if not self.numbered_by_github:
             return
         pushed = self._load_pushed()
         for issue in self._issues_of(bd_ids):
@@ -605,11 +436,8 @@ class Session:
                     remote.remove(item)
                     break
 
-    def _load_pushed(self, fresh: bool = False) -> dict[int, str]:
-        """課題ごとの送りの印の値（`{Issue 番号: 送った着手の時刻}`。印の無い課題は入らない）。
-        `fresh` なら読み直す（別の作業ツリーが書いたものを見るため）。"""
-        if fresh:
-            self._kv_all = None
+    def _load_pushed(self) -> dict[int, str]:
+        """課題ごとの送りの印の値（`{Issue 番号: 送った着手の時刻}`。印の無い課題は入らない）。"""
         return _pushed_of(self._kv_listing())
 
     # --- 着手の印の控え ------------------------------------------------------------
@@ -624,7 +452,7 @@ class Session:
     # --- 呼び出し ------------------------------------------------------------------
 
     def _begin(self, deadline: float | None) -> None:
-        """呼び出し（`before`・`after`・`register`・`sync_all`）の始め。`kv` は別の作業ツリーが書くので読み済みの値を捨てる。"""
+        """呼び出し（`after`・`push_created`・`register`・`sync_all`）の始め。`kv` は別の作業ツリーが書くので読み済みの値を捨てる。"""
         self._deadline = deadline
         self._kv_all = None
         self._synced = None
@@ -651,18 +479,6 @@ class Session:
         if len(bd_ids) > SHOW_LIMIT:
             return self._issues()
         return [i for i in (self._issue(b) for b in bd_ids) if i is not None]
-
-    def _by_numbers(self, numbers: list[int]) -> dict[int, beads.Issue]:
-        """Issue 番号 → 課題。`gh-<番号>` が引けない番号があれば、一覧から番号で探す。"""
-        if len(numbers) <= SHOW_LIMIT:
-            found = {}
-            for n in numbers:
-                issue = self._issue(f"gh-{n}")
-                if issue is not None and _ref_number(issue.external_ref) == n:
-                    found[n] = issue
-            if len(found) == len(set(numbers)):
-                return found
-        return _by_number(self._issues())
 
     def _kv_listing(self) -> dict:
         if self._kv_all is None:
@@ -774,28 +590,8 @@ def jira_rename(toplevel: str, bd_ids: list[str] | None = None) -> tuple[dict[st
 # --- 小道具 ---------------------------------------------------------------------------
 
 
-def _by_number(issues: list[beads.Issue]) -> dict[int, beads.Issue]:
-    return {n: i for i in issues if (n := _ref_number(i.external_ref)) is not None}
-
-
-def _duplicate_of(issue: beads.Issue, others: list[beads.Issue]) -> beads.Issue | None:
-    """題と本文（前後の空白を除く）が同じ別の課題。"""
-    body = str(issue.raw.get("description") or "").strip()
-    return next(
-        (o for o in others if o.bd_id != issue.bd_id and o.title == issue.title
-         and str(o.raw.get("description") or "").strip() == body),
-        None,
-    )
-
-
 def _now() -> datetime:
     return datetime.fromtimestamp(time.time(), timezone.utc).replace(microsecond=0)
-
-
-def _newest_update(remote: dict[int, dict]) -> datetime | None:
-    """Issue の一覧の中で最も新しい `updated_at`。"""
-    times = [t for t in (beads.parse_time(i.get("updated_at")) for i in remote.values()) if t is not None]
-    return max(times) if times else None
 
 
 def _format_time(at: datetime) -> str:

@@ -1,11 +1,11 @@
 """偽の GitHub（`FakeGitHub`）と、それへ `bd`・`gh` を向ける足場。
 
-GitHub には繋がない。本物の `bd` の `bd github push`・`pull` を `GITHUB_API_URL` で
+GitHub には繋がない。本物の `bd` の `bd github push`・`sync --push-only` を `GITHUB_API_URL` で
 偽の HTTP サーバ（`FakeGitHub`。REST の Issue と Project の GraphQL）へ向ける。`gh` は PATH の先頭に置いた
 偽のコマンドが `api` を同じサーバへ転送する。
 
 `bd` 1.3.3 以降は、課題の URL が `GITHUB_API_URL` の host に属するときだけ、その課題を自分の課題として
-送る・取り込む。偽の Issue の `html_url` は `https://github.com/...` なので、`GITHUB_API_URL` は
+送る。偽の Issue の `html_url` は `https://github.com/...` なので、`GITHUB_API_URL` は
 `http://github.com`（host が `github.com`）にして、`HTTP_PROXY` で偽のサーバへ流す。
 """
 
@@ -35,7 +35,7 @@ from selftest_support import local, write  # noqa: E402
 
 
 class FakeGitHub:
-    """偽の GitHub。REST の Issue（本物の `bd github push`・`pull` が `GITHUB_API_URL` で叩く）と、
+    """偽の GitHub。REST の Issue（本物の `bd github push`・`sync --push-only` が `GITHUB_API_URL` で叩く）と、
     Project の GraphQL（偽の `gh api graphql` が転送する）を、1つの HTTP サーバの中の状態で受ける。"""
 
     def __init__(self) -> None:
@@ -44,7 +44,7 @@ class FakeGitHub:
         self.option_prefix = "O-"
         self.status_writes = 0  # Status 欄を書いた回数
         self.issue_patches: list[int] = []  # Issue を PATCH で更新した番号（順に）
-        self.fetched: list[int] = []  # Issue を1件ずつ GET で取った番号（`bd github pull` が取りに来た分）
+        self.fetched: list[int] = []  # Issue を1件ずつ GET で取った番号
         self.listed: list[list[int]] = []  # Issue の一覧 GET が返した番号（呼び出しごと）
         self.requests: dict[str, int] = {}  # 受けた要求の数。キーは「メソッド パス（クエリを除く）」
         self.clock_offset = 0  # 秒。GitHub 側の編集を後の時刻にする
@@ -258,39 +258,3 @@ def github(
             del local.env
 
 
-def status_labels(fake: "FakeGitHub", n: int) -> list[str]:
-    return [l for l in fake.issues[n]["labels"] if l.startswith("status::")]
-
-
-KV_WRITE_ENV = "SELFTEST_KV_WRITE"
-
-
-def arm_kv_write(tmp: str) -> None:
-    """PATH の先頭に、`kv_written_during` の間だけ、引数に `on` を含む `bd` の前に1回だけ `bd kv set` を打つ包みを置く
-    （同じ Beads を使う別の作業ツリーが、1回の `task.py` の途中で kv を書いたことにする）。"""
-    real = shutil.which("bd", path=local.env["PATH"])
-    bin_dir = os.path.join(tmp, "kvbin")
-    write(os.path.join(bin_dir, "bd"), f"""#!{sys.executable}
-import json, os, subprocess, sys
-spec = os.environ.get({KV_WRITE_ENV!r})
-if spec:
-    s = json.loads(spec)
-    if s["on"] in " ".join(sys.argv[1:]) and not os.path.exists(s["fired"]):
-        open(s["fired"], "w").close()
-        subprocess.run([{real!r}, "kv", "set", s["key"], s["value"]], capture_output=True)
-sys.exit(subprocess.run([{real!r}, *sys.argv[1:]]).returncode)
-""")
-    os.chmod(os.path.join(bin_dir, "bd"), 0o755)
-    local.env["PATH"] = bin_dir + os.pathsep + local.env["PATH"]
-
-
-@contextlib.contextmanager
-def kv_written_during(tmp: str, on: str, key: str, value: str) -> Iterator[str]:
-    """`arm_kv_write` の包みを、引数に `on` を含む最初の `bd` の前に `key` へ `value` を書くように向ける。
-    書いたら立つ印のファイルのパスを渡す。"""
-    fired = os.path.join(tmp, f"kv-written-{len(os.listdir(tmp))}")
-    local.env[KV_WRITE_ENV] = json.dumps({"on": on, "key": key, "value": value, "fired": fired})
-    try:
-        yield fired
-    finally:
-        del local.env[KV_WRITE_ENV]

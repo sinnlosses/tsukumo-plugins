@@ -66,7 +66,6 @@ def _with_unlock(body: str, unlock: str | None) -> str:
 
 def _write_hold(toplevel: str, bd_id: str, shown: str, reason: str, unlock: str | None) -> None:
     trk = tracker.session(toplevel)
-    pulled = trk.before([bd_id])
     issue = beads.show(toplevel, bd_id)
     if issue is None:
         print(f"NOT_READY\t{shown}\t存在しない")
@@ -86,7 +85,7 @@ def _write_hold(toplevel: str, bd_id: str, shown: str, reason: str, unlock: str 
     r = beads.run(toplevel, cmd, tw_base.actor(toplevel), parts.description)
     if r.returncode != 0:
         raise beads.BeadsError(f"bd update が失敗: {(r.stderr or r.stdout).strip()}")
-    tw_base.print_lines(pulled + trk.after([bd_id]))
+    tw_base.print_lines(trk.after([bd_id]))
 
 
 def _ready_loopable(toplevel: str, shown: str) -> int:

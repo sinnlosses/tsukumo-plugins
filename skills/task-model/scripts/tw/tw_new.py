@@ -132,7 +132,7 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
 
     trk = tracker.session(toplevel)
     snap = None
-    if not trk.bidirectional or len(deps) > SHOW_DEPS_LIMIT:
+    if not trk.numbered_by_github or len(deps) > SHOW_DEPS_LIMIT:
         snap = tw_base.beads_snapshot(toplevel)
         missing = [d for d in deps if d not in snap.issues]
     else:
@@ -157,7 +157,7 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
     def create_cmd(bd_id: str) -> list[str]:
         return _create_cmd(args, checked, parts, metadata, candidate, bd_id, dep_bd_ids)
 
-    if trk.bidirectional:
+    if trk.numbered_by_github:
         provisional = _provisional_id(actor)
         beads.run_ok(toplevel, create_cmd(provisional), actor, parts.description)
         bd_id, lines = trk.register(provisional)
@@ -291,7 +291,7 @@ def cmd_new_batch(toplevel: str, path: str) -> None:
         raise SystemExit(2)
 
     actor = tw_base.actor(toplevel)
-    number = None if trk.bidirectional else _next_number(toplevel, snap)
+    number = None if trk.numbered_by_github else _next_number(toplevel, snap)
     created: list[str] = []
     failure: str | None = None
     for args, checked, refs in prepared:
@@ -315,7 +315,7 @@ def cmd_new_batch(toplevel: str, path: str) -> None:
 
     lines: list[str] = []
     finals = {b: b for b in created}
-    if trk.bidirectional:
+    if trk.numbered_by_github:
         finals, lines = trk.register_many(created)
     elif created:
         lines = trk.push_created(created)
@@ -391,7 +391,6 @@ def cmd_adopt(toplevel: str, args: argparse.Namespace) -> None:
     tw_plan.refuse_unregistered_work_repo(toplevel, body)
     plan_base = tw_plan.registered_plan_base(toplevel, body)
     trk = tracker.session(toplevel)
-    pulled = trk.before([old])
     issue = beads.show(toplevel, old)
     if issue is None:
         print(f"NOT_READY\t{args.bd_id}\t存在しない")
@@ -402,11 +401,11 @@ def cmd_adopt(toplevel: str, args: argparse.Namespace) -> None:
     if key is not None:
         renamed, lines = tracker.jira_rename(toplevel, [old])
         if key != old and old not in renamed:
-            tw_base.print_lines(pulled + lines)
+            tw_base.print_lines(lines)
             raise SystemExit(3)
         new_id = key
-    # github（`issue_prefix` が `gh`）は取り込みの時点で Issue 番号の ID になっているので番号を振らない。
-    elif not beads.is_numbered(old) and not trk.bidirectional:
+    # github（`issue_prefix` が `gh`）の ID は Issue 番号で振るので、`t` の番号を振らない。
+    elif not beads.is_numbered(old) and not trk.numbered_by_github:
         number = _next_number(toplevel, tw_base.beads_snapshot(toplevel))
         for _ in range(NEW_ATTEMPTS):
             new_id = beads.format_bd_id(number)
@@ -438,4 +437,4 @@ def cmd_adopt(toplevel: str, args: argparse.Namespace) -> None:
     tw_plan.warn_large_plan(beads.to_task_id(new_id), body)
     tw_plan.warn_red_steps(beads.to_task_id(new_id), body)
     tw_plan.warn_main_only_tools(beads.to_task_id(new_id), body, args.loopable)
-    tw_base.print_lines(pulled + trk.after([new_id]))
+    tw_base.print_lines(trk.after([new_id]))

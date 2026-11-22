@@ -35,7 +35,6 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
     add = _parse_dep_list(args.add_deps, layout.ANY_ID_PATTERN, "--add-deps", "T-999・GH-5・PROJ-123")
     remove = _parse_dep_list(args.remove_deps, layout.ANY_ID_PATTERN, "--remove-deps", "T-999・GH-5・PROJ-123")
     trk = tracker.session(toplevel)
-    pulled = trk.before([bd_id])
     issue = beads.show(toplevel, bd_id)
     if issue is None:
         print(f"NOT_READY\t{shown}\t存在しない")
@@ -167,7 +166,7 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
         tw_plan.warn_red_steps(shown, body)
     if state == tw_plan.PLAN_AFTER_WORK:
         print(f"PLAN_AFTER_WORK\t{shown}\t作業の後に書いた")
-    tw_base.print_lines(pulled + trk.after([bd_id]))
+    tw_base.print_lines(trk.after([bd_id]))
 
 
 def own_plan(toplevel: str, task_id: str) -> tuple[str, beads.Issue, str, str | None, str | None, tuple[list[str], str] | None]:

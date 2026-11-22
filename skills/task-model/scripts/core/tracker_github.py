@@ -26,7 +26,6 @@ STATUS_OPTIONS = {
 }
 ISSUE_URL = re.compile(r"^https://github\.com/([^/]+)/([^/]+)/issues/(\d+)$")
 ISSUE_NUMBER = re.compile(r"^(?:gh-|#)?(\d+)$")
-GH_ID = re.compile(r"^gh-(\d+)$")
 
 TIMED_OUT = 124
 
@@ -46,13 +45,6 @@ class _Failed(RuntimeError):
 
 
 # --- REST --------------------------------------------------------------------------
-
-
-def rest_issue(toplevel: str, repo: str, number: int, remaining: Remaining) -> dict:
-    data = gh_json(toplevel, ["api", f"repos/{repo}/issues/{number}"], "gh api issues", remaining)
-    if not isinstance(data, dict):
-        raise _Failed(f"gh api issues/{number} の JSON が思った形でない")
-    return data
 
 
 def rest_issues(toplevel: str, repo: str, query: str, remaining: Remaining) -> dict[int, dict]:
