@@ -41,7 +41,7 @@
 | `tw-reference.md` | `## `tw` コマンドの参照`: サブコマンドと出力、終了コードの表、hook の関門（拒むもの・掛かる口）。置き換えられない理由は `hook-rationale.md` |
 | ## Beads とトラッカー | ID の決まり方、設定のキー、トラッカーの失敗はタスクの操作を止めないこと、`TRACKER.md` への参照 |
 | `legacy.md` | 移行前の旧形式でいまも読むもの（アーカイブ・`pending`・`root`・`store`・`project-items`）と消せる条件 |
-| `TRACKER.md` | 用意、タスクの要素と Beads の置き場の対応、サイクルの各段で Beads に起きること、トラッカー（GitHub・Jira）、Status 欄の控え、GitHub との双方向、Jira の方式との違い、バックアップ |
+| `TRACKER.md` | 用意、タスクの要素と Beads の置き場の対応、サイクルの各段で Beads に起きること、トラッカー（GitHub・Jira）、Status 欄の控え、GitHub への送り、Jira の方式との違い、バックアップ |
 
 ## ファイル配置と設定ファイル
 
@@ -723,5 +723,5 @@ Beads の中は `proj-123`）も同じ ID として読む。読む形はトラ�
 `TRACKER\tFAILED\t…` の行を足して終了コードはそのままで、打ち直しは `tw sync`。
 
 用意・タスクの要素と Beads の置き場・サイクルの各段で Beads に起きること・トラッカー（GitHub・Jira）・
-Status 欄の控え・GitHub との双方向・Jira の方式との違い・バックアップは [TRACKER.md](TRACKER.md)。
+Status 欄の控え・GitHub への送り・Jira の方式との違い・バックアップは [TRACKER.md](TRACKER.md)。
 タスクの要素と Beads の置き場の対応は `beads.py` の docstring にも抜粋がある。

@@ -82,7 +82,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     ),
     "release": (
         "印（`bd unclaim`）と `task-open-claims/T-xxx` の控えを消すだけ（本文は戻さない）。",
-        r"""印（`bd unclaim`）と `task-open-claims/T-xxx` の控えを消すだけ（本文は戻さない）。`--force` は人が取り残しを片付けるときで、控えは印の持ち主の作業ツリーのものを消す（その作業ツリーが消えていれば何もしない）。担当者が無い `in_progress` の印も `--force` で外せる（status を `open` に戻す）。着手の印の控え（`bd kv` の `task-workflow.claim.<Beads ID>`。TRACKER.md の「GitHub との双方向」）も消すので、外した印は控えから戻らない
+        r"""印（`bd unclaim`）と `task-open-claims/T-xxx` の控えを消すだけ（本文は戻さない）。`--force` は人が取り残しを片付けるときで、控えは印の持ち主の作業ツリーのものを消す（その作業ツリーが消えていれば何もしない）。担当者が無い `in_progress` の印も `--force` で外せる（status を `open` に戻す）
 
 出力: `RELEASED`（未コミットの変更が残れば続けて `LEFTOVER\tT-xxx\t<件数>`。作業ツリーは書き換えない）・`NOT_CLAIMED`・`NOT_OWNER`""",
     ),
@@ -94,7 +94,7 @@ SUBCOMMAND_HELP: dict[str, tuple[str, str]] = {
     ),
     "done": (
         "`## 結果` を comment に入れ、label `ship:done`／`ship:dropped` を立てる。",
-        r"""`## 結果` を comment に入れ、label `ship:done`／`ship:dropped` を立てる（`--reflection none|some|skipped` を渡すと、台帳の `done` の `reflection` はその値になり `## 結果` の `- 振り返り:` の行を見ない。渡さなければ従来どおりその行から決める。ほかの値は終了コード2。`--dropped` でなければ `## 結果` に `- 検証コマンド:`・`- 規約:`・`- 規約の指摘:`・`- 振り返り:`（と、完了条件の項目の頭に印 `[目視]` があれば `- 目視:`。語「目視」を含むだけでは要らない）の行が要り、欠ければ何も書かず欠けた行の名前を標準エラーに出して終了コード2。`- 検証コマンド:` だけは、行が無く台帳の直近の `verify` が `VERIFIED`・`VERIFIED_UNSTAMPED` なら件数なしの行を tw が補う。stage もコミットもしない・印は残す。`bd close` は `ship` が打つ）。`task-open-claims/T-xxx` の控えは消すので、このあとのコミットを `commit-guard` は拒まない。着手の印の控え（`bd kv` の `task-workflow.claim.<Beads ID>`。TRACKER.md の「GitHub との双方向」）も消すので、`ship` までの間に取り込みが印を消しても控えからは戻らない。本文が枠（`## 結果` を除く7節）と違えば書かずに `INVALID`（終了コード3）。`claim` した時点の `HEAD` より後に、主ブランチに無いコミットがあれば `DONE` に続けて知らせる（`commit-guard` をすり抜けたコミットの事後の知らせ。控えの無い古い印では出さない）。`.git` に書かないので、読み取り専用の `.git` でも通る。ドラフト（印は立たない）に `--dropped` を打つと、`## 結果` を comment に入れ、label `cancelled` を足して `bd close` までその場で打つ（`claim`・コミット・`ship` は要らず、着手の控えと `COMMITS_SINCE_CLAIM` は見ない）。ドラフトに `--dropped` なしで打つと `NOT_READY\tT-xxx\tDRAFT`（終了コード4）
+        r"""`## 結果` を comment に入れ、label `ship:done`／`ship:dropped` を立てる（`--reflection none|some|skipped` を渡すと、台帳の `done` の `reflection` はその値になり `## 結果` の `- 振り返り:` の行を見ない。渡さなければ従来どおりその行から決める。ほかの値は終了コード2。`--dropped` でなければ `## 結果` に `- 検証コマンド:`・`- 規約:`・`- 規約の指摘:`・`- 振り返り:`（と、完了条件の項目の頭に印 `[目視]` があれば `- 目視:`。語「目視」を含むだけでは要らない）の行が要り、欠ければ何も書かず欠けた行の名前を標準エラーに出して終了コード2。`- 検証コマンド:` だけは、行が無く台帳の直近の `verify` が `VERIFIED`・`VERIFIED_UNSTAMPED` なら件数なしの行を tw が補う。stage もコミットもしない・印は残す。`bd close` は `ship` が打つ）。`task-open-claims/T-xxx` の控えは消すので、このあとのコミットを `commit-guard` は拒まない。本文が枠（`## 結果` を除く7節）と違えば書かずに `INVALID`（終了コード3）。`claim` した時点の `HEAD` より後に、主ブランチに無いコミットがあれば `DONE` に続けて知らせる（`commit-guard` をすり抜けたコミットの事後の知らせ。控えの無い古い印では出さない）。`.git` に書かないので、読み取り専用の `.git` でも通る。ドラフト（印は立たない）に `--dropped` を打つと、`## 結果` を comment に入れ、label `cancelled` を足して `bd close` までその場で打つ（`claim`・コミット・`ship` は要らず、着手の控えと `COMMITS_SINCE_CLAIM` は見ない）。ドラフトに `--dropped` なしで打つと `NOT_READY\tT-xxx\tDRAFT`（終了コード4）
 
 出力: `DONE`（`COMMITS_SINCE_CLAIM` が続くことがある。ドラフトは `DONE\tT-xxx\tbeads:<id>\tドラフトを閉じた`）・`NOT_OWNER`・`NOT_READY`・`INVALID`""",
     ),

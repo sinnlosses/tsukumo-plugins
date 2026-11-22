@@ -1,6 +1,6 @@
 """トラッカー（GitHub・Jira・なし）との橋渡し。
 
-正典は TRACKER.md の「トラッカー」と「GitHub との双方向」。錠と本文は Beads が持ち、
+正典は TRACKER.md の「トラッカー」と「GitHub への送り」。錠と本文は Beads が持ち、
 トラッカーは写しを持つだけなので、ここの失敗はタスクの操作を止めない（呼ぶ側は
 `TRACKER\\tFAILED\\t…` の行を足して先へ進み、`task sync` で打ち直す）。
 
@@ -56,7 +56,7 @@ OP_TIMEOUT_ENV = "TASK_WORKFLOW_TRACKER_TIMEOUT"
 SYNC_SLACK = timedelta(seconds=10)
 
 SYNCED_KEY = "task-workflow.github-synced"  # 旧い 1 つの表 {Issue 番号: 時刻}。読むだけで、書かない
-# 課題ごとのキー `<これ><Issue 番号>`。値はその課題を最後に送った・取り込んだ時刻（CONFLICT の判定）。JSON でない。
+# 課題ごとのキー `<これ><Issue 番号>`。値はその課題を最後に送った時刻（前回の送りより後に変えたかの判定）。JSON でない。
 SYNCED_ITEM_PREFIX = SYNCED_KEY + "."
 # 課題ごとのキー `<これ><Issue 番号>`。値は最後に届いた送りの直前に読んだその課題の着手の時刻
 # （`started_at`。着手中でなければ空）。この値は JSON でない。
@@ -393,7 +393,7 @@ class Session:
                 self._kv_all[SYNCED_ITEM_PREFIX + n] = now
         self._synced = None
 
-    # --- 課題ごとの送りの印（着手を戻すかの判定） ---------------------------------------
+    # --- 課題ごとの送りの印（着手中の課題を送り直すかの判定） ---------------------------------------
 
     def _push(self, bd_ids: list[str]) -> None:
         """`bd github push` で送り、届いたら課題ごとに送った着手の時刻を `bd kv` へ書く（変わったものだけ）。"""
