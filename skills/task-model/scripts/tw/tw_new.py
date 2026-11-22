@@ -53,8 +53,8 @@ def _check_one(toplevel: str, args: argparse.Namespace) -> _Checked:
     if missing_fixes:
         print(f"usage: --fixes の {','.join(missing_fixes)} が Beads に無い", file=sys.stderr)
         raise SystemExit(2)
-    if args.draft and (args.hold or args.direct):
-        print("usage: --draft は --hold・--direct と一緒に使えない", file=sys.stderr)
+    if args.draft and args.hold:
+        print("usage: --draft は --hold と一緒に使えない", file=sys.stderr)
         raise SystemExit(2)
     body = tw_base.read_body(args.body_file)
     error = taskfile.validate_draft_body(body) if args.draft else taskfile.validate_new_body(body, args.hold, args.difficulty)
@@ -63,8 +63,6 @@ def _check_one(toplevel: str, args: argparse.Namespace) -> _Checked:
     if error is not None:
         print(f"usage: {error}", file=sys.stderr)
         raise SystemExit(2)
-    if args.direct:
-        tw_plan.refuse_direct(args.difficulty, body)
     tw_plan.refuse_unregistered_work_repo(toplevel, body)
     plan_base = tw_plan.registered_plan_base(toplevel, body) if taskfile.has_plan(body) and not args.draft else None
     return _Checked(summary, deps, fixes, body, plan_base, repos.work_repo_mark(toplevel, body))
@@ -103,10 +101,8 @@ def _create_cmd(
     dep_bd_ids: list[str],
 ) -> list[str]:
     cmd = ["create", "--id", bd_id, "--title", checked.summary, "--body-file", "-", "--metadata", json.dumps(metadata), "--silent"]
-    if args.direct:
-        cmd += ["-l", beads.DIRECT_ON]
     if args.kind:
-        cmd += ["-l", f"{beads.KIND_LABEL}{args.kind}"]
+        cmd += ["-l",f"{beads.KIND_LABEL}{args.kind}"]
     if candidate is not None:
         cmd += ["-l", beads.CANDIDATE_LABEL]
     if parts.acceptance:
@@ -171,7 +167,7 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
         tw_plan.warn_id_in_docs(beads.to_task_id(bd_id), body)
         tw_plan.warn_large_plan(beads.to_task_id(bd_id), body)
         tw_plan.warn_red_steps(beads.to_task_id(bd_id), body)
-        tw_plan.warn_main_only_tools(beads.to_task_id(bd_id), body, args.loopable, "Y" if args.direct else "N")
+        tw_plan.warn_main_only_tools(beads.to_task_id(bd_id), body, args.loopable)
         tw_base.print_lines(lines)
         return
 
@@ -187,7 +183,7 @@ def cmd_new(toplevel: str, args: argparse.Namespace) -> None:
     tw_plan.warn_id_in_docs(beads.to_task_id(bd_id), body)
     tw_plan.warn_large_plan(beads.to_task_id(bd_id), body)
     tw_plan.warn_red_steps(beads.to_task_id(bd_id), body)
-    tw_plan.warn_main_only_tools(beads.to_task_id(bd_id), body, args.loopable, "Y" if args.direct else "N")
+    tw_plan.warn_main_only_tools(beads.to_task_id(bd_id), body, args.loopable)
     tw_base.print_lines(trk.push_created([bd_id]))
 
 
@@ -211,7 +207,7 @@ def _create_numbered(
     raise _Locked(f"{NEW_ATTEMPTS}回続けて番号を取られた")
 
 
-BATCH_FIELDS = {"summary", "difficulty", "loopable", "deps", "body_file", "hold", "direct", "kind", "fixes"}
+BATCH_FIELDS = {"summary", "difficulty", "loopable", "deps", "body_file", "hold", "kind", "fixes"}
 BATCH_REF = re.compile(r"^@([1-9][0-9]*)$")
 
 
@@ -265,7 +261,7 @@ def _batch_args(n: int, entry: dict, base_dir: str) -> tuple[argparse.Namespace,
     args = argparse.Namespace(
         summary=entry["summary"], difficulty=entry["difficulty"], loopable=entry["loopable"],
         deps=",".join(external), fixes=",".join(fixes), hold=bool(entry.get("hold")), draft=False,
-        candidate=None, direct=bool(entry.get("direct")), kind=kind, importance=None, urgency=None,
+        candidate=None, kind=kind, importance=None, urgency=None,
         body_file=os.path.join(base_dir, entry["body_file"]),
     )
     return args, refs
@@ -331,9 +327,7 @@ def cmd_new_batch(toplevel: str, path: str) -> None:
         tw_plan.warn_id_in_docs(beads.to_task_id(final), checked.body)
         tw_plan.warn_large_plan(beads.to_task_id(final), checked.body)
         tw_plan.warn_red_steps(beads.to_task_id(final), checked.body)
-        tw_plan.warn_main_only_tools(
-            beads.to_task_id(final), checked.body, entry_args.loopable, "Y" if entry_args.direct else "N"
-        )
+        tw_plan.warn_main_only_tools(beads.to_task_id(final), checked.body, entry_args.loopable)
     tw_base.print_lines(lines)
     if failure is not None:
         for n, (_, checked, _refs) in enumerate(prepared[len(created):], len(created) + 1):
@@ -394,8 +388,6 @@ def cmd_adopt(toplevel: str, args: argparse.Namespace) -> None:
     if error is not None:
         print(f"usage: {error}", file=sys.stderr)
         raise SystemExit(2)
-    if args.direct:
-        tw_plan.refuse_direct(args.difficulty, body)
     tw_plan.refuse_unregistered_work_repo(toplevel, body)
     plan_base = tw_plan.registered_plan_base(toplevel, body)
     trk = tracker.session(toplevel)
@@ -432,12 +424,9 @@ def cmd_adopt(toplevel: str, args: argparse.Namespace) -> None:
     work_repo = repos.work_repo_mark(toplevel, body)
     if work_repo is not None:
         cmd += ["--set-metadata", f"{beads.WORK_REPO_KEY}={work_repo}"]
-    cmd += [x for l in issue.labels if l.startswith(beads.DIRECT_LABEL) for x in ("--remove-label", l)]
     cmd += ["--set-metadata", f"{beads.DIFFICULTY_KEY}={args.difficulty}", "--set-metadata", f"{beads.LOOPABLE_KEY}={args.loopable}"]
     for key, value in _level_metadata(args).items():
         cmd += ["--set-metadata", f"{key}={value}"]
-    if args.direct:
-        cmd += ["--add-label", beads.DIRECT_ON]
     if args.kind:
         cmd += beads.kind_label_args(issue, args.kind)
     if args.summary:
@@ -448,5 +437,5 @@ def cmd_adopt(toplevel: str, args: argparse.Namespace) -> None:
     tw_plan.warn_id_in_docs(beads.to_task_id(new_id), body)
     tw_plan.warn_large_plan(beads.to_task_id(new_id), body)
     tw_plan.warn_red_steps(beads.to_task_id(new_id), body)
-    tw_plan.warn_main_only_tools(beads.to_task_id(new_id), body, args.loopable, "Y" if args.direct else "N")
+    tw_plan.warn_main_only_tools(beads.to_task_id(new_id), body, args.loopable)
     tw_base.print_lines(pulled + trk.after([new_id]))

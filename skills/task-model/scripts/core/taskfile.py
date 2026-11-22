@@ -2,7 +2,7 @@
 
 `tw show` が出す front matter（`render`）は **YAML ではない** 専用の8行
 （`id` / `summary` / `status` / `difficulty` / `loopable` / `dependencies` / `created` / `updated`。
-`loopable` の次に任意の `direct: Y` を置けば9行）。
+`normal` でない `importance`・`urgency` があればその分の行を足す）。
 
 検査は例外を投げない。呼び出し側が「INVALID＝データの不備」と
 「traceback＝環境の故障」を取り違えないよう、理由の文字列（通れば `None`）を返す。
@@ -21,11 +21,6 @@ LOOPABLE_VALUES = ("Y", "N")
 LEVEL_VALUES = ("high", "normal", "low")
 LEVEL_DEFAULT = "normal"
 KIND_VALUES = ("bug", "feature", "refactor", "docs")
-
-# 委譲しない近道の基準（WORKFLOW.md「difficulty とモデルの切り替え」の表）。
-DIRECT_DIFFICULTY = "haiku"
-DIRECT_MAX_STEPS = 1
-DIRECT_MAX_PLAN_FILES = 2
 
 # 本文の枠（WORKFLOW.md「タスクの本文」）。7つの見出しを必ずこの順で置き、要らない欄は空か「なし」にする。
 PURPOSE_HEADING = "## 目的・背景"
@@ -102,7 +97,6 @@ class Task:
     loopable: str  # "Y" | "N"（真偽値にしない。3.2 の文法どおりの文字を保つ）
     dependencies: tuple[str, ...]
     body: str
-    direct: str = "N"  # 委譲しない近道の印。"Y" のときだけ front matter に `direct: Y` の行を置く
     created: str = "-"  # ローカルの `YYYY-MM-DD HH:MM`。Beads に値が無ければ `-`
     updated: str = "-"
     importance: str = LEVEL_DEFAULT
@@ -110,7 +104,7 @@ class Task:
 
 
 def render(task: Task) -> str:
-    """front matter を8行ちょうど（`direct: Y`・`normal` でない `importance`・`urgency` があればその分の行を足して）で書き、本文を続ける。
+    """front matter を8行ちょうど（`normal` でない `importance`・`urgency` があればその分の行を足して）で書き、本文を続ける。
 
     本文は「閉じる `---` の次に空行1行、末尾は改行1つ」に揃える。Markdown の整形ツール
     （oxfmt・prettier）は見出しの前に空行を求めるので、`## 目的・背景` から始まる本文をそのまま
@@ -124,7 +118,6 @@ def render(task: Task) -> str:
         f"status: {task.status}\n"
         f"difficulty: {task.difficulty}\n"
         f"loopable: {task.loopable}\n"
-        + ("direct: Y\n" if task.direct == "Y" else "")
         + (f"importance: {task.importance}\n" if task.importance != LEVEL_DEFAULT else "")
         + (f"urgency: {task.urgency}\n" if task.urgency != LEVEL_DEFAULT else "")
         + f"dependencies: [{', '.join(task.dependencies)}]\n"
@@ -568,8 +561,6 @@ PHASE_IMPLEMENT = "実装"
 PHASE_ACCEPT = "受け入れ"
 PHASE_RETRO = "振り返り"
 PHASE_SHIP = "送り出し"
-PHASE_FIX = "直す"
-PHASE_VERIFY = "検証"
 
 ID_PLAN = "plan"
 ID_IMPLEMENT = "impl"
@@ -577,8 +568,6 @@ ID_IMPLEMENT_STEP = "impl-"
 ID_ACCEPT = "accept"
 ID_RETRO = "retrospect"
 ID_SHIP = "ship"
-ID_FIX = "fix"
-ID_VERIFY = "verify"
 
 STEP_IMPLEMENT = "implement"
 STEP_ACCEPT = "accept"
@@ -589,7 +578,6 @@ DEFAULT_STEP_NAMES = (STEP_IMPLEMENT, STEP_ACCEPT, STEP_RETRO, STEP_SHIP)
 
 FLOW_DELEGATE = "delegate"
 FLOW_MAIN = "main"
-FLOW_DIRECT = "direct"
 PLAN_REGISTERED_STATE = "registered"
 PLAN_WRITTEN_STATE = "written"
 PLAN_MISSING_STATE = "missing"
@@ -623,23 +611,18 @@ def work_plan_phases(
 ) -> tuple[dict | None, str | None]:
     """`work_plan` の引数（`phases`＝段の id と名前の `{id, name}`〔並列は配列〕・`current`・`finishedInGroup`・あれば `delegatedRange`・`skippedPhases`）。形が決まらなければ `(None, 理由)`。
 
-    `flow` は `FLOW_DELEGATE`・`FLOW_MAIN`・`FLOW_DIRECT`。振り返りの段は `steps` に `retrospect` があるときだけ。`through` はその段までと、それ以前を済ませた位置（省略は何も済んでいない）。
+    `flow` は `FLOW_DELEGATE`・`FLOW_MAIN`。振り返りの段は `steps` に `retrospect` があるときだけ。`through` はその段までと、それ以前を済ませた位置（省略は何も済んでいない）。
     `also` は並列のまとまりの中で、`through` の後ろにあるが先に済んだ段の番号。
     `steps` は段の名前（旧いスキルの全名も短い名前に読む）で、空なら `DEFAULT_STEP_NAMES` の順。`skipped` は済んだ段のうち飛ばした段の名前。
     `widen_range` が真なら、範囲が確定しているとき、実装の直後に続く受け入れ・振り返りの段も `delegatedRange` の `count` に数える。
     """
-    direct = flow == FLOW_DIRECT
     entries: list[str | list[str]] = []
     keys: list[list[str]] = []
     ids: list[list[str]] = []
     range_out: dict | None = None
     widening = False
     for step in [layout.step_short_name(s) for s in steps] or list(DEFAULT_STEP_NAMES):
-        if step == STEP_IMPLEMENT and direct:
-            entries += [PHASE_FIX, PHASE_VERIFY]
-            keys += [[PHASE_FIX], [PHASE_VERIFY]]
-            ids += [[ID_FIX], [ID_VERIFY]]
-        elif step == STEP_IMPLEMENT:
+        if step == STEP_IMPLEMENT:
             if plan_state != PLAN_REGISTERED_STATE:
                 entries.append(PHASE_PLAN)
                 keys.append([PHASE_PLAN])
@@ -659,19 +642,17 @@ def work_plan_phases(
                 range_out = {"first": first, "count": len(specs)}
                 widening = widen_range
         elif step == STEP_ACCEPT:
-            if not direct:
-                entries.append(PHASE_ACCEPT)
-                keys.append([PHASE_ACCEPT])
-                ids.append([ID_ACCEPT])
-                if widening and range_out is not None:
-                    range_out["count"] += 1
+            entries.append(PHASE_ACCEPT)
+            keys.append([PHASE_ACCEPT])
+            ids.append([ID_ACCEPT])
+            if widening and range_out is not None:
+                range_out["count"] += 1
         elif step == STEP_RETRO:
-            if not direct:
-                entries.append(PHASE_RETRO)
-                keys.append([PHASE_RETRO])
-                ids.append([ID_RETRO])
-                if widening and range_out is not None:
-                    range_out["count"] += 1
+            entries.append(PHASE_RETRO)
+            keys.append([PHASE_RETRO])
+            ids.append([ID_RETRO])
+            if widening and range_out is not None:
+                range_out["count"] += 1
         else:
             widening = False
             phase = PHASE_SHIP if step == STEP_SHIP else step
@@ -847,21 +828,6 @@ def plan_identifiers(body: str) -> tuple[str, ...]:
             if plain and word not in paths and word not in words:
                 words.append(word)
     return tuple(words)
-
-
-def direct_refusal(difficulty: str, body: str) -> str | None:
-    """近道の印を置けない理由。基準に当たれば `None`。"""
-    if difficulty != DIRECT_DIFFICULTY:
-        return f"近道は difficulty が {DIRECT_DIFFICULTY} のときだけ（{difficulty}）"
-    steps, _ = plan_steps(body)
-    if not steps or len(steps) > DIRECT_MAX_STEPS:
-        return f"近道は {PLAN_HEADING} の段が1〜{DIRECT_MAX_STEPS}つのときだけ（{len(steps)}つ）"
-    paths, _ = plan_files(body)
-    if not paths or len(paths) > DIRECT_MAX_PLAN_FILES:
-        return f"近道は {PLAN_FILES_HEADING} が1〜{DIRECT_MAX_PLAN_FILES}つのときだけ（{len(paths)}つ）"
-    if plan_work_repo(body) != (None, None):
-        return f"近道は {PLAN_WORK_REPO_HEADING} の無いタスクだけ"
-    return None
 
 
 _PLAN_FILE_LINE = re.compile(r"^- `([^`]+)`.*$")

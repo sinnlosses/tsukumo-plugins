@@ -23,14 +23,14 @@ import tw_plan
 
 
 def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
-    """本文・summary・difficulty・loopable・todo↔hold・依存・近道の印・種類を書き換える。"""
+    """本文・summary・difficulty・loopable・todo↔hold・依存・種類を書き換える。"""
     bd_id = tw_base.bd_task_id(args.task_id)
     shown = beads.to_task_id(bd_id)
     sections: list[str] = args.section or []
     body_files: list[str] = args.body_file or []
     _check_body_args(sections, body_files)
-    if not any([body_files,args.summary, args.difficulty, args.loopable, args.importance, args.urgency, args.status, args.add_deps, args.remove_deps, args.direct, args.kind]):
-        print("usage: 直すもの（--body-file・--summary・--difficulty・--loopable・--importance・--urgency・--status・--add-deps・--remove-deps・--direct・--kind）が無い", file=sys.stderr)
+    if not any([body_files,args.summary, args.difficulty, args.loopable, args.importance, args.urgency, args.status, args.add_deps, args.remove_deps, args.kind]):
+        print("usage: 直すもの（--body-file・--summary・--difficulty・--loopable・--importance・--urgency・--status・--add-deps・--remove-deps・--kind）が無い", file=sys.stderr)
         raise SystemExit(2)
     add = _parse_dep_list(args.add_deps, layout.ANY_ID_PATTERN, "--add-deps", "T-999・GH-5・PROJ-123")
     remove = _parse_dep_list(args.remove_deps, layout.ANY_ID_PATTERN, "--remove-deps", "T-999・GH-5・PROJ-123")
@@ -128,11 +128,6 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
     ):
         if value:
             cmd += ["--set-metadata", f"{key}={value}"]
-    had_direct = "Y" if beads.DIRECT_ON in issue.labels else "N"
-    direct, direct_off = _edited_direct(had_direct, args.direct, difficulty, body)
-    if direct != had_direct:
-        cmd += [x for l in issue.labels if l.startswith(beads.DIRECT_LABEL) for x in ("--remove-label", l)]
-        cmd += ["--add-label", beads.DIRECT_ON] if direct == "Y" else []
     if args.kind:
         cmd += beads.kind_label_args(issue, args.kind)
     if args.status:
@@ -166,13 +161,12 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
         tw_plan.warn_report_names(body)
         tw_plan.warn_id_in_docs(shown, body)
     plan_edited = bool(body_files) and taskfile.section_changed(current, body, taskfile.PLAN_HEADING)
-    if plan_edited or args.loopable or args.direct:
+    if plan_edited or args.loopable:
         loopable_values = beads.attribute_values(issue, beads.LOOPABLE_KEY)
-        tw_plan.warn_main_only_tools(shown, body, args.loopable or (loopable_values[0] if loopable_values else "N"), direct)
+        tw_plan.warn_main_only_tools(shown, body, args.loopable or (loopable_values[0] if loopable_values else "N"))
         tw_plan.warn_red_steps(shown, body)
     if state == tw_plan.PLAN_AFTER_WORK:
         print(f"PLAN_AFTER_WORK\t{shown}\t作業の後に書いた")
-    _print_direct_off(shown, direct_off)
     tw_base.print_lines(pulled + trk.after([bd_id]))
 
 
@@ -213,10 +207,7 @@ def cmd_plan_phases(
     else:
         plan_state = taskfile.PLAN_MISSING_STATE
     config = layout.read_config(toplevel)
-    direct = beads.label_values(issue.labels, beads.DIRECT_LABEL) == ["Y"]
-    if direct and plan_state == taskfile.PLAN_REGISTERED_STATE:
-        flow = taskfile.FLOW_DIRECT
-    elif beads.attribute_values(issue, beads.LOOPABLE_KEY) == ["N"]:
+    if beads.attribute_values(issue, beads.LOOPABLE_KEY) == ["N"]:
         flow = taskfile.FLOW_MAIN
     else:
         flow = taskfile.FLOW_DELEGATE
@@ -317,22 +308,6 @@ def _find_cycle(graph: Mapping[str, tuple[str, ...]], task_id: str, new_dep: str
                 seen.add(nxt)
                 stack.append((nxt, [*path, nxt]))
     return None
-
-
-def _edited_direct(current: str, wanted: str | None, difficulty: str, body: str) -> tuple[str, str | None]:
-    """`edit` のあとの近道の印と、書き換えで基準を外れて外したときの理由。"""
-    if wanted == "Y":
-        tw_plan.refuse_direct(difficulty, body)
-        return "Y", None
-    if wanted == "N" or current != "Y":
-        return "N", None
-    reason = taskfile.direct_refusal(difficulty, body)
-    return ("N", reason) if reason is not None else ("Y", None)
-
-
-def _print_direct_off(shown: str, reason: str | None) -> None:
-    if reason is not None:
-        print(f"DIRECT_OFF\t{shown}\t{reason}")
 
 
 def _check_body_args(sections: list[str], body_files: list[str]) -> None:

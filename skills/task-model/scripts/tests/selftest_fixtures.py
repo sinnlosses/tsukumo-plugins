@@ -154,8 +154,6 @@ def commit_task(main_path: str, task: taskfile.Task) -> None:
     bd_id = beads.to_bd_id(task.id)
     parts = beads.split_body(task.body)
     labels: list[str] = []
-    if task.direct == "Y":
-        labels.append(beads.DIRECT_ON)
     if task.status == "dropped":
         labels.append(beads.CANCELLED_LABEL)
     metadata = json.dumps({beads.DIFFICULTY_KEY: task.difficulty, beads.LOOPABLE_KEY: task.loopable})

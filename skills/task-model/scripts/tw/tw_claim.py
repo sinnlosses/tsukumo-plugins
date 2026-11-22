@@ -82,7 +82,6 @@ def cmd_claim(toplevel: str, task_id: str) -> None:
     )
     tw_plan.work_repo_root(toplevel, plan_body)  # 名前の作業先のパスが引けなければ、印を立てる前に MISSING で止める
     _prepare_work_tree(toplevel, shown, plan_body)
-    registered = False
     if plan_base and not taskfile.is_blank(plan):
         tip = tw_plan.plan_tip(toplevel, plan_body)
         if tip is not None:
@@ -90,7 +89,6 @@ def cmd_claim(toplevel: str, task_id: str) -> None:
         drift = tw_plan.registered_plan_drift(toplevel, plan_base, tip, plan_body)
         if drift is not None and not drift[0]:
             claim_args += ["--set-metadata", f"{beads.PLAN_KEY}={tw_plan.PLAN_REGISTERED}"]
-            registered = True
         else:
             claim_args += ["--unset-metadata", beads.PLAN_KEY]
     r = beads.run(toplevel, claim_args, actor)
@@ -108,7 +106,6 @@ def cmd_claim(toplevel: str, task_id: str) -> None:
     tw_base.record(toplevel, "claim", shown, issue)
     _claim_branch_out(
         toplevel, shown, branch_setting, base, branch_after_sync, f"beads:{bd_id}",
-        tw_plan.direct_column(task.direct, task.difficulty, plan_body, registered),
     )
     tw_base.print_lines(pulled + trk.after([bd_id]))
 
@@ -322,18 +319,18 @@ def _claim_preflight(toplevel: str) -> tuple[str, str]:
 
 
 def _claim_branch_out(
-    toplevel: str, task_id: str, branch_setting: str, base: str, branch_after_sync: str, where: str, direct: str = ""
+    toplevel: str, task_id: str, branch_setting: str, base: str, branch_after_sync: str, where: str
 ) -> None:
-    """印を立てたあと、設定なら作業ブランチを切って `CLAIMED` を出す（`where` は3列目、`direct` は行末の列）。"""
+    """印を立てたあと、設定なら作業ブランチを切って `CLAIMED` を出す（`where` は3列目）。"""
     if branch_setting in ("既定", "作業ブランチを切る"):
         feature_branch = f"{layout.FEATURE_BRANCH_PREFIX}{task_id}"
         r = tw_base.run_git(toplevel, ["checkout", "-b", feature_branch, base])
         if r.returncode != 0:
-            print(f"CLAIMED\t{task_id}\t{where}\tbranch=(切れない: {r.stderr.strip()}){direct}")
+            print(f"CLAIMED\t{task_id}\t{where}\tbranch=(切れない: {r.stderr.strip()})")
             return
-        print(f"CLAIMED\t{task_id}\t{where}\tbranch={feature_branch}{direct}")
+        print(f"CLAIMED\t{task_id}\t{where}\tbranch={feature_branch}")
     else:
-        print(f"CLAIMED\t{task_id}\t{where}\tbranch={branch_after_sync}{direct}")
+        print(f"CLAIMED\t{task_id}\t{where}\tbranch={branch_after_sync}")
 
 
 def _prepare_work_tree(toplevel: str, shown: str, plan_body: str) -> None:

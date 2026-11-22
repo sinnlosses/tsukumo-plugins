@@ -20,7 +20,7 @@ Issue 番号（`gh-5` ↔ `GH-5`）、`t` なら `task` の採番（`t-123` ↔ 
 | `in_progress` | `todo` ＋ 着手の印（assignee が作業ツリー名） |
 | `closed` | `done`（label `cancelled` があれば `dropped`） |
 | metadata `difficulty`・`loopable` | `difficulty`・`loopable` |
-| label `direct:Y`（無ければ印なし） | `direct` |
+| label `direct:`（旧い近道の印。読み捨てる） | （写さない） |
 | `blocks` の依存 | `dependencies` |
 | `title` | `summary` |
 | `## 申し送り: <鍵>` で始まる comment | 段の申し送り（`tw relay`。`Task` には写さない） |
@@ -75,8 +75,6 @@ FIXES_KEY = "fixes"
 # ドラフトから `todo`・`hold` へ進めた課題の出自（値はドラフトの `- 観点:` の観点。読めなければ `不明`）。
 FROM_DRAFT_KEY = "from_draft"
 FROM_DRAFT_UNKNOWN = "不明"
-DIRECT_LABEL = "direct:"
-DIRECT_ON = f"{DIRECT_LABEL}Y"
 KIND_LABEL = "kind:"
 # `tw edit --kind` に渡すと種類を外す値。
 KIND_NONE = "-"
@@ -443,9 +441,6 @@ def to_task(issue: Issue) -> tuple[taskfile.Task | None, str | None]:
         if len(values) > 1 or (values and values[0] not in taskfile.LEVEL_VALUES):
             return None, f"metadata {key} が {'|'.join(taskfile.LEVEL_VALUES)} の1つでない"
         levels[key] = values[0] if values else taskfile.LEVEL_DEFAULT
-    direct = label_values(issue.labels, DIRECT_LABEL)
-    if direct not in ([], ["Y"]):
-        return None, "label direct: は direct:Y が1つだけ（印が無ければ置かない）"
     kinds = label_values(issue.labels, KIND_LABEL)
     if len(kinds) > 1 or (kinds and kinds[0] not in taskfile.KIND_VALUES):
         return None, f"label kind: は {'|'.join(taskfile.KIND_VALUES)} の1つだけ（種類が無ければ置かない）"
@@ -454,7 +449,7 @@ def to_task(issue: Issue) -> tuple[taskfile.Task | None, str | None]:
         return None, "title が空か改行を含む"
     deps = tuple(to_task_id(d) for d in issue.dependencies)
     task = taskfile.Task(
-        to_task_id(issue.bd_id), summary, status, difficulty[0], loopable[0], deps, "", "Y" if direct else "N",
+        to_task_id(issue.bd_id), summary, status, difficulty[0], loopable[0], deps, "",
         importance=levels[IMPORTANCE_KEY], urgency=levels[URGENCY_KEY],
     )
     return task, None

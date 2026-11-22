@@ -432,14 +432,37 @@ def test_plan_phases_widen_range() -> None:
     check("間に別のスキルの段が入れば数えない", broken.get("delegatedRange") == {"first": 0, "count": 2}, str(broken))
     missing = run((), state=taskfile.PLAN_MISSING_STATE)
     check("計画が未確定なら count を出さない", missing.get("delegatedRange") == {"first": 1}, str(missing))
-    for flow in (taskfile.FLOW_MAIN, taskfile.FLOW_DIRECT):
-        other = run(serial, flow=flow)
-        check(f"{flow} の流れは範囲を出さない", "delegatedRange" not in other, str(other))
+    other = run(serial, flow=taskfile.FLOW_MAIN)
+    check(f"{taskfile.FLOW_MAIN} の流れは範囲を出さない", "delegatedRange" not in other, str(other))
+
+
+@weight(4)
+def test_direct_removed() -> None:
+    say("task.py new・edit・adopt・claim・status: 近道（--direct）は引数の誤りで、旧い label direct:Y は INVALID にせず claim も direct= を出さない")
+    body = task_body([("書く", "x")], ["shared.txt"])
+    with tempfile.TemporaryDirectory() as tmp:
+        main_path, wt1, _wt2 = make_repo(tmp)
+        commit_task(main_path, taskfile.Task("T-100", "旧い近道の印", "todo", "haiku", "Y", (), BODY))
+        labeled = subprocess.run(["bd", "update", beads.to_bd_id("T-100"), "--add-label", "direct:Y"],
+                                 cwd=main_path, capture_output=True, text=True)
+        check("旧い label を足せる", labeled.returncode == 0, labeled.stdout + labeled.stderr)
+        r = run_task(wt1, "new", "--summary", "x", "--difficulty", "haiku", "--loopable", "Y", "--direct",
+                     "--body-file", "-", stdin=body)
+        check("new --direct は引数の誤り", r.returncode == 2 and r.stdout == "" and "--direct" in r.stderr, r.stdout + r.stderr)
+        r = run_task(wt1, "edit", "T-100", "--direct", "Y")
+        check("edit --direct は引数の誤り", r.returncode == 2 and r.stdout == "" and "--direct" in r.stderr, r.stdout + r.stderr)
+        r = run_task(wt1, "adopt", "T-100", "--difficulty", "haiku", "--loopable", "Y", "--direct", "--body-file", "-", stdin=body)
+        check("adopt --direct は引数の誤り", r.returncode == 2 and r.stdout == "" and "--direct" in r.stderr, r.stdout + r.stderr)
+        r = run_task(wt1, "status", "--check")
+        check("旧い label direct:Y があっても status --check は OK", r.returncode == 0 and r.stdout.strip() == "OK", r.stdout + r.stderr)
+        r = run_task(wt1, "claim", "T-100")
+        check("旧い label があっても claim は direct= の列を出さない",
+              r.stdout.startswith("CLAIMED\tT-100\t") and "direct=" not in r.stdout, r.stdout + r.stderr)
 
 
 @weight(4)
 def test_warn_main_only_tool() -> None:
-    say("task.py new・edit: loopable Y で近道の印の無い計画の段にメインだけの道具の名があれば WARN_MAIN_ONLY_TOOL を出す")
+    say("task.py new・edit: loopable Y の計画の段にメインだけの道具の名があれば WARN_MAIN_ONLY_TOOL を出す")
     tool_body = task_body([("確かめる", "`Workflow` と `ScheduleWakeup` と Workflow を使う")], ["shared.txt"])
     plain_body = task_body([("書く", "x")], ["shared.txt"])
 
@@ -455,9 +478,6 @@ def test_warn_main_only_tool() -> None:
               warned(r) and f"WARN_MAIN_ONLY_TOOL\t{task_id}\tWorkflow,ScheduleWakeup\t" in r.stderr, r.stdout + r.stderr)
         r = run_task(wt1, "new", *base, "--loopable", "N", "--body-file", "-", stdin=tool_body)
         check("loopable N では出ない", r.returncode == 0 and "WARN_MAIN_ONLY_TOOL" not in r.stderr, r.stdout + r.stderr)
-        r = run_task(wt1, "new", "--summary", "x", "--difficulty", "haiku", "--loopable", "Y", "--direct",
-                     "--body-file", "-", stdin=tool_body)
-        check("近道の印があれば出ない", r.returncode == 0 and "WARN_MAIN_ONLY_TOOL" not in r.stderr, r.stdout + r.stderr)
         r = run_task(wt1, "new", *base, "--loopable", "N", "--body-file", "-", stdin=plain_body)
         plain_id = r.stdout.split("\t")[1]
         r = run_task(wt1, "edit", plain_id, "--loopable", "Y")
@@ -685,6 +705,7 @@ def test_work_repo_name() -> None:
 TESTS = (
     test_work_repo_name,
     test_warn_red_step,
+    test_direct_removed,
     test_warn_main_only_tool,
     test_plan_phases_ids,
     test_plan_phases_widen_range,
