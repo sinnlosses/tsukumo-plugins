@@ -22,7 +22,6 @@
 
 3. **ワークフロースクリプトを呼ぶ**: `Workflow` に、plugin の名前を接頭辞にしたワークフロースクリプトの名前（plugin の README「ワークフロースクリプト」の「呼び方」）を渡す。読めなければ `scriptPath` に、この plugin の `workflows/task-flow.js` の絶対パスを渡す。`args`:
    - `taskId`: タスクの ID
-   - `phaseCount`: 手順2の JSON の `delegatedRange.count`（確定した計画の段の数に、範囲に入った受け入れ・振り返りの段を足した数。手順1a で書き直したときは書き直したあとの数）
    - `phaseIds`: 手順2の JSON の `phases`（そのまま。ワークフロースクリプトは `phase()` の題と `agent()` の `phase` をこの id からだけ作る。欠けていると起動が拒まれる）
    - `steps`: `tw config` の `steps` の行（`flow` が `script` ならワークフロースクリプトの段の名前と独自の段のスキルの全名で、並びの順に出る）
    - `model`: `tw show T-xxx` の `difficulty`

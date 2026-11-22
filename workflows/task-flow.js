@@ -4,16 +4,15 @@ export const meta = {
   whenToUse: "tw claim が CLAIMED を返したタスク1件を進めるとき（計画の判定と書き直しは呼ぶ側が済ませてから）",
   phases: [
     { title: "Implement", detail: "implementer が ## やること の段を順に実装し、段ごとに phase_result を呼ぶ" },
-    { title: "Accept", detail: "acceptor の起動と停止で hook（tw accept-hook）が tw accept の準備と締めを打ち、acceptor が判定する。差し戻しは上限2回。範囲に入っていれば、受け入れより後ろで最初に走る agent（独自の段か振り返り）が受け入れの phase_result も呼ぶ" },
-    { title: "Retrospect", detail: "retrospector が retrospect スキルで兆候を判定し、範囲に入っていれば phase_result を呼ぶ" },
+    { title: "Accept", detail: "acceptor の起動と停止で hook（tw accept-hook）が tw accept の準備と締めを打ち、acceptor が判定する。差し戻しは上限2回。受け入れより後ろで最初に走る agent（独自の段か振り返り）が受け入れの phase_result も呼ぶ" },
+    { title: "Retrospect", detail: "retrospector が retrospect スキルで兆候を判定し、phase_result を呼ぶ" },
     { title: "Custom step", detail: "並びの独自の段（workflow-step の印のあるスキル）ごとに step-runner を1体起こし、スキルを呼ばせる。stopped なら並びを止める" },
   ],
 }
 
-// args: { taskId, phaseCount, phaseIds, steps?, model?, from? }
+// args: { taskId, phaseIds, steps?, model?, from? }
 //   taskId     着手したタスクの ID（GH-123 など）
 //   phaseIds   tw plan-phases の JSON の phases（{ id, name } の並び。並列は配列）。phase() の題と agent() の phase は、この id からだけ作る
-//   phaseCount tw plan-phases の delegatedRange.count（範囲の段の数。phase_result の count に渡す）。実装の段に受け入れ・振り返りを足した数
 //   steps      走らせる段の並び（tw config の steps）。この順に走らせる。既定は ["implement", "accept", "retrospect"]。
 //              ほかの値は独自の段（スキルの全名）で、phaseIds に同じ id が要る
 //   model      実装・直しの agent の model（haiku・sonnet・opus。省くとメインの model）
@@ -89,8 +88,8 @@ const STEP = {
   required: ["outcome"],
 }
 
-if (!args || typeof args.taskId !== "string" || !Number.isInteger(args.phaseCount) || args.phaseCount < 1) {
-  throw new Error("args に taskId（文字列）と phaseCount（1以上の整数）が要る")
+if (!args || typeof args.taskId !== "string") {
+  throw new Error("args に taskId（文字列）が要る")
 }
 const taskId = args.taskId
 const phaseIds = (Array.isArray(args.phaseIds) ? args.phaseIds : [])
@@ -98,13 +97,8 @@ const phaseIds = (Array.isArray(args.phaseIds) ? args.phaseIds : [])
   .map((p) => (typeof p === "string" ? p : p?.id))
   .filter((id) => typeof id === "string" && id !== "")
 const findId = (match) => phaseIds.find(match)
-const phaseCount = args.phaseCount
-const implCount = phaseIds.filter((id) => id.startsWith("impl-")).length
-const lastImpl = phaseIds.findLastIndex((id) => id.startsWith("impl-"))
-const rangeTail = lastImpl < 0 ? [] : phaseIds.slice(lastImpl + 1, lastImpl + 1 + Math.max(0, phaseCount - implCount))
-const rangeNumber = (id) => (rangeTail.includes(id) ? implCount + 1 + rangeTail.indexOf(id) : null)
-const acceptNumber = rangeNumber("accept")
-const retrospectNumber = rangeNumber("retrospect")
+const implIds = phaseIds.filter((id) => id.startsWith("impl-"))
+const implCount = implIds.length
 const steps = Array.isArray(args.steps) ? args.steps : ALL_STEPS
 const startAt = steps.includes(args.from) ? steps.indexOf(args.from) : 0
 const runs = (step) => steps.includes(step) && steps.indexOf(step) >= startAt
@@ -165,10 +159,10 @@ const runImplement = async () => {
       "`STEPPED` の行が出るまで次の段へ進まない。`STEP_CHECK_FAILED` など終了コードが 0 でないときは、続く出力の指摘を直して打ち直す。" +
       `出た \`STEPPED\` の行は stepLines に1段1行で入れる（最後の段は \`tw verify\` で済むので \`STEPPED\` は要らない。行数は ${implCount - 1}）。` +
       "各段に入るたびに（済ませた・飛ばした・止めたの結果が出るたびに、必ず）phase_result を呼ぶ。呼ばずに次の段へ進まない。" +
-      `{ phase: <段の番号>, count: ${phaseCount}, outcome: "finished", summary: <その段でしたこと・分かったことを1〜2文> } で呼ぶ` +
-      "（count は範囲の段の数で、## やること の段の数と違ってもこの値を渡す）。" +
-      "段が要らず飛ばすなら outcome を skipped にする（summary は付けない）。" +
-      "判断が想定より要ると分かったら押し切らず、その段で phase_result を outcome: stopped（reason に理由）で呼んで止め、" +
+      `## やること の段の番号と段の id の対応は ${implIds.map((id, i) => `段 ${i + 1} は ${id}`).join("、")}。` +
+      '{ step: <その段の id>, outcome: "finished", summary: <その段でしたこと・分かったことを1〜2文> } で呼ぶ（位置の番号と段の数は渡さない）。' +
+      "段が要らず飛ばすなら outcome を skipped にし、同じく step を渡す（summary は付けない）。" +
+      "判断が想定より要ると分かったら押し切らず、その段の id を step に渡し、phase_result を outcome: stopped（reason に理由）で呼んで止め、" +
       "schema の stopped を true、reason に理由を入れて返す。" +
       `最後の段のあと \`tw verify\` を打ち、打ったコマンド・結果の要点・通ったかを返す。` +
       "返す欄は schema のとおり。draftLines には委譲先の報告に書く `- ドラフト:` の行があれば入れる。" +
@@ -287,14 +281,14 @@ const runAccept = async () => {
 // 受け入れの申告は、受け入れより後ろで最初に走る agent（独自の段でも振り返りでも）が1回だけ行う
 let acceptAnnounced = false
 const acceptFinishedSentence = () => {
-  if (acceptAnnounced || result.accept === undefined || acceptNumber === null) {
+  if (acceptAnnounced || result.accept === undefined) {
     return ""
   }
   acceptAnnounced = true
   return SKIP_KINDS.includes(result.accept.kind)
-      ? `最初に受け入れの phase_result を { phase: ${acceptNumber}, count: ${phaseCount}, outcome: "skipped" } で1回呼ぶ（summary は付けない。tw accept の判定が ${result.accept.kind}）。`
-      : `最初に受け入れの phase_result を { phase: ${acceptNumber}, count: ${phaseCount}, outcome: "finished", summary: <受け入れの結果を1〜2文> } で1回呼ぶ` +
-        `（受け入れ役は差し戻し ${result.accept.rounds} 回のあと通した。tw accept の判定は ${result.accept.kind}）。`
+      ? `最初に受け入れの phase_result を { step: "accept", outcome: "skipped" } で1回呼ぶ（summary は付けない。呼ぶ agent の段とは別の段なので step は明示で渡す。tw accept の判定が ${result.accept.kind}）。`
+      : `最初に受け入れの phase_result を { step: "accept", outcome: "finished", summary: <受け入れの結果を1〜2文> } で1回呼ぶ` +
+        `（呼ぶ agent の段とは別の段なので step は明示で渡す。受け入れ役は差し戻し ${result.accept.rounds} 回のあと通した。tw accept の判定は ${result.accept.kind}）。`
 }
 
 const runRetrospect = async () => {
@@ -307,9 +301,7 @@ const runRetrospect = async () => {
       "兆候が無ければ `- 振り返り: 兆候なし`、あれば物差しを通った候補を tw new --draft で積み、`- 振り返り:` の1行（積んだドラフトの ID を添える）を line に入れて返す。" +
       "作業ツリーのファイルは書き換えない。" +
       acceptFinishedSentence() +
-      (retrospectNumber === null
-        ? ""
-        : `返す前に phase_result を { phase: ${retrospectNumber}, count: ${phaseCount}, outcome: "finished", summary: <line と同じ要点を1〜2文> } で1回呼ぶ。`),
+      '返す前に phase_result を { outcome: "finished", summary: <line と同じ要点を1〜2文> } で1回呼ぶ（段は tsukumo が agent の段から補うので、位置の欄は渡さない）。',
     { agentType: "tsukumo-workflow:retrospector", schema: RETRO, model: "sonnet", effort: "medium", label: "振り返り", phase: retrospectTitle },
   )
   if (retro === null) {
@@ -329,7 +321,7 @@ const runCustom = async (step) => {
       `独自の段。Skill ツールで \`${step}\` を、タスクの ID ${taskId} を引数に1回呼んで従う。` +
       "スキルが最後に返した結果の語（finished・skipped・stopped）を outcome に、したこと・分かったことの1〜2文を summary（止めたなら reason）に入れて schema で返す。" +
       acceptFinishedSentence() +
-      "返す前に phase_result を { outcome, reason?, summary? } で1回呼ぶ（phase・count・step は渡さない）。" +
+      "返す前に phase_result を { outcome, reason?, summary? } で1回呼ぶ（位置の欄は渡さない）。" +
       (afterAccept ? "受け入れより後ろの段なので、作業ツリーのファイルを書き換えない。" : ""),
     { agentType: "tsukumo-workflow:step-runner", schema: STEP, label: step, phase: title },
   )

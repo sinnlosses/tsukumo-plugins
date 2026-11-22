@@ -75,7 +75,7 @@ Claude Code 以外の環境（Codex など）へスキルを置く入口は、�
 - 呼び方（`Workflow` はメインのセッションから呼ぶ。委譲先には道具が無い）: 名前 `tsukumo-workflow:task-flow` か、`scriptPath` にこのファイルの絶対パスを渡す。
   名前での呼び出しは接頭辞つきの `tsukumo-workflow:task-flow` で通ることを確かめた。`task-flow` だけでは読めない（not found）。
   plugin を入れ直したあとの読み込みは次のセッションの開始か `/reload-plugins` で効く
-- `args`: `taskId`（着手したタスクの ID）・`phaseCount`（`tw plan-phases` の `delegatedRange.count`。範囲の段の数で、実装の段の数ではない。設定 `flow` が `script` なら実装の段に受け入れ・振り返りを足した数で、各 agent が `phase_result` の `count` に渡す）・`phaseIds`（`tw plan-phases` の JSON の `phases`。`phase()` の題と `agent()` の `phase` はこの id からだけ作り、直書きは `scripts/check_repo.py` が禁じる）が要る。
+- `args`: `taskId`（着手したタスクの ID）・`phaseIds`（`tw plan-phases` の JSON の `phases`。`phase()` の題と `agent()` の `phase` はこの id からだけ作り、直書きは `scripts/check_repo.py` が禁じる）が要る。
   任意で `steps`（走らせる段の並びで、この順に走らせる。既定は `["implement", "accept", "retrospect"]`。ほかの値は独自の段のスキルの全名で、`phaseIds` に同じ id が要る。独自の段が `stopped` を返すと並びを止める）・`model`（実装と直しの model）・`from`（呼び直すときに始める段。`steps` の値）
 - 計画の準備はワークフロースクリプトの外: 呼ぶ側（メイン）が起こす前に `tw plan-check` を打ち、`PLAN_STALE`・`PLAN_NOT_FIRST`（計画が古い）か `PLAN_UNCOVERED`（完了条件に覆われない行がある）なら
   `tw brief implementer <ID> --rewrite` の決まりで書き直させ、`tw plan-phases <ID> --through 計画` の JSON を `work_plan` に渡して範囲の数と段の名前を確定させる（`skills/next-task/script-flow.md` の手順1a）。
@@ -88,8 +88,9 @@ Claude Code 以外の環境（Codex など）へスキルを置く入口は、�
   `REVIEW` なら受け入れ役はレビューし、判定 `accept` で止まると hook が `tw accept --after-review` を打つ（`VERIFIED` でなければ受け入れ役を `reject` で返し直させる）。
   `SKIP`・`NOTHING`・`NO_RANGE` なら `tw accept` が `accept` を閉じているので締めは打たず、受け入れ役は目視と材料だけを見る。`STOP` なら `stopped` で返す。差し戻しの上限は2回。
   実装と直しの agent は、返す前に申し送り `実装`・`直し` へ friction・ドラフト・規約の行と `- 画像: <パス>` の行を書く（`tw brief acceptor` が画像の欄に写す）
-- 範囲の段の `phase_result`: 受け入れ・振り返りが範囲（`phaseCount`）に入っていれば、振り返りの agent が自分の段の前に受け入れの分を
-  `finished`（`acceptKind` が `SKIP`・`NOTHING`・`NO_RANGE` なら `skipped`）で、振り返りは振り返りの agent が `finished` で、どれも1回呼ぶ。
+- 範囲の段の `phase_result`: 受け入れの分は、受け入れより後ろで最初に走る agent（独自の段か振り返り）が `step: "accept"` で
+  `finished`（`acceptKind` が `SKIP`・`NOTHING`・`NO_RANGE` なら `skipped`）を1回呼ぶ。振り返りは振り返りの agent が位置の欄なしで `finished` を1回呼ぶ（tsukumo が agent の段から補う）。
+  実装役は段ごとに `impl-<n>` の `step` で呼ぶ。
   呼ばれない道がある。`steps` に振り返りが無い並び（`["implement", "accept"]` など）では、受け入れの `phase_result` を呼ぶ振り返りの agent が起きない。
   受け入れの段が `stopped` で返る道（差し戻しの上限、`tw accept` の STOP、直しのあとの verify の失敗など）でも、振り返りまで届かないので受け入れの `phase_result` は呼ばれない。どの道も帯は、メインが完了の通知のあとに渡す `work_plan`（`skills/next-task/script-flow.md` の手順4）で追いつく。
   受け入れ役は呼ばない。範囲内の agent は返そうとして `phase_result` の関門に1回止められうるので、依頼文に「自分の段の `phase_result` 以外は呼ばず、同じ返却を返し直す」と足す
