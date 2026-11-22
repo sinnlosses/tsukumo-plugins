@@ -381,7 +381,7 @@ def _next_number(toplevel: str, snap: tw_base.BeadsSnapshot) -> int:
 
 
 def cmd_adopt(toplevel: str, args: argparse.Namespace) -> None:
-    """振り分け前の課題（トラッカーから取り込んだものなど）に番号・difficulty・loopable を付ける。"""
+    """振り分け前の課題（Jira から取り込んだものなど）に番号・difficulty・loopable を付ける。"""
     old = beads.to_bd_id(args.bd_id)
     body = tw_base.read_body(args.body_file)
     error = taskfile.validate_new_body(body, hold=False, difficulty=args.difficulty)
