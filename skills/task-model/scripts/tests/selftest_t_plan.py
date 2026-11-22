@@ -407,8 +407,8 @@ def test_plan_phases_widen_range() -> None:
     registered = taskfile.PLAN_REGISTERED_STATE
     delegate = taskfile.FLOW_DELEGATE
 
-    def run(specs, flow=delegate, state=registered, steps=(), widen=True):
-        result, error = taskfile.work_plan_phases(specs, flow, state, None, (), steps, widen_range=widen)
+    def run(specs, flow=delegate, state=registered, steps=(), widen=True, titles=None):
+        result, error = taskfile.work_plan_phases(specs, flow, state, None, (), steps, widen_range=widen, titles=titles)
         return result or {"error": error}
 
     def flat_ids(result):
@@ -428,8 +428,19 @@ def test_plan_phases_widen_range() -> None:
     check("受け入れだけの並びは1つ足す", accept_only.get("delegatedRange") == {"first": 0, "count": 3}, str(accept_only))
     retro_only = run(serial, steps=(taskfile.STEP_IMPLEMENT, taskfile.STEP_RETRO, taskfile.STEP_SHIP))
     check("振り返りだけの並びは1つ足す", retro_only.get("delegatedRange") == {"first": 0, "count": 3}, str(retro_only))
-    broken = run(serial, steps=(taskfile.STEP_IMPLEMENT, "other-step", taskfile.STEP_ACCEPT))
-    check("間に別のスキルの段が入れば数えない", broken.get("delegatedRange") == {"first": 0, "count": 2}, str(broken))
+    custom_steps = (taskfile.STEP_IMPLEMENT, "x:lint", taskfile.STEP_ACCEPT, "gone", taskfile.STEP_SHIP)
+    broken = run(serial, steps=custom_steps, titles={"x:lint": "静的検査"})
+    check("間に独自の段が入れば数えない", broken.get("delegatedRange") == {"first": 0, "count": 2}, str(broken))
+    check("独自の段は id が全名・名前が title の1段で、titles に無い値は段にならない",
+          broken.get("phases", [])[2:] == [{"id": "x:lint", "name": "静的検査"}, {"id": "accept", "name": "受け入れ"},
+                                           {"id": "ship", "name": "送り出し"}], str(broken))
+    untitled = run(serial, steps=custom_steps)
+    check("titles を渡さなければ独自の段も段にならず、範囲は切れない",
+          flat_ids(untitled) == ["impl-1", "impl-2", "accept", "ship"] and untitled.get("delegatedRange") == {"first": 0, "count": 3},
+          str(untitled))
+    through, error = taskfile.work_plan_phases(serial, delegate, registered, "x:lint", (), custom_steps, widen_range=True,
+                                               titles={"x:lint": "静的検査"})
+    check("--through は独自の段の全名で指せる", through is not None and through["current"] == 3, f"{through} {error}")
     missing = run((), state=taskfile.PLAN_MISSING_STATE)
     check("計画が未確定なら count を出さない", missing.get("delegatedRange") == {"first": 1}, str(missing))
     for flow in (taskfile.FLOW_MAIN, taskfile.FLOW_DIRECT):

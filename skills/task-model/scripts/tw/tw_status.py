@@ -108,7 +108,7 @@ def config_rows(toplevel: str, config: layout.Config) -> list[tuple[str, str | l
     for key in layout.CONFIG_KEYS:
         value = getattr(config, key)
         if key == layout.STEPS_KEY:
-            value = tw_config.script_steps(config)
+            value = tw_config.script_steps(toplevel, config)
         elif key == layout.REVIEW_CODE_GLOBS_KEY:
             value = list(value)
         elif key == "base_branch" and value is None:

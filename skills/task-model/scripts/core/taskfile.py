@@ -620,6 +620,7 @@ def work_plan_phases(
     steps: tuple[str, ...] = (),
     skipped: tuple[str, ...] = (),
     widen_range: bool = False,
+    titles: dict[str, str] | None = None,
 ) -> tuple[dict | None, str | None]:
     """`work_plan` の引数（`phases`＝段の id と名前の `{id, name}`〔並列は配列〕・`current`・`finishedInGroup`・あれば `delegatedRange`・`skippedPhases`）。形が決まらなければ `(None, 理由)`。
 
@@ -627,14 +628,24 @@ def work_plan_phases(
     `also` は並列のまとまりの中で、`through` の後ろにあるが先に済んだ段の番号。
     `steps` は段の名前（旧いスキルの全名も短い名前に読む）で、空なら `DEFAULT_STEP_NAMES` の順。`skipped` は済んだ段のうち飛ばした段の名前。
     `widen_range` が真なら、範囲が確定しているとき、実装の直後に続く受け入れ・振り返りの段も `delegatedRange` の `count` に数える。
+    `titles` は独自の段（`workflow-step` の印のあるスキル）の全名 → 段の名前。`steps` の値が `titles` にあれば id が全名・名前が
+    `titles[値]`・`through` で指す名前が全名の1段にし、`delegatedRange` には数えない。`titles` に無く組み込みの段でも送り出しでもない値は段にしない。
     """
     direct = flow == FLOW_DIRECT
+    custom = titles or {}
     entries: list[str | list[str]] = []
     keys: list[list[str]] = []
     ids: list[list[str]] = []
     range_out: dict | None = None
     widening = False
-    for step in [layout.step_short_name(s) for s in steps] or list(DEFAULT_STEP_NAMES):
+    for raw in steps or DEFAULT_STEP_NAMES:
+        if raw in custom:
+            widening = False
+            entries.append(custom[raw])
+            keys.append([raw])
+            ids.append([raw])
+            continue
+        step = layout.step_short_name(raw)
         if step == STEP_IMPLEMENT and direct:
             entries += [PHASE_FIX, PHASE_VERIFY]
             keys += [[PHASE_FIX], [PHASE_VERIFY]]
@@ -672,12 +683,11 @@ def work_plan_phases(
                 ids.append([ID_RETRO])
                 if widening and range_out is not None:
                     range_out["count"] += 1
-        else:
+        elif step == STEP_SHIP:
             widening = False
-            phase = PHASE_SHIP if step == STEP_SHIP else step
-            entries.append(phase)
-            keys.append([phase])
-            ids.append([ID_SHIP if step == STEP_SHIP else step])
+            entries.append(PHASE_SHIP)
+            keys.append([PHASE_SHIP])
+            ids.append([ID_SHIP])
     if flow != "delegate":
         range_out = None
     if not entries:

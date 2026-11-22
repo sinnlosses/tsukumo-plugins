@@ -16,6 +16,7 @@ import gitinfo
 import ledger
 import tracker
 import tw_base
+import tw_config
 
 
 def cmd_config_doctor(toplevel: str) -> None:
@@ -60,6 +61,14 @@ def cmd_config_doctor(toplevel: str) -> None:
     if config is not None and config.source is not None:
         store_code = _doctor_store(toplevel, config)
         exit_code = 3 if 3 in (exit_code, store_code) else max(exit_code, store_code)
+
+    # 検査5: 並びの値が組み込みの段か独自の段の候補か（`tw plan-phases` は候補に無い値を段にしない）。
+    if config is not None and config.steps is not None:
+        known = {c.value for c in (*layout.script_step_candidates(), *tw_config.step_candidates(toplevel))} | {"ship"}
+        missing = [s for s in config.steps if s not in known and layout.step_short_name(s) not in known]
+        if missing:
+            print(f"steps\tMISSING\t{','.join(missing)}\t候補に無い段（tw plan-phases は段にしない）")
+            exit_code = max(exit_code, 1)
 
     if exit_code:
         raise SystemExit(exit_code)

@@ -11,9 +11,16 @@ import gitinfo
 import layout
 
 
-def script_steps(config: layout.Config) -> list[str]:
-    """設定の `steps`（無ければ既定の並び）を、ワークフロースクリプトの段の名前にしたもの。"""
-    return layout.script_steps(config.steps) if config.steps is not None else layout.default_steps()
+def step_candidates(toplevel: str | None) -> list[layout.StepCandidate]:
+    """独自の段の候補（`workflow-step` の印のあるスキル）。走査先は作業ツリー・ホーム・この `tw` と同じチェックアウトの plugin。"""
+    return layout.step_candidates(toplevel, os.path.expanduser("~"), layout.own_plugin_root())
+
+
+def script_steps(toplevel: str | None, config: layout.Config) -> list[str]:
+    """設定の `steps`（無ければ既定の並び）を、ワークフロースクリプトの段の名前と独自の段の値にしたもの。"""
+    if config.steps is None:
+        return layout.default_steps()
+    return layout.script_steps(config.steps, [c.value for c in step_candidates(toplevel)])
 
 
 def _toplevel_or_none() -> str | None:
@@ -48,10 +55,15 @@ def cmd_config_set(toplevel: str, key: str, value: str) -> None:
         new_text = layout.config_text_with(text, key, value)
         if key == layout.STEPS_KEY:
             items = json.loads(value)
-            allowed = {c.value for c in layout.script_step_candidates()} | set(config.steps or ())
+            builtin = {c.value for c in layout.script_step_candidates()}
+            allowed = builtin | {c.value for c in step_candidates(toplevel)} | set(config.steps or ())
             unknown = [i for i in items if i not in allowed]
             if unknown:
                 raise layout.ConfigValueError(f"steps の候補にも今の値にも無い名前: {', '.join(unknown)}")
+            implement_at = items.index("implement") if "implement" in items else len(items)
+            early = [i for i in items[:implement_at] if i not in builtin]
+            if early:
+                raise layout.ConfigValueError(f"implement より前に置けない段: {', '.join(early)}")
             value = layout.steps_text(items)
     except layout.ConfigValueError as e:
         print(f"tw config set: {e}", file=sys.stderr)

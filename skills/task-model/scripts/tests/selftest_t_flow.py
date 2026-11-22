@@ -162,6 +162,40 @@ def test_config_schema_step_candidates() -> None:
         check("既定の並びは3段のまま", steps["default"] == ["implement", "accept", "retrospect"], repr(steps["default"]))
 
 
+def test_config_set_steps_custom_order() -> None:
+    say("自己テスト: config set steps は独自の段を implement より後ろにだけ置け、前に置くと終了コード2。tw config の steps の行に独自の段の値が残る")
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = _make_config_doctor_repo(tmp, "custom-order")
+        _step_skill(os.path.join(repo, ".claude", "skills"), "lint", "true")
+        done = run_task(repo, "config", "set", "steps", '["implement","lint","accept"]')
+        check("implement の後ろの独自の段は書ける", done.returncode == 0, done.stdout + done.stderr)
+        check("tw config の steps の行に独自の段の値が残る",
+              json.loads(_config_rows(repo)["steps"][1]) == ["implement", "lint", "accept"], repr(_config_rows(repo).get("steps")))
+        for value in ('["lint","implement"]', '["lint","accept"]'):
+            bad = run_task(repo, "config", "set", "steps", value)
+            check(f"{value} は終了コード2で、設定は変わらない",
+                  bad.returncode == 2 and "implement より前に置けない段: lint" in bad.stderr
+                  and json.loads(_config_rows(repo)["steps"][1]) == ["implement", "lint", "accept"], bad.stdout + bad.stderr)
+
+
+def test_config_doctor_unknown_step() -> None:
+    say("自己テスト: config-doctor は設定の steps の候補に無い値を steps MISSING の行で出して終了コード1、候補だけなら行を出さない")
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = _make_config_doctor_repo(tmp, "doctor-step")
+        _step_skill(os.path.join(repo, ".claude", "skills"), "lint", "true")
+        config_path = os.path.join(repo, ".tw", "config.toml")
+        write(config_path, 'verify = "なし"\nbranch = "既定"\nsteps = ["implement", "lint", "accept"]\n')
+        ok = run_task(repo, "config-doctor")
+        check("候補だけの並びに steps の行は出ず、終了コード0", "\nsteps\t" not in "\n" + ok.stdout and ok.returncode == 0,
+              f"{ok.returncode} {ok.stdout}")
+        write(config_path, 'verify = "なし"\nbranch = "既定"\nsteps = ["implement", "lint", "gone", "accept"]\n')
+        bad = run_task(repo, "config-doctor")
+        rows = [r for r in bad.stdout.splitlines() if r.startswith("steps\t")]
+        check("候補に無い値は steps MISSING の行と終了コード1",
+              rows == ["steps\tMISSING\tgone\t候補に無い段（tw plan-phases は段にしない）"] and bad.returncode == 1,
+              f"{bad.returncode} {bad.stdout}")
+
+
 def test_config_commit_task_id() -> None:
     say("自己テスト: 設定の欄 commit_task_id の既定は 付ける で、set は 付ける・付けない だけを書ける")
     with tempfile.TemporaryDirectory() as tmp:
@@ -676,6 +710,8 @@ TESTS = (
     test_all_tests_registered,
     test_config_flow_is_script_only,
     test_config_schema_step_candidates,
+    test_config_set_steps_custom_order,
+    test_config_doctor_unknown_step,
     test_config_commit_task_id,
     test_config_schema_repos_land,
     test_config_repos_table,

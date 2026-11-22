@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 # 設定・作業ツリーごとの控えの置き場
@@ -654,11 +654,14 @@ def step_short_name(step: str) -> str:
     return name[: -len("-step")] if name.endswith("-step") else name
 
 
-def script_steps(steps: object) -> list[str]:
-    """並びをワークフロースクリプトの段の名前（`SCRIPT_STEPS`）にする。スキルの全名で書いてあっても読み替え、送り出しとワークフロースクリプトに無い段は落とし、重複は先の1つにする。"""
+def script_steps(steps: object, custom: Iterable[str] = ()) -> list[str]:
+    """並びをワークフロースクリプトの段の名前にする。`custom`（独自の段の候補の値）にある値はそのまま残し、
+    ほかはスキルの全名で書いてあってもワークフロースクリプトの段（`SCRIPT_STEPS`）の名前に読み替え、
+    送り出しとどちらにも無い段は落とし、重複は先の1つにする。"""
     known = {name for name, _, _ in SCRIPT_STEPS}
-    names = [step_short_name(s) for s in steps or ()]
-    return [n for i, n in enumerate(names) if n in known and n not in names[:i]]
+    allowed = set(custom)
+    names = [s if s in allowed else step_short_name(s) for s in steps or ()]
+    return [n for i, n in enumerate(names) if (n in allowed or n in known) and n not in names[:i]]
 
 
 def default_steps() -> list[str]:

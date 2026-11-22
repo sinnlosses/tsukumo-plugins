@@ -88,7 +88,7 @@ verify = "pnpm check"        # 受け入れ判定に使う。打つものが無�
 | `commit_task_id` | `付ける`（既定）・`付けない`。`付けない` なら `tw finish` はコミットの件名の先頭にタスクIDを付けず、`--message` の先頭の `T-xxx:` も外す（「コミットメッセージ」） |
 | `flow` | `script`（既定で、値はこれだけ）。入口のスキルは着手のあと plugin のワークフロースクリプトを呼ぶ。旧い値 `skills` は `script` として読み、`tw config set flow skills` は終了コード2で拒む |
 | `loop_max_ships` | `"12"` の形の1以上の整数（既定12）。`/loop` が1日に送ってよい件数の上限で、`tw loop-check` が読む |
-| `steps` | ワークフロースクリプトの段（実装・受け入れ・振り返りの3つ。名前は `tw config --schema` が返す）の並び。最上位に `steps = ["<段の名前>", …]`（文字列の配列）で書く。1つ以上・重複なし。無ければ `tw config --schema` の `default`。実装役・受け入れ役への依頼文の型は plugin の `workflow-briefs/<役>-request.md` で、`tw brief` が読む。書くのは `tw config set steps '<1行の JSON の配列>'` |
+| `steps` | ワークフロースクリプトの段（実装・受け入れ・振り返りと、`implement` より後ろに置く印のあるスキル。名前は `tw config --schema` が返し、候補に無い値は段にしない）の並び。最上位に `steps = ["<段の名前>", …]`（文字列の配列）で書く。1つ以上・重複なし。無ければ `tw config --schema` の `default`。実装役・受け入れ役への依頼文の型は plugin の `workflow-briefs/<役>-request.md` で、`tw brief` が読む。書くのは `tw config set steps '<1行の JSON の配列>'` |
 
 欄の形（各欄の既定と候補）は、ここに書き写さず `tw config --schema` が出す。廃止した `[parts]` の表は、設定に残っていれば `INVALID`（終了コード3）で止まる。
 
