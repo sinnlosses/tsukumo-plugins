@@ -6,6 +6,7 @@ export const meta = {
     { title: "Implement", detail: "implementer が ## やること の段を順に実装し、段ごとに phase_result を呼ぶ" },
     { title: "Accept", detail: "acceptor の起動と停止で hook（tw accept-hook）が tw accept の準備と締めを打ち、acceptor が判定する。差し戻しは上限2回。範囲に入っていれば振り返りの agent が受け入れの phase_result も呼ぶ" },
     { title: "Retrospect", detail: "retrospector が retrospect スキルで兆候を判定し、範囲に入っていれば phase_result を呼ぶ" },
+    { title: "Custom step", detail: "並びの独自の段（workflow-step の印のあるスキル）ごとに step-runner を1体起こし、スキルを呼ばせる。stopped なら並びを止める" },
   ],
 }
 
@@ -13,11 +14,13 @@ export const meta = {
 //   taskId     着手したタスクの ID（GH-123 など）
 //   phaseIds   tw plan-phases の JSON の phases（{ id, name } の並び。並列は配列）。phase() の題と agent() の phase は、この id からだけ作る
 //   phaseCount tw plan-phases の delegatedRange.count（範囲の段の数。phase_result の count に渡す）。実装の段に受け入れ・振り返りを足した数
-//   steps      走らせる段。既定は ["implement", "accept", "retrospect"]
+//   steps      走らせる段の並び（tw config の steps）。この順に走らせる。既定は ["implement", "accept", "retrospect"]。
+//              ほかの値は独自の段（スキルの全名）で、phaseIds に同じ id が要る
 //   model      実装・直しの agent の model（haiku・sonnet・opus。省くとメインの model）
-//   from       呼び直すときに始める段（implement・accept・retrospect）
+//   from       呼び直すときに始める段（steps の値。並びに無ければ先頭から）
 //   計画の判定と書き直しは呼ぶ側（メイン）が起こす前に済ませる。phaseIds に impl- の id が無く impl だけなら、計画が未確定なので起動を拒む
-// 戻り値: { stopped: false, conventionLines?, implement, accept, retrospect } か { stopped: true, phase, reason }
+// 戻り値: { stopped: false, conventionLines?, implement, accept, retrospect, steps? } か { stopped: true, phase, reason }
+//   steps は独自の段の値 → step-runner の返した { outcome, reason?, summary? }
 
 const REJECT_LIMIT = 2
 const ALL_STEPS = ["implement", "accept", "retrospect"]
@@ -76,6 +79,16 @@ const RETRO = {
   required: ["signal", "line", "draftIds"],
 }
 
+const STEP = {
+  type: "object",
+  properties: {
+    outcome: { type: "string", enum: ["finished", "skipped", "stopped"] },
+    reason: { type: "string" },
+    summary: { type: "string" },
+  },
+  required: ["outcome"],
+}
+
 if (!args || typeof args.taskId !== "string" || !Number.isInteger(args.phaseCount) || args.phaseCount < 1) {
   throw new Error("args に taskId（文字列）と phaseCount（1以上の整数）が要る")
 }
@@ -93,8 +106,9 @@ const rangeNumber = (id) => (rangeTail.includes(id) ? implCount + 1 + rangeTail.
 const acceptNumber = rangeNumber("accept")
 const retrospectNumber = rangeNumber("retrospect")
 const steps = Array.isArray(args.steps) ? args.steps : ALL_STEPS
-const startAt = ALL_STEPS.includes(args.from) ? ALL_STEPS.indexOf(args.from) : 0
-const runs = (step) => steps.includes(step) && ALL_STEPS.indexOf(step) >= startAt
+const startAt = steps.includes(args.from) ? steps.indexOf(args.from) : 0
+const runs = (step) => steps.includes(step) && steps.indexOf(step) >= startAt
+const acceptAt = steps.indexOf("accept")
 const modelOpt = typeof args.model === "string" ? { model: args.model } : {}
 // 実装・直しの effort。skills/task-model/WORKFLOW.md の対応表の effort の列と同じ（載せていない model は既定のまま）
 const EFFORT_BY_MODEL = { haiku: "medium" }
@@ -137,8 +151,11 @@ if (runs("implement") && !phaseIds.some((id) => id.startsWith("impl-"))) {
 const implementTitle = runs("implement") ? titleOf("implement", (id) => id.startsWith("impl-")) : ""
 const acceptTitle = runs("accept") ? titleOf("accept", (id) => id === "accept") : ""
 const retrospectTitle = runs("retrospect") ? titleOf("retrospect", (id) => id === "retrospect") : ""
+const customTitles = Object.fromEntries(
+  steps.filter((step) => !ALL_STEPS.includes(step) && runs(step)).map((step) => [step, titleOf(step, (id) => id === step)]),
+)
 
-if (runs("implement")) {
+const runImplement = async () => {
   phase(implementTitle)
   const implement = await agent(
     `${COMMON}\n` +
@@ -192,9 +209,10 @@ if (runs("implement")) {
     }
   }
   result.conventionLines = implement.conventionLines
+  return null
 }
 
-if (runs("accept")) {
+const runAccept = async () => {
   phase(acceptTitle)
   let round = 0
   let judgment = null
@@ -263,9 +281,10 @@ if (runs("accept")) {
   }
 
   result.accept = { rounds: round, kind: judgment.acceptKind, judgment }
+  return null
 }
 
-const acceptFinishedSentence =
+const acceptFinishedSentence = () =>
   result.accept === undefined || acceptNumber === null
     ? ""
     : SKIP_KINDS.includes(result.accept.kind)
@@ -273,7 +292,7 @@ const acceptFinishedSentence =
       : `最初に受け入れの phase_result を { phase: ${acceptNumber}, count: ${phaseCount}, outcome: "finished", summary: <受け入れの結果を1〜2文> } で1回呼ぶ` +
         `（受け入れ役は差し戻し ${result.accept.rounds} 回のあと通した。tw accept の判定は ${result.accept.kind}）。`
 
-if (runs("retrospect")) {
+const runRetrospect = async () => {
   phase(retrospectTitle)
   const friction = result.accept?.judgment?.friction ?? "missing"
   const human = result.accept?.judgment?.human ?? 0
@@ -282,7 +301,7 @@ if (runs("retrospect")) {
       `振り返りの段。tsukumo-workflow:retrospect スキルを Skill ツールで読み、タスク ${taskId}・friction=${friction}・human=${human} で従う。` +
       "兆候が無ければ `- 振り返り: 兆候なし`、あれば物差しを通った候補を tw new --draft で積み、`- 振り返り:` の1行（積んだドラフトの ID を添える）を line に入れて返す。" +
       "作業ツリーのファイルは書き換えない。" +
-      acceptFinishedSentence +
+      acceptFinishedSentence() +
       (retrospectNumber === null
         ? ""
         : `返す前に phase_result を { phase: ${retrospectNumber}, count: ${phaseCount}, outcome: "finished", summary: <line と同じ要点を1〜2文> } で1回呼ぶ。`),
@@ -292,6 +311,38 @@ if (runs("retrospect")) {
     return { stopped: true, phase: "retrospect", reason: "振り返りの agent が null を返した" }
   }
   result.retrospect = retro
+  return null
+}
+
+// 独自の段（workflow-step の印のあるスキル）。段ごとに step-runner を1体起こし、model はメインと同じにする
+const runCustom = async (step) => {
+  const title = customTitles[step]
+  phase(title)
+  const afterAccept = acceptAt >= 0 && steps.indexOf(step) > acceptAt
+  const out = await agent(
+    `${COMMON}\n` +
+      `独自の段。Skill ツールで \`${step}\` を、タスクの ID ${taskId} を引数に1回呼んで従う。` +
+      "スキルが最後に返した結果の語（finished・skipped・stopped）を outcome に、したこと・分かったことの1〜2文を summary（止めたなら reason）に入れて schema で返す。" +
+      "返す前に phase_result を { outcome, reason?, summary? } で1回呼ぶ（phase・count・step は渡さない）。" +
+      (afterAccept ? "受け入れより後ろの段なので、作業ツリーのファイルを書き換えない。" : ""),
+    { agentType: "tsukumo-workflow:step-runner", schema: STEP, label: step, phase: title },
+  )
+  if (out === null) {
+    return { stopped: true, phase: step, reason: "独自の段の agent が null を返した" }
+  }
+  result.steps = { ...result.steps, [step]: out }
+  if (out.outcome === "stopped") {
+    return { stopped: true, phase: step, reason: out.reason ?? "独自の段の agent が止めた" }
+  }
+  return null
+}
+
+const RUNNERS = { implement: runImplement, accept: runAccept, retrospect: runRetrospect }
+for (const step of steps.filter(runs)) {
+  const stop = await (RUNNERS[step] ?? (() => runCustom(step)))()
+  if (stop !== null) {
+    return stop
+  }
 }
 
 return result

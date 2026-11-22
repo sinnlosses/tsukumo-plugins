@@ -17,7 +17,7 @@ tsukumo のワークフローの契約に型の合う1つの例だが、tsukumo 
 ```
 
 スキルは `tsukumo-workflow:<name>`、エージェント定義は `tsukumo-workflow:implementer`・
-`tsukumo-workflow:acceptor`・`tsukumo-workflow:retrospector` の名前で入る。`bin/tw` はプラグインが有効なあいだ Bash の PATH に入る。
+`tsukumo-workflow:acceptor`・`tsukumo-workflow:retrospector`・`tsukumo-workflow:step-runner` の名前で入る。`bin/tw` はプラグインが有効なあいだ Bash の PATH に入る。
 hook は `hooks/hooks.json` だけが掛け、エージェント定義の frontmatter に `hooks` は置かない。
 hook の掛かり方は `skills/task-model/tw-reference.md`「hook の関門」節。
 
@@ -66,7 +66,7 @@ Claude Code 以外の環境（Codex など）へスキルを置く入口は、�
 着手の印が立ったタスク1件を、実装 → 受け入れ → 振り返りの段で進める Claude Code の dynamic workflows のワークフロースクリプト。
 送り出し（`tw finish`）はワークフロースクリプトの段にせず、完了の通知を受けた呼び出し側が打つ。
 `agent()` の `agentType` は、実装・直しが `tsukumo-workflow:implementer`、受け入れが `tsukumo-workflow:acceptor`、
-振り返りが `tsukumo-workflow:retrospector`。`tw lap-hook` が agent の起動・停止から `delegate`・`review`・`retro` の `lap` を書く（`retro` は起動で `start`、`retrospector` の停止で `end`）。
+振り返りが `tsukumo-workflow:retrospector`、並びの独自の段（`workflow-step` の印のあるスキル）が段ごとに1体の `tsukumo-workflow:step-runner`（model はメインと同じ）。`tw lap-hook` が agent の起動・停止から `delegate`・`review`・`retro` の `lap` を書く（`retro` は起動で `start`、`retrospector` の停止で `end`）。
 受け入れの準備（`tw accept`・`tw brief acceptor`）と締め（`tw accept --after-review`）は agent を起こさず、`acceptor` の起動・停止で `tw accept-hook` が打つ。
 
 - 呼ぶ側: `/next-task` は着手のあとにこのワークフロースクリプトを呼び、完了の通知を受けて送り出す（手順は `skills/next-task/script-flow.md`、送り出しは `skills/next-task/ship.md`）。
@@ -76,7 +76,7 @@ Claude Code 以外の環境（Codex など）へスキルを置く入口は、�
   名前での呼び出しは接頭辞つきの `tsukumo-workflow:task-flow` で通ることを確かめた。`task-flow` だけでは読めない（not found）。
   plugin を入れ直したあとの読み込みは次のセッションの開始か `/reload-plugins` で効く
 - `args`: `taskId`（着手したタスクの ID）・`phaseCount`（`tw plan-phases` の `delegatedRange.count`。範囲の段の数で、実装の段の数ではない。設定 `flow` が `script` なら実装の段に受け入れ・振り返りを足した数で、各 agent が `phase_result` の `count` に渡す）・`phaseIds`（`tw plan-phases` の JSON の `phases`。`phase()` の題と `agent()` の `phase` はこの id からだけ作り、直書きは `scripts/check_repo.py` が禁じる）が要る。
-  任意で `steps`（走らせる段。既定は `["implement", "accept", "retrospect"]`）・`model`（実装と直しの model）・`from`（呼び直すときに始める段）
+  任意で `steps`（走らせる段の並びで、この順に走らせる。既定は `["implement", "accept", "retrospect"]`。ほかの値は独自の段のスキルの全名で、`phaseIds` に同じ id が要る。独自の段が `stopped` を返すと並びを止める）・`model`（実装と直しの model）・`from`（呼び直すときに始める段。`steps` の値）
 - 計画の準備はワークフロースクリプトの外: 呼ぶ側（メイン）が起こす前に `tw plan-check` を打ち、`PLAN_STALE`・`PLAN_NOT_FIRST`（計画が古い）か `PLAN_UNCOVERED`（完了条件に覆われない行がある）なら
   `tw brief implementer <ID> --rewrite` の決まりで書き直させ、`tw plan-phases <ID> --through 計画` の JSON を `work_plan` に渡して範囲の数と段の名前を確定させる（`skills/next-task/script-flow.md` の手順1a）。
   ワークフロースクリプトは計画を確かめず、`phaseIds` に `impl-` の id が無く `impl` だけ（範囲が未確定）なら起動を拒む

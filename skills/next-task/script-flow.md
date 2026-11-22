@@ -3,8 +3,8 @@
 手順4で着手の印を立てたあと、plugin のワークフロースクリプト `task-flow` で実装・受け入れ・振り返りを進め、完了の通知を受けて送り出す。
 `Workflow` を呼べるのはメインだけで、委譲先には呼べない。ワークフロースクリプトの `args`・戻り値・`lap` は plugin の README「ワークフロースクリプト `workflows/task-flow.js`」。
 
-1. **再開の位置を読む**: `tw relay T-xxx 再開` が `NONE` でなければ、本文の1行目の段の名前（`implement`・`accept`・`retrospect`）をワークフロースクリプトの `from` に渡す。
-   本文の1行目がワークフロースクリプトの段の名前でなければ（`flow` を切り替える前のスキルの全名）、`from` は渡さず最初から始める。
+1. **再開の位置を読む**: `tw relay T-xxx 再開` が `NONE` でなければ、本文の1行目の段の名前（`implement`・`accept`・`retrospect` か、独自の段のスキルの全名）をワークフロースクリプトの `from` に渡す。
+   本文の1行目が `tw config` の `steps` の並びの値でなければ（`flow` を切り替える前のスキルの全名など）、`from` は渡さず最初から始める。
 
 1a. **計画を確かめ、必要なら書き直す**（ワークフロースクリプトを起こす前に、メインの手順で済ませる。ワークフロースクリプトの中で書き直すと、段の数が tsukumo に届かず実装の段が番号を持たない）:
    `tw plan-check T-xxx` を打つ。
@@ -17,14 +17,14 @@
    - `NOT_OWNER` など着手の印が読めない行: 進めず、その行を報告して止める
 
 2. **プログレスバーを渡す**: 手順1a で計画を書き直したなら、確定した `tw plan-phases T-xxx --through 計画` の JSON を手順3に使う（手順1a で `work_plan` に渡し済みなので、渡し直さない）。書き直していなければ、`tw plan-phases T-xxx` の第3列の JSON をそのまま `work_plan` に渡す（`delegatedRange` つき）。`phases` の要素は段の id と名前の `{id, name}` で、id は `tw plan-phases` だけが生む。同じ JSON の `phases` を手順3で Workflow の `phaseIds` にも渡す（メインが id を作らない・書き換えない）。ここで `phases` に `impl-` で始まる id が無く `impl` だけなら、計画の範囲が未確定なので手順1a へ戻る（ワークフロースクリプトの起動も拒まれる）。
-   再開なら `--through` で `from` の手前の段までを済ませた位置にする（`accept` なら `実装`、`retrospect` なら `受け入れ`）。
+   再開なら `--through` で、`steps` の並びで `from` の手前の段までを済ませた位置にする（手前が `implement` なら `実装`、`accept` なら `受け入れ`、`retrospect` なら `振り返り`、独自の段ならそのスキルの全名）。
    `flow` が `script` なので、`tw plan-phases` の `delegatedRange` は実装の段に続く受け入れ・振り返りまで含み、その段の agent が `phase_result` で帯を進める。
 
 3. **ワークフロースクリプトを呼ぶ**: `Workflow` に、plugin の名前を接頭辞にしたワークフロースクリプトの名前（plugin の README「ワークフロースクリプト」の「呼び方」）を渡す。読めなければ `scriptPath` に、この plugin の `workflows/task-flow.js` の絶対パスを渡す。`args`:
    - `taskId`: タスクの ID
    - `phaseCount`: 手順2の JSON の `delegatedRange.count`（確定した計画の段の数に、範囲に入った受け入れ・振り返りの段を足した数。手順1a で書き直したときは書き直したあとの数）
    - `phaseIds`: 手順2の JSON の `phases`（そのまま。ワークフロースクリプトは `phase()` の題と `agent()` の `phase` をこの id からだけ作る。欠けていると起動が拒まれる）
-   - `steps`: `tw config` の `steps` の行（`flow` が `script` ならワークフロースクリプトの段の名前で出る）
+   - `steps`: `tw config` の `steps` の行（`flow` が `script` ならワークフロースクリプトの段の名前と独自の段のスキルの全名で、並びの順に出る）
    - `model`: `tw show T-xxx` の `difficulty`
    - `from`: 手順1で決めたとき
 
@@ -32,7 +32,7 @@
    知らせを受けたら `phaseSummary` を書かず、`speak` で一言知らせる。agent の会話の中身（`agent-*.jsonl`）は読まない。
 
 4. **完了の通知を受ける**: 先にプログレスバーの位置を確かめて `work_plan` を渡す（渡すまで作業のツールは拒まれる）。位置は `tw plan-phases T-xxx --through <走った最後の段>`
-   （`振り返り`・`受け入れ`・`実装` のうち、ワークフロースクリプトが走らせた最後のもの）。`phaseSummary` は戻り値から書く。
+   （`振り返り`・`受け入れ`・`実装`・独自の段のスキルの全名のうち、ワークフロースクリプトが走らせた最後のもの）。`phaseSummary` は戻り値から書く。
    - 戻り値が `{ stopped: true, phase }`: 次の順で進める。委譲先の未コミットの変更が作業ツリーに残ったまま release すると、次の周の `tw claim` が `DIRTY` で止まるため、先に退避する（作業ツリーを触るのは自分の作業ツリーだけ）
      1. `git status --short` で未コミットの変更を見る
      2. あれば、新規ファイルを `git add -N <パス>` で入れ、`git diff` を作業ツリーの外の絶対パス（`${TMPDIR}` かスクラッチの `<ID>-stopped.patch`）へ保存する
