@@ -20,6 +20,7 @@ import ledger
 HOOK_NAME = "reference-transaction"
 MARKER = "# tw ref-guard"
 MIN_GIT = (2, 28)
+UNKNOWN_ACTOR = "不明"  # git の hook には呼び手が届かない。tsukumo の集計（hook-denial-record.ts）が同じ値で数える
 _OBJECT_ID = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 
 
@@ -131,7 +132,7 @@ def run(state: str, stdin: IO[str], stderr: IO[str]) -> int:
         return 0
     if reason is None:
         return 0
-    ledger.record_denial(os.getcwd(), "tw-ref-guard", "MOVE_REF", "main")
+    ledger.record_denial(os.getcwd(), "tw-ref-guard", "MOVE_REF", UNKNOWN_ACTOR)
     stderr.write(reason + "\n")
     return 1
 
@@ -157,6 +158,7 @@ def _refusal(updates: str) -> str | None:
             continue
         return (
             f"着手の印（{','.join(claims)}）が立っていて tw done の前の作業ツリー（{toplevel}）では、"
-            f"主ブランチに無いコミットへ {ref} を動かさない。コミットせず、変更は作業ツリーに残したまま報告で返す"
+            f"主ブランチに無いコミットへ {ref} を動かさない。委譲先はコミットせず、変更は作業ツリーに残したまま報告で返す。"
+            "メインは `tw finish` で送る"
         )
     return None

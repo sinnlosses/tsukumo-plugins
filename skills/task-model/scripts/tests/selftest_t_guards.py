@@ -1262,6 +1262,12 @@ def test_ref_guard_blocks_commits() -> None:
             check(f"呼び手を問わず（メインが手で打っても）拒む: {label}",
                   done.returncode != 0 and "着手の印" in done.stderr
                   and _raw_git(wt1, "rev-parse", "HEAD").stdout.strip() == head, done.stdout + done.stderr)
+            if label == "git commit -m x":
+                check("拒否文は委譲先の手（報告で返す）とメインの手（tw finish）を両方言う",
+                      "報告で返す" in done.stderr and "tw finish" in done.stderr, done.stderr)
+                moves = [r for r in _denial_rows(main_path) if r["rule"] == "MOVE_REF"]
+                check("MOVE_REF の記録の actor は呼び手を見分けられないので 不明",
+                      bool(moves) and all(r["actor"] == "不明" for r in moves), str(moves))
 
         write(os.path.join(main_path, "advance.txt"), "m\n")
         _raw_git(main_path, "add", "advance.txt")
@@ -1308,6 +1314,19 @@ def test_commit_guard_with_ref_guard() -> None:
         commit_task(main_path, taskfile.Task("T-100", "任せる", "todo", "sonnet", "Y", (), BODY))
         run_task(wt1, "claim", "T-100")
         check("git commit の入力は通す（hook に任せる）", run_guard(tmp, wt1, "git commit -m x") is None)
+        for command, refused in (
+            ("git commit -m x", True), ("git cherry-pick main", True), ("git revert HEAD", True), ("git am x.patch", True),
+            ("git merge --ff-only main", False), ("git rebase main", False),
+        ):
+            payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": wt1,
+                                  "agent_id": "a-implementer", "session_id": "s-1"})
+            r = run_task(tmp, "commit-guard", stdin=payload)
+            check(f"委譲先（agent_id あり）の {command} は{'先に拒む' if refused else '通す（hook に任せる）'}",
+                  r.returncode == 0 and (r.stdout != "") == refused, r.stdout + r.stderr)
+        rows = [r for r in _denial_rows(main_path) if r["rule"] == "GIT_COMMIT"]
+        check("委譲先のコミットの拒否は actor subagent・agent つきで残る",
+              len(rows) == 4 and all(r["actor"] == "subagent" and r.get("agent") == "a-implementer" for r in rows),
+              str(rows))
         reason = run_guard(tmp, wt1, "TW_REF_GUARD_ALLOW=1 git commit -m x")
         check("TW_REF_GUARD_ALLOW を付けたコマンドは拒む",
               reason is not None and "TW_REF_GUARD_ALLOW" in reason and "T-100" in reason, str(reason))

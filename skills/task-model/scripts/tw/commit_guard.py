@@ -6,6 +6,8 @@ python の書き込み）と、設定の `verify`・`verify_before_ship` と同�
 （`TW_REF_GUARD_ALLOW=`・`export TW_REF_GUARD_ALLOW`・`core.hooksPath` を書き換える形。読むだけのコマンドは通す）と、委譲先の `git stash`・`git add -A`・`git push`・`git worktree remove`・`git branch -d`、
 書き込みの `bd`（主のセッションも）、受け入れ役の `tw` と検証コマンド。判定しきれない書き方は通す。
 コミットは、作業先で `ref-guard` が効いていれば（`ref_guard.inactive_reason` が `None`）拒まず git の hook に任せる。
+ただし委譲先（入力に `agent_id`）の `ALWAYS_NEW_COMMIT_SUBCOMMANDS` は、主ブランチの祖先にならないコミットを必ず作るので
+ここで拒み、台帳に `subagent` として残す（`ref-guard` は呼び手を見分けられない）。
 書き換えと直打ちは、入力の `cwd` の控えのタスクの `### 作業先` の作業ツリー（`tw_handback.task_trees`）にも控えがあるとみなして拒む。
 コミットはそこでは拒まない。
 
@@ -28,6 +30,7 @@ import ledger
 import ref_guard
 
 COMMIT_SUBCOMMANDS = ("commit", "merge", "pull", "cherry-pick", "revert", "am", "rebase")
+ALWAYS_NEW_COMMIT_SUBCOMMANDS = frozenset({"commit", "cherry-pick", "revert", "am"})
 READ_ONLY_FLAGS = ("--plan", "--help", "-h")
 BD_WRITES = frozenset(
     "assign close comment create create-form delete edit gate heartbeat label link note priority promote q reclaim "
@@ -205,9 +208,12 @@ def decide(payload: dict, acceptor: bool = False) -> tuple[str, str] | None:
                     f"ref-guard を外す書き方（{gitcmd.REF_GUARD_ALLOW_ENV} を付ける・core.hooksPath を指し直す）をしない。"
                     "コミットせず、変更は作業ツリーに残したまま報告で返す"
                 )
+    subagent = agent_scope.agent_id(payload) is not None
     for where, subcommand in _git_commits(command, start):
         claims = _open_claims_at(where)
-        if claims and not ref_guard.active(where):
+        if claims and (
+            (subagent and subcommand in ALWAYS_NEW_COMMIT_SUBCOMMANDS) or not ref_guard.active(where)
+        ):
             return "GIT_COMMIT", (
                 f"着手の印（{','.join(claims)}）が立っていて tw done の前の作業ツリー（{where}）では "
                 f"git {subcommand} を拒む。コミットせず、変更は作業ツリーに残したまま報告で返す"

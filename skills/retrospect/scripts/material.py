@@ -355,7 +355,7 @@ def transcript_agent(path: str) -> str | None:
 def read_denials(root: str) -> Counter[str]:
     """共有の git dir の hook の拒否の記録を、拒まれた委譲先の `agent_id` ごとに数える。
 
-    数えるのは `actor` が `subagent` で `agent` のある行だけ（`agent` の無い古い記録と `main` の行は、どのトランスクリプトのものか決まらない）。
+    数えるのは `actor` が `subagent` で `agent` のある行だけ（`agent` の無い古い記録と `main`・`不明` の行は、どのトランスクリプトのものか決まらない）。
     拒まずに通した行（`mode` が `log-only`）は数えない。読めなければ空。
     """
     found: Counter[str] = Counter()

@@ -39,7 +39,7 @@ plugin のサブエージェントは frontmatter の `hooks`・`permissionMode`
 
 `tw-reference.md` の表の行から外した細部。正典は `tw commit-guard --help`・`tw handback-guard --help`。
 
-- `commit-guard` が通す形: コミットを作る git のサブコマンドは、その作業ツリーで `ref-guard` が効いていれば git の hook に任せる。`ref-guard` を外す書き方でも読むだけのコマンドは通す。設定 `shell_write_guard = "project"` ならシェルでの書き換えは見ない。検証コマンドは `--plan`・`--help`・`-h` を含む打ち方（段を流さない読むだけの旗）なら通す。作業先が別のリポジトリのときは、作業先の作業ツリー（枝の名前がタスクIDの小文字）での書き換えと検証コマンドの直打ちも拒み、そこでのコミットは拒まない。
+- `commit-guard` が通す形: コミットを作る git のサブコマンドのうち `merge`・`pull`・`rebase` は、その作業ツリーで `ref-guard` が効いていれば git の hook に任せる（主ブランチへの早送りや祖先への更新で通ることがある）。`commit`・`cherry-pick`・`revert`・`am` は主ブランチの祖先にならないコミットを必ず作るので、委譲先（入力に `agent_id`）なら `ref-guard` が効いていても任せずに拒み、拒否を `subagent` として残す（`ref-guard` は呼び手を見分けられず `不明` で残す）。`ref-guard` を外す書き方でも読むだけのコマンドは通す。設定 `shell_write_guard = "project"` ならシェルでの書き換えは見ない。検証コマンドは `--plan`・`--help`・`-h` を含む打ち方（段を流さない読むだけの旗）なら通す。作業先が別のリポジトリのときは、作業先の作業ツリー（枝の名前がタスクIDの小文字）での書き換えと検証コマンドの直打ちも拒み、そこでのコミットは拒まない。
 - 委譲先への拒否の例外: `git stash` は `list`・`show`・`--help` を通す。`git add` は `--` の後ろの `-A` をファイル名として通し、`-n`/`--dry-run` も通す。`git push` は `-n`/`--dry-run` を除いて拒む。`tw land`・`tw ship` は Python から git を打つので Bash の hook を通らず、対象外。
 - 書き込みの `bd`（`update`・`close`・`create`・`reclaim`・`unclaim`・`reopen`・`delete`・`label`・`dep add|remove`・`kv set|clear`・`config set` など）は主のセッションにも拒む。`show`・`list`・`ready`・`kv get`・`dep list`・`--readonly` 付きは通し、コマンドに `bd` の語があるときだけ解析する。
 - 受け入れ役（`agent_type` の最後の `:` より後ろが受け入れ役のエージェント名、または手で付ける `--acceptor`）には、`tw` を打つ単純コマンドと検証コマンドの直打ちを拒む。判定は書き方の文字列で、`sh -c '…'` の中は見ない。受け入れ役への拒否では `tw verify` は案内しない（出力を読んで判定だけを返させるため）。
