@@ -317,7 +317,35 @@ def test_brief_acceptor_docs_section() -> None:
                   r.returncode == 0 and "文書" not in head.split("\t")[3].split(","), r.stdout + r.stderr)
 
 
+def _how_lines(stdout: str) -> list[str]:
+    return [line for line in stdout.splitlines() if "確かめ方（" in line]
+
+
+def test_brief_acceptor_how_reads_relay() -> None:
+    say("task.py brief acceptor: 申し送り 確かめ方 があれば、確かめ方の値はその行を ` / ` でつないだもの")
+    body = task_body([("書く", "- 確かめ方: 計画の欄QQ")], ["shared.txt"])
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1 = _claimed_repo(tmp, body=body)
+        run_task(wt1, "relay", "T-100", "確かめ方", "--body-file", "-", stdin="1\tコマンド\tmake test\n2\t目視\t狭い幅を撮る\n")
+        r = run_task(wt1, "brief", "acceptor", "T-100", "--accept-file", "-", stdin="NOTHING\n")
+        how = _how_lines(r.stdout)
+        check("控えの2行がつながって載り、計画の欄は載らない",
+              r.returncode == 0 and len(how) == 1 and how[0].endswith(": 1\tコマンド\tmake test / 2\t目視\t狭い幅を撮る"),
+              r.stdout + r.stderr)
+
+
+def test_brief_acceptor_how_without_relay() -> None:
+    say("task.py brief acceptor: 申し送り 確かめ方 も計画の欄も無ければ、確かめ方の値は 無い")
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1 = _claimed_repo(tmp, body=task_body([("書く", "x")], ["shared.txt"]))
+        r = run_task(wt1, "brief", "acceptor", "T-100", "--accept-file", "-", stdin="NOTHING\n")
+        how = _how_lines(r.stdout)
+        check("確かめ方の値が 無い", r.returncode == 0 and len(how) == 1 and how[0].endswith(": 無い"), r.stdout + r.stderr)
+
+
 TESTS = (
+    test_brief_acceptor_how_reads_relay,
+    test_brief_acceptor_how_without_relay,
     test_brief_acceptor_docs_section,
     test_brief_acceptor_visual_criterion_without_images,
     test_brief_acceptor_round_with_images,

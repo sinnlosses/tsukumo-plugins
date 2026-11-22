@@ -26,6 +26,7 @@ SNAPSHOT_SCRIPT = os.path.join(TASK_MODEL_DIR, "scripts", "core", "review_snapsh
 RULE_FILES = ("AGENTS.md", "CLAUDE.md")
 RELAY_IMPLEMENT_KEY = "実装"
 RELAY_FIX_KEY = "直し"
+RELAY_VERIFY_KEY = "確かめ方"
 IMAGE_LINE_PREFIX = "- 画像:"
 NO_DELEGATION_LINE = "- 規約: 委譲なし"
 _FRICTION_NONE = re.compile(r"friction log: なし\s*$")
@@ -143,7 +144,7 @@ def cmd_brief_acceptor(
         criteria=criteria,
         rules="・".join(f"`{p}`" for p in rules) or "無い（作業ツリーの根に規約のファイルが無い）",
         verdict="`" + verdict.replace("\t", "\\t") + "`" + "".join(f" 印: `{m.replace(chr(9), chr(92) + 't')}`" for m in marks),
-        how=_verify_ways(plan_body),
+        how=_verify_ways(toplevel, shown, plan_body),
         friction=_friction_value(toplevel, shown),
     )
     _print_brief(shown, ROLE_ACCEPTOR, sections, chosen, values)
@@ -152,9 +153,12 @@ def cmd_brief_acceptor(
 _VERIFY_WAY = re.compile(r"^[ \t]*- 確かめ方:[ \t]*(.+?)[ \t]*$", re.MULTILINE)
 
 
-def _verify_ways(plan_body: str) -> str:
-    """計画の段の `- 確かめ方:` の欄（完了条件の行ごとのコマンドかスクリプト）を ` / ` でつないだ1行。無ければ `無い`。"""
-    return " / ".join(_VERIFY_WAY.findall(plan_body)) or "無い"
+def _verify_ways(toplevel: str, shown: str, plan_body: str) -> str:
+    """申し送り `確かめ方`（受け入れ役が実装の前に決めた控え）の行を ` / ` でつないだ1行。
+    控えが無ければ計画の段の `- 確かめ方:` の欄をつなぎ、それも無ければ `無い`。"""
+    relayed = beads.last_relay(beads.comments(toplevel, beads.to_bd_id(shown)), RELAY_VERIFY_KEY) or ""
+    lines = [line.strip() for line in relayed.splitlines() if line.strip()]
+    return " / ".join(lines or _VERIFY_WAY.findall(plan_body)) or "無い"
 
 
 def _read_verdict(text: str) -> tuple[str, str | None, list[str]]:
