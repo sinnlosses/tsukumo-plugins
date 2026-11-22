@@ -16,7 +16,7 @@ tools: Bash, Read, Edit, Write, Grep, Glob, Skill, ToolSearch, StructuredOutput,
 - `Monitor`: 背景に回った `tw verify` を、判定の行が出るまで待つ（前に出す `sleep` は拒まれる）
 - `TaskStop`: 自分で起こした背景のコマンドを、返す前に止める
 - `SendMessage`: 段の区切りと長いコマンドの前に、メインへ進みの1行を送る
-- `mcp__tsukumo__phase_result`: 段ごとにプログレスバーを進める。`ToolSearch` はこれと `Monitor` などの遅延して読み込まれる道具を引く
+- `mcp__tsukumo__phase_result`: tsukumo で動いているとき（ツール一覧にあるとき）、段ごとにプログレスバーを進める。`ToolSearch` はこれと `Monitor` などの遅延して読み込まれる道具を引く
 - `Skill`: プロジェクトのスキル（テストの手順・画面の撮り方など）を読む
 - `StructuredOutput`: ワークフロースクリプトの schema で返す
 
