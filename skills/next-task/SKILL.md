@@ -64,12 +64,11 @@ metadata:
 
    | 出力 | すること |
    | --- | --- |
-   | `CLAIMED` | 手順5へ。`branch=` が作業する枝。行末の `direct=Y`／`direct=N:<理由>` は委譲しない近道の印の判定（印が無ければ列が無い） |
+   | `CLAIMED` | 手順5へ。`branch=` が作業する枝 |
    | `TAKEN`・`NOT_READY` | 先を越された・状態が変わった。手順1から別の1件を選び直す（3回続いたら止まる） |
    | `DIRTY`・`UNSHIPPED`・`INVALID`・`GIT_READ_ONLY` | `${CLAUDE_SKILL_DIR}/start-stopped.md` の「手順4の表の残り」に従って終了する |
 
-5. **流れを選ぶ**: `HOLD` を選んだなら `${CLAUDE_SKILL_DIR}/hold.md`。`CLAIMED` の行末が `direct=Y` で `tw plan-check` が `PLAN_REGISTERED` なら
-   `${CLAUDE_SKILL_DIR}/direct.md`。ほかはすべて `${CLAUDE_SKILL_DIR}/script-flow.md` に従う。
+5. **流れを選ぶ**: `HOLD` を選んだなら `${CLAUDE_SKILL_DIR}/hold.md`。ほかはすべて `${CLAUDE_SKILL_DIR}/script-flow.md` に従う。
 
 ## 送り出し
 

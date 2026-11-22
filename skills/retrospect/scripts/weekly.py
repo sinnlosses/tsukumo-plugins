@@ -11,7 +11,7 @@
   `WORSE\t<名前>\t<今>\t<前>`。`WORSE` があれば、期間内に主ブランチへ入ったやり方の変更
   `CHANGE\t<project|skills>\t<短い SHA>\t<件名>`（プロジェクトは設定ファイル・`.claude/`・`docs/`
   （`docs/history/` を除く）を触ったコミット、skills はこのスクリプトのあるリポジトリ。各20件まで）
-- **段の所要時間**: `STAGE\t<段>\t<difficulty>\t<道>\t<件数>\t<中央値秒>\t<最大秒>`（道は `direct`・`normal`。`tw metrics --stages --days N` と同じ行）。
+- **段の所要時間**: `STAGE\t<段>\t<difficulty>\t<道>\t<件数>\t<中央値秒>\t<最大秒>`（道は `normal`・`split`・`escalated`。旧い記録だけ `direct`。`tw metrics --stages --days N` と同じ行）。
   終わりの無い段は `OPEN\t<段>\t<件数>`、先頭に合計 `OPEN_TOTAL\t<件数>`（5を超えると `INTEGRITY\tWARN\t<段>=<件数>,…`）
 - **揺れたテスト**: 直近28日に落ちて、同じ鍵で次に通った（`verify_flaky` と同じ判定）`verify` の `tests` を名前で数えた
   `FLAKY\t<名前>\t<回数>`（上位5件）と、3回以上の `候補\t<名前>\t<回数>`。無ければ `EMPTY`
