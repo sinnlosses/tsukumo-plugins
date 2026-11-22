@@ -3,7 +3,7 @@ export const meta = {
   description: "着手の印が立ったタスク1件を、実装 → 受け入れ → 振り返りの段で進める（送り出しは呼んだ側が tw finish で行う）",
   whenToUse: "tw claim が CLAIMED を返したタスク1件を進めるとき（計画の判定と書き直しは呼ぶ側が済ませてから）",
   phases: [
-    { title: "Implement", detail: "implementer が ## やること の段を順に実装し、段ごとに phase_result を呼ぶ" },
+    { title: "Implement", detail: "model が opus なら先に contract-writer が完了条件の行ごとの確かめ方を申し送りに置き、implementer が ## やること の段を順に実装し、段ごとに phase_result を呼ぶ" },
     { title: "Accept", detail: "acceptor の起動と停止で hook（tw accept-hook）が tw accept の準備と締めを打ち、acceptor が判定する。差し戻しは上限2回。受け入れより後ろで最初に走る agent（独自の段か振り返り）が受け入れの phase_result も呼ぶ" },
     { title: "Retrospect", detail: "retrospector が retrospect スキルで兆候を判定し、phase_result を呼ぶ" },
     { title: "Custom step", detail: "並びの独自の段（workflow-step の印のあるスキル）ごとに step-runner を1体起こし、スキルを呼ばせる。stopped なら並びを止める" },
@@ -41,6 +41,29 @@ const IMPLEMENT = {
     reason: { type: "string" },
   },
   required: ["changedFiles", "verifyCommand", "verifyResult", "verifyPassed", "stepLines", "conventionLines", "frictionLines", "unverifiedCriteria", "stopped"],
+}
+
+const VERIFY_KINDS = ["コマンド", "目視", "差分"]
+
+const CONTRACT = {
+  type: "object",
+  properties: {
+    criteria: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          line: { type: "integer" },
+          kind: { type: "string", enum: VERIFY_KINDS },
+          how: { type: "string" },
+        },
+        required: ["line", "kind", "how"],
+      },
+    },
+    undecided: { type: "array", items: { type: "integer" } },
+    reason: { type: "string" },
+  },
+  required: ["criteria", "undecided"],
 }
 
 const UNVERIFIED_SENTENCE =
@@ -104,6 +127,8 @@ const startAt = steps.includes(args.from) ? steps.indexOf(args.from) : 0
 const runs = (step) => steps.includes(step) && steps.indexOf(step) >= startAt
 const acceptAt = steps.indexOf("accept")
 const modelOpt = typeof args.model === "string" ? { model: args.model } : {}
+// 実装の前の控えの回（完了条件の行ごとの確かめ方）を走らせる model。ほかの model と model の省略では走らせない
+const CONTRACT_MODELS = ["opus"]
 // 実装・直しの effort。skills/task-model/WORKFLOW.md の対応表の effort の列と同じ（載せていない model は既定のまま）
 const EFFORT_BY_MODEL = { haiku: "medium" }
 const effortOpt = Object.hasOwn(EFFORT_BY_MODEL, args.model) ? { effort: EFFORT_BY_MODEL[args.model] } : {}
@@ -149,8 +174,39 @@ const customTitles = Object.fromEntries(
   steps.filter((step) => !ALL_STEPS.includes(step) && runs(step)).map((step) => [step, titleOf(step, (id) => id === step)]),
 )
 
+// 受け入れ役の立場の agent が実装の前に完了条件の行ごとの確かめ方を決め、申し送り `確かめ方` に置く（実装役と受け入れ役が読む）
+const runContract = async () => {
+  if (!CONTRACT_MODELS.includes(args.model)) {
+    return null
+  }
+  const contract = await agent(
+    `タスク ${taskId} の実装の前の控えの回。作業ツリーのファイルは書き換えない。\`tw show ${taskId}\` の ## 完了条件 を行ごとに読み、` +
+      `各行を実装のあとにどう確かめるか（種類は ${VERIFY_KINDS.join("・")}。コマンドなら打つコマンド、目視なら撮る場面と見るところ、差分なら読む箇所）を決める。` +
+      "行番号は ## 完了条件 の番号（番号が無ければ上から 1 で数える）。決めたものを criteria に { line, kind, how } で入れ、" +
+      "確かめ方を決められない行（文言が曖昧で、合否を分ける観点が1つに定まらない行）は criteria に入れず undecided に行番号を入れ、reason にわけを書く。" +
+      `返す直前に \`tw relay ${taskId} 確かめ方 --body-file -\` の標準入力（一時ファイルに書かない）へ、criteria の行ごとに \`<line>\\t<kind>\\t<how>\` の1行を書く。` +
+      "tw relay 以外の tw と検証コマンドは打たない。",
+    { agentType: "tsukumo-workflow:contract-writer", schema: CONTRACT, label: "確かめ方", phase: implementTitle },
+  )
+  if (contract === null) {
+    return { stopped: true, phase: "implement", reason: "控えの回の agent が null を返した" }
+  }
+  if (contract.undecided.length > 0) {
+    return {
+      stopped: true,
+      phase: "implement",
+      reason: `完了条件 ${contract.undecided.join(",")} の確かめ方を決められない: ${contract.reason ?? "（理由なし）"}`,
+    }
+  }
+  return null
+}
+
 const runImplement = async () => {
   phase(implementTitle)
+  const contractStop = await runContract()
+  if (contractStop !== null) {
+    return contractStop
+  }
   const implement = await agent(
     `${COMMON}\n` +
       `最初に \`tw brief implementer ${taskId}\` を打ち、出力の2行目以降の決まりを読んで従う。` +

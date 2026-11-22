@@ -17,7 +17,7 @@ tsukumo のワークフローの契約に型の合う1つの例だが、tsukumo 
 ```
 
 スキルは `tsukumo-workflow:<name>`、エージェント定義は `tsukumo-workflow:implementer`・
-`tsukumo-workflow:acceptor`・`tsukumo-workflow:retrospector`・`tsukumo-workflow:step-runner` の名前で入る。`bin/tw` はプラグインが有効なあいだ Bash の PATH に入る。
+`tsukumo-workflow:acceptor`・`tsukumo-workflow:contract-writer`・`tsukumo-workflow:retrospector`・`tsukumo-workflow:step-runner` の名前で入る。`bin/tw` はプラグインが有効なあいだ Bash の PATH に入る。
 hook は `hooks/hooks.json` だけが掛け、エージェント定義の frontmatter に `hooks` は置かない。
 hook の掛かり方は `skills/task-model/tw-reference.md`「hook の関門」節。
 
@@ -80,6 +80,9 @@ Claude Code 以外の環境（Codex など）へスキルを置く入口は、�
 - 計画の準備はワークフロースクリプトの外: 呼ぶ側（メイン）が起こす前に `tw plan-check` を打ち、`PLAN_STALE`・`PLAN_NOT_FIRST`（計画が古い）か `PLAN_UNCOVERED`（完了条件に覆われない行がある）なら
   `tw brief implementer <ID> --rewrite` の決まりで書き直させ、`tw plan-phases <ID> --through 計画` の JSON を `work_plan` に渡して範囲の数と段の名前を確定させる（`skills/next-task/script-flow.md` の手順1a）。
   ワークフロースクリプトは計画を確かめず、`phaseIds` に `impl-` の id が無く `impl` だけ（範囲が未確定）なら起動を拒む
+- 確かめ方の控え: `model` が `opus` のときだけ、実装の agent より前に `tsukumo-workflow:contract-writer`（受け入れ役の立場で、`acceptor` とは別名にして `tw accept-hook` と `lap` を掛けない）が
+  `## 完了条件` の行ごとの確かめ方を決め、申し送り `確かめ方` に置く（実装役と、`tw brief acceptor` の確かめ方の欄を通して受け入れ役が読む）。
+  決められない行があれば実装に進まず `stopped`（`phase: "implement"`、理由に行番号）で返す。`sonnet`・`haiku` と `model` の省略では走らせない。段の id は増やさず、実装の段の帯に載せる
 - 実装の確認: 実装の agent は、最後の段より前の段ごとに `tw step` が `STEPPED` を出すまで次へ進まず、出た行を `stepLines` に返す。
   ワークフロースクリプトは `STEPPED` の行が「実装の段の数（`phaseIds` の `impl-` の id の数）− 1」行あるかを確かめ、足りなければ `stopped`（`phase: "implement"`）で返す。`conventionLines` は実装の報告の `- 規約:`（あれば `- 規約の指摘:`）の行
 - 戻り値: 通れば `{ stopped: false, conventionLines?, implement, accept, retrospect }`。止まれば `{ stopped: true, phase, reason }`（`phase` は止まった段）。
