@@ -33,11 +33,11 @@ class Stage:
 
 
 def stage_of(label: str) -> str | None:
-    if label == "implement" or re.fullmatch(r"fix-\d+", label):
+    if label in ("implement", "実装") or re.fullmatch(r"fix-\d+|直し \d+", label):
         return "delegate"
-    if re.fullmatch(r"acceptor-\d+", label):
+    if re.fullmatch(r"acceptor-\d+|受け入れ \d+", label):
         return "review"
-    if label == "retrospect":
+    if label in ("retrospect", "振り返り"):
         return "retro"
     return None
 

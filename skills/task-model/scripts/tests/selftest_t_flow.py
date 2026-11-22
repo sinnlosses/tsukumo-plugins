@@ -398,12 +398,12 @@ def _write_run(root: str, agents: list[tuple[str, str, object, tuple[float, floa
 
 
 _PASSED_RUN = [
-    ("a1", "implement", {"stopped": False}, (0, 120.5)),
-    ("a3", "acceptor-1", {"verdict": "reject", "notes": "秘密の本文XYZ", "findings": ["秘密の指摘P", "秘密の指摘Q"],
+    ("a1", "実装", {"stopped": False}, (0, 120.5)),
+    ("a3", "受け入れ 1", {"verdict": "reject", "notes": "秘密の本文XYZ", "findings": ["秘密の指摘P", "秘密の指摘Q"],
                           "findingKinds": ["正しさ", "規約"]}, (150, 210)),
-    ("a4", "fix-1", {"stopped": False}, (220, 250)),
-    ("a5", "acceptor-2", {"verdict": "accept"}, (260, 300)),
-    ("a6", "retrospect", {"line": "- 振り返り: x"}, (310, 325)),
+    ("a4", "直し 1", {"stopped": False}, (220, 250)),
+    ("a5", "受け入れ 2", {"verdict": "accept"}, (260, 300)),
+    ("a6", "振り返り", {"line": "- 振り返り: x"}, (310, 325)),
 ]
 
 
@@ -428,8 +428,8 @@ def test_flow_result_writes_journal_stages() -> None:
         rows = stages_of("T-110")
         check("flow_stage は journal の順に delegate・review・delegate・review・retro",
               [(row["stage"], row["label"]) for row in rows]
-              == [("delegate", "implement"), ("review", "acceptor-1"), ("delegate", "fix-1"), ("review", "acceptor-2"),
-                  ("retro", "retrospect")], repr(rows))
+              == [("delegate", "実装"), ("review", "受け入れ 1"), ("delegate", "直し 1"), ("review", "受け入れ 2"),
+                  ("retro", "振り返り")], repr(rows))
         check("seconds は transcript の先頭行と末尾行の時刻の差（秒未満は切り捨て）",
               [row["seconds"] for row in rows] == [120, 60, 30, 40, 15], repr(rows))
         check("start・end は transcript の時刻、source は journal",
@@ -457,7 +457,7 @@ def test_flow_result_writes_journal_stages() -> None:
         check("flow_stopped に phase と result の無い最後の agent の label",
               [(row["phase"], row["label"]) for row in stops] == [("accept", "fix-2")], repr(stops))
         check("止まっても届いた段は書き、result の無い fix-2 は区間にしない",
-              [row["label"] for row in stages_of("T-111")] == ["implement", "acceptor-1", "fix-1", "acceptor-2"],
+              [row["label"] for row in stages_of("T-111")] == ["実装", "受け入れ 1", "直し 1", "acceptor-2"],
               repr(stages_of("T-111")))
 
         run_task(wt1, "claim", "T-114")

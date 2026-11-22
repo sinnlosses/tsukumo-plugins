@@ -845,11 +845,11 @@ def check_workflow_effort() -> None:
     table = dict(re.findall(r"(\w+):\s*\"(\w+)\"", m.group(1))) if m else None
     if table != {"haiku": "medium"}:
         fail(f"workflows/task-flow.js: EFFORT_BY_MODEL が対応表（haiku だけ medium）と違う: {table}")
-    for label, want in (("implement", True), ("fix-${round}", True)):
+    for label, want in (("実装", True), ("直し ${round}", True)):
         line = next((ln for ln in text.splitlines() if f"label: `{label}`" in ln or f'label: "{label}"' in ln), "")
         if want and "...effortOpt" not in line:
             fail(f"workflows/task-flow.js: {label} の agent() に effortOpt を渡していない")
-    retro = next((ln for ln in text.splitlines() if 'label: "retrospect"' in ln), "")
+    retro = next((ln for ln in text.splitlines() if 'label: "振り返り"' in ln), "")
     if 'model: "sonnet", effort: "medium"' not in retro:
         fail('workflows/task-flow.js: 振り返りの agent() に model: "sonnet", effort: "medium" を渡していない')
     accept = [ln for ln in text.splitlines() if "acceptor" in ln and "agentType" in ln]

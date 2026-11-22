@@ -162,7 +162,7 @@ if (runs("implement")) {
       UNVERIFIED_SENTENCE +
       "画面や見た目を撮ったら、その画像の絶対パスを images に入れる。撮らなければ空配列。" +
       relaySentence("実装"),
-    { agentType: "tsukumo-workflow:implementer", schema: IMPLEMENT, label: "implement", phase: implementTitle, ...modelOpt, ...effortOpt },
+    { agentType: "tsukumo-workflow:implementer", schema: IMPLEMENT, label: "実装", phase: implementTitle, ...modelOpt, ...effortOpt },
   )
   if (implement === null) {
     return { stopped: true, phase: "implement", reason: "agent が null を返した" }
@@ -227,7 +227,7 @@ if (runs("accept")) {
     judgment = await agent(`${ACCEPTOR_REQUEST}\n${STOP_GATE}${carried}${reports}${unverifiedLine}`, {
       agentType: "tsukumo-workflow:acceptor",
       schema: JUDGMENT,
-      label: `acceptor-${round + 1}`,
+      label: `受け入れ ${round + 1}`,
       phase: acceptTitle,
     })
     if (judgment === null) {
@@ -251,7 +251,7 @@ if (runs("accept")) {
         UNVERIFIED_SENTENCE +
         "画面や見た目を撮ったら、その画像の絶対パスを images に入れる。撮らなければ空配列。" +
         relaySentence("直し"),
-      { agentType: "tsukumo-workflow:implementer", schema: IMPLEMENT, label: `fix-${round}`, phase: acceptTitle, ...modelOpt, ...effortOpt },
+      { agentType: "tsukumo-workflow:implementer", schema: IMPLEMENT, label: `直し ${round}`, phase: acceptTitle, ...modelOpt, ...effortOpt },
     )
     if (fix === null) {
       return { stopped: true, phase: "accept", reason: "直しの agent が null を返した" }
@@ -286,7 +286,7 @@ if (runs("retrospect")) {
       (retrospectNumber === null
         ? ""
         : `返す前に phase_result を { phase: ${retrospectNumber}, count: ${phaseCount}, outcome: "finished", summary: <line と同じ要点を1〜2文> } で1回呼ぶ。`),
-    { agentType: "tsukumo-workflow:retrospector", schema: RETRO, model: "sonnet", effort: "medium", label: "retrospect", phase: retrospectTitle },
+    { agentType: "tsukumo-workflow:retrospector", schema: RETRO, model: "sonnet", effort: "medium", label: "振り返り", phase: retrospectTitle },
   )
   if (retro === null) {
     return { stopped: true, phase: "retrospect", reason: "振り返りの agent が null を返した" }
