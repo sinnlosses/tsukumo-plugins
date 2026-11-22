@@ -3,7 +3,9 @@
 各部品の出力の行はそのまま並べ、止まる行（`tw done` の `NOT_OWNER`・`ALREADY_DONE` と `COMMITS_SINCE_CLAIM`、
 `tw ship` の `SHIPPED`・`NOTHING` 以外）が出たら以降を打たない。
 最初に、`--dropped` でなければ、作業先が別のリポジトリでその枝が合流していないとき `WORK_NOT_LANDED`（終了コード4）で何も書かずに止まる
-（登録簿の `land` が `branch`・`pr` なら、枝の先端が metadata `work_landed` の SHA と同じでないとき。それ以外は主ブランチに入っていないとき）。コミットは対象のファイルを個別に `git add` した1つだけで、
+（登録簿の `land` が `branch`・`pr` なら、枝の先端が metadata `work_landed` の SHA と同じでないとき。それ以外は主ブランチに入っていないとき）。
+続けて、並びの `accept` より後ろに独自の段があり、最後の `claim` 以降に受け入れの終わりの控え（出来事 `accepted`）があれば、
+着手した作業ツリーと（あれば）作業先の枝の作業ツリーの今の `(HEAD, 中身の木)` を控えと比べ、違えば `CHANGED_AFTER_ACCEPT`（終了コード4）で何も書かずに止まる。コミットは対象のファイルを個別に `git add` した1つだけで、
 差分が無ければ打たない。対象は `--add` で渡したファイル。渡さなければ作業ツリーの変更のうち通常のファイルで、`.tw/local`・symlink・サブモジュールは除く。
 件名の `T-xxx:` は tw が付ける。設定 `commit_task_id = "付けない"` なら付けず、`--message` の先頭の `T-xxx:` も外す。
 """
@@ -21,10 +23,13 @@ import gitinfo
 import layout
 import ledger
 import metrics
+import tw_accept
 import tw_base
 import tw_brief
 import tw_claim
+import tw_config
 import tw_handback
+import tw_plan
 import tw_ship
 
 STRAY_COMMITS_EXIT = 12
@@ -42,12 +47,18 @@ def cmd_finish(
 ) -> None:
     bd_id = tw_base.bd_task_id(task_id)
     shown = beads.to_task_id(beads.to_bd_id(task_id))
+    marked = _my_ship_mark(toplevel, bd_id) if resume else None
     if not dropped:
-        unlanded = tw_brief.unlanded_work_branch(toplevel, shown, tw_handback._claimed_plan_body(toplevel, shown))
+        plan_body = tw_handback._claimed_plan_body(toplevel, shown)
+        unlanded = tw_brief.unlanded_work_branch(toplevel, shown, plan_body)
         if unlanded is not None:
             print(f"WORK_NOT_LANDED\t{shown}\t{unlanded[0]}\t{unlanded[1]}")
             raise SystemExit(4)
-    marked = _my_ship_mark(toplevel, bd_id) if resume else None
+        if marked is None:
+            changed = _changed_after_accept(toplevel, shown, plan_body)
+            if changed is not None:
+                print(f"CHANGED_AFTER_ACCEPT\t{shown}\t{changed[0]}\t{changed[1]}")
+                raise SystemExit(4)
     if marked is not None:
         print(f"RESUMED\t{shown}\t{marked}")
     else:
@@ -66,6 +77,38 @@ def cmd_finish(
     events, _ = metrics.read_events(ledger.ledger_root(cwd=toplevel))
     for stage in metrics.open_stages(events, shown):
         print(f"OPEN_SPAN\t{shown}\t{stage}")
+
+
+def _changed_after_accept(toplevel: str, shown: str, plan_body: str) -> tuple[str, str] | None:
+    """受け入れより後ろの独自の段が作業ツリーを変えていれば `(作業ツリーのパス, head|content)`。
+
+    並びの `accept` より後ろに組み込みでない段が無い・最後の `claim` 以降に `accepted` の控えが無いときは `None`。
+    作業先が別のリポジトリなら、枝（タスクIDの小文字）の作業ツリーが残っているときだけそちらも比べる。
+    """
+    steps = tw_config.script_steps(toplevel, layout.read_config(toplevel))
+    builtin = {c.value for c in layout.script_step_candidates()}
+    if "accept" not in steps or all(s in builtin for s in steps[steps.index("accept") + 1 :]):
+        return None
+    events, _ = metrics.read_events(ledger.ledger_root(cwd=toplevel))
+    own = [e for e in events if e.task == shown]
+    claims = [i for i, e in enumerate(own) if e.kind == "claim"]
+    accepted = [e for e in (own[claims[-1] :] if claims else own) if e.kind == tw_accept.ACCEPTED_EVENT]
+    if not accepted:
+        return None
+    fields = accepted[-1].fields
+    targets = [(toplevel, fields.get("head"), fields.get("tree"))]
+    root = tw_plan.other_repo_root(toplevel, plan_body)
+    if root is not None:
+        trees = [w.path for w in gitinfo.list_worktrees(cwd=root) if w.branch == shown.lower()]
+        if trees:
+            targets.append((trees[0], fields.get("work_head"), fields.get("work_tree")))
+    for path, head, tree in targets:
+        now_head, now_tree = tw_accept.snapshot(path)
+        if now_head != head:
+            return path, "head"
+        if now_tree != tree:
+            return path, "content"
+    return None
 
 
 def _my_ship_mark(toplevel: str, bd_id: str) -> str | None:

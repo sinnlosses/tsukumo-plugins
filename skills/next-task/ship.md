@@ -51,7 +51,9 @@
    意図してコミットするなら `--add` で明示する。symlink は `.gitignore` に入れるか消すかを人が決める）。
    知見は `## 結果`・`## 注意`・正典の docs・新しいタスクへ置く。
    `tw finish` は `tw done`・コミット・`tw ship` の行をそのまま並べ、止まる行（`NOT_OWNER`・`CONFLICT` など）が出たら
-   以降を打たず、`${CLAUDE_SKILL_DIR}/ship-stopped.md` の表で読む。`DONE` の次に `COMMITS_SINCE_CLAIM` が続いたら、`tw finish` はそこで（`tw done` は済んだまま）
+   以降を打たず、`${CLAUDE_SKILL_DIR}/ship-stopped.md` の表で読む。先頭の行が `CHANGED_AFTER_ACCEPT` なら、並びの受け入れより後ろの独自の段が
+   受け入れたあとの作業ツリーを変えている（何も書かれていない）。その段が変えた差分を戻して打ち直すか、変更を残すなら
+   もう一度受け入れを通してから打ち直す。`DONE` の次に `COMMITS_SINCE_CLAIM` が続いたら、`tw finish` はそこで（`tw done` は済んだまま）
    コミットも `tw ship` も打たず終了コード12で止まる。`${CLAUDE_SKILL_DIR}/commits-since-claim.md` に従って判断し、
    同じ `--message` で `tw finish T-xxx --resume --message '<何をしたか>'` を打って続ける（`--result-file` は要らない。
    `done` を飛ばして `RESUMED` を出し、コミット→`tw ship` まで進む）。`--resume` なしで `tw finish`・`tw done` を打ち直すと、

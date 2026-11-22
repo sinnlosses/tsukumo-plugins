@@ -8,6 +8,7 @@ import tempfile
 from selftest_support import check, git, refuse_direct_run, say, write  # noqa: E402
 import beads  # noqa: E402
 import taskfile  # noqa: E402
+import tw_accept  # noqa: E402
 from selftest_body import task_body  # noqa: E402
 from selftest_fixtures import PLANNED_BODY, claimed_work_tree, commit_task, flow_rows, make_repo, run_task  # noqa: E402
 
@@ -37,6 +38,10 @@ def test_accept_bundles_acceptance_steps() -> None:
             and lines[-1].startswith("VERIFIED_SAME\t"),
             r.stdout + r.stderr,
         )
+        accepted = [row for row in flow_rows(wt1) if row.get("event") == tw_accept.ACCEPTED_EVENT]
+        head, tree = tw_accept.snapshot(wt1)
+        check("verify-check が通った受け入れの終わりに、着手した作業ツリーの HEAD と中身の木を accepted に控える",
+              len(accepted) == 1 and accepted[0].get("head") == head and accepted[0].get("tree") == tree, repr(accepted))
 
         write(os.path.join(wt1, "code.py"), "x = 1\n")
         r = run_task(wt1, "accept", "T-100")

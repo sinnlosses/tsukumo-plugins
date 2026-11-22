@@ -10,6 +10,7 @@ from selftest_support import RESULT_FULL, check, git, refuse_direct_run, say, wr
 import beads  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
+import tw_accept  # noqa: E402
 from selftest_body import task_body  # noqa: E402
 from selftest_fixtures import BODY, claimed_work_tree, commit_task, flow_rows, make_repo, run_task  # noqa: E402
 
@@ -414,7 +415,41 @@ def test_finish_work_landed_absolute_path() -> None:
                   r.stdout + r.stderr)
 
 
+def _accepted_then(tmp: str, steps: str, change: bool) -> tuple[str, object]:
+    """`steps` の並びで着手し、独自の段 `x` のスキルを置いて受け入れの終わりの控えを書いたあと、`change` なら作業ツリーを変えて `finish` を打つ。"""
+    _main, wt1 = _claimed(tmp, extra=f"steps = {steps}\n")
+    write(os.path.join(wt1, ".claude", "skills", "x", "SKILL.md"),
+          '---\nname: x\ndescription: 段\nmetadata:\n  workflow-step: "true"\n---\n本文\n')
+    write(os.path.join(wt1, "work.txt"), "受け入れた中身")
+    head, tree = tw_accept.snapshot(wt1)
+    ledger.record_event(wt1, tw_accept.ACCEPTED_EVENT, "T-100", "sonnet", head=head, tree=tree)
+    if change:
+        write(os.path.join(wt1, "work.txt"), "受け入れのあとに変えた中身")
+    return wt1, run_task(wt1, "finish", "T-100", "--result-file", "-", "--message", "x", stdin=RESULT)
+
+
+def test_finish_stops_on_change_after_accept() -> None:
+    say("task.py finish: 並びの accept より後ろに独自の段があり、受け入れの終わりの控えのあとに作業ツリーが変わっていれば CHANGED_AFTER_ACCEPT で何も書かずに止まる")
+    with tempfile.TemporaryDirectory() as tmp:
+        wt1, r = _accepted_then(tmp, '["implement", "accept", "x"]', change=True)
+        issue = beads.show(wt1, beads.to_bd_id("T-100"))
+        row = r.stdout.splitlines()[0].split("\t") if r.stdout else []
+        check("変えたら CHANGED_AFTER_ACCEPT（content）で終了コード4、done を書かない",
+              r.returncode == 4 and len(row) == 4 and row[:2] == ["CHANGED_AFTER_ACCEPT", "T-100"]
+              and os.path.realpath(row[2]) == os.path.realpath(wt1) and row[3] == "content"
+              and "DONE\t" not in r.stdout and issue is not None and issue.status == "in_progress", r.stdout + r.stderr)
+    with tempfile.TemporaryDirectory() as tmp:
+        _wt1, r = _accepted_then(tmp, '["implement", "accept", "x"]', change=False)
+        check("変えなければ通る", r.returncode == 0 and "CHANGED_AFTER_ACCEPT" not in r.stdout and "DONE\t" in r.stdout,
+              r.stdout + r.stderr)
+    with tempfile.TemporaryDirectory() as tmp:
+        _wt1, r = _accepted_then(tmp, '["implement", "x", "accept"]', change=True)
+        check("独自の段が accept の後ろに無い並びは変えても通る",
+              r.returncode == 0 and "CHANGED_AFTER_ACCEPT" not in r.stdout and "DONE\t" in r.stdout, r.stdout + r.stderr)
+
+
 TESTS = (
+    test_finish_stops_on_change_after_accept,
     test_finish_stops_on_unlanded_work_branch,
     test_finish_work_landed_sha,
     test_finish_work_landed_absolute_path,

@@ -31,6 +31,7 @@ import tw_verify
 SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "core")
 STOP_WORDS = ("NOT_CLAIMED", "NOT_OWNER")
 FORMAT_TAIL_LINES = 40
+ACCEPTED_EVENT = "accepted"  # 受け入れの終わりの (HEAD, 木)。`tw finish` が受け入れより後ろの独自の段の変更を見つけるのに読む
 
 
 @dataclass(frozen=True)
@@ -59,7 +60,17 @@ def cmd_accept(toplevel: str, task_id: str, after_review: bool) -> None:
     if other is None:
         _format(toplevel)
     _run_part(lambda: tw_verify.cmd_verify_check(toplevel if other is None else other.tree))
+    head, tree = snapshot(toplevel)
+    fields = {"head": head, "tree": tree}
+    if other is not None:
+        fields["work_head"], fields["work_tree"] = snapshot(other.tree)
+    tw_base.record(toplevel, ACCEPTED_EVENT, task_id, issue, **fields)
     tw_handback.close_open_lap(toplevel, task_id, "accept")
+
+
+def snapshot(tree_root: str) -> tuple[str, str]:
+    """作業ツリーの `(HEAD, 中身の木)`。受け入れの終わりの控えと、`tw finish` の入口の照らし合わせが同じ物差しで取る。"""
+    return gitcmd.out(["rev-parse", "HEAD"], tree_root), stamps.content_tree(tree_root)
 
 
 def _check_last_step(toplevel: str, shown: str, issue: beads.Issue | None) -> None:
