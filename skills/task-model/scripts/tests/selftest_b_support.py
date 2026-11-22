@@ -48,10 +48,6 @@ def rows(out: str) -> dict[str, list[str]]:
     return table
 
 
-def claim_snapshots(cwd: str) -> dict[str, beads.Issue]:
-    return beads.claim_snapshots(beads.read_kv(cwd))
-
-
 def tail_line(out: str, key: str) -> str:
     return next((l for l in out.splitlines() if l.startswith(key + "\t")), "")
 

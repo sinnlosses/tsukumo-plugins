@@ -83,8 +83,6 @@ SHIP_LABELS = {"done": "ship:done", "dropped": "ship:dropped"}
 # Jira の方式で、ローカルで閉じたが Jira で閉じてもらうのを待っている印。
 JIRA_CLOSE_LABEL = "jira:close"
 LAST_ID_KEY = "task-workflow.last-id"
-# 着手の印の控え（`bd kv` のキーの頭。あとに Beads ID が付く）。
-CLAIM_SNAPSHOT_KEY_PREFIX = "task-workflow.claim."
 CLAIM_BRANCH_KEY = "task_branch"
 # claim した時点の HEAD の SHA（`task done` が委譲先のコミットを知らせるのに使う）。
 CLAIM_HEAD_KEY = "task_claim_head"
@@ -329,31 +327,6 @@ def history(toplevel: str, bd_id: str) -> list[dict]:
     data = run_json(toplevel, ["history", bd_id])
     snaps = [h.get("Issue") for h in data if isinstance(h, dict) and isinstance(h.get("Issue"), dict)]
     return list(reversed(snaps))
-
-
-def overwritten_by(toplevel: str, bd_id: str, actor: str) -> Issue | None:
-    """`actor` が書いた最後の更新の、書く直前の版。無ければ（作った課題も）`None`。
-
-    `actor` は `bd` の1回の起動にだけ使う一意の名前を渡す（時刻では見分けない。出来事の時刻は秒の単位なので、
-    同じ名前の前の起動の書き込みが同じ秒にあると取り違える）。
-    `bd history` の版には metadata が載らないので、監査の出来事（`--events`。新しい順で、`old_value` に
-    書く前の課題が metadata ごと入る）から読む。出来事の種類は書いた中身で変わる（status も変えれば
-    `status_changed`）ので見ない。`old_value` が読めなければ `BeadsError`。
-    """
-    data = run_json(toplevel, ["history", bd_id, "--events"])
-    for event in data if isinstance(data, list) else []:
-        if not isinstance(event, dict) or event.get("actor") != actor:
-            continue
-        if not event.get("old_value"):
-            return None
-        try:
-            before = json.loads(str(event["old_value"]))
-        except ValueError as e:
-            raise BeadsError(f"bd history {bd_id} --events の old_value が読めない: {e}") from e
-        if not isinstance(before, dict) or "id" not in before:
-            raise BeadsError(f"bd history {bd_id} --events の old_value が課題の形でない")
-        return _issue(before)
-    return None
 
 
 def parse_time(value) -> datetime | None:
@@ -680,53 +653,9 @@ def write_last_id(toplevel: str, number: int) -> None:
         run_ok(toplevel, ["kv", "set", LAST_ID_KEY, str(number)])
 
 
-# --- 着手の印の控え ----------------------------------------------------------------
-
-
-def write_claim_snapshot(toplevel: str, issue: Issue) -> None:
-    """`issue` の着手の印（assignee・`started_at`・`MARK_KEYS` の metadata）を `bd kv` へ控える。
-
-    取り込みが着手の印を空で上書きしたまま止まっても、次の `tw` がここから戻す。
-    """
-    value = {"assignee": issue.assignee or "", "started_at": issue.started_at or "", "metadata": mark_values(issue)}
-    run_ok(toplevel, ["kv", "set", f"{CLAIM_SNAPSHOT_KEY_PREFIX}{issue.bd_id}", json.dumps(value, ensure_ascii=False)])
-
-
-def clear_claim_snapshot(toplevel: str, bd_id: str) -> None:
-    """手放した・閉じた課題の控えを消す（無くても成功する）。"""
-    run_ok(toplevel, ["kv", "clear", f"{CLAIM_SNAPSHOT_KEY_PREFIX}{bd_id}"])
-
-
 def read_kv(toplevel: str) -> dict:
     """`bd kv list --json` の全部（`{キー: 値の文字列}`）。読めなければ空。"""
     return _read_dict(toplevel, ["kv", "list", "--json"])
-
-
-def claim_snapshots(listed: dict) -> dict[str, Issue]:
-    """`read_kv` の結果から、控えのある課題ごとに控えた時点の着手中の版（`{Beads ID: Issue}`）。
-
-    返す `Issue` は status・assignee・`started_at`・metadata だけを持つ（ほかの欄は空）。
-    """
-    snapshots: dict[str, Issue] = {}
-    for key, raw in listed.items():
-        if not key.startswith(CLAIM_SNAPSHOT_KEY_PREFIX) or not isinstance(raw, str):
-            continue
-        try:
-            value = json.loads(raw)
-        except ValueError:
-            continue
-        if not isinstance(value, dict) or not value.get("assignee"):
-            continue
-        metadata = value.get("metadata")
-        bd_id = key[len(CLAIM_SNAPSHOT_KEY_PREFIX):]
-        snapshots[bd_id] = _issue({
-            "id": bd_id,
-            "status": "in_progress",
-            "assignee": str(value["assignee"]),
-            "started_at": str(value.get("started_at") or "") or None,
-            "metadata": {str(k): str(v) for k, v in metadata.items()} if isinstance(metadata, dict) else {},
-        })
-    return snapshots
 
 
 def mark_values(issue: Issue) -> dict[str, str]:

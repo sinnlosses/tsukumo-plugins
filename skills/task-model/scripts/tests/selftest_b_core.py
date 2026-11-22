@@ -21,11 +21,10 @@ import layout  # noqa: E402
 import ledger  # noqa: E402
 import taskfile  # noqa: E402
 import tracker  # noqa: E402
-import tracker_claims  # noqa: E402
 import tracker_github  # noqa: E402
 from selftest_b_fakegithub import github  # noqa: E402
 from selftest_b_support import (  # noqa: E402
-    HELD_PLANNED_BODY, PLANNED_BODY, bd, claim_snapshots, env, make_repo, new, new_unplanned, num, rows, tail_line, work_and_done,
+    HELD_PLANNED_BODY, PLANNED_BODY, bd, env, make_repo, new, new_unplanned, num, rows, tail_line, work_and_done,
 )
 from selftest_fixtures import run_task, start_task  # noqa: E402
 from selftest_support import RESULT_FULL, check, git, local, refuse_direct_run, say, write  # noqa: E402
@@ -63,10 +62,6 @@ def test_claim_race_owner_and_release() -> None:
               and issue.assignee == os.path.basename(winner)
               and (issue.raw.get("metadata") or {}).get(beads.CLAIM_BRANCH_KEY) == os.path.basename(winner),
               str(issue and issue.raw))
-        kept = claim_snapshots(main_path).get(beads.to_bd_id(a))
-        check("claim は着手の印を bd kv へ控える", kept is not None and issue is not None
-              and kept.assignee == issue.assignee and kept.started_at == issue.started_at
-              and beads.mark_values(kept) == beads.mark_values(issue), str(kept and kept.raw))
 
         r = run_task(loser, "done", a, "--result-file", "-", stdin="x\n")
         check("他人の印の done は NOT_OWNER（終了コード4）", r.returncode == 4 and r.stdout.startswith("NOT_OWNER"), r.stdout)
@@ -79,7 +74,6 @@ def test_claim_race_owner_and_release() -> None:
         check("hold は claim できない（NOT_READY）", r.returncode == 4 and r.stdout.startswith("NOT_READY"), r.stdout)
         r = run_task(loser, "release", a, "--force")
         check("--force の release は RELEASED", r.returncode == 0 and r.stdout.startswith("RELEASED"), r.stdout)
-        check("release は控えを消す", beads.to_bd_id(a) not in claim_snapshots(main_path), r.stdout)
         r = run_task(loser, "release", a)
         check("印の無い release は NOT_CLAIMED（終了コード0）", r.returncode == 0 and r.stdout.startswith("NOT_CLAIMED"), r.stdout)
         write(os.path.join(loser, "dirty.txt"), "x\n")
@@ -104,12 +98,7 @@ def test_cycle_done_ship_and_dropped() -> None:
         issue = beads.show(main_path, beads.to_bd_id(a))
         check("## やること は notes へ", issue is not None and issue.raw.get("notes") == "### 1. 書く", str(issue and issue.raw))
 
-        check("claim のあとは控えがある", beads.to_bd_id(a) in claim_snapshots(main_path), "")
         work_and_done(wt1, a)
-        check("done は控えを消す", beads.to_bd_id(a) not in claim_snapshots(main_path), "")
-        done_issue = beads.show(main_path, beads.to_bd_id(a))
-        if done_issue is not None:
-            beads.write_claim_snapshot(main_path, done_issue)
         flow = ledger.flow_dir(ledger.ledger_root(cwd=main_path))
         events = [json.loads(l) for f in sorted(os.listdir(flow)) for l in open(os.path.join(flow, f), encoding="utf-8")]
         check("claim・done の記録に difficulty が入る", {(e["event"], e["difficulty"]) for e in events if e["task"] == a}
@@ -121,8 +110,6 @@ def test_cycle_done_ship_and_dropped() -> None:
         first = r.stdout.splitlines()[0] if r.stdout else ""
         check("ship は SHIPPED で閉じた ID を released に出す", r.returncode == 0 and first.startswith("SHIPPED")
               and f"released={a}" in first, r.stdout + r.stderr)
-        check("ship は閉じた課題の控えを消す（done のあとに書き戻された控えも）",
-              beads.to_bd_id(a) not in claim_snapshots(main_path), r.stdout)
         check("claim した枝（wt1）へ戻って feature 枝を消す", "branch=wt1" in first
               and git(wt1, "branch", "--list", f"feature/{a}").stdout.strip() == "", first)
         check("ship のあとにバックアップを取る", any(l.startswith("BACKUP\tOK") for l in r.stdout.splitlines()), r.stdout)

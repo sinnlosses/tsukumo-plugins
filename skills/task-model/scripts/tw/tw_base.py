@@ -16,7 +16,6 @@ import gitinfo
 import ledger
 import repos
 import taskfile
-import tracker
 
 
 def format_refusal(toplevel: str, registry: bool = False) -> tuple[str, int] | None:
@@ -179,17 +178,8 @@ def claimed_here(toplevel: str) -> list[str]:
 
 
 def owns(toplevel: str, shown: str) -> bool:
-    """この作業ツリーが `shown`（表示のタスクID）の着手の印を持つか。
-
-    持たなければ、取り込みが消したまま残った印を控えから戻して見直す（`tracker.restore_claims`。
-    戻した行は stdout の1行目を読む呼び手を崩さないよう stderr へ出す）。
-    """
-    if shown in claimed_here(toplevel):
-        return True
-    lines = tracker.restore_claims(toplevel, [beads.to_bd_id(shown)], actor(toplevel))
-    for line in lines:
-        print(line, file=sys.stderr)
-    return bool(lines) and shown in claimed_here(toplevel)
+    """この作業ツリーが `shown`（表示のタスクID）の着手の印を持つか。"""
+    return shown in claimed_here(toplevel)
 
 
 def require_claimed(toplevel: str, task_id: str) -> None:

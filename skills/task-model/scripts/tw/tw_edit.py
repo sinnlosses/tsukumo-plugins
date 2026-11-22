@@ -145,10 +145,6 @@ def cmd_edit(toplevel: str, args: argparse.Namespace) -> None:
         r = beads.run(toplevel, cmd, tw_base.actor(toplevel), stdin)
         if r.returncode != 0:
             raise beads.BeadsError(f"bd update が失敗: {(r.stderr or r.stdout).strip()}")
-        if issue.status == "in_progress" and issue.assignee == tw_base.actor(toplevel) and "--set-metadata" in cmd:
-            edited = beads.show(toplevel, bd_id)
-            if edited is not None:
-                beads.write_claim_snapshot(toplevel, edited)
     for edge in dep_edges:
         r = beads.run(toplevel, edge, tw_base.actor(toplevel))
         if r.returncode != 0:

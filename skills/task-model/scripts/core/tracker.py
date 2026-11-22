@@ -44,14 +44,6 @@ from tracker_github import (
     _repo_of,
     _tail,
 )
-from tracker_claims import (
-    PUSHED_KEY_PREFIX,
-    SYNCED_ITEM_PREFIX,
-    _claim_started,
-    _pushed_of,
-    _restore_from_snapshots,
-    _synced_of,
-)
 
 JIRA_REF = re.compile(rf"^(?:\S*/browse/)?({layout.JIRA_ID_FRAGMENT})$")
 
@@ -62,6 +54,13 @@ OP_TIMEOUT_ENV = "TASK_WORKFLOW_TRACKER_TIMEOUT"
 
 # 課題の作成時刻と GitHub の Issue の作成・更新時刻を比べるときの許し（時計のずれ）。
 SYNC_SLACK = timedelta(seconds=10)
+
+SYNCED_KEY = "task-workflow.github-synced"  # 旧い 1 つの表 {Issue 番号: 時刻}。読むだけで、書かない
+# 課題ごとのキー `<これ><Issue 番号>`。値はその課題を最後に送った・取り込んだ時刻（CONFLICT の判定）。JSON でない。
+SYNCED_ITEM_PREFIX = SYNCED_KEY + "."
+# 課題ごとのキー `<これ><Issue 番号>`。値は最後に届いた送りの直前に読んだその課題の着手の時刻
+# （`started_at`。着手中でなければ空）。この値は JSON でない。
+PUSHED_KEY_PREFIX = "task-workflow.github-pushed."
 
 
 @dataclass(frozen=True)
@@ -83,14 +82,32 @@ def session(toplevel: str) -> "Session":
     return Session(toplevel, read_tracker(toplevel))
 
 
-def restore_claims(toplevel: str, bd_ids: list[str], actor: str) -> list[str]:
-    """着手の印の控え（`beads.write_claim_snapshot`）から、取り込みが消したまま残った着手の印を Beads へ戻し、出力の行を返す。
+def _claim_started(issue: beads.Issue | None) -> str:
+    """送りの印に書く値: 着手中（`in_progress` で担当者あり）ならその `started_at`、ほかは空。"""
+    if issue is None or issue.status != "in_progress" or not issue.assignee:
+        return ""
+    return issue.started_at or ""
 
-    ID を Issue 番号で振らない（`numbered_by_github` が偽の）ときは何もしない。GitHub には触らない（戻した課題は次の送りで送られる）。
-    """
-    if not session(toplevel).numbered_by_github:
-        return []
-    return _restore_from_snapshots(toplevel, beads.read_kv(toplevel), lambda _wanted: beads.list_issues(toplevel), bd_ids, actor)[0]
+
+def _pushed_of(listed: dict) -> dict[int, str]:
+    return {
+        int(k[len(PUSHED_KEY_PREFIX):]): v for k, v in listed.items()
+        if k.startswith(PUSHED_KEY_PREFIX) and k[len(PUSHED_KEY_PREFIX):].isdigit() and isinstance(v, str)
+    }
+
+
+def _synced_of(listed: dict) -> dict:
+    raw = listed.get(SYNCED_KEY)
+    value = _loads(raw) if isinstance(raw, str) else None
+    synced = dict(value) if isinstance(value, dict) else {}
+    for k, v in listed.items():
+        number = k[len(SYNCED_ITEM_PREFIX):]
+        if not (k.startswith(SYNCED_ITEM_PREFIX) and number.isdigit() and isinstance(v, str)):
+            continue
+        item, old = beads.parse_time(v), beads.parse_time(synced.get(number))
+        if item is not None and (old is None or item >= old):
+            synced[number] = v
+    return synced
 
 
 class Session:
@@ -228,10 +245,6 @@ class Session:
                 listed = self._issues()
                 stale = {i.bd_id for i in listed if _after(i.raw.get("updated_at"), self._synced_at(i))}
                 self._say(f"Beads: {len(listed)} 件を読んだ（前回の送りより後に変えたもの {len(stale)} 件）")
-                # 控えから戻した課題は下で送る。
-                restore_lines, restored = self._restore_from_snapshots(None)
-                lines += restore_lines
-                stale |= set(restored)
                 before = self._issues()
                 changed_ids = [i.bd_id for i in before if i.bd_id in stale]
                 pushed_count = str(len(changed_ids))
@@ -439,12 +452,6 @@ class Session:
     def _load_pushed(self) -> dict[int, str]:
         """課題ごとの送りの印の値（`{Issue 番号: 送った着手の時刻}`。印の無い課題は入らない）。"""
         return _pushed_of(self._kv_listing())
-
-    # --- 着手の印の控え ------------------------------------------------------------
-
-    def _restore_from_snapshots(self, bd_ids: list[str] | None) -> tuple[list[str], list[str]]:
-        """読み済みの `bd kv list` の控えから戻す（モジュールの `_restore_from_snapshots`）。"""
-        return _restore_from_snapshots(self.toplevel, self._kv_listing(), self._issues_of, bd_ids, self._actor)
 
     def _save(self) -> None:
         gh.save_items(self.toplevel, self._items or {}, self._items_dirty)

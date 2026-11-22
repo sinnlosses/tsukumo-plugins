@@ -96,9 +96,6 @@ def cmd_claim(toplevel: str, task_id: str) -> None:
         if again is not None and again.status == "in_progress":
             _print_taken(shown, again)
         raise beads.BeadsError(f"bd update --claim が失敗: {(r.stderr or r.stdout).strip()}")
-    claimed = beads.show(toplevel, bd_id)
-    if claimed is not None:
-        beads.write_claim_snapshot(toplevel, claimed)
     ledger.mark_open_claim(shown, cwd=toplevel)
     _snapshot_work_main_dirty(toplevel, shown, plan_body)
     _install_ref_guard(toplevel)
@@ -125,7 +122,6 @@ def cmd_release(toplevel: str, task_id: str, force: bool) -> None:
         beads.run_ok(toplevel, ["update", bd_id, "--status", "open"], actor)
     else:
         beads.run_ok(toplevel, ["unclaim", bd_id] + (["--force"] if force else []), actor)
-    beads.clear_claim_snapshot(toplevel, bd_id)
     marks = [v for v in beads.SHIP_LABELS.values() if v in issue.labels]
     if marks:
         beads.run_ok(toplevel, ["update", bd_id] + [x for m in marks for x in ("--remove-label", m)], actor)
@@ -225,7 +221,6 @@ def cmd_done(
     beads.run_ok(
         toplevel, ["update", bd_id, "--add-label", beads.SHIP_LABELS[kind], "--remove-label", other], actor
     )
-    beads.clear_claim_snapshot(toplevel, bd_id)
     print(f"DONE\t{shown}\tbeads:{bd_id}\tship で閉じる")
     notice = None if dropped else taskfile.replay_diff_notice(beads.issue_body(issue))
     if notice is not None:

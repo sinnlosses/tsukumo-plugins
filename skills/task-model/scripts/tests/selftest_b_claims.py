@@ -1,4 +1,4 @@
-"""着手の印の控えと、同時の sync で着手の印が消えないことの自己テスト（`selftest_beads.py` の部品）。"""
+"""同時の sync で着手の印が消えないことの自己テスト（`selftest_beads.py` の部品）。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ sys.path.insert(1, os.path.join(HERE, "..", "tw"))
 
 import beads  # noqa: E402
 from selftest_b_fakegithub import FakeGitHub, github  # noqa: E402
-from selftest_b_support import claim_snapshots, new, num, work_and_done  # noqa: E402
+from selftest_b_support import new, num  # noqa: E402
 from selftest_fixtures import run_task, start_task  # noqa: E402
 from selftest_support import check, refuse_direct_run, say  # noqa: E402
 
@@ -26,22 +26,6 @@ def _claim_and_push(fake: "FakeGitHub", main_path: str, wt: str, summary: str, *
     run_task(main_path, "sync")
     fake.clock_offset = 60
     return a, beads.to_bd_id(a), num(a)
-
-
-def test_claim_snapshot_cleared_on_release_done_ship() -> None:
-    say("着手の印の控え: release・done・ship で手放した課題の控えは消える")
-    with github() as (fake, tmp, main_path, wt1):
-        wt2 = os.path.join(tmp, "wt2")
-        a, a_id, _na = _claim_and_push(fake, main_path, wt1, "release する")
-        r = run_task(wt1, "release", a)
-        check("前提: release", r.stdout.startswith("RELEASED"), r.stdout + r.stderr)
-        b, b_id, _nb = _claim_and_push(fake, main_path, wt1, "done する")
-        work_and_done(wt1, b)
-        c, c_id, _nc = _claim_and_push(fake, main_path, wt2, "ship する")
-        work_and_done(wt2, c)
-        r = run_task(wt2, "ship")
-        check("前提: ship", r.returncode == 0 and r.stdout.startswith("SHIPPED"), r.stdout + r.stderr)
-        check("控えは3つとも無い", not {a_id, b_id, c_id} & set(claim_snapshots(main_path)), str(claim_snapshots(main_path)))
 
 
 def test_claim_kept_through_concurrent_syncs() -> None:
@@ -62,7 +46,6 @@ def test_claim_kept_through_concurrent_syncs() -> None:
 
 # 長いものから並列に乗せる（後ろに残ると全体がその分延びる）。
 TESTS = (
-    test_claim_snapshot_cleared_on_release_done_ship,
     test_claim_kept_through_concurrent_syncs,
 )
 
