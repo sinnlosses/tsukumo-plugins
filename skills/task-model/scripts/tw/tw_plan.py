@@ -1,4 +1,4 @@
-"""`## やること` の判定の部品（近道の印・登録時の計画の控えと着手時の比べ・作業より先に書いたか）。"""
+"""`## やること` の判定の部品（登録時の計画の控えと着手時の比べ・作業より先に書いたか）。"""
 
 from __future__ import annotations
 
@@ -44,14 +44,14 @@ def warn_large_plan(task_id: str, body: str) -> None:
         print(f"WARN_LARGE_PLAN\t{task_id}\t{reason}", file=sys.stderr)
 
 
-def warn_main_only_tools(task_id: str, body: str, loopable: str, direct: str) -> None:
-    """`loopable: Y` で近道の印が無い計画の段に委譲先に無い道具の名があれば、標準エラーに `WARN_MAIN_ONLY_TOOL` を1行出す（拒まない）。"""
-    if loopable != "Y" or direct == "Y":
+def warn_main_only_tools(task_id: str, body: str, loopable: str) -> None:
+    """`loopable: Y` の計画の段に委譲先に無い道具の名があれば、標準エラーに `WARN_MAIN_ONLY_TOOL` を1行出す（拒まない）。"""
+    if loopable != "Y":
         return
     names = taskfile.main_only_tools(body)
     if names:
         print(
-            f"WARN_MAIN_ONLY_TOOL\t{task_id}\t{','.join(names)}\t委譲先には無い道具。メインで進めるなら --direct を付けるか loopable N にする",
+            f"WARN_MAIN_ONLY_TOOL\t{task_id}\t{','.join(names)}\t委譲先には無い道具。メインで進めるなら loopable N にする",
             file=sys.stderr,
         )
 
@@ -66,13 +66,6 @@ def warn_red_steps(task_id: str, body: str) -> None:
         )
 
 
-def refuse_direct(difficulty: str, body: str) -> None:
-    reason = taskfile.direct_refusal(difficulty, body)
-    if reason is not None:
-        print(f"usage: {reason}（--direct を外す）", file=sys.stderr)
-        raise SystemExit(2)
-
-
 def refuse_unregistered_work_repo(toplevel: str, body: str) -> None:
     """`### 作業先` が登録簿に無い名前なら `usage:`・終了コード2、登録簿の名前でパスが引けなければ `MISSING`・終了コード6。"""
     reason = repos.registry_refusal(toplevel, body)
@@ -80,14 +73,6 @@ def refuse_unregistered_work_repo(toplevel: str, body: str) -> None:
         print(f"usage: {reason}", file=sys.stderr)
         raise SystemExit(2)
     work_repo_root(toplevel, body)
-
-
-def direct_column(direct: str, difficulty: str, body: str, registered: bool) -> str:
-    """`CLAIMED` の行末に足す近道の列。印が無ければ空。"""
-    if direct != "Y":
-        return ""
-    reason = taskfile.direct_refusal(difficulty, body) or (None if registered else "登録時の計画が古い")
-    return "\tdirect=Y" if reason is None else f"\tdirect=N:{reason}"
 
 
 def registered_plan_base(toplevel: str, body: str) -> str:

@@ -126,7 +126,7 @@ def _write_step_stamps(
     return key
 
 
-LAP_STAGES = ("direct", "delegate", "accept", "review", "retro", "land", "sync")
+LAP_STAGES = ("delegate", "accept", "review", "retro", "land", "sync")
 LAP_EDGES = ("start", "end")
 
 

@@ -13,10 +13,6 @@
   （`docs/history/` を除く）を触ったコミット、skills はこのスクリプトのあるリポジトリ。各20件まで）
 - **段の所要時間**: `STAGE\t<段>\t<difficulty>\t<道>\t<件数>\t<中央値秒>\t<最大秒>`（道は `direct`・`normal`。`tw metrics --stages --days N` と同じ行）。
   終わりの無い段は `OPEN\t<段>\t<件数>`、先頭に合計 `OPEN_TOTAL\t<件数>`（5を超えると `INTEGRITY\tWARN\t<段>=<件数>,…`）
-- **近道と通常の比較**: 期間によらず直近28日に送り出した件の道ごとの行
-  `ROUTE\t<direct|normal>\t<件数>\t<着手から送り出しまでの中央値秒|->\t<fix_within_7d|->`（`fix_within_7d` は `tw metrics` と同じ形・同じ数え方で、`metrics.fix_tasks` を共有する）と、
-  `DIRECT_GATE\t<direct の件数>\t20\t<reached|not_reached>`、
-  `DIRECT_SHARE\t<direct の件数>\t<送り出しの件数>\t<割合>\t<below|ok>`（5%未満が below。送り出しが0件なら出ない）
 - **揺れたテスト**: 直近28日に落ちて、同じ鍵で次に通った（`verify_flaky` と同じ判定）`verify` の `tests` を名前で数えた
   `FLAKY\t<名前>\t<回数>`（上位5件）と、3回以上の `候補\t<名前>\t<回数>`。無ければ `EMPTY`
 - **規則の棚卸し**: 設定の `hook_tally` のコマンドをリポジトリの根で `sh -c` で打った標準出力を
@@ -41,7 +37,6 @@
 from __future__ import annotations
 
 import os
-import statistics
 import subprocess
 import sys
 from datetime import date, datetime, timedelta, timezone
@@ -64,9 +59,6 @@ MIN_DAYS = 7
 MAX_DAYS = 28
 HOOK_TALLY_TIMEOUT_SECONDS = 60
 CHANGE_LIMIT = 20
-COMPARED_ROUTES = ("direct", "normal")
-DIRECT_THRESHOLD = 20
-DIRECT_SHARE_FLOOR = 0.05
 FLAKY_TOP = 5
 FLAKY_THRESHOLD = 3
 PROJECT_CHANGE_PATHS = ("CLAUDE.md", "AGENTS.md", ".claude", "docs", ":(exclude)docs/history")
@@ -89,9 +81,6 @@ def main() -> None:
 
     section("段の所要時間")
     print_stages(root, days)
-
-    section("近道と通常の比較")
-    print_routes(root)
 
     section("揺れたテスト（直近28日）")
     print_flaky_tests(root, now)
@@ -155,41 +144,6 @@ def print_stages(root: str, days: int) -> None:
         print("-\t台帳が読めない（git のリポジトリでない）")
         return
     print("\n".join(metrics.stage_lines(events, days)) or "EMPTY")
-
-
-def route_rows(events: list[metrics.Event], days: int) -> list[str]:
-    """直近 days 日に送り出したタスクの、道（direct・normal）ごとの `ROUTE` の行。"""
-    now = datetime.now(timezone.utc)
-    shipped = [
-        e for e in events if e.kind == "ship" and e.fields.get("result") == "SHIPPED" and now - timedelta(days=days) <= e.at <= now
-    ]
-    by_route: dict[str, list[metrics.Event]] = {route: [] for route in COMPARED_ROUTES}
-    for ship in shipped:
-        run = metrics.shipped_run(events, ship)
-        if run is not None and metrics.route_of(run) in COMPARED_ROUTES:
-            by_route[metrics.route_of(run)].append(ship)
-    rows = []
-    for route, ships in by_route.items():
-        leads = [s for s in (metrics.lead_seconds(events, e) for e in ships) if s is not None]
-        median = str(round(statistics.median(leads))) if leads else "-"
-        fixed = len(metrics.fix_tasks(events, ships))
-        fix = f"{round(100 * fixed / len(ships))}% ({fixed}/{len(ships)})" if ships else "-"
-        rows.append(f"ROUTE\t{route}\t{len(ships)}\t{median}\t{fix}")
-    direct = len(by_route["direct"])
-    rows.append(f"DIRECT_GATE\t{direct}\t{DIRECT_THRESHOLD}\t{'reached' if direct >= DIRECT_THRESHOLD else 'not_reached'}")
-    if shipped:
-        share = direct / len(shipped)
-        rows.append(f"DIRECT_SHARE\t{direct}\t{len(shipped)}\t{100 * share:.1f}%\t{'below' if share < DIRECT_SHARE_FLOOR else 'ok'}")
-    return rows
-
-
-def print_routes(root: str) -> None:
-    try:
-        events, _ = metrics.read_events(ledger.ledger_root(cwd=root))
-    except (gitinfo.GitCommandError, OSError):
-        print("-\t台帳が読めない（git のリポジトリでない）")
-        return
-    print("\n".join(route_rows(events, MAX_DAYS)) if events else "EMPTY")
 
 
 def flaky_rows(events: list[metrics.Event], now: datetime) -> list[str]:

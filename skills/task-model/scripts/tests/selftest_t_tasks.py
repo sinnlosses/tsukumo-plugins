@@ -497,7 +497,6 @@ def test_draft_register_and_refuse_claim() -> None:
         before = issue_count(wt1)
         for label, extra, body in (
             ("--draft --hold", ("--draft", "--hold"), DRAFT_BODY),
-            ("--draft --direct", ("--draft", "--direct"), DRAFT_BODY),
             ("目的・背景が空の --draft", ("--draft",), "## 目的・背景\n\nなし\n"),
             ("枠の順でない --draft", ("--draft",), "## 完了条件\n\nx\n\n## 目的・背景\n\nx\n"),
         ):
