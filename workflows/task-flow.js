@@ -4,7 +4,7 @@ export const meta = {
   whenToUse: "tw claim が CLAIMED を返したタスク1件を進めるとき（計画の判定と書き直しは呼ぶ側が済ませてから）",
   phases: [
     { title: "Implement", detail: "implementer が ## やること の段を順に実装し、段ごとに phase_result を呼ぶ" },
-    { title: "Accept", detail: "acceptor の起動と停止で hook（tw accept-hook）が tw accept の準備と締めを打ち、acceptor が判定する。差し戻しは上限2回。範囲に入っていれば振り返りの agent が受け入れの phase_result も呼ぶ" },
+    { title: "Accept", detail: "acceptor の起動と停止で hook（tw accept-hook）が tw accept の準備と締めを打ち、acceptor が判定する。差し戻しは上限2回。範囲に入っていれば、受け入れより後ろで最初に走る agent（独自の段か振り返り）が受け入れの phase_result も呼ぶ" },
     { title: "Retrospect", detail: "retrospector が retrospect スキルで兆候を判定し、範囲に入っていれば phase_result を呼ぶ" },
     { title: "Custom step", detail: "並びの独自の段（workflow-step の印のあるスキル）ごとに step-runner を1体起こし、スキルを呼ばせる。stopped なら並びを止める" },
   ],
@@ -284,13 +284,18 @@ const runAccept = async () => {
   return null
 }
 
-const acceptFinishedSentence = () =>
-  result.accept === undefined || acceptNumber === null
-    ? ""
-    : SKIP_KINDS.includes(result.accept.kind)
+// 受け入れの申告は、受け入れより後ろで最初に走る agent（独自の段でも振り返りでも）が1回だけ行う
+let acceptAnnounced = false
+const acceptFinishedSentence = () => {
+  if (acceptAnnounced || result.accept === undefined || acceptNumber === null) {
+    return ""
+  }
+  acceptAnnounced = true
+  return SKIP_KINDS.includes(result.accept.kind)
       ? `最初に受け入れの phase_result を { phase: ${acceptNumber}, count: ${phaseCount}, outcome: "skipped" } で1回呼ぶ（summary は付けない。tw accept の判定が ${result.accept.kind}）。`
       : `最初に受け入れの phase_result を { phase: ${acceptNumber}, count: ${phaseCount}, outcome: "finished", summary: <受け入れの結果を1〜2文> } で1回呼ぶ` +
         `（受け入れ役は差し戻し ${result.accept.rounds} 回のあと通した。tw accept の判定は ${result.accept.kind}）。`
+}
 
 const runRetrospect = async () => {
   phase(retrospectTitle)
@@ -323,6 +328,7 @@ const runCustom = async (step) => {
     `${COMMON}\n` +
       `独自の段。Skill ツールで \`${step}\` を、タスクの ID ${taskId} を引数に1回呼んで従う。` +
       "スキルが最後に返した結果の語（finished・skipped・stopped）を outcome に、したこと・分かったことの1〜2文を summary（止めたなら reason）に入れて schema で返す。" +
+      acceptFinishedSentence() +
       "返す前に phase_result を { outcome, reason?, summary? } で1回呼ぶ（phase・count・step は渡さない）。" +
       (afterAccept ? "受け入れより後ろの段なので、作業ツリーのファイルを書き換えない。" : ""),
     { agentType: "tsukumo-workflow:step-runner", schema: STEP, label: step, phase: title },

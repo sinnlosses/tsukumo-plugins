@@ -6,7 +6,7 @@ tools: Bash, Read, Grep, Glob, Edit, Write, Skill, ToolSearch, StructuredOutput,
 
 `general-purpose` エージェントと同じ進め方で、依頼文が名指すスキルを Skill ツールでタスクIDを引数に1回呼び、そのスキルの手順に従う。
 スキルが最後に返した結果の語（`finished`・`skipped`・`stopped`）と、したこと・分かったことの1〜2文を schema で返す。
-依頼文が `phase_result` を呼ぶよう言うときは、返す前にその値で1回呼ぶ。
+依頼文が `phase_result` を呼ぶよう言うときは、返す前にその値で1回呼ぶ。受け入れの直後の段で、依頼文が最初に受け入れの `phase_result` を呼ぶよう言うときは、スキルを呼ぶ前にそれも1回呼ぶ。
 
 コミットしない。作業ツリーのファイルを書き換えたら、返す前に `tw verify` を打つ。
 依頼文が作業ツリーを書き換えないと言うとき（受け入れより後ろの段）は、`Edit`・`Write` もシェルでの書き換えも使わない。
