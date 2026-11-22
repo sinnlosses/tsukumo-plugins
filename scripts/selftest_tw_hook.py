@@ -22,14 +22,14 @@ exit "$FAKE_TW_EXIT"
 """
 
 SUBAGENT = json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "git commit -m x"},
-                       "cwd": "/tmp", "agent_id": "a-1", "agent_type": "tsukumo-workflow:no-delegate"})
+                       "cwd": "/tmp", "agent_id": "a-1", "agent_type": "tsukumo-workflow:implementer"})
 MAIN = json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "git commit -m x"}, "cwd": "/tmp"})
 IN_STRING_ONLY = json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Bash",
                              "tool_input": {"command": 'echo "agent_id": x'}, "cwd": "/tmp"})
 NESTED_ONLY = json.dumps({"hook_event_name": "PostToolUse", "tool_name": "X", "cwd": "/tmp", "tool_response": {"agent_id": "nested"}})
 TOP_AFTER_NESTED = json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"agent_id": "nested"},
                                "cwd": "/tmp", "agent_id": "a-1"})
-STOP = json.dumps({"hook_event_name": "SubagentStop", "cwd": "/tmp", "agent_id": "a-1", "agent_type": "tsukumo-workflow:no-delegate"})
+STOP = json.dumps({"hook_event_name": "SubagentStop", "cwd": "/tmp", "agent_id": "a-1", "agent_type": "tsukumo-workflow:implementer"})
 
 failures: list[str] = []
 

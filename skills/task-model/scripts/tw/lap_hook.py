@@ -23,7 +23,8 @@ import ledger
 import metrics
 import tw_base
 
-IMPLEMENTER_TYPES = ("no-delegate", "general-purpose")
+# `no-delegate` は改名前の実装役の名前。vendor に古い版の `task-flow` が残るあいだ、その起動も段 `delegate` に数える
+IMPLEMENTER_TYPES = ("implementer", "no-delegate", "general-purpose")
 ACCEPTOR_TYPE = "acceptor"
 RETROSPECTOR_TYPE = "retrospector"
 

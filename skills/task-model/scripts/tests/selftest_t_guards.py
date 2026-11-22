@@ -149,7 +149,9 @@ def test_accept_hook_prepare() -> None:
         wt1, wt2 = _accept_hook_repo(tmp)
         check("着手の控えが無い作業ツリーでは何も出さない", run_accept_hook(tmp, wt2, start) is None)
         check("型が acceptor でなければ何も出さない",
-              run_accept_hook(tmp, wt1, _subagent_start("tsukumo-workflow:no-delegate")) is None and _accept_rounds(wt1) == [])
+              all(run_accept_hook(tmp, wt1, _subagent_start(f"tsukumo-workflow:{name}")) is None
+                  for name in ("implementer", "no-delegate"))
+              and _accept_rounds(wt1) == [])
 
         write(os.path.join(wt1, "note.md"), "x\n")
         run_task(wt1, "verify")
@@ -294,7 +296,7 @@ def test_ask_guard() -> None:
         run_task(wt1, "claim", "T-100")
         check("claim し直すと前の accept end より後の lap が無いので拒む", run_ask_guard(tmp, wt1) is not None)
         for label, act, refused in (
-            ("hook の delegate", lambda: run_lap_hook(tmp, wt1, _subagent_start("no-delegate")), True),
+            ("hook の delegate", lambda: run_lap_hook(tmp, wt1, _subagent_start("implementer")), True),
             ("手打ちの delegate start", lambda: run_task(wt1, "lap", "T-100", "delegate", "start"), True),
             ("tw accept", lambda: run_task(wt1, "accept", "T-100"), False),
             ("受け入れの後の hook の delegate（委譲し直し）", lambda: run_lap_hook(tmp, wt1, _subagent_start("no-delegate")), True),
@@ -652,17 +654,18 @@ def test_agent_scoped_guard() -> None:
         write(os.path.join(wt1, "work.txt"), "x\n")
         commit = {"tool_name": "Bash", "tool_input": {"command": "git commit -m x"}, "cwd": wt1}
         stop = {"hook_event_name": "SubagentStop", "cwd": wt1}
-        for agent_id in ("a-writer-1", "a-writer-2", "a-writer-3"):
+        for agent_id in ("a-writer-1", "a-writer-2", "a-writer-3", "a-writer-4"):
             _send_edit(tmp, wt1, agent_id)
         for subcommand, fields in (("commit-guard", commit), ("handback-guard", stop)):
             for flags, agent_id, agent_type, refused in (
                 ((), None, None, True),
                 ((), None, "general-purpose", True),
                 (("--agent-scoped",), None, None, False),
-                (("--agent-scoped",), None, "no-delegate", False),
+                (("--agent-scoped",), None, "implementer", False),
                 (("--agent-scoped",), "a-writer-1", "general-purpose", True),
                 (("--agent-scoped",), "a-writer-2", "my-implementer", True),
                 (("--agent-scoped",), "a-writer-3", "tsukumo-workflow:no-delegate", True),
+                (("--agent-scoped",), "a-writer-4", "tsukumo-workflow:implementer", True),
                 (("--agent-scoped",), "../escape", "no-delegate", False),
             ):
                 ids = {"agent_id": agent_id} if agent_id is not None else {}
@@ -691,12 +694,14 @@ def test_agent_scoped_guard() -> None:
         start_matcher = next((m for e, m in lap_hooks if e == "SubagentStart"), None) or ""
         stop_matcher = next((m for e, m in lap_hooks if e == "SubagentStop"), None) or ""
         check("lap-hook の matcher は lap_hook の実装役・受け入れ役の名前（裸と plugin 付き）に当たり、ほかに当たらない",
-              all(re.search(start_matcher, f"{p}{t}")
-                  for t in (*lap_hook.IMPLEMENTER_TYPES, lap_hook.RETROSPECTOR_TYPE) for p in ("", "tsukumo-workflow:"))
+              {"implementer", "no-delegate"} <= set(lap_hook.IMPLEMENTER_TYPES)
+              and all(re.search(start_matcher, f"{p}{t}")
+                      for t in (*lap_hook.IMPLEMENTER_TYPES, lap_hook.RETROSPECTOR_TYPE) for p in ("", "tsukumo-workflow:"))
               and all(re.search(stop_matcher, f"{p}{lap_hook.ACCEPTOR_TYPE}") for p in ("", "tsukumo-workflow:"))
               and not any(re.search(m, n) for m in (start_matcher, stop_matcher)
-                          for n in ("Explore", "", "tsukumo-workflow:acceptor-x", "no-delegate-x", "retrospector-x"))
-              and not re.search(stop_matcher, "tsukumo-workflow:no-delegate"),
+                          for n in ("Explore", "", "tsukumo-workflow:acceptor-x", "no-delegate-x", "implementer-x",
+                                    "my-implementer", "retrospector-x"))
+              and not any(re.search(stop_matcher, f"tsukumo-workflow:{n}") for n in ("implementer", "no-delegate")),
               f"{start_matcher!r} {stop_matcher!r}")
         accept_hooks = [(e, m) for e, m, argv in all_hooks if argv[1:] == ["accept-hook"]]
         stop_events = [(e, argv[1:]) for e, _, argv in all_hooks if e == "SubagentStop"]
@@ -706,7 +711,8 @@ def test_agent_scoped_guard() -> None:
               and stop_events.index(("SubagentStop", ["accept-hook"])) < stop_events.index(("SubagentStop", ["lap-hook"]))
               and all(re.search(m or "", f"{p}{lap_hook.ACCEPTOR_TYPE}") for _, m in accept_hooks for p in ("", "tsukumo-workflow:"))
               and not any(re.search(m or "", n) for _, m in accept_hooks
-                          for n in ("tsukumo-workflow:no-delegate", "tsukumo-workflow:acceptor-x", "retrospector", "")),
+                          for n in ("tsukumo-workflow:implementer", "tsukumo-workflow:no-delegate", "tsukumo-workflow:acceptor-x",
+                                    "retrospector", "")),
               str(accept_hooks))
         check("hooks/hooks.json は --agent-scoped 付きで commit-guard・handback-guard を呼ぶ hook を PLUGIN_HOOKS の数だけ持つ",
               len(hooks) == sum("--agent-scoped" in args for _, _, args in expected_hooks) and all(a in ("commit-guard", "handback-guard") for a in (argv[-2] for argv in hooks)),
@@ -736,7 +742,7 @@ def test_agent_scoped_guard() -> None:
                 check(f"hooks.json の {hook} は agent_id={agent_id} で{'拒む' if refused else '通す'}",
                       r.returncode == 0 and (r.stdout != "") == refused, r.stdout + r.stderr)
         start_hook = next((argv for (e, _), argv in lap_hooks.items() if e == "SubagentStart"), ["/bin/false"])
-        payload = {"hook_event_name": "SubagentStart", "cwd": wt1, "agent_id": "a-new", "agent_type": "tsukumo-workflow:no-delegate"}
+        payload = {"hook_event_name": "SubagentStart", "cwd": wt1, "agent_id": "a-new", "agent_type": "tsukumo-workflow:implementer"}
         r = _run_hook(start_hook, payload, env)
         delegate_laps = [e for e in flow_rows(wt1) if e["event"] == "lap" and e.get("stage") == "delegate"]
         check("hooks.json の SubagentStart の lap-hook は控え1件の作業ツリーに delegate の start を書き、stdout は空",
@@ -773,9 +779,9 @@ def test_agent_scoped_guard() -> None:
         check("retro が開いていないときの retrospector の停止は何も書かない", retro_edges() == before, repr(before))
         run_lap_hook(tmp, wt1, _subagent_start("tsukumo-workflow:retrospector"))
         opened = retro_edges()
-        for other in ("tsukumo-workflow:acceptor", "tsukumo-workflow:no-delegate", "acceptor"):
+        for other in ("tsukumo-workflow:acceptor", "tsukumo-workflow:implementer", "tsukumo-workflow:no-delegate", "acceptor"):
             run_lap_hook(tmp, wt1, _subagent_stop(other))
-        check("acceptor・no-delegate の停止は開いている retro の end を書かない", retro_edges() == opened, repr(opened))
+        check("acceptor・implementer・no-delegate の停止は開いている retro の end を書かない", retro_edges() == opened, repr(opened))
         run_lap_hook(tmp, wt1, _subagent_stop("tsukumo-workflow:retrospector"))
         run_lap_hook(tmp, wt1, _subagent_stop("retrospector"))
         check("開いている retro は retrospector の停止で end を1つだけ書いて閉じる",
@@ -1562,10 +1568,10 @@ def test_commit_guard_acceptor() -> None:
             check(f"検証コマンドの理由は tw verify を案内しない（{label}）",
                   reason is not None and "tw verify" not in reason and "メイン" in reason, str(reason))
 
-        for agent_type in ("no-delegate", "tsukumo-workflow:no-delegate", "general-purpose"):
+        for agent_type in ("implementer", "tsukumo-workflow:implementer", "no-delegate", "tsukumo-workflow:no-delegate", "general-purpose"):
             check(f"agent_type={agent_type} の tw verify は通す", denied("tw verify", wt1, "--agent-scoped", agent_type=agent_type) is None)
         check("旗も agent_type も無い tw verify は通す", denied("tw verify", wt1) is None)
-        reason = denied("./check.sh", wt1, "--agent-scoped", agent_type="no-delegate")
+        reason = denied("./check.sh", wt1, "--agent-scoped", agent_type="implementer")
         check("委譲先の検証コマンドの理由は tw verify を案内する", reason is not None and "tw verify" in reason, str(reason))
         check("受け入れ役でも git commit は拒む", denied("git commit -m x", wt1, "--acceptor") is not None)
 

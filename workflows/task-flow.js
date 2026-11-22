@@ -3,7 +3,7 @@ export const meta = {
   description: "着手の印が立ったタスク1件を、実装 → 受け入れ → 振り返りの段で進める（送り出しは呼んだ側が tw finish で行う）",
   whenToUse: "tw claim が CLAIMED を返したタスク1件を進めるとき（計画の判定と書き直しは呼ぶ側が済ませてから）",
   phases: [
-    { title: "Implement", detail: "no-delegate が ## やること の段を順に実装し、段ごとに phase_result を呼ぶ" },
+    { title: "Implement", detail: "implementer が ## やること の段を順に実装し、段ごとに phase_result を呼ぶ" },
     { title: "Accept", detail: "acceptor の起動と停止で hook（tw accept-hook）が tw accept の準備と締めを打ち、acceptor が判定する。差し戻しは上限2回。範囲に入っていれば振り返りの agent が受け入れの phase_result も呼ぶ" },
     { title: "Retrospect", detail: "retrospector が retrospect スキルで兆候を判定し、範囲に入っていれば phase_result を呼ぶ" },
   ],
@@ -162,7 +162,7 @@ if (runs("implement")) {
       UNVERIFIED_SENTENCE +
       "画面や見た目を撮ったら、その画像の絶対パスを images に入れる。撮らなければ空配列。" +
       relaySentence("実装"),
-    { agentType: "tsukumo-workflow:no-delegate", schema: IMPLEMENT, label: "implement", phase: implementTitle, ...modelOpt, ...effortOpt },
+    { agentType: "tsukumo-workflow:implementer", schema: IMPLEMENT, label: "implement", phase: implementTitle, ...modelOpt, ...effortOpt },
   )
   if (implement === null) {
     return { stopped: true, phase: "implement", reason: "agent が null を返した" }
@@ -251,7 +251,7 @@ if (runs("accept")) {
         UNVERIFIED_SENTENCE +
         "画面や見た目を撮ったら、その画像の絶対パスを images に入れる。撮らなければ空配列。" +
         relaySentence("直し"),
-      { agentType: "tsukumo-workflow:no-delegate", schema: IMPLEMENT, label: `fix-${round}`, phase: acceptTitle, ...modelOpt, ...effortOpt },
+      { agentType: "tsukumo-workflow:implementer", schema: IMPLEMENT, label: `fix-${round}`, phase: acceptTitle, ...modelOpt, ...effortOpt },
     )
     if (fix === null) {
       return { stopped: true, phase: "accept", reason: "直しの agent が null を返した" }

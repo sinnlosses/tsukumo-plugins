@@ -53,7 +53,7 @@
     ],
     "SubagentStart": [
       {
-        "matcher": "(^|:)(general-purpose|no-delegate|retrospector)$",
+        "matcher": "(^|:)(general-purpose|implementer|no-delegate|retrospector)$",
         "hooks": [
           { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/tw-hook", "args": ["lap-hook"] }
         ]

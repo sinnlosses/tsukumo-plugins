@@ -68,7 +68,7 @@ PLUGIN_HOOKS = (
     ("SubagentStop", None, ("handback-guard", "--agent-scoped")),
     ("SubagentStop", "(^|:)acceptor$", ("accept-hook",)),
     ("SubagentStop", "(^|:)(acceptor|retrospector)$", ("lap-hook",)),
-    ("SubagentStart", "(^|:)(general-purpose|no-delegate|retrospector)$", ("lap-hook",)),
+    ("SubagentStart", "(^|:)(general-purpose|implementer|no-delegate|retrospector)$", ("lap-hook",)),
     ("SubagentStart", "(^|:)acceptor$", ("accept-hook",)),
 )
 

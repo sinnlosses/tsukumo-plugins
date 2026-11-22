@@ -16,8 +16,8 @@ tsukumo のワークフローの契約に型の合う1つの例だが、tsukumo 
 /plugin install tsukumo-workflow@tsukumo-plugins
 ```
 
-スキルは `tsukumo-workflow:<name>`、エージェント定義は `tsukumo-workflow:no-delegate`・
-`tsukumo-workflow:acceptor` の名前で入る。`bin/tw` はプラグインが有効なあいだ Bash の PATH に入る。
+スキルは `tsukumo-workflow:<name>`、エージェント定義は `tsukumo-workflow:implementer`・
+`tsukumo-workflow:acceptor`・`tsukumo-workflow:retrospector` の名前で入る。`bin/tw` はプラグインが有効なあいだ Bash の PATH に入る。
 hook は `hooks/hooks.json` だけが掛け、エージェント定義の frontmatter に `hooks` は置かない。
 hook の掛かり方は `skills/task-model/tw-reference.md`「hook の関門」節。
 
@@ -65,7 +65,7 @@ Claude Code 以外の環境（Codex など）へスキルを置く入口は、�
 
 着手の印が立ったタスク1件を、実装 → 受け入れ → 振り返りの段で進める Claude Code の dynamic workflows のワークフロースクリプト。
 送り出し（`tw finish`）はワークフロースクリプトの段にせず、完了の通知を受けた呼び出し側が打つ。
-`agent()` の `agentType` は、実装・直しが `tsukumo-workflow:no-delegate`、受け入れが `tsukumo-workflow:acceptor`、
+`agent()` の `agentType` は、実装・直しが `tsukumo-workflow:implementer`、受け入れが `tsukumo-workflow:acceptor`、
 振り返りが `tsukumo-workflow:retrospector`。`tw lap-hook` が agent の起動・停止から `delegate`・`review`・`retro` の `lap` を書く（`retro` は起動で `start`、`retrospector` の停止で `end`）。
 受け入れの準備（`tw accept`・`tw brief acceptor`）と締め（`tw accept --after-review`）は agent を起こさず、`acceptor` の起動・停止で `tw accept-hook` が打つ。
 

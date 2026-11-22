@@ -18,7 +18,7 @@
 | 実行環境の数 | plugin で入れる、素の Claude Code／tsukumo の中（`mount`・`partial`・`user-installed`）、Codex の sandbox | `README.md`、tsukumo の `docs/architecture/workflow-contract.md`「合わせ方」 |
 | 変わりやすい場所 | 2026-10-08 以降の203コミットで、`WORKFLOW.md` 63回・`next-task/SKILL.md` 42回・`next-task/implementer-brief.md` 17回。規則の変更と流れの変更が同じ `WORKFLOW.md` に集まる | `git log --since=2026-10-08 --format= --name-only -- skills agents hooks \| sort \| uniq -c \| sort -rn` |
 | 守られている制約 | `scripts/check_repo.py`（`REQUIRES`・`OPTIONAL_SKILLS`・`${CLAUDE_SKILL_DIR}/../` の実在・hooks の形）。tsukumo の契約（`work_plan`・`report`・返却の1行目・Beads の欄）。プラグインの部品は `tsukumo-workflow:<名前>` の名前空間に入る。ユーザー単位のスキルがプロジェクト単位の同名スキルに勝ち、プロジェクト差分は `.tw/config.toml` で表す | `README.md`「決めたこと」4・「制約」、`check_repo.py` 冒頭 |
-| 利用者と開発体制 | 今は作者1人。ただし他の人が自分の流れや部品を当てられる形を目標にする（2026-10-14 の作者の回答。近く差し替える予定は無い）。タスクはサブエージェントに委譲する運用で、スキルの文面が指示書そのもの | 作者の回答、`agents/no-delegate.md` |
+| 利用者と開発体制 | 今は作者1人。ただし他の人が自分の流れや部品を当てられる形を目標にする（2026-10-14 の作者の回答。近く差し替える予定は無い）。タスクはサブエージェントに委譲する運用で、スキルの文面が指示書そのもの | 作者の回答、`agents/implementer.md` |
 | テストできる範囲 | `tw` は `selftest_*.py` で自動。スキルの文面は `check_repo.py` の整合だけで、流れの正しさは実行するまで分からない | `README.md`「検証」 |
 
 ### 現状の依存のエッジ
@@ -34,7 +34,7 @@
 | `list-tasks` → `task-workflow` | 正典 | 1 |
 | `next-task` → `retrospect` | `${CLAUDE_SKILL_DIR}/../retrospect/`（`scripts/material.py`・`SKILL.md` の節） | パス2本 |
 | `next-task` → `comment-audit` | `${CLAUDE_SKILL_DIR}/../comment-audit/`（`scripts/`・`SKILL.md` を受け入れ役に渡す） | パス2本 |
-| `next-task` → agents | `no-delegate`・`acceptor` を Agent の名前で | 2 |
+| `next-task` → agents | `implementer`（提案のときは `no-delegate`）・`acceptor` を Agent の名前で | 2 |
 | `tw lap` → 段の名前 | `LAP_STAGES = ("direct", "delegate", "accept", "review", "retro", "land", "sync")` | `skills/task-workflow/scripts/tw_handback.py` |
 | `tw ask-guard` → 段 `retro` | `RETRO_STAGE = "retro"` の lap の後だけ質問を通す | `skills/task-workflow/scripts/ask_guard.py` |
 | tsukumo → `task.py` | `skills/task-workflow/scripts/task.py` のパスを直に指す | tsukumo の `src/server/session-driver/adapter/sdk-ask-guard.ts` |
@@ -87,7 +87,7 @@ tsukumo-plugins/
 │                             置かない: 処理
 ├── hooks/hooks.json          住む: tw の関門を hook に結ぶ設定
 │                             置かない: 判定（tw が持つ）
-├── agents/                   住む: 委譲先として起こすパーツ（no-delegate＝実装役、acceptor＝受け入れ役）の定義
+├── agents/                   住む: 委譲先として起こすパーツ（implementer＝実装役、acceptor＝受け入れ役、retrospector＝振り返り役）の定義
 │                             置かない: 依頼文（task-workflow/parts/ が持つ）
 └── skills/
     ├── next-task/            入口。住む: 対象を1件に決める（ID・ふんわり・おまかせ）、取り残しの扱い、
@@ -130,7 +130,7 @@ lap はパーツではなくオーケストレーターが段の前後で打つ�
 | パーツは `disable-model-invocation: true` にしない | モデルから呼べなくなる（例: claude-skills の `implement`） |
 | 関門はパーツの名前に結ばない | 下の段落 |
 
-**関門がいま実装役の名前に結ばれている。** `hooks/hooks.json` の `commit-guard`・`handback-guard` は `--agent-scoped` で、`agent_type` の末尾が `no-delegate` のときだけ掛かる（`task.py` の `commit-guard` の説明）。実装役を別のエージェントに替えると関門が黙って外れる。関門は「着手の控えがある作業ツリーで動くサブエージェント」に名前を問わず掛ける形に替える。名前を問わず掛けるだけだと、受け入れ役の返却も「最後の段の返却」の判定（`## 構造の変更` の欠け）や検証の欠けで拒まれるので、`handback-guard` は `Edit`・`Write`・`NotebookEdit` を一度でも使ったサブエージェント（`agent_id` ごとの印）の返却だけを判定する（段階3で入れた。`tw-reference.md`「hook の関門」）。`hooks.json` が読まれるのは plugin で入れたときだけなので、導入は plugin の 1 経路に決めた（7.「導入の経路と関門」）。
+**関門がいま実装役の名前に結ばれている。** `hooks/hooks.json` の `commit-guard`・`handback-guard` は `--agent-scoped` で、`agent_type` の末尾が `no-delegate` のときだけ掛かる（`task.py` の `commit-guard` の説明）。実装役を別のエージェントに替えると関門が黙って外れる。関門は「着手の控えがある作業ツリーで動くサブエージェント」に名前を問わず掛ける形に替える。名前を問わず掛けるだけだと、受け入れ役の返却も「最後の段の返却」の判定（`## 構造の変更` の欠け）や検証の欠けで拒まれるので、`handback-guard` は `Edit`・`Write`・`NotebookEdit` を一度でも使ったサブエージェント（`agent_id` ごとの印）の返却だけを判定する（段階3で入れた。`tw-reference.md`「hook の関門」）。`hooks.json` が読まれるのは plugin で入れたときだけなので、導入は plugin の 1 経路に決めた（7.「導入の経路と関門」）。段階3のあと、名前に結ばれているのは記録の hook（`lap-hook`・`accept-hook`）と、受け入れ役を見分ける `commit-guard` の `acceptor` だけになった。実装役の名前は GH-2583 で `implementer` に替え、`no-delegate` は移行のあいだ `lap-hook` の matcher に残している。
 
 ### 差し替えの方法
 

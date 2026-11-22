@@ -10,7 +10,7 @@
    `tw plan-check T-xxx` を打つ。
    - `PLAN_REGISTERED`・`PLAN_FIRST`: そのまま手順2へ進む
    - `PLAN_STALE`・`PLAN_NOT_FIRST`・`PLAN_UNCOVERED`: まず `tw plan-phases T-xxx` の第3列の JSON（範囲は `pending`）を `work_plan` に渡す。
-     続けて `Agent`（`agentType: tsukumo-workflow:no-delegate`）に書き直しを頼む。依頼文は次のとおり（`T-xxx` は ID に置き換える）:
+     続けて `Agent`（`agentType: tsukumo-workflow:implementer`）に書き直しを頼む。依頼文は次のとおり（`T-xxx` は ID に置き換える）:
      > タスク T-xxx は着手の印が立っている。作業ツリーは今の cwd。ファイルの書き換えは Edit・Write で行う。最初に `tw brief implementer T-xxx --rewrite` を打ち、出力の2行目以降の決まりを読んで従う。登録時の `## やること` は古いので、いまの主ブランチで調べ直して書き直す（`tw edit` で節の中身だけを渡す。実装の作業はしない）。書き直したあと `tw plan-check T-xxx` を打ち、`PLAN_FIRST`（または `PLAN_REGISTERED`）が出て、`PLAN_STALE`・`PLAN_NOT_FIRST`・`PLAN_UNCOVERED` の行が続かないことを確かめる（足りなければ `tw edit` で書き直して打ち直す）。返すのは、書き直したか・書き直したあとの `## やること` の段の数・打った `tw plan-check` の `PLAN_FIRST`・`PLAN_REGISTERED` の行。書き直せず止めるなら、理由を返す。
 
      返却を受けたら、`tw plan-phases T-xxx --through 計画` の JSON をそのまま `work_plan` に渡す（`phaseSummary` に書き直しの要点を書く）。ここで範囲の数と段の名前が確定する。書き直せず止まったときは `tw release` にこの ID を渡して打ち、`workPlanClosing: stopped` の `report` を渡して終える。
