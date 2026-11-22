@@ -431,10 +431,12 @@ class ConfigValueError(ValueError):
     """`set` に渡したキー・値が書けない（呼ぶ側が引数の誤り・終了コード2にする）。"""
 
 
-# --- 並び（`steps`）の候補はワークフロースクリプトの段（`SCRIPT_STEPS`）。入口の候補は frontmatter の `metadata` に印を持つスキル ---
+# --- 並び（`steps`）の候補はワークフロースクリプトの段（`SCRIPT_STEPS`）と `workflow-step` の印を持つスキル。入口の候補は `workflow-entry` の印を持つスキル ---
 
 ENTRY_MARK_KEY = "workflow-entry"  # タスクの実行の入口にできるスキル（ID を渡すと着手する）の印
 ENTRY_TITLE_KEY = "workflow-entry-title"
+STEP_MARK_KEY = "workflow-step"  # 並びに独自の段として置けるスキルの印
+STEP_TITLE_KEY = "workflow-step-title"
 PLUGIN_MANIFEST_PATH = os.path.join(".claude-plugin", "plugin.json")
 
 
@@ -512,6 +514,8 @@ class _Skill:
     description: str
     entry_marked: bool
     entry_title: str | None
+    step_marked: bool = False
+    step_title: str | None = None
 
 
 def _read_skill(skill_dir: str) -> _Skill | None:
@@ -526,11 +530,15 @@ def _read_skill(skill_dir: str) -> _Skill | None:
     metadata = front.get("metadata")
     entry_marked = isinstance(metadata, dict) and metadata.get(ENTRY_MARK_KEY) == "true"
     entry_title = metadata.get(ENTRY_TITLE_KEY) if isinstance(metadata, dict) else None
+    step_marked = isinstance(metadata, dict) and metadata.get(STEP_MARK_KEY) == "true"
+    step_title = metadata.get(STEP_TITLE_KEY) if isinstance(metadata, dict) else None
     return _Skill(
         name=name if isinstance(name, str) and name else os.path.basename(skill_dir),
         description=description if isinstance(description, str) else "",
         entry_marked=entry_marked,
         entry_title=entry_title if isinstance(entry_title, str) and entry_title else None,
+        step_marked=step_marked,
+        step_title=step_title if isinstance(step_title, str) and step_title else None,
     )
 
 
@@ -603,6 +611,18 @@ def entry_candidates(
     ]
 
 
+def step_candidates(
+    project_root: str | None,
+    home: str | None,
+    plugin: tuple[str, str] | None,
+) -> list[StepCandidate]:
+    """並びに独自の段として置けるスキル（`workflow-step` の印）。走査の決まりは `_marked_skills`、名前は `workflow-step-title`。"""
+    return [
+        StepCandidate(value, skill.name, skill.description, own, title=skill.step_title or skill.name)
+        for value, own, skill in _marked_skills(project_root, home, plugin, lambda s: s.step_marked)
+    ]
+
+
 def config_entries(project_root: str | None, home: str | None = None, plugin: tuple[str, str] | None = None) -> dict:
     """`tw config --entries` が出す形。"""
     return {
@@ -659,8 +679,8 @@ BRANCH_FIELD_DESCRIPTIONS = {
 }
 
 
-def config_schema() -> dict:
-    """`tw config --schema` が出す欄の形（schema 2）。`steps` の候補と既定の並びはワークフロースクリプトの段（`SCRIPT_STEPS`）。"""
+def config_schema(project_root: str | None, home: str | None = None, plugin: tuple[str, str] | None = None) -> dict:
+    """`tw config --schema` が出す欄の形（schema 2）。`steps` の候補はワークフロースクリプトの段（`SCRIPT_STEPS`）の後ろに `step_candidates`、既定の並びは `SCRIPT_STEPS`。"""
     return {
         "schema": 2,
         "keys": [
@@ -682,7 +702,7 @@ def config_schema() -> dict:
                 "default": default_steps(),
                 "values": [
                     {"value": c.value, "label": c.label, "title": c.title, "description": c.description}
-                    for c in script_step_candidates()
+                    for c in (*script_step_candidates(), *step_candidates(project_root, home, plugin))
                 ],
             },
             {

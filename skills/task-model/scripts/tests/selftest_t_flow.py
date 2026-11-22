@@ -59,6 +59,16 @@ def _entry_skill(root: str, name: str, mark: str, title: str | None = None) -> s
     )
 
 
+def _step_skill(root: str, name: str, mark: str | None, title: str | None = None) -> str:
+    meta = f'  workflow-step: "{mark}"\n' if mark is not None else '  other: "true"\n'
+    if title is not None:
+        meta += f'  workflow-step-title: "{title}"\n'
+    return write(
+        os.path.join(root, name, "SKILL.md"),
+        f"---\nname: {name}\ndescription: 段の説明\nmetadata:\n{meta}---\n本文\n",
+    )
+
+
 def unregistered_tests(module: types.ModuleType) -> list[str]:
     registered = set(getattr(module, "TESTS", ()))
     return [n for n, f in vars(module).items() if n.startswith("test_") and callable(f) and f not in registered]
@@ -133,6 +143,23 @@ def test_config_flow_is_script_only() -> None:
         old_name = lambda step: "tsukumo-workflow:" + step + "-step"
         check("旧いスキルの全名で書いた steps もワークフロースクリプトの段の名前に読み替えられ、送り出しは落ちる",
               layout.script_steps([old_name("implement"), old_name("ship"), "retrospect"]) == ["implement", "retrospect"])
+
+
+def test_config_schema_step_candidates() -> None:
+    say("自己テスト: config --schema の steps の候補は、組み込みの3段の後ろに workflow-step の印のあるスキルを足す（title は workflow-step-title、無ければ name）")
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = _make_config_doctor_repo(tmp, "step-candidates")
+        skills = os.path.join(repo, ".claude", "skills")
+        _step_skill(skills, "lint", "true", title="静的検査")
+        _step_skill(skills, "note", "true")
+        _step_skill(skills, "off", "false")
+        _step_skill(skills, "plain", None)
+        steps = _schema_key(repo, "steps")
+        values = [(v["value"], v["title"]) for v in steps["values"]]
+        check("候補は3段の後ろに印のあるスキルが並び、印が false・印の無いスキルは出ない",
+              values == [("implement", "実装"), ("accept", "受け入れ"), ("retrospect", "振り返り"), ("lint", "静的検査"), ("note", "note")],
+              repr(values))
+        check("既定の並びは3段のまま", steps["default"] == ["implement", "accept", "retrospect"], repr(steps["default"]))
 
 
 def test_config_commit_task_id() -> None:
@@ -648,6 +675,7 @@ TESTS = (
     test_unregistered_tests_named,
     test_all_tests_registered,
     test_config_flow_is_script_only,
+    test_config_schema_step_candidates,
     test_config_commit_task_id,
     test_config_schema_repos_land,
     test_config_repos_table,

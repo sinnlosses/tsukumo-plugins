@@ -24,8 +24,9 @@ def _toplevel_or_none() -> str | None:
 
 
 def cmd_config_schema() -> None:
-    """欄の形（schema 2。流れ・並び・シェル書き込みの判定・コマンド型6欄・ブランチの扱い）を1行の JSON で出す（読むだけ。設定にはよらない）。並びの候補はワークフロースクリプトの段。"""
-    print(json.dumps(layout.config_schema(), ensure_ascii=False))
+    """欄の形（schema 2。流れ・並び・シェル書き込みの判定・コマンド型6欄・ブランチの扱い）を1行の JSON で出す（読むだけ。設定にはよらない）。並びの候補はワークフロースクリプトの段と、その後ろに `workflow-step` の印のあるスキル。"""
+    schema = layout.config_schema(_toplevel_or_none(), os.path.expanduser("~"), layout.own_plugin_root())
+    print(json.dumps(schema, ensure_ascii=False))
 
 
 def cmd_config_entries() -> None:
