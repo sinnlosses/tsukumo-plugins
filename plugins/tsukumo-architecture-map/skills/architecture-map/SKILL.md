@@ -45,8 +45,14 @@ npx dependency-cruiser <対象のディレクトリ> --output-type json --config
 overview = "このリポジトリは何で、どんな部分からなり、外と何をやり取りするかを3文まで"
 forbidden_prefixes = ["<依存の規則の名前の共通の接頭辞>"]   # 規則から意図したエッジを読むとき。無ければ省く
 
+[[lanes]]                       # 任意。実行の境界の区画。書くなら大の箱は全部 lane を持つ
+id = "backend"                  # 区画の id（区切り1つの形。箱の ID と同じ字でもよい）
+title = "サーバー側"             # 任意
+kind = "runtime"                # runtime・crosscut・external のどれか。色の欄は無い
+
 [[boxes]]                       # 大の箱
 id = "server"
+lane = "backend"                # lanes の id。大の箱だけ。external = true の箱は kind = "external" の区画へ
 title = "サーバー"               # 任意。無ければ id を出す
 summary = "動詞で1行。何を受け持つか"
 purpose = "なぜほかと分かれているかを1行"   # 任意

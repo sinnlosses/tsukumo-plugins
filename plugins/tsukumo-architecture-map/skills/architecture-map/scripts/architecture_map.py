@@ -36,9 +36,11 @@ BOX_KEYS = (
     "links",
     "aliases",
     "external",
+    "lane",
     "place",
     "children",
 )
+LANE_KINDS = ("runtime", "crosscut", "external")
 FINDING_FIELDS = ("from", "to", "path", "box", "boxes", "count")
 
 
@@ -119,6 +121,10 @@ def parse_box(raw, level, seen_ids, where):
     if external and level != 0:
         raise DefinitionError(f"{where}: external は大の箱だけ")
     box = {"id": box_id, "level": level, "external": bool(external)}
+    if "lane" in raw:
+        if level != 0:
+            raise DefinitionError(f"{where}: lane は大の箱だけ")
+        box["lane"] = text_field(raw, "lane", where)
     box["title"] = text_field(raw, "title", where)
     box["summary"] = text_field(raw, "summary", where, required=True)
     box["purpose"] = text_field(raw, "purpose", where)
@@ -185,7 +191,50 @@ def parse_definition(defn):
     if not isinstance(prefixes, list) or not all(isinstance(p, str) and p for p in prefixes):
         raise DefinitionError("forbidden_prefixes は文字列の配列")
     overview = text_field(defn, "overview", "頭")
-    return {"boxes": boxes, "edges": edges, "prefixes": prefixes, "overview": overview, "ids": ids}
+    lanes = parse_lanes(defn.get("lanes"), boxes)
+    return {"boxes": boxes, "edges": edges, "prefixes": prefixes, "overview": overview, "ids": ids, "lanes": lanes}
+
+
+def parse_lanes(raw_lanes, boxes):
+    if raw_lanes is None:
+        if any("lane" in b for b in boxes):
+            raise DefinitionError("lane を書くなら [[lanes]] が要る")
+        return None
+    if not isinstance(raw_lanes, list) or not raw_lanes:
+        raise DefinitionError("lanes は区画のテーブルを1つ以上並べる")
+    lanes = []
+    kinds = {}
+    for raw in raw_lanes:
+        if not isinstance(raw, dict):
+            raise DefinitionError("lanes の要素はテーブル")
+        lane_id = raw.get("id")
+        if not valid_id(lane_id) or "/" in lane_id:
+            raise DefinitionError(f"lanes: 区画の id {lane_id!r} が決まりに合わない")
+        if lane_id in kinds:
+            raise DefinitionError(f"lanes: 区画の id {lane_id!r} が重なっている")
+        kind = raw.get("kind")
+        if kind not in LANE_KINDS:
+            raise DefinitionError(f"lanes[{lane_id}]: kind は runtime・crosscut・external のどれか")
+        kinds[lane_id] = kind
+        lane = {"id": lane_id, "kind": kind}
+        title = text_field(raw, "title", f"lanes[{lane_id}]")
+        if title is not None:
+            lane["title"] = title
+        lanes.append(lane)
+    members = {lane_id: 0 for lane_id in kinds}
+    for box in boxes:
+        lane_id = box.get("lane")
+        if lane_id is None:
+            raise DefinitionError(f"{box['id']}: lanes を書くなら大の箱は全部 lane を持つ")
+        if lane_id not in kinds:
+            raise DefinitionError(f"{box['id']}: lane {lane_id!r} が lanes の id にない")
+        if box["external"] != (kinds[lane_id] == "external"):
+            raise DefinitionError(f"{box['id']}: external の箱は kind = external の区画にだけ属し、その区画には外の世界の箱だけが属する")
+        members[lane_id] += 1
+    for lane_id, count in members.items():
+        if count == 0:
+            raise DefinitionError(f"lanes[{lane_id}]: 属する大の箱が1つも無い")
+    return lanes
 
 
 def read_modules(dep):
@@ -394,6 +443,8 @@ def build(defn, dep, commit, tree=None, root=None):
     doc = {"version": VERSION, "source": source}
     if parsed["overview"]:
         doc["overview"] = parsed["overview"]
+    if parsed["lanes"]:
+        doc["lanes"] = parsed["lanes"]
     doc["boxes"] = [render(b) for b in bigs]
     doc["edges"] = {
         "intended": intended,

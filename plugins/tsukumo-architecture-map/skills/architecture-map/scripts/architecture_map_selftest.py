@@ -59,6 +59,17 @@ to = "domain"
 label = "import"
 """
 
+LANE_TABLE = """[[lanes]]
+id = "back"
+title = "サーバー側"
+kind = "runtime"
+
+"""
+
+
+def with_lanes(body, table=LANE_TABLE):
+    return body.replace("[[boxes]]", table + "[[boxes]]", 1)
+
 RULES = [
     {
         "name": "shop-edge:domain",
@@ -230,6 +241,58 @@ class ArchitectureMapTest(unittest.TestCase):
             before = read_bytes(paths["map.json"])
             self.assertEqual(cli(FILES, paths["bad.toml"]), 2)
             self.assertEqual(before, read_bytes(paths["map.json"]))
+
+    def test_lanes_are_written_at_their_positions(self):
+        body = DEFINITION
+        for name in ("app", "core", "platform"):
+            body = body.replace(f'id = "{name}"', f'id = "{name}"\nlane = "back"')
+        text = with_lanes(body)
+        doc, _ = run(FILES, text)
+        self.assertEqual(
+            list(doc), ["version", "source", "overview", "lanes", "boxes", "edges", "findings"]
+        )
+        self.assertEqual(doc["lanes"], [{"id": "back", "kind": "runtime", "title": "サーバー側"}])
+        self.assertEqual(list(doc["boxes"][0])[:2], ["id", "summary"])
+        keys = list(doc["boxes"][0])
+        self.assertEqual(doc["boxes"][0]["lane"], "back")
+        self.assertLess(keys.index("lane"), keys.index("children"))
+        text = text.replace(
+            '[[edges]]',
+            '[[boxes]]\nid = "ext"\nsummary = "外の店"\nexternal = true\nlane = "out"\n\n[[edges]]',
+        ).replace("[[boxes]]", '[[lanes]]\nid = "out"\nkind = "external"\n\n[[boxes]]', 1)
+        doc, _ = run(FILES, text)
+        ext = doc["boxes"][-1]
+        self.assertEqual(list(ext), ["id", "summary", "paths", "external", "lane"])
+        self.assertEqual([lane["id"] for lane in doc["lanes"]], ["back", "out"])
+
+    def test_definition_without_lanes_keeps_the_same_output(self):
+        doc, _ = run(FILES)
+        self.assertNotIn("lanes", doc)
+        for big in doc["boxes"]:
+            self.assertNotIn("lane", big)
+
+    def test_broken_lanes_are_rejected(self):
+        def lane_all(extra=""):
+            body = DEFINITION
+            for name in ("app", "core", "platform"):
+                body = body.replace(f'id = "{name}"', f'id = "{name}"\nlane = "back"')
+            return with_lanes(body, LANE_TABLE + extra)
+
+        run(FILES, lane_all())
+        for bad in (
+            with_lanes(DEFINITION),
+            DEFINITION.replace('id = "app"', 'id = "app"\nlane = "back"'),
+            lane_all().replace('lane = "back"', 'lane = "ghost"', 1),
+            lane_all().replace('id = "core"\nlane = "back"', 'id = "core"'),
+            lane_all().replace('kind = "runtime"', 'kind = "weird"'),
+            lane_all().replace('id = "back"', 'id = "a b"'),
+            lane_all('[[lanes]]\nid = "back"\nkind = "crosscut"\n\n'),
+            lane_all('[[lanes]]\nid = "empty"\nkind = "crosscut"\n\n'),
+            lane_all().replace('summary = "保存を受け持つ"', 'summary = "保存を受け持つ"\nexternal = true'),
+            lane_all().replace('id = "api"', 'id = "api"\nlane = "back"'),
+        ):
+            with self.assertRaises(am.DefinitionError):
+                run(FILES, bad)
 
     def test_broken_definition_is_rejected(self):
         for bad in (
