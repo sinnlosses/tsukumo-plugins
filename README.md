@@ -122,6 +122,18 @@ Storybook の `index.json` と `git diff` で変えた部品に当たる story �
 （着手時に `before`、直したあとに `after`。撮り忘れには主ブランチを一時の worktree で build する `base-worktree`）。
 Playwright は対象のリポジトリの `node_modules` から読み、無ければ終了コード 3 で止まる。外部サービスは使わない。
 
+## 3つ目のプラグイン `tsukumo-architecture-map`
+
+リポジトリのアーキテクチャの地図（大・中・小の箱とエッジ、地図と実装のずれ）を `.architecture-map.json` に書く作り手（`plugins/tsukumo-architecture-map/`）。同じマーケットプレイスから入れる。
+
+```
+/plugin install tsukumo-architecture-map@tsukumo-plugins
+```
+
+スキルは `tsukumo-architecture-map:architecture-map`。地図の定義（TOML）と dependency-cruiser の JSON から、小の箱・実際のエッジ・ずれを抽出と照合で作り、定義が無いリポジトリでは大・中の箱を下書きする手順を持つ。
+**初版で地図を作れるのは、dependency-cruiser で依存を抽出できる JS・TS のリポジトリだけ**で、Python 3.13 以降が要る。契約は版 1（正典は tsukumo の `docs/architecture/architecture-map.md`）。
+tsukumo がいなくても動き、タスク運用の `tw`・Beads・hook には触らない。自己テストは `./check.sh` の段（`plugins/tsukumo-architecture-map/` に当たるとき）が流す。
+
 ## `.git` が読み取り専用の sandbox で打つとき
 
 Codex のように、書けるのが作業ツリーと一時ディレクトリだけの環境:

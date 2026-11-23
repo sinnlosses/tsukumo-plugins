@@ -4,7 +4,7 @@
     "name": "sinnlosses",
     "url": "https://github.com/sinnlosses"
   },
-  "description": "tsukumo と一緒に使うプラグイン（タスク運用のワークフロー、図を撮るスキル）",
+  "description": "tsukumo と一緒に使うプラグイン（タスク運用のワークフロー、図を撮るスキル、アーキテクチャの地図を書く作り手）",
   "plugins": [
     {
       "name": "tsukumo-workflow",
@@ -15,6 +15,11 @@
       "name": "tsukumo-figure",
       "source": "./plugins/tsukumo-figure",
       "description": "図の構造を JSON で書くと PNG に撮るスキルと、Storybook の変えた部品の story を前後で撮るスキル"
+    },
+    {
+      "name": "tsukumo-architecture-map",
+      "source": "./plugins/tsukumo-architecture-map",
+      "description": "リポジトリのアーキテクチャの地図（箱とエッジ、実装とのずれ）を .architecture-map.json に書く作り手。初版は JS・TS のリポジトリだけ"
     }
   ]
 }

@@ -14,6 +14,7 @@
 #
 # 1. リポジトリ全体の整合（frontmatter・README の索引・参照先の実在・殻 bin/tw-hook の自己テスト・公式の claude plugin validate）（いつも）
 # 2. story-capture の自己テスト（plugins/tsukumo-figure/skills/story-capture/ に当たるとき）
+# 2b. architecture-map の自己テスト（plugins/tsukumo-architecture-map/ に当たるとき）
 # 3. task-model のスクリプトの自己テスト（review_needed.py・review_snapshot.py を含む。台帳と Beads 方式は並べて走らせ、出力は流し終えてから順に出す）
 #    絞れるときは tests/selftest_scope.py の対応の表が決め、selftest_task.py に当たる selftest_t_* だけを流す。表に載らないファイルは全件
 #
@@ -129,6 +130,7 @@ if [ "$mode" != plan ]; then
   if command -v claude >/dev/null 2>&1; then
     claude plugin validate "$here"
     claude plugin validate "$here/plugins/tsukumo-figure"
+    claude plugin validate "$here/plugins/tsukumo-architecture-map"
   else
     echo "claude コマンドが無いので claude plugin validate を飛ばす"
   fi
@@ -140,6 +142,10 @@ if stage "story-capture の自己テスト" 'plugins/tsukumo-figure/skills/story
   else
     echo "node コマンドが無いので story-capture の自己テストを飛ばす"
   fi
+fi
+
+if stage "architecture-map の自己テスト" 'plugins/tsukumo-architecture-map/*'; then
+  $LOWPRI python3 "$here/plugins/tsukumo-architecture-map/skills/architecture-map/scripts/architecture_map_selftest.py"
 fi
 
 pid_task=
