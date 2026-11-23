@@ -238,6 +238,11 @@ class ArchitectureMapTest(unittest.TestCase):
             DEFINITION.replace('id = "db"', 'id = "api"'),
             DEFINITION.replace('to = "domain"', 'to = "ghost"'),
             "boxes = []",
+            DEFINITION.replace('summary = "要求を受けて領域へ渡す"', 'summary = "要求を受けて領域へ渡す"\n  links = "docs/x.md"'),
+            DEFINITION.replace('summary = "要求を受けて領域へ渡す"', 'summary = "要求を受けて領域へ渡す"\n  links = { adr = "docs/x.md" }'),
+            DEFINITION.replace('summary = "要求を受けて領域へ渡す"', 'summary = "要求を受けて領域へ渡す"\n  links = { terms = "x" }'),
+            DEFINITION.replace('summary = "要求を受けて領域へ渡す"', 'summary = "要求を受けて領域へ渡す"\n  aliases = "old"'),
+            DEFINITION.replace('label = "import"', 'label = 3'),
         ):
             with self.assertRaises(am.DefinitionError):
                 run(FILES, bad)

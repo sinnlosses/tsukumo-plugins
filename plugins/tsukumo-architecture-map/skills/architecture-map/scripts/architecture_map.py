@@ -97,7 +97,18 @@ def parse_box(raw, level, seen_ids, where):
     if not valid_id(box_id):
         raise DefinitionError(f"{where}: 箱の ID {box_id!r} が決まりに合わない")
     where = f"{where}[{box_id}]"
-    names = [box_id] + list(raw.get("aliases", []))
+    aliases = raw.get("aliases", [])
+    if not isinstance(aliases, list) or not all(isinstance(a, str) for a in aliases):
+        raise DefinitionError(f"{where}: aliases は文字列の配列")
+    links = raw.get("links")
+    if links is not None:
+        if not isinstance(links, dict):
+            raise DefinitionError(f"{where}: links はテーブル")
+        for key in ("adr", "terms"):
+            value = links.get(key, [])
+            if not isinstance(value, list) or not all(isinstance(v, str) and v for v in value):
+                raise DefinitionError(f"{where}: links.{key} は文字列の配列")
+    names = [box_id] + list(aliases)
     for name in names:
         if not valid_id(name):
             raise DefinitionError(f"{where}: ID・別名 {name!r} が決まりに合わない")
@@ -112,8 +123,8 @@ def parse_box(raw, level, seen_ids, where):
     box["summary"] = text_field(raw, "summary", where, required=True)
     box["purpose"] = text_field(raw, "purpose", where)
     box["overview"] = text_field(raw, "overview", where)
-    box["aliases"] = list(raw.get("aliases", []))
-    box["links"] = raw.get("links")
+    box["aliases"] = list(aliases)
+    box["links"] = links
     box["place"] = raw.get("place")
     if box["place"] is not None:
         place = box["place"]
@@ -165,7 +176,9 @@ def parse_definition(defn):
         if src == dst:
             raise DefinitionError(f"edges: {src!r} から自分自身へは書けない")
         edge = {"from": src, "to": dst, "origin": "definition"}
-        if isinstance(raw.get("label"), str):
+        if "label" in raw:
+            if not isinstance(raw["label"], str):
+                raise DefinitionError("edges: label は文字列")
             edge["label"] = raw["label"]
         edges.append(edge)
     prefixes = defn.get("forbidden_prefixes", [])
