@@ -19,7 +19,7 @@
     {
       "name": "tsukumo-architecture-map",
       "source": "./plugins/tsukumo-architecture-map",
-      "description": "リポジトリのアーキテクチャの地図（箱とエッジ、実装とのずれ）を .architecture-map.json に書く作り手。初版は JS・TS のリポジトリだけ"
+      "description": "リポジトリのアーキテクチャの地図（モジュールとエッジ、実装とのずれ）を .architecture-map.json に書く作り手。初版は JS・TS のリポジトリだけ"
     }
   ]
 }

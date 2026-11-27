@@ -1,6 +1,6 @@
 {
   "name": "tsukumo-architecture-map",
-  "description": "リポジトリのアーキテクチャの地図（大・中・小の箱とエッジ、地図と実装のずれ）を .architecture-map.json に書く作り手。初版は dependency-cruiser で依存を抽出できる JS・TS のリポジトリだけ",
+  "description": "リポジトリのアーキテクチャの地図（大・中・小のモジュールとエッジ、地図と実装のずれ）を .architecture-map.json に書く作り手。初版は dependency-cruiser で依存を抽出できる JS・TS のリポジトリだけ",
   "author": {
     "name": "sinnlosses",
     "url": "https://github.com/sinnlosses"

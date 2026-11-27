@@ -120,7 +120,7 @@ def read_bytes(path):
 
 
 def conserved(doc, files):
-    """入力の全ファイルが小の箱に属し、入力の全依存が実際のエッジか閉じた本数に残る"""
+    """入力の全ファイルが小のモジュールに属し、入力の全依存が実際のエッジか閉じた本数に残る"""
     owner = {}
     for small in small_boxes(doc):
         for path in files:

@@ -124,13 +124,13 @@ Playwright は対象のリポジトリの `node_modules` から読み、無け�
 
 ## 3つ目のプラグイン `tsukumo-architecture-map`
 
-リポジトリのアーキテクチャの地図（大・中・小の箱とエッジ、地図と実装のずれ）を `.architecture-map.json` に書く作り手（`plugins/tsukumo-architecture-map/`）。同じマーケットプレイスから入れる。
+リポジトリのアーキテクチャの地図（大・中・小のモジュールとエッジ、地図と実装のずれ）を `.architecture-map.json` に書く作り手（`plugins/tsukumo-architecture-map/`）。同じマーケットプレイスから入れる。
 
 ```
 /plugin install tsukumo-architecture-map@tsukumo-plugins
 ```
 
-スキルは `tsukumo-architecture-map:architecture-map`。地図の定義（TOML）と dependency-cruiser の JSON から、小の箱・実際のエッジ・ずれを抽出と照合で作り、定義が無いリポジトリでは大・中の箱を下書きする手順を持つ。
+スキルは `tsukumo-architecture-map:architecture-map`。地図の定義（TOML）と dependency-cruiser の JSON から、小のモジュール・実際のエッジ・ずれを抽出と照合で作り、定義が無いリポジトリでは大・中のモジュールを下書きする手順を持つ。
 **初版で地図を作れるのは、dependency-cruiser で依存を抽出できる JS・TS のリポジトリだけ**で、Python 3.13 以降が要る。契約は版 1（正典は tsukumo の `docs/architecture/architecture-map.md`）。
 tsukumo がいなくても動き、タスク運用の `tw`・Beads・hook には触らない。自己テストは `./check.sh` の段（`plugins/tsukumo-architecture-map/` に当たるとき）が流す。
 

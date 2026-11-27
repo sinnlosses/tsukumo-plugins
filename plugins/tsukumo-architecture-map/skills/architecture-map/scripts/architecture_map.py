@@ -95,10 +95,10 @@ def text_field(box, key, where, required=False):
 
 def parse_box(raw, level, seen_ids, where):
     if not isinstance(raw, dict):
-        raise DefinitionError(f"{where}: 箱はテーブル")
+        raise DefinitionError(f"{where}: モジュールはテーブル")
     box_id = raw.get("id")
     if not valid_id(box_id):
-        raise DefinitionError(f"{where}: 箱の ID {box_id!r} が決まりに合わない")
+        raise DefinitionError(f"{where}: モジュールの ID {box_id!r} が決まりに合わない")
     where = f"{where}[{box_id}]"
     aliases = raw.get("aliases", [])
     if not isinstance(aliases, list) or not all(isinstance(a, str) for a in aliases):
@@ -120,11 +120,11 @@ def parse_box(raw, level, seen_ids, where):
         seen_ids.add(name)
     external = raw.get("external", False)
     if external and level != 0:
-        raise DefinitionError(f"{where}: external は大の箱だけ")
+        raise DefinitionError(f"{where}: external は大のモジュールだけ")
     box = {"id": box_id, "level": level, "external": bool(external)}
     if "lane" in raw:
         if level != 0:
-            raise DefinitionError(f"{where}: lane は大の箱だけ")
+            raise DefinitionError(f"{where}: lane は大のモジュールだけ")
         box["lane"] = text_field(raw, "lane", where)
     box["title"] = text_field(raw, "title", where)
     box["summary"] = text_field(raw, "summary", where, required=True)
@@ -135,7 +135,7 @@ def parse_box(raw, level, seen_ids, where):
     entrypoints = raw.get("entrypoints")
     if entrypoints is not None:
         if external:
-            raise DefinitionError(f"{where}: 外の世界の箱は entrypoints を持たない")
+            raise DefinitionError(f"{where}: 外の世界のモジュールは entrypoints を持たない")
         if not isinstance(entrypoints, list) or not entrypoints:
             raise DefinitionError(f"{where}: entrypoints は文字列の配列（1件以上）")
         for entry in entrypoints:
@@ -151,13 +151,13 @@ def parse_box(raw, level, seen_ids, where):
     children_raw = raw.get("children", [])
     if external:
         if children_raw or raw.get("paths"):
-            raise DefinitionError(f"{where}: 外の世界の箱は paths も children も持たない")
+            raise DefinitionError(f"{where}: 外の世界のモジュールは paths も children も持たない")
         box["globs"] = []
         box["children"] = []
         return box
     if level == 0:
         if not children_raw:
-            raise DefinitionError(f"{where}: 大の箱は中の箱を1つ以上持つ")
+            raise DefinitionError(f"{where}: 大のモジュールは中のモジュールを1つ以上持つ")
         box["children"] = [parse_box(c, 1, seen_ids, f"{where}.children") for c in children_raw]
         box["globs"] = []
         for child in box["children"]:
@@ -166,10 +166,10 @@ def parse_box(raw, level, seen_ids, where):
                     box["globs"].append(pattern)
     else:
         if children_raw:
-            raise DefinitionError(f"{where}: 中の箱の子（小の箱）は抽出が作る。定義に書かない")
+            raise DefinitionError(f"{where}: 中のモジュールの子（小のモジュール）は抽出が作る。定義に書かない")
         paths = raw.get("paths")
         if not isinstance(paths, list) or not paths:
-            raise DefinitionError(f"{where}: 中の箱は paths が要る")
+            raise DefinitionError(f"{where}: 中のモジュールは paths が要る")
         for pattern in paths:
             check_glob(pattern, where)
         box["globs"] = list(paths)
@@ -181,7 +181,7 @@ def parse_definition(defn):
     seen_ids: set[str] = set()
     raw_boxes = defn.get("boxes")
     if not isinstance(raw_boxes, list) or not raw_boxes:
-        raise DefinitionError("boxes が要る（大の箱を1つ以上）")
+        raise DefinitionError("boxes が要る（大のモジュールを1つ以上）")
     boxes = [parse_box(b, 0, seen_ids, "boxes") for b in raw_boxes]
     ids = set(seen_ids)
     edges = []
@@ -237,15 +237,15 @@ def parse_lanes(raw_lanes, boxes):
     for box in boxes:
         lane_id = box.get("lane")
         if lane_id is None:
-            raise DefinitionError(f"{box['id']}: lanes を書くなら大の箱は全部 lane を持つ")
+            raise DefinitionError(f"{box['id']}: lanes を書くなら大のモジュールは全部 lane を持つ")
         if lane_id not in kinds:
             raise DefinitionError(f"{box['id']}: lane {lane_id!r} が lanes の id にない")
         if box["external"] != (kinds[lane_id] == "external"):
-            raise DefinitionError(f"{box['id']}: external の箱は kind = external の区画にだけ属し、その区画には外の世界の箱だけが属する")
+            raise DefinitionError(f"{box['id']}: external のモジュールは kind = external の区画にだけ属し、その区画には外の世界のモジュールだけが属する")
         members[lane_id] += 1
     for lane_id, count in members.items():
         if count == 0:
-            raise DefinitionError(f"lanes[{lane_id}]: 属する大の箱が1つも無い")
+            raise DefinitionError(f"lanes[{lane_id}]: 属する大のモジュールが1つも無い")
     return lanes
 
 
@@ -359,7 +359,7 @@ def resolve_entrypoints(box, files):
     if box.get("entrypoints"):
         for entry in box["entrypoints"]:
             if entry not in files or not any(glob_match(p, entry) for p in box["globs"]):
-                raise DefinitionError(f"{box['id']}: entrypoints の {entry!r} がこの箱の paths に当たる抽出したファイルにない")
+                raise DefinitionError(f"{box['id']}: entrypoints の {entry!r} がこのモジュールの paths に当たる抽出したファイルにない")
         return
     picked = pick_entrypoint(box["globs"], files)
     box["entrypoints"] = [picked] if picked else None
@@ -582,7 +582,7 @@ def main(argv=None):
     errors = [f for f in doc["findings"] if f["severity"] == "error"]
     print(
         f"書いた: {args.output}（実際のエッジ {len(doc['edges']['actual'])} 件・本数 {stats['actual']}"
-        f"・同じ小の箱で閉じた {stats['closed']}・箱に属さず落とした {stats['dropped']}"
+        f"・同じ小のモジュールで閉じた {stats['closed']}・モジュールに属さず落とした {stats['dropped']}"
         f"・ずれ error {len(errors)} 件・warn {len(doc['findings']) - len(errors)} 件）"
     )
     for finding in doc["findings"]:
