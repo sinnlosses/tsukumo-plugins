@@ -34,5 +34,6 @@
 - 入力: 地図の定義（TOML。人が直す。このスクリプトは書き換えない）と、dependency-cruiser の JSON（`--output-type json`）
 - 出力: `.architecture-map.json`。一時ファイルに書いてから名前を替えて置く。同じ入力からは同じバイト列を書く
 - 区画（任意）: 定義の頭の欄のあとの `[[lanes]]`（`id`・`title`・`kind = "runtime" | "crosscut" | "external"`）と大の箱の `lane` を、地図のファイルの頭の `lanes`（`overview` と `boxes` のあいだ）と箱の `lane` へ写す。書かない定義からは今と同じファイルが出る。決まりは tsukumo の `docs/architecture/adr/0085-architecture-map-lanes.md`
+- エントリポイント（任意）: 箱の `entrypoints`（読み始めるファイルのパスの配列）を地図のファイルの箱へ写す。定義に書いたものが最優先で、箱の `paths` に当たらないものは書き出さずに止める。書かなければ、箱の `paths` の共通の頭のディレクトリの直下から `index.*` → ディレクトリと同名 → `main.*` の順で最初の1つを選び、無ければ欄を書かない（外の世界の箱には書かない）。決まりは tsukumo の `docs/architecture/adr/0089-architecture-map-entrypoints.md`
 - 終了コード: 0（error のずれ無し）・1（error のずれあり。ファイルは書く）・2（定義か入力が壊れている。書かない）
 - コミットするかはリポジトリが決める

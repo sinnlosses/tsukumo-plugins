@@ -294,6 +294,51 @@ class ArchitectureMapTest(unittest.TestCase):
             with self.assertRaises(am.DefinitionError):
                 run(FILES, bad)
 
+    def test_entrypoints_are_picked_by_name_order_and_human_wins(self):
+        doc, _ = run(FILES)
+        self.assertNotIn("entrypoints", json.dumps(doc))
+        files = {
+            **FILES,
+            "src/api/main.ts": [],
+            "src/api/api.ts": [],
+            "src/domain/index.ts": [],
+            "src/domain/domain.ts": [],
+            "src/infra/infra.ts": [],
+        }
+        doc, _ = run(files)
+        self.assertEqual(doc["findings"], [])
+        self.assertEqual(doc["boxes"][0]["children"][0]["entrypoints"], ["src/api/api.ts"])
+        self.assertEqual(doc["boxes"][0]["entrypoints"], ["src/api/api.ts"])
+        self.assertEqual(doc["boxes"][1]["children"][0]["entrypoints"], ["src/domain/index.ts"])
+        self.assertEqual(doc["boxes"][2]["children"][0]["entrypoints"], ["src/infra/infra.ts"])
+        smalls = {s["id"]: s for s in small_boxes(doc)}
+        self.assertEqual(smalls["src/api"]["entrypoints"], ["src/api/api.ts"])
+        self.assertNotIn("entrypoints", smalls["src/api/routes"])
+        written = DEFINITION.replace(
+            'paths = ["src/api/**"]', 'paths = ["src/api/**"]\n  entrypoints = ["src/api/main.ts", "src/api/routes/a.ts"]'
+        )
+        doc, _ = run(files, written)
+        self.assertEqual(doc["boxes"][0]["children"][0]["entrypoints"], ["src/api/main.ts", "src/api/routes/a.ts"])
+        self.assertEqual(list(doc["boxes"][0]["children"][0])[:4], ["id", "summary", "paths", "entrypoints"])
+
+    def test_broken_entrypoints_are_rejected(self):
+        files = {**FILES, "src/api/main.ts": []}
+        mid = 'paths = ["src/api/**"]'
+        for bad in (
+            DEFINITION.replace(mid, mid + '\n  entrypoints = []'),
+            DEFINITION.replace(mid, mid + '\n  entrypoints = "src/api/main.ts"'),
+            DEFINITION.replace(mid, mid + '\n  entrypoints = ["src/api/*.ts"]'),
+            DEFINITION.replace(mid, mid + '\n  entrypoints = ["./src/api/main.ts"]'),
+            DEFINITION.replace(mid, mid + '\n  entrypoints = ["src/domain/order/o.ts"]'),
+            DEFINITION.replace(mid, mid + '\n  entrypoints = ["src/api/none.ts"]'),
+            DEFINITION.replace('id = "app"', 'id = "app"\nentrypoints = ["src/domain/order/o.ts"]'),
+        ):
+            with self.assertRaises(am.DefinitionError):
+                run(files, bad)
+        external = with_lanes(DEFINITION.replace('id = "platform"', 'id = "platform"\nexternal = true\nentrypoints = ["a.ts"]'))
+        with self.assertRaises(am.DefinitionError):
+            run(files, external)
+
     def test_broken_definition_is_rejected(self):
         for bad in (
             DEFINITION.replace('paths = ["src/api/**"]', 'paths = ["./src/api/**"]'),

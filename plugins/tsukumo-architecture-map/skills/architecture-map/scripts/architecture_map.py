@@ -33,6 +33,7 @@ BOX_KEYS = (
     "purpose",
     "overview",
     "paths",
+    "entrypoints",
     "links",
     "aliases",
     "external",
@@ -131,6 +132,17 @@ def parse_box(raw, level, seen_ids, where):
     box["overview"] = text_field(raw, "overview", where)
     box["aliases"] = list(aliases)
     box["links"] = links
+    entrypoints = raw.get("entrypoints")
+    if entrypoints is not None:
+        if external:
+            raise DefinitionError(f"{where}: 外の世界の箱は entrypoints を持たない")
+        if not isinstance(entrypoints, list) or not entrypoints:
+            raise DefinitionError(f"{where}: entrypoints は文字列の配列（1件以上）")
+        for entry in entrypoints:
+            check_glob(entry, where)
+            if "*" in entry:
+                raise DefinitionError(f"{where}: entrypoints の {entry!r} に * を含めない")
+    box["entrypoints"] = list(entrypoints) if entrypoints is not None else None
     box["place"] = raw.get("place")
     if box["place"] is not None:
         place = box["place"]
@@ -303,10 +315,62 @@ def flatten(boxes):
             yield mid
 
 
+def head_directory(globs):
+    """paths の共通の頭のディレクトリ（ワイルドカードより前の区切り）。無ければ None"""
+    heads = []
+    for pattern in globs:
+        segments = pattern.split("/")
+        literal = []
+        for seg in segments[:-1]:
+            if "*" in seg:
+                break
+            literal.append(seg)
+        heads.append(literal)
+    if not heads:
+        return None
+    common = heads[0]
+    for head in heads[1:]:
+        size = 0
+        while size < min(len(common), len(head)) and common[size] == head[size]:
+            size += 1
+        common = common[:size]
+    return "/".join(common) or None
+
+
+def pick_entrypoint(globs, files):
+    """頭のディレクトリの直下から index.* → ディレクトリと同名 → main.* の順で最初の1つを選ぶ"""
+    directory = head_directory(globs)
+    if directory is None:
+        return None
+    base = directory.rsplit("/", 1)[-1]
+    inside = sorted(
+        f for f in files if f.rsplit("/", 1)[0] == directory and "/" in f and any(glob_match(p, f) for p in globs)
+    )
+    for wanted in ("index", base, "main"):
+        for f in inside:
+            if os.path.splitext(os.path.basename(f))[0] == wanted:
+                return f
+    return None
+
+
+def resolve_entrypoints(box, files):
+    if box["external"]:
+        return
+    if box.get("entrypoints"):
+        for entry in box["entrypoints"]:
+            if entry not in files or not any(glob_match(p, entry) for p in box["globs"]):
+                raise DefinitionError(f"{box['id']}: entrypoints の {entry!r} がこの箱の paths に当たる抽出したファイルにない")
+        return
+    picked = pick_entrypoint(box["globs"], files)
+    box["entrypoints"] = [picked] if picked else None
+
+
 def build(defn, dep, commit, tree=None, root=None):
     parsed = parse_definition(defn)
     files, pairs = read_modules(dep)
     bigs = parsed["boxes"]
+    for box in flatten(bigs):
+        resolve_entrypoints(box, files)
     mediums = [m for big in bigs for m in big["children"]]
     medium_big = {m["id"]: big["id"] for big in bigs for m in big["children"]}
 
@@ -339,7 +403,11 @@ def build(defn, dep, commit, tree=None, root=None):
         paths = [f"{directory}/*"]
         if any(os.path.basename(f).startswith(".") for f in by_dir[directory]):
             paths.append(f"{directory}/.*")
-        return {"id": directory, "paths": paths}
+        small = {"id": directory, "paths": paths}
+        picked = pick_entrypoint(paths, by_dir[directory])
+        if picked:
+            small["entrypoints"] = [picked]
+        return small
 
     def chain(path):
         directory = path.rsplit("/", 1)[0] if "/" in path else None
